@@ -36,6 +36,10 @@ def generate_link(order_id, ps_name):
 
 
 def upload_to_s3(file, object_name):
+    if not BUCKET_NAME or not S3_ENDPOINT:
+        raise ValueError(
+            "S3 is not configured: set BUCKET_NAME, S3_ENDPOINT, ACCESS_KEY, SECRET_S3_KEY in .env"
+        )
     s3_client = boto3.client('s3',
                              endpoint_url=S3_ENDPOINT,
                              aws_access_key_id=ACCESS_KEY,

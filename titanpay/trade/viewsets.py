@@ -9,9 +9,7 @@ from rest_framework.decorators import action
 from basics.models import Trader, Balance, PaymentDetails, TraderTeam, TraderTeamRates
 from basics.serializers import TraderTeamSerializer, TraderTeamRatesSerializer
 from payments.models import PayOut
-from payments.utils import upload_to_s3
-from django.utils import timezone
-from trade.utils2 import send_to_fastapi, export_to_excel
+from trade.utils2 import send_to_fastapi, orders_excel_http_response
 from usermanagement.models import SupportMember
 from trade.serializers import WithdrawalRequestSupportSerializer, WithdrawalRequestBasicSerializer, \
     WithdrawalRequestCreateSerializer, WithdrawalRequestApproveSerializer, WithdrawalRequestRejectSerializer, \
@@ -36,6 +34,7 @@ from rest_framework.response import Response
 from basics.paginators import StandardResultsSetPagination
 from django.db.models import Sum
 from django.db import transaction
+from django.utils import timezone
 
 
 class WithdrawalRequestFilter(django_filters.FilterSet):
@@ -731,9 +730,7 @@ class InOrderViewset(viewsets.ModelViewSet):
 
         # queryset = queryset.filter(creation_date__gte=start_of_previous_day, creation_date__lt=start_of_today)
 
-        link = export_to_excel(queryset)
-
-        return Response(status=status.HTTP_200_OK, data={"url": link})
+        return orders_excel_http_response(queryset, filename_prefix="orders_in")
 
     @action(detail=False, methods=['GET'], permission_classes=[TraderPermission], url_path='reasons')
     def get_reasons(self, request):
@@ -1137,9 +1134,7 @@ class OutOrderViewset(viewsets.ModelViewSet):
 
         # queryset = queryset.filter(creation_date__gte=start_of_previous_day, creation_date__lt=start_of_today)
 
-        link = export_to_excel(queryset)
-
-        return Response(status=status.HTTP_200_OK, data={"url": link})
+        return orders_excel_http_response(queryset, filename_prefix="orders_out")
 
 
 class TraderTeamRatesViewset(viewsets.ModelViewSet):

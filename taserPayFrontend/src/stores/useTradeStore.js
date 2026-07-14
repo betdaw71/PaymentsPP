@@ -1,6 +1,68 @@
 import { defineStore } from 'pinia'
 import instance from "@/services/api"
 
+function downloadExcelBlob (response, defaultName) {
+  let filename = defaultName
+  const disposition = response.headers['content-disposition']
+  if (disposition) {
+    const match = /filename="?([^";\n]+)"?/.exec(disposition)
+    if (match)
+      filename = match[1]
+  }
+  const url = window.URL.createObjectURL(new Blob([response.data]))
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+async function exportOrdersExcel (path, params, defaultName) {
+  const response = await instance.get(path, { params, responseType: 'blob' })
+  if (response.status !== 200) {
+    return {
+      data: [],
+      error: response.data,
+    }
+  }
+
+  const contentType = response.headers['content-type'] || ''
+  if (contentType.includes('spreadsheetml') || contentType.includes('octet-stream')) {
+    downloadExcelBlob(response, defaultName)
+
+    return {
+      data: { downloaded: true },
+      error: null,
+    }
+  }
+
+  try {
+    const text = await response.data.text()
+    const json = JSON.parse(text)
+    if (json.url) {
+      window.open(json.url, '_blank')
+
+      return {
+        data: json,
+        error: null,
+      }
+    }
+
+    return {
+      data: [],
+      error: json,
+    }
+  } catch {
+    return {
+      data: [],
+      error: 'Export failed',
+    }
+  }
+}
+
 export const useTradeStore = defineStore ({
   id: 'TradeStore',
   actions: {
@@ -19,18 +81,7 @@ export const useTradeStore = defineStore ({
       }
     },
     async exportTradeOrderIn (params) {
-      const response = await instance.get (`/trade/order/in/export/`, { params })
-      if (response.status === 200) {
-        return {
-          data: response.data,
-          error: null,
-        }
-      }
-
-      return {
-        data: [],
-        error: response.data,
-      }
+      return exportOrdersExcel('/trade/order/in/export/', params, 'orders_in.xlsx')
     },
     async createTradeOrderIn (params) {
       const response = await instance.post (`/trade/order/in/`, params)
@@ -302,18 +353,7 @@ export const useTradeStore = defineStore ({
       }
     },
     async exportTradeOrderOut (params) {
-      const response = await instance.get (`/trade/order/out/export/`, { params })
-      if (response.status === 200) {
-        return {
-          data: response.data,
-          error: null,
-        }
-      }
-
-      return {
-        data: [],
-        error: response.data,
-      }
+      return exportOrdersExcel('/trade/order/out/export/', params, 'orders_out.xlsx')
     },
     async createTradeOrderOut (params) {
       const response = await instance.post (`/trade/order/out/`, params)

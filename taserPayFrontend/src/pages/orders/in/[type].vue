@@ -415,8 +415,11 @@ const exportOrders = async () => {
       exportLoading.value = false
       if (response.error)
         throw response.error
-      window.open (response.data.url, "_blank")
-      copyToClipboard (response.data.url, t ('data.exported'), "success")
+      snackbar.value = {
+        enabled: true,
+        type: "success",
+        message: t ('data.exported'),
+      }
     },
     error => {
       exportLoading.value = false

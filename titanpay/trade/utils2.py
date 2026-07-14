@@ -17,7 +17,7 @@ import uuid
 import requests
 import pandas as pd
 from io import BytesIO
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from rest_framework.exceptions import ValidationError
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 from payments.utils import upload_to_s3
@@ -225,8 +225,11 @@ def send_to_fastapi(order: dict, file) -> dict:
     return response.json()
 
 
-def export_to_excel(queryset):
-    data = list(queryset.values('id', 'status__name', 'amount', 'usd_amount', 'trader_fee', 'payment_details__group__owner', 'solution__payment_system__name', 'creation_date'))
+def build_orders_excel_buffer(queryset):
+    data = list(queryset.values(
+        'id', 'status__name', 'amount', 'usd_amount', 'trader_fee',
+        'payment_details__group__owner', 'solution__payment_system__name', 'creation_date',
+    ))
 
     for item in data:
         if item['creation_date']:
@@ -242,21 +245,32 @@ def export_to_excel(queryset):
         'trader_fee': 'Прибыль',
         'payment_details__group__owner': 'ФИО',
         'solution__payment_system__name': 'Платёжная система',
-        'creation_date': 'Дата создания'
+        'creation_date': 'Дата создания',
     }
 
-    # Rename the columns in the DataFrame
     df.rename(columns=column_mapping, inplace=True)
 
     buffer = BytesIO()
-
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df.to_excel(writer, index=False)
-
     buffer.seek(0)
+    return buffer
 
-    object_name = 'data.xlsx'
 
+def orders_excel_http_response(queryset, *, filename_prefix: str = "orders"):
+    buffer = build_orders_excel_buffer(queryset)
+    filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def export_to_excel(queryset):
+    """Legacy: upload to S3 and return public URL. Requires BUCKET_NAME in .env."""
+    buffer = build_orders_excel_buffer(queryset)
+    object_name = f"exports/orders_{uuid.uuid4().hex}.xlsx"
     file_url = upload_to_s3(buffer, object_name)
-
     return file_url
