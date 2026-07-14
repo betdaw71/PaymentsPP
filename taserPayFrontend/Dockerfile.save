@@ -1,0 +1,27 @@
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# Копируем package.json
+COPY package*.json ./
+
+# Устанавливаем зависимости без postinstall
+RUN npm install --legacy-peer-deps --ignore-scripts
+
+# Копируем исходники
+COPY . .
+
+# Создаем заглушку для build-icons.js если его нет
+RUN mkdir -p src/@iconify && \
+    echo '#!/usr/bin/env node\nconsole.log("Icons build skipped");\nprocess.exit(0);' > src/@iconify> 
+    chmod +x src/@iconify/build-icons.js
+
+# Запускаем сборку
+RUN npm run build --legacy-peer-deps || npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+

@@ -1,0 +1,65 @@
+# --- Secrets & env (NEVER commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa
+id_ed25519
+.git-credentials
+
+# --- Docker / infra backups ---
+docker-compose.yml.save*
+docker-compose.override.yml
+letsencrypt/
+
+# --- Python / Django ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+.venv-docs/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.sqlite3
+db.sqlite3
+*.log
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# --- Node / Vue ---
+node_modules/
+dist/
+.nuxt/
+.output/
+*.local
+
+# --- IDE / Cursor ---
+.idea/
+.vscode/
+.cursor/
+promo/.cursor/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Runtime / prod data ---
+titanpay/files/
+media/
+staticfiles/
+*.dump
+*.sql.gz
+
+# --- Docs PDFs (optional) ---
+*.pdf
+!titanpay/docs/**/*.pdf
+docker-compose.yml111

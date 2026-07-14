@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="{{ locale|default:'ru' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kaspi — {% if locale == 'kk' %}аударым{% else %}перевод{% endif %}</title>
+  <style>
+    :root {
+      --bg: #0f1419; --card: #1a2332; --text: #e8edf4; --muted: #8b9cb3;
+      --accent: #f04e23; --border: #2d3a4f; --ok: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(ellipse at top, #1e293b 0%, var(--bg) 55%);
+      color: var(--text); padding: 16px;
+    }
+    .wrap { max-width: 480px; margin: 0 auto; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 20px; margin-bottom: 16px;
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; line-height: 1.45; }
+    .status {
+      background: #111827; border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 14px; font-size: 14px; margin-bottom: 16px; word-break: break-all;
+    }
+    .status.ok { border-color: rgba(34, 197, 94, .4); color: #86efac; }
+    .btn {
+      display: block; width: 100%; border: none; border-radius: 10px; padding: 14px 16px;
+      font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 10px; text-align: center;
+      text-decoration: none; color: #fff; background: var(--accent);
+    }
+    .btn.secondary { background: #374151; font-size: 14px; padding: 12px 14px; }
+    .btn.small { font-size: 13px; padding: 10px 12px; }
+    .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 16px 0 8px; }
+    .candidate {
+      border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+      background: #111827;
+    }
+    .candidate-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .candidate-url { font-size: 11px; color: var(--muted); word-break: break-all; }
+    .back { color: var(--muted); font-size: 14px; text-decoration: none; display: inline-block; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="../">← {% if locale == 'kk' %}Төлемге оралу{% else %}Назад к оплате{% endif %}</a>
+
+    <div class="card">
+      <h1>{% if locale == 'kk' %}Kaspi-де аударым{% else %}Перевод в Kaspi{% endif %}</h1>
+      <div class="sub">
+        {% if locale == 'kk' %}
+          Карта: <strong>{{ card_masked }}</strong>, сома: <strong>{{ amount }} KZT</strong>.
+          Біз Kaspi-ді ашып, карта мен соманы автоматты түрде толтыруды байқаймыз.
+        {% else %}
+          Карта: <strong>{{ card_masked }}</strong>, сумма: <strong>{{ amount }} KZT</strong>.
+          Открываем Kaspi с автоподстановкой карты и суммы.
+        {% endif %}
+      </div>
+
+      <div id="status" class="status">
+        {% if locale == 'kk' %}Дайындалуда…{% else %}Подготовка…{% endif %}
+      </div>
+
+      <button type="button" class="btn" id="btn-open-primary">
+        {% if locale == 'kk' %}Kaspi-ді ашу{% else %}Открыть Kaspi{% endif %}
+      </button>
+      <button type="button" class="btn secondary" id="btn-copy">
+        {% if locale == 'kk' %}Барлығын көшіру{% else %}Скопировать всё{% endif %}
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="label">{% if locale == 'kk' %}Тест deeplink{% else %}Тест deeplink{% endif %}</div>
+      <p class="sub" style="margin-top:0">
+        {% if locale == 'kk' %}
+          Егер автоматты ашылмаса, әр сілтемені қолмен басыңыз — қай формат жұмыс істейтінін табамыз.
+        {% else %}
+          Если автоматически не сработало — нажмите каждую ссылку вручную, чтобы найти рабочий формат.
+        {% endif %}
+      </p>
+      <div id="candidates"></div>
+    </div>
+  </div>
+
+  <script>
+    const LOCALE = "{{ locale|default:'ru' }}";
+    const CLIPBOARD = {{ clipboard_json|safe }};
+    const CANDIDATES = {{ candidates_json|safe }};
+    const statusEl = document.getElementById("status");
+    const isAndroid = /android/i.test(navigator.userAgent);
+
+    function t(kk, ru) { return LOCALE === "kk" ? kk : ru; }
+
+    function setStatus(text, ok) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("ok", !!ok);
+    }
+
+    function pickAutoCandidate() {
+      if (!CANDIDATES.length) return null;
+      const intents = CANDIDATES.filter(c => c.type === "intent");
+      const https = CANDIDATES.filter(c => c.type === "https");
+      const custom = CANDIDATES.filter(c => c.type === "custom");
+      if (isAndroid && intents.length) return intents[0];
+      if (https.length) return https[0];
+      if (custom.length) return custom[0];
+      return CANDIDATES[0];
+    }
+
+    function openCandidate(c) {
+      if (!c) return;
+      setStatus(t("Ашылуда: ", "Открываем: ") + c.label);
+      window.location.href = c.url;
+    }
+
+    async function copyAll() {
+      try {
+        await navigator.clipboard.writeText(CLIPBOARD);
+        setStatus(t("Деректер буферге көшірілді", "Данные скопированы в буфер"), true);
+      } catch (e) {
+        setStatus(t("Көшіру сәтсіз", "Не удалось скопировать"));
+      }
+    }
+
+    function renderCandidates() {
+      const box = document.getElementById("candidates");
+      box.innerHTML = "";
+      CANDIDATES.forEach((c, i) => {
+        const div = document.createElement("div");
+        div.className = "candidate";
+        div.innerHTML =
+          `<div class="candidate-title">${i + 1}. ${c.label} <span style="color:#8b9cb3">(${c.type})</span></div>` +
+          `<div class="candidate-url">${c.url}</div>`;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn secondary small";
+        btn.textContent = t("Ашу", "Открыть");
+        btn.onclick = () => openCandidate(c);
+        div.appendChild(btn);
+        box.appendChild(div);
+      });
+    }
+
+    document.getElementById("btn-copy").onclick = copyAll;
+    document.getElementById("btn-open-primary").onclick = () => openCandidate(pickAutoCandidate());
+
+    renderCandidates();
+    copyAll().then(() => {
+      const primary = pickAutoCandidate();
+      if (primary) {
+        setStatus(t("Kaspi ашылуда…", "Открываем Kaspi…"));
+        setTimeout(() => openCandidate(primary), 400);
+      } else {
+        setStatus(t("Deeplink жоқ — деректерді қолмен енгізіңіз", "Нет deeplink — введите данные вручную"));
+      }
+    });
+  </script>
+</body>
+</html>

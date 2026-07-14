@@ -1,0 +1,462 @@
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+from rest_framework.validators import UniqueValidator
+
+from basics.models import Language, Currency, Balance, Trader, TrafficType, PaymentDetails, PaymentSystem, \
+    TraderTeam, PaymentDetailsGroup, TeamLead, TraderTeamRates
+from basics.utils import generate_address, check_pd_data
+from usermanagement.models import SupportMember
+from titanpay.settings import SBER_NAME, SBP_NAME, SBERPAY_NAME,C2C_NAME
+from trade.models import Address
+from merchant.models import Merchant
+from django.contrib.auth.models import User
+from django.db.utils import IntegrityError
+
+
+class LanguageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Language
+        fields = "__all__"
+
+
+class CurrencySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Currency
+        fields = "__all__"
+
+
+class TrafficTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TrafficType
+        fields = "__all__"
+
+
+class PaymentSystemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaymentSystem
+        fields = ['id', 'name', 'currency', 'in_on', 'out_on']
+
+
+class BalanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Balance
+        fields = "__all__"
+
+
+class BalanceMerchantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Balance
+        fields = ('id', 'amount')
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['deposit_address'] = instance.address.get().address_public
+        return representation
+
+
+class TraderBalanceSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    username = serializers.CharField(max_length=255)
+    available_balance_amount = serializers.FloatField()
+    available_balance_id = serializers.UUIDField()
+    frozen_balance_amount = serializers.FloatField()
+    frozen_balance_id = serializers.UUIDField()
+    deposit_address = serializers.CharField(max_length=42, required=False)
+
+
+class TraderSerializer(serializers.ModelSerializer):
+    email = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Trader
+        fields = ['id', 'language', 'telegram', 'phone', 'boss', 'email', 'username', 'blocked']
+
+    def get_email(self, obj):
+        return obj.user.email
+
+    def get_username(self, obj):
+        return obj.user.username
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['boss'] = instance.boss.user.email if instance.boss is not None else None
+        return representation
+
+
+class TraderShortSupportSerializer(serializers.ModelSerializer):
+    email = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Trader
+        fields = ('id', 'email', 'username', 'blocked', 'telegram', 'phone')
+
+    def get_email(self, obj):
+        return obj.user.email
+
+    def get_username(self, obj):
+        return obj.user.username
+
+
+class TraderShortSerializer(serializers.ModelSerializer):
+    email = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Trader
+        fields = ('id', 'email', 'username')
+
+    def get_email(self, obj):
+        return obj.user.email
+
+    def get_username(self, obj):
+        return obj.user.username
+
+
+class TraderToTransferSerializer(serializers.ModelSerializer):
+    balance_id = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Trader
+        fields = ('id', 'balance_id', 'username')
+
+    def get_balance_id(self, obj):
+        return obj.balance_usdt.id
+
+    def get_username(self, obj):
+        return obj.user.username
+
+
+class TraderFromTransferSerializer(serializers.ModelSerializer):
+    balance_id = serializers.SerializerMethodField()
+    amount = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Trader
+        fields = ('id', 'balance_id', 'username', 'amount')
+
+    def get_balance_id(self, obj):
+        return obj.balance_usdt.id
+
+    def get_username(self, obj):
+        return obj.user.username
+
+    def get_amount(self, obj):
+        return obj.balance_usdt.amount
+
+
+class TrafficTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TrafficType
+        fields = ['id', 'name']
+
+
+class TransferSerializer(serializers.Serializer):
+    from_balance = serializers.UUIDField()
+    to_balance = serializers.UUIDField()
+    amount = serializers.FloatField()
+
+
+class TraderCreateSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), validators=[UniqueValidator(queryset=SupportMember.objects.all()),
+                                                               UniqueValidator(queryset=Trader.objects.all()),
+                                                               UniqueValidator(queryset=Merchant.objects.all())])
+    boss = serializers.PrimaryKeyRelatedField(queryset=Trader.objects.all(), required=False, allow_null=True)
+    is_boss = serializers.BooleanField(required=True)
+    team = serializers.PrimaryKeyRelatedField(queryset=TraderTeam.objects.all(), required=True)
+    currency = serializers.PrimaryKeyRelatedField(queryset=Currency.objects.all(), required=True)
+    address = serializers.CharField(write_only=True, required=False)
+
+    class Meta:
+        model = Trader
+        fields = ('user', 'boss', 'is_boss', 'team', "currency", 'address')
+
+    def validate(self, data):
+        if data['is_boss'] is None and data['boss'] is None or data['is_boss'] is False and data['boss'] is None:
+            raise serializers.ValidationError({"is_boss": "Should be true, as no senior trader is set"})
+
+        if data['is_boss'] is True and data['boss'] is not None:
+            raise serializers.ValidationError({"is_boss": "Should be false, as no senior trader is set"})
+
+        return data
+
+    def create(self, validated_data):
+        balance = Balance.objects.create(type=0)
+        frozen_balance = Balance.objects.create(type=1)
+        address = generate_address()
+        trader = Trader.objects.create(
+            user=validated_data['user'],
+            boss=validated_data['boss'],
+            is_boss=validated_data['is_boss'],
+            team=validated_data['team'],
+            currency=validated_data['currency'],
+            balance_usdt=balance,
+            frozen_balance_usdt=frozen_balance
+        )
+
+        if trader.is_boss and address:
+            Address.objects.create(address_public=address, balance=balance)
+        return trader
+
+
+class SupportMemberSerializer(serializers.ModelSerializer):
+    username = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupportMember
+        fields = ('id', 'telegram', 'phone', 'is_head', 'language', 'controlled_teams', 'controlled_merchants', 'username', 'email', 'first_name', 'last_name')
+        extra_kwargs = {"controlled_teams": {"required": False, "allow_null": True}, "controlled_merchants": {"required": False, "allow_null": True}}
+
+    def get_username(self, obj):
+        return obj.user.username
+
+    def get_email(self, obj):
+        return obj.user.email
+
+    def get_first_name(self, obj):
+        return obj.user.first_name
+
+    def get_last_name(self, obj):
+        return obj.user.last_name
+
+
+class TraderTeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TraderTeam
+        fields = "__all__"
+
+
+class SupportMemberCreateSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), validators=[UniqueValidator(queryset=SupportMember.objects.all()), UniqueValidator(queryset=Trader.objects.all()), UniqueValidator(queryset=Merchant.objects.all())])
+    telegram = serializers.CharField(required=True)
+    phone = serializers.CharField()
+    controlled_teams = serializers.PrimaryKeyRelatedField(queryset=TraderTeam.objects.all(), many=True)
+    controlled_merchants = serializers.PrimaryKeyRelatedField(queryset=Merchant.objects.all(), many=True)
+
+    class Meta:
+        model = SupportMember
+        fields = ('user', 'telegram', 'phone', 'controlled_teams', 'controlled_merchants')
+
+
+class PaymentDetailsSberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaymentDetails
+        fields = ('id', 'status',  'amount', 'sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number')
+
+
+class PaymentDetailsGroupShortTraderSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = PaymentDetailsGroup
+        fields = ('id', 'status', 'currency', 'payment_system', 'amount', 'in_active', 'out_active', 'current_volume', 'limit_per_period', 'total_volume')
+
+
+class PaymentDetailsGroupShortSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = PaymentDetailsGroup
+        fields = ('id', 'status', 'trader', 'currency', 'payment_system', 'amount', 'in_active', 'out_active', 'current_volume', 'limit_per_period', 'total_volume', 'owner')
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+
+        representation['trader'] = instance.trader.user.username
+        representation['currency'] = instance.currency.symbol
+        representation['payment_system'] = instance.payment_system.name
+
+        return representation
+
+
+class PaymentDetailsGroupFullSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = PaymentDetailsGroup
+        fields = '__all__'
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        details = PaymentDetails.objects.filter(group=instance, status=1)
+
+        ps_name = instance.payment_system.name
+
+        representation['trader'] = instance.trader.user.username
+        representation['currency'] = instance.currency.symbol
+        representation['payment_system'] = instance.payment_system.id
+        representation['volume_in'] = instance.limit_per_period
+
+        if ps_name in (SBER_NAME,C2C_NAME):
+            representation['details'] = PaymentDetailsSberSerializer(details, many=True).data
+        # else:
+        #     representation['details'] = PaymentDetailsSerializer(balances, many=True).data
+        return representation
+
+
+class PaymentDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaymentDetails
+        fields = ['sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number']
+
+
+class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
+    details = PaymentDetailsSerializer(many=True, required=False)
+
+    class Meta:
+        model = PaymentDetailsGroup
+        fields = ('owner', 'currency', 'payment_system', 'min_amount_out', 'max_amount_out', 'in_active', 'out_active', 'allowed_traffic', 'details', 'deposit_number_on', 'bic', 'work_type')
+
+    def create(self, validated_data):
+        traffic_types = validated_data.pop('allowed_traffic')
+        if 'details' in validated_data.keys():
+            details_data = validated_data.pop('details')
+            payment_details_group = PaymentDetailsGroup.objects.create(**validated_data)
+            for detail_data in details_data:
+                try:
+                    data = check_pd_data(detail_data)
+                    details = PaymentDetails.objects.create(group=payment_details_group, **data)
+                except IntegrityError as e:
+                    raise ValidationError(detail=e.args[0])
+        else:
+            payment_details_group = PaymentDetailsGroup.objects.create(**validated_data)
+
+        for traffic in traffic_types:
+            payment_details_group.allowed_traffic.add(traffic)
+
+        payment_details_group.save()
+
+        return payment_details_group
+
+
+class PaymentDetailsSberOrderSerializer(serializers.ModelSerializer):
+    owner = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PaymentDetails
+        fields = ('card_number', 'owner')
+
+    def get_owner(self, instance):
+        return instance.group.owner
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        return representation
+
+
+class PaymentDetailsSberPayOrderSerializer(serializers.ModelSerializer):
+    owner = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PaymentDetails
+        fields = ('phone', 'owner')
+
+    def get_owner(self, instance):
+        return instance.group.owner
+
+
+class PaymentDetailsSberDepOrderSerializer(serializers.ModelSerializer):
+    owner = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PaymentDetails
+        fields = ('deposit_number', 'owner')
+
+    def get_owner(self, instance):
+        return instance.group.owner
+
+
+class PaymentDetailsSBPOrderSerializer(serializers.ModelSerializer):
+    owner = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PaymentDetails
+        fields = ('phone', 'owner')
+
+    def get_owner(self, instance):
+        return instance.group.owner
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        return representation
+
+
+class PaymentDetailsSberActionSerializer(serializers.ModelSerializer):
+    owner = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PaymentDetails
+        fields = ('sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number', 'group', 'owner')
+
+    def get_owner(self, instance):
+        return instance.group.owner
+
+
+class PaymentDetailsSberAddSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = PaymentDetails
+        fields = ('sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number', 'group')
+
+    def to_internal_value(self, data):
+        if data.get('phone') == '':
+            data['phone'] = None
+        if data.get('card_number') == '':
+            data['card_number'] = None
+        if data.get('sberpay_enabled') == '':
+            data['sberpay_enabled'] = False
+        if data.get('sbp_enabled') == '':
+            data['sbp_enabled'] = False
+
+        if data['phone'] is None and (data['sbp_enabled'] or data['sberpay_enabled']):
+            raise ValidationError({'details': 'Phone cannot be empty if SBP or SberPay is enabled'})
+        return super().to_internal_value(data)
+
+
+
+class PaymentDetailsGroupStatusSerializer(serializers.Serializer):
+    status = serializers.IntegerField()
+
+
+class PaymentDetailsGroupBlockedSerializer(serializers.Serializer):
+    block = serializers.BooleanField()
+
+
+class PaymentDetailsStatusSerializer(serializers.Serializer):
+    details = serializers.PrimaryKeyRelatedField(queryset=PaymentDetails.objects.all())
+    status = serializers.IntegerField()
+
+
+class RatesSerializer(serializers.Serializer):
+    rate_in = serializers.DecimalField(max_digits=32, decimal_places=2)
+    rate_out = serializers.DecimalField(max_digits=32, decimal_places=2)
+
+
+class DepositModeSerializer(serializers.Serializer):
+    on = serializers.BooleanField()
+
+
+class MinMaxAmountOutSerializer(serializers.Serializer):
+    min_amount_out = serializers.DecimalField(max_digits=32, decimal_places=2)
+    max_amount_out = serializers.DecimalField(max_digits=32, decimal_places=2)
+    volume_in = serializers.DecimalField(max_digits=32, decimal_places=2)
+
+
+class TeamLeadSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamLead
+        fields = ('id', 'name')
+
+    def get_name(self, instance):
+        return instance.user.username
+
+
+class TraderTeamRatesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TraderTeamRates
+        fields = '__all__'

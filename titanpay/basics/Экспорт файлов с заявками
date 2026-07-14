@@ -1,0 +1,263 @@
+
+
+cd ./titanpay/
+nano export_orders.py
+====================
+#!/usr/bin/env python
+import os
+import sys
+import django
+import csv
+import uuid
+from pathlib import Path
+
+# Настройка Django окружения
+sys.path.append('/app')  # Путь к проекту в контейнере
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'titanpay.settings')
+django.setup()
+
+# Импортируем модели после настройки Django
+from django.contrib.auth import get_user_model
+from trade.models import InOrder
+from django.conf import settings
+import pytz
+
+User = get_user_model()
+
+def export_orders_for_user(username=None, user_id=None, limit=None):
+    """
+    Экспорт заявок для конкретного пользователя
+    """
+    print("=" * 50)
+    print("НАЧАЛО ЭКСПОРТА ЗАЯВОК")
+    print("=" * 50)
+    
+    # Определяем пользователя
+    if user_id:
+        user = User.objects.get(id=user_id)
+    elif username:
+        user = User.objects.get(username=username)
+    else:
+        # Если не указан, берем первого попавшегося мерчанта или трейдера
+        user = User.objects.filter(
+            Q(merchant__isnull=False) | Q(trader__isnull=False)
+        ).first()
+    
+    if not user:
+        print("❌ Пользователь не найден!")
+        return
+    
+    print(f"👤 Пользователь: {user.username} (ID: {user.id})")
+    
+    # Получаем заявки в зависимости от роли
+    if hasattr(user, 'trader'):
+        trader = user.trader
+        if trader.is_boss:
+            queryset = InOrder.objects.filter(payment_details__group__trader__team=trader.team)
+        else:
+            queryset = InOrder.objects.filter(payment_details__group__trader=trader)
+        role = "Трейдер"
+    elif hasattr(user, 'merchant'):
+        merchant = user.merchant
+        queryset = InOrder.objects.filter(solution__merchant=merchant)
+        role = "Мерчант"
+    elif hasattr(user, 'supportmember'):
+        support = user.supportmember
+        if support.is_head:
+            queryset = InOrder.objects.all()
+        else:
+            merchants = support.controlled_merchants.all()
+            teams = support.controlled_teams.all()
+            from django.db.models import Q
+            query = Q()
+            if teams.exists():
+                query &= Q(payment_details__group__trader__team__in=teams)
+            if merchants.exists():
+                query &= Q(solution__merchant__in=merchants)
+            queryset = InOrder.objects.filter(query)
+        role = "Саппорт"
+    else:
+        print("❌ У пользователя нет прав на экспорт")
+        return
+    
+    # Применяем лимит если указан
+    if limit:
+        queryset = queryset[:limit]
+    
+    total = queryset.count()
+    print(f"📊 Найдено заявок: {total}")
+    print(f"👤 Роль: {role}")
+    
+    if total == 0:
+        print("❌ Нет заявок для экспорта")
+        return
+    
+    # Создаем директорию для экспорта если её нет
+    export_dir = '/app/media/exports'
+    os.makedirs(export_dir, exist_ok=True)
+    
+    # Генерируем имя файла
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    file_name = f"orders_export_{user.username}_{timestamp}.csv"
+    file_path = os.path.join(export_dir, file_name)
+    
+    print(f"💾 Сохраняем в: {file_path}")
+    
+    # Экспорт в CSV
+    exported = 0
+    try:
+        with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Заголовки
+            writer.writerow([
+                'ID', 
+                'Статус', 
+                'Сумма (Фиат)', 
+                'Сумма (USDT)', 
+                'Прибыль', 
+                'ФИО', 
+                'Платёжная система', 
+                'Дата создания'
+            ])
+            
+            # Используем iterator для экономии памяти
+            for item in queryset.values(
+                'id', 
+                'status__name', 
+                'amount', 
+                'usd_amount', 
+                'trader_fee', 
+                'payment_details__group__owner', 
+                'solution__payment_system__name', 
+                'creation_date'
+            ).iterator(chunk_size=500):
+                
+                # Форматируем дату
+                creation_date = ''
+                if item['creation_date']:
+                    creation_date = item['creation_date'].astimezone(pytz.utc).strftime('%Y-%m-%d %H:%M:%S')
+                
+                # Пишем строку
+                writer.writerow([
+                    item['id'],
+                    item['status__name'],
+                    item['amount'],
+                    item['usd_amount'],
+                    item['trader_fee'],
+                    item['payment_details__group__owner'],
+                    item['solution__payment_system__name'],
+                    creation_date
+                ])
+                
+                exported += 1
+                if exported % 1000 == 0:
+                    print(f"  ✅ Экспортировано {exported} записей...")
+        
+        print("=" * 50)
+        print("✅ ЭКСПОРТ ЗАВЕРШЕН УСПЕШНО!")
+        print("=" * 50)
+        print(f"📁 Файл сохранен: {file_path}")
+        
+        # Показываем размер файла
+        file_size = os.path.getsize(file_path) / (1024 * 1024)  # в MB
+        print(f"📦 Размер файла: {file_size:.2f} MB")
+        print(f"📊 Всего записей: {exported}")
+        
+        # URL для скачивания (если настроен медиа-сервер)
+        public_base = getattr(settings, 'PUBLIC_API_URL', 'https://api.avapay.su').rstrip('/')
+        file_url = f"{public_base}/media/exports/{file_name}"
+        print(f"🔗 URL для скачивания: {file_url}")
+        
+        # Копируем путь в буфер обмена (для Linux с xclip)
+        try:
+            echo_cmd = f"echo '{file_path}'"
+            if os.system('which xclip > /dev/null 2>&1') == 0:
+                os.system(f"echo '{file_path}' | xclip -selection clipboard")
+                print("📋 Путь скопирован в буфер обмена (xclip)")
+            elif os.system('which pbcopy > /dev/null 2>&1') == 0:
+                os.system(f"echo '{file_path}' | pbcopy")
+                print("📋 Путь скопирован в буфер обмена (pbcopy)")
+        except:
+            pass
+            
+    except Exception as e:
+        print(f"❌ Ошибка при экспорте: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return
+    
+    return file_path
+
+def list_users_with_orders():
+    """Показать пользователей с заявками"""
+    from django.db.models import Count, Q
+    
+    print("=" * 50)
+    print("ПОЛЬЗОВАТЕЛИ С ЗАЯВКАМИ")
+    print("=" * 50)
+    
+    # Мерчанты
+    merchants = User.objects.filter(
+        merchant__isnull=False,
+        in_order__isnull=False
+    ).annotate(
+        order_count=Count('in_order')
+    ).distinct()
+    
+    if merchants:
+        print("\n👤 МЕРЧАНТЫ:")
+        for user in merchants:
+            print(f"  • {user.username} (ID: {user.id}) - заявок: {user.order_count}")
+    
+    # Трейдеры
+    traders = User.objects.filter(
+        trader__isnull=False,
+        trader__in_order__isnull=False
+    ).annotate(
+        order_count=Count('trader__in_order')
+    ).distinct()
+    
+    if traders:
+        print("\n👤 ТРЕЙДЕРЫ:")
+        for user in traders:
+            print(f"  • {user.username} (ID: {user.id}) - заявок: {user.order_count}")
+    
+    # Саппорты
+    supports = User.objects.filter(
+        supportmember__isnull=False
+    ).distinct()
+    
+    if supports:
+        print("\n👤 САППОРТЫ:")
+        for user in supports:
+            print(f"  • {user.username} (ID: {user.id})")
+
+if __name__ == "__main__":
+    import argparse
+    from datetime import datetime
+    from django.db.models import Q
+    
+    parser = argparse.ArgumentParser(description='Экспорт заявок')
+    parser.add_argument('--username', help='Имя пользователя')
+    parser.add_argument('--user_id', type=int, help='ID пользователя')
+    parser.add_argument('--limit', type=int, help='Ограничить количество записей')
+    parser.add_argument('--list', action='store_true', help='Показать список пользователей')
+    
+    args = parser.parse_args()
+    
+    if args.list:
+        list_users_with_orders()
+    else:
+        export_orders_for_user(
+            username=args.username,
+            user_id=args.user_id,
+            limit=args.limit
+        )
+
+
+==================
+cp /root/export_orders.py titanpay-app-1:/app/export_orders.py
+docker exec -it titanpay-app-1 python /app/export_orders.py --username lucky_exchange1
+
+

@@ -1,0 +1,749 @@
+from decimal import Decimal
+from datetime import datetime, timedelta
+from django.utils import timezone
+from django.db.models import Count, Q
+from trade.models import Transaction, TransactionType, InOrder, OutOrder
+from basics.models import Balance
+from collections import defaultdict
+import pandas as pd
+
+
+class TransactionDuplicateChecker:
+    """
+    Проверка дубликатов транзакций
+    """
+    
+    def __init__(self, days_back=30):
+        """
+        Инициализация проверщика
+        
+        Args:
+            days_back: Количество дней для анализа назад
+        """
+        self.days_back = days_back
+        self.start_date = timezone.now() - timedelta(days=days_back)
+        self.results = {
+            'total_transactions': 0,
+            'potential_duplicates': 0,
+            'exact_duplicates': 0,
+            'suspicious_transactions': [],
+            'duplicate_groups': [],
+            'summary_by_type': defaultdict(lambda: {'count': 0, 'amount': Decimal('0')})
+        }
+    
+    def find_duplicate_transactions(self):
+        """
+        Поиск дубликатов транзакций по различным критериям
+        """
+        print("=" * 80)
+        print(f"ПРОВЕРКА ДУБЛИКАТОВ ТРАНЗАКЦИЙ ЗА ПОСЛЕДНИЕ {self.days_back} ДНЕЙ")
+        print(f"Период: {self.start_date.strftime('%Y-%m-%d %H:%M')} - {timezone.now().strftime('%Y-%m-%d %H:%M')}")
+        print("=" * 80)
+        
+        # Получаем все транзакции за период
+        transactions = Transaction.objects.filter(
+            creation_date__gte=self.start_date
+        ).select_related(
+            'from_balance',
+            'to_balance',
+            'transaction_type',
+            'linked_in_order',
+            'linked_out_order'
+        ).order_by('creation_date')
+        
+        self.results['total_transactions'] = transactions.count()
+        print(f"\n📊 Всего транзакций за период: {self.results['total_transactions']}")
+        
+        # 1. Проверка на точные дубликаты (полное совпадение полей)
+        print("\n" + "=" * 80)
+        print("1. ПРОВЕРКА НА ТОЧНЫЕ ДУБЛИКАТЫ")
+        print("=" * 80)
+        
+        exact_duplicates = self._find_exact_duplicates(transactions)
+        self.results['exact_duplicates'] = len(exact_duplicates)
+        
+        print(f"Найдено точных дубликатов: {len(exact_duplicates)}")
+        
+        if exact_duplicates:
+            print("\nПримеры точных дубликатов:")
+            for i, dup_group in enumerate(exact_duplicates[:3], 1):
+                print(f"\nГруппа {i} ({len(dup_group)} транзакций):")
+                tx = dup_group[0]
+                print(f"  Тип: {tx.transaction_type.name if tx.transaction_type else 'N/A'}")
+                print(f"  От: {tx.get_from()}")
+                print(f"  Кому: {tx.get_to()}")
+                print(f"  Сумма: {tx.value} USDT")
+                print(f"  Описание: {tx.comment[:50]}...")
+        
+        # 2. Проверка на потенциальные дубликаты (похожие транзакции)
+        print("\n" + "=" * 80)
+        print("2. ПРОВЕРКА НА ПОТЕНЦИАЛЬНЫЕ ДУБЛИКАТЫ")
+        print("=" * 80)
+        
+        potential_dups = self._find_potential_duplicates(transactions)
+        self.results['potential_duplicates'] = len(potential_dups)
+        self.results['duplicate_groups'] = potential_dups
+        
+        print(f"Найдено групп потенциальных дубликатов: {len(potential_dups)}")
+        
+        total_suspicious = sum(len(group) for group in potential_dups)
+        print(f"Всего подозрительных транзакций: {total_suspicious}")
+        
+        # 3. Анализ по типам транзакций
+        print("\n" + "=" * 80)
+        print("3. АНАЛИЗ ПО ТИПАМ ТРАНЗАКЦИЙ")
+        print("=" * 80)
+        
+        type_analysis = self._analyze_by_transaction_type(transactions)
+        
+        print("Статистика по типам транзакций:")
+        for tx_type, stats in type_analysis.items():
+            print(f"\n  {tx_type}:")
+            print(f"    Количество: {stats['count']}")
+            print(f"    Общая сумма: {stats['total_amount']:.2f} USDT")
+            if stats['duplicate_count'] > 0:
+                print(f"    Дубликатов: {stats['duplicate_count']}")
+                print(f"    % дубликатов: {(stats['duplicate_count'] / stats['count'] * 100):.1f}%")
+        
+        # 4. Проверка транзакций без связанных ордеров
+        print("\n" + "=" * 80)
+        print("4. ТРАНЗАКЦИИ БЕЗ СВЯЗАННЫХ ОРДЕРОВ")
+        print("=" * 80)
+        
+        orphan_transactions = transactions.filter(
+            linked_in_order__isnull=True,
+            linked_out_order__isnull=True
+        )
+        
+        print(f"Транзакций без связанных ордеров: {orphan_transactions.count()}")
+        
+        if orphan_transactions.exists():
+            print("\nПримеры:")
+            for tx in orphan_transactions[:5]:
+                print(f"  ID: {tx.id}")
+                print(f"    Тип: {tx.transaction_type.name if tx.transaction_type else 'N/A'}")
+                print(f"    Сумма: {tx.value} USDT")
+                print(f"    Дата: {tx.creation_date}")
+                print(f"    Описание: {tx.comment[:50]}...")
+        
+        # 5. Проверка отрицательных сумм
+        print("\n" + "=" * 80)
+        print("5. ПРОВЕРКА НА ОШИБОЧНЫЕ СУММЫ")
+        print("=" * 80)
+        
+        negative_transactions = transactions.filter(value__lt=0)
+        zero_transactions = transactions.filter(value=0)
+        
+        print(f"Транзакций с отрицательной суммой: {negative_transactions.count()}")
+        print(f"Транзакций с нулевой суммой: {zero_transactions.count()}")
+        
+        if negative_transactions.exists():
+            print("\nТранзакции с отрицательной суммой:")
+            for tx in negative_transactions[:3]:
+                print(f"  ID: {tx.id} | Сумма: {tx.value} USDT | Дата: {tx.creation_date}")
+        
+        # 6. Поиск быстрых последовательных транзакций
+        print("\n" + "=" * 80)
+        print("6. БЫСТРЫЕ ПОСЛЕДОВАТЕЛЬНЫЕ ТРАНЗАКЦИИ")
+        print("=" * 80)
+        
+        fast_transactions = self._find_fast_sequential_transactions(transactions)
+        
+        print(f"Найдено быстрых последовательных транзакций: {len(fast_transactions)}")
+        
+        if fast_transactions:
+            print("\nПримеры:")
+            for i, (tx1, tx2, time_diff) in enumerate(fast_transactions[:3], 1):
+                print(f"\nПара {i}:")
+                print(f"  Транзакция 1: {tx1.id}")
+                print(f"    Тип: {tx1.transaction_type.name if tx1.transaction_type else 'N/A'}")
+                print(f"    Сумма: {tx1.value} USDT")
+                print(f"    Дата: {tx1.creation_date}")
+                print(f"  Транзакция 2: {tx2.id}")
+                print(f"    Тип: {tx2.transaction_type.name if tx2.transaction_type else 'N/A'}")
+                print(f"    Сумма: {tx2.value} USDT")
+                print(f"    Дата: {tx2.creation_date}")
+                print(f"  Разница во времени: {time_diff:.1f} секунд")
+        
+        return self.results
+    
+    def _find_exact_duplicates(self, transactions):
+        """
+        Поиск точных дубликатов (полное совпадение полей)
+        """
+        # Группируем по ключевым полям
+        groups = defaultdict(list)
+        
+        for tx in transactions:
+            # Создаем ключ для группировки
+            key = (
+                tx.from_balance_id,
+                tx.to_balance_id,
+                tx.transaction_type_id,
+                tx.value,
+                tx.comment[:100]  # Берем первые 100 символов комментария
+            )
+            groups[key].append(tx)
+        
+        # Возвращаем только группы с более чем одной транзакцией
+        return [group for group in groups.values() if len(group) > 1]
+    
+    def _find_potential_duplicates(self, transactions):
+        """
+        Поиск потенциальных дубликатов (похожие транзакции)
+        """
+        # Группируем по упрощенному ключу
+        groups = defaultdict(list)
+        
+        for tx in transactions:
+            # Упрощенный ключ (без времени и ID)
+            key = (
+                tx.from_balance_id,
+                tx.to_balance_id,
+                tx.transaction_type_id,
+                round(float(tx.value), 2)  # Округляем сумму
+            )
+            groups[key].append(tx)
+        
+        # Фильтруем группы и сортируем по времени
+        result = []
+        for key, tx_list in groups.items():
+            if len(tx_list) > 1:
+                # Сортируем по времени
+                tx_list.sort(key=lambda x: x.creation_date)
+                result.append(tx_list)
+        
+        # Сортируем группы по размеру (от большего к меньшему)
+        result.sort(key=lambda x: len(x), reverse=True)
+        
+        return result
+    
+    def _analyze_by_transaction_type(self, transactions):
+        """
+        Анализ дубликатов по типам транзакций
+        """
+        analysis = {}
+        
+        # Получаем все типы транзакций
+        tx_types = TransactionType.objects.all()
+        
+        for tx_type in tx_types:
+            type_transactions = transactions.filter(transaction_type=tx_type)
+            duplicate_groups = self._find_potential_duplicates(type_transactions)
+            
+            total_duplicates = sum(len(group) for group in duplicate_groups)
+            
+            analysis[tx_type.name] = {
+                'count': type_transactions.count(),
+                'total_amount': sum(tx.value for tx in type_transactions),
+                'duplicate_count': total_duplicates,
+                'duplicate_groups': len(duplicate_groups)
+            }
+        
+        return analysis
+    
+    def _find_fast_sequential_transactions(self, transactions, max_seconds=10):
+        """
+        Поиск быстрых последовательных транзакций
+        """
+        fast_pairs = []
+        
+        # Сортируем по балансам и времени
+        sorted_transactions = sorted(transactions, key=lambda x: (x.from_balance_id, x.to_balance_id, x.creation_date))
+        
+        for i in range(len(sorted_transactions) - 1):
+            tx1 = sorted_transactions[i]
+            tx2 = sorted_transactions[i + 1]
+            
+            # Проверяем, что транзакции между одинаковыми балансами
+            if (tx1.from_balance_id == tx2.from_balance_id and 
+                tx1.to_balance_id == tx2.to_balance_id):
+                
+                time_diff = (tx2.creation_date - tx1.creation_date).total_seconds()
+                
+                if time_diff <= max_seconds:
+                    fast_pairs.append((tx1, tx2, time_diff))
+        
+        return fast_pairs
+    
+    def check_specific_transaction(self, transaction_id):
+        """
+        Проверка конкретной транзакции на дубликаты
+        """
+        print("=" * 80)
+        print(f"ПРОВЕРКА ТРАНЗАКЦИИ {transaction_id}")
+        print("=" * 80)
+        
+        try:
+            # Находим транзакцию
+            tx = Transaction.objects.select_related(
+                'from_balance',
+                'to_balance',
+                'transaction_type',
+                'linked_in_order',
+                'linked_out_order'
+            ).get(id=transaction_id)
+            
+            # Выводим информацию о транзакции
+            self._print_transaction_details(tx)
+            
+            # Ищем похожие транзакции
+            similar_transactions = Transaction.objects.filter(
+                from_balance=tx.from_balance,
+                to_balance=tx.to_balance,
+                transaction_type=tx.transaction_type,
+                value=tx.value,
+                creation_date__gte=self.start_date
+            ).exclude(id=tx.id).order_by('creation_date')
+            
+            print(f"\n🔍 Найдено похожих транзакций: {similar_transactions.count()}")
+            
+            if similar_transactions.exists():
+                print("\nПохожие транзакции:")
+                for similar_tx in similar_transactions:
+                    print(f"\n  ID: {similar_tx.id}")
+                    print(f"  Дата: {similar_tx.creation_date}")
+                    print(f"  Описание: {similar_tx.comment[:50]}...")
+                    
+                    # Вычисляем разницу во времени
+                    time_diff = abs((tx.creation_date - similar_tx.creation_date).total_seconds())
+                    print(f"  Разница во времени: {time_diff:.1f} секунд")
+                    
+                    # Проверяем, связаны ли с одним ордером
+                    if tx.linked_in_order and similar_tx.linked_in_order:
+                        if tx.linked_in_order == similar_tx.linked_in_order:
+                            print(f"  ⚠️  Связаны с одним InOrder: {tx.linked_in_order.id}")
+                    elif tx.linked_out_order and similar_tx.linked_out_order:
+                        if tx.linked_out_order == similar_tx.linked_out_order:
+                            print(f"  ⚠️  Связаны с одним OutOrder: {tx.linked_out_order.id}")
+            
+            return {
+                'transaction': tx,
+                'similar_count': similar_transactions.count(),
+                'similar_transactions': list(similar_transactions)
+            }
+            
+        except Transaction.DoesNotExist:
+            print(f"❌ Транзакция с ID {transaction_id} не найдена!")
+            return None
+    
+    def _print_transaction_details(self, tx):
+        """
+        Вывод деталей транзакции
+        """
+        print("\n📋 ДЕТАЛИ ТРАНЗАКЦИИ:")
+        print(f"  ID: {tx.id}")
+        print(f"  Дата: {tx.creation_date}")
+        print(f"  Тип: {tx.transaction_type.name if tx.transaction_type else 'N/A'}")
+        print(f"  От: {tx.get_from()}")
+        print(f"  Кому: {tx.get_to()}")
+        print(f"  Сумма: {tx.value} USDT")
+        print(f"  Описание: {tx.comment}")
+        
+        if tx.linked_in_order:
+            print(f"  Связанный InOrder: {tx.linked_in_order.id}")
+            if tx.linked_in_order.solution and tx.linked_in_order.solution.merchant:
+                print(f"    Мерчант: {tx.linked_in_order.solution.merchant.user.username}")
+            if tx.linked_in_order.payment_details and tx.linked_in_order.payment_details.group:
+                print(f"    Трейдер: {tx.linked_in_order.payment_details.group.trader.user.username}")
+        
+        if tx.linked_out_order:
+            print(f"  Связанный OutOrder: {tx.linked_out_order.id}")
+            if tx.linked_out_order.solution and tx.linked_out_order.solution.merchant:
+                print(f"    Мерчант: {tx.linked_out_order.solution.merchant.user.username}")
+            if tx.linked_out_order.payment_details and tx.linked_out_order.payment_details.group:
+                print(f"    Трейдер: {tx.linked_out_order.payment_details.group.trader.user.username}")
+    
+    def find_duplicates_for_order(self, order_id):
+        """
+        Поиск дубликатов транзакций для конкретного ордера
+        """
+        print("=" * 80)
+        print(f"ПОИСК ДУБЛИКАТОВ ТРАНЗАКЦИЙ ДЛЯ ОРДЕРА {order_id}")
+        print("=" * 80)
+        
+        # Ищем транзакции связанные с ордером
+        in_order_transactions = Transaction.objects.filter(
+            linked_in_order_id=order_id
+        )
+        
+        out_order_transactions = Transaction.objects.filter(
+            linked_out_order_id=order_id
+        )
+        
+        all_transactions = list(in_order_transactions) + list(out_order_transactions)
+        
+        print(f"Найдено транзакций для ордера: {len(all_transactions)}")
+        
+        if not all_transactions:
+            print("❌ Транзакции не найдены!")
+            return []
+        
+        # Анализируем каждую транзакцию
+        duplicate_groups = []
+        
+        for tx in all_transactions:
+            print(f"\n🔍 Анализ транзакции {tx.id}:")
+            self._print_transaction_details(tx)
+            
+            # Ищем дубликаты для этой транзакции
+            duplicates = Transaction.objects.filter(
+                from_balance=tx.from_balance,
+                to_balance=tx.to_balance,
+                transaction_type=tx.transaction_type,
+                value=tx.value,
+                creation_date__gte=tx.creation_date - timedelta(minutes=30),
+                creation_date__lte=tx.creation_date + timedelta(minutes=30)
+            ).exclude(id=tx.id).order_by('creation_date')
+            
+            if duplicates.exists():
+                print(f"  ⚠️  Найдено {duplicates.count()} возможных дубликатов:")
+                duplicate_group = [tx] + list(duplicates)
+                duplicate_groups.append(duplicate_group)
+                
+                for dup in duplicates:
+                    time_diff = abs((tx.creation_date - dup.creation_date).total_seconds())
+                    print(f"    • ID: {dup.id} | Дата: {dup.creation_date} | Разница: {time_diff:.0f} сек")
+            else:
+                print("  ✅ Дубликатов не найдено")
+        
+        return duplicate_groups
+    
+    def print_summary_report(self):
+        """
+        Вывод сводного отчета
+        """
+        if not self.results:
+            print("Сначала выполните поиск дубликатов!")
+            return
+        
+        print("\n" + "=" * 80)
+        print("📊 СВОДНЫЙ ОТЧЕТ ПО ДУБЛИКАТАМ ТРАНЗАКЦИЙ")
+        print("=" * 80)
+        
+        print(f"\n📈 ОБЩАЯ СТАТИСТИКА:")
+        print(f"  Период анализа: {self.days_back} дней")
+        print(f"  Всего транзакций: {self.results['total_transactions']}")
+        print(f"  Групп потенциальных дубликатов: {self.results['potential_duplicates']}")
+        print(f"  Точных дубликатов: {self.results['exact_duplicates']}")
+        
+        if self.results['duplicate_groups']:
+            print(f"\n🔍 НАЙДЕННЫЕ ДУБЛИКАТЫ:")
+            
+            # Группируем по количеству дубликатов в группе
+            size_distribution = defaultdict(int)
+            for group in self.results['duplicate_groups']:
+                size_distribution[len(group)] += 1
+            
+            print("  Распределение по размеру групп:")
+            for size, count in sorted(size_distribution.items()):
+                print(f"    • Группы по {size} транзакций: {count}")
+            
+            # Показываем самые большие группы
+            print(f"\n  САМЫЕ БОЛЬШИЕ ГРУППЫ ДУБЛИКАТОВ:")
+            sorted_groups = sorted(self.results['duplicate_groups'], key=len, reverse=True)
+            
+            for i, group in enumerate(sorted_groups[:5], 1):
+                if len(group) > 1:
+                    print(f"\n  Группа {i} ({len(group)} транзакций):")
+                    tx = group[0]
+                    print(f"    Тип: {tx.transaction_type.name if tx.transaction_type else 'N/A'}")
+                    print(f"    От: {tx.get_from()}")
+                    print(f"    Кому: {tx.get_to()}")
+                    print(f"    Сумма: {tx.value} USDT")
+                    print(f"    Диапазон времени: {group[0].creation_date} - {group[-1].creation_date}")
+        
+        print("\n" + "=" * 80)
+        print("💡 РЕКОМЕНДАЦИИ:")
+        print("=" * 80)
+        
+        if self.results['exact_duplicates'] > 0:
+            print("1. ❌ КРИТИЧЕСКАЯ ОШИБКА: Найдены точные дубликаты транзакций!")
+            print("   Необходимо срочно проверить и удалить дубликаты.")
+        
+        if self.results['potential_duplicates'] > 0:
+            print("2. ⚠️  ВНИМАНИЕ: Найдены потенциальные дубликаты.")
+            print("   Рекомендуется проверить логику создания транзакций.")
+        
+        if self.results['total_transactions'] > 1000 and self.results['potential_duplicates'] / self.results['total_transactions'] > 0.05:
+            print("3. ⚠️  ВЫСОКИЙ ПРОЦЕНТ ДУБЛИКАТОВ (>5%).")
+            print("   Возможно, есть системная ошибка в обработке заявок.")
+        
+        print("4. 🔧 Действия:")
+        print("   • Проверить самые большие группы дубликатов")
+        print("   • Проанализировать транзакции с одинаковыми суммами")
+        print("   • Проверить логику подтверждения заявок")
+        print("   • Внедрить уникальные индексы для предотвращения дубликатов")
+    
+    def export_duplicates_to_csv(self, filename="transaction_duplicates.csv"):
+        """
+        Экспорт найденных дубликатов в CSV
+        """
+        if not self.results or not self.results['duplicate_groups']:
+            print("Нет данных для экспорта!")
+            return
+        
+        import csv
+        
+        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Заголовок
+            writer.writerow(["Отчет о дубликатах транзакций"])
+            writer.writerow([f"Период: последние {self.days_back} дней"])
+            writer.writerow([f"Дата отчета: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+            writer.writerow([])
+            
+            writer.writerow(["Группа", "ID транзакции", "Дата", "Тип", "От", "Кому", "Сумма", "Описание"])
+            
+            group_num = 1
+            for group in self.results['duplicate_groups']:
+                for tx in group:
+                    writer.writerow([
+                        group_num,
+                        tx.id,
+                        tx.creation_date.strftime('%Y-%m-%d %H:%M:%S'),
+                        tx.transaction_type.name if tx.transaction_type else "N/A",
+                        tx.get_from(),
+                        tx.get_to(),
+                        f"{tx.value:.2f}",
+                        tx.comment[:100]
+                    ])
+                group_num += 1
+        
+        print(f"\n📄 Отчет экспортирован в CSV файл: {filename}")
+
+
+# Функции для удобного использования
+
+def check_transaction_duplicates(days=30):
+    """
+    Основная функция проверки дубликатов транзакций
+    """
+    checker = TransactionDuplicateChecker(days)
+    results = checker.find_duplicate_transactions()
+    checker.print_summary_report()
+    
+    # Предлагаем экспорт
+    export = input("\nЭкспортировать отчет в CSV? (yes/no): ").strip().lower()
+    if export == 'yes':
+        checker.export_duplicates_to_csv()
+    
+    return results
+
+
+def check_specific_transaction_interactive():
+    """
+    Интерактивная проверка конкретной транзакции
+    """
+    print("=" * 80)
+    print("🔍 ПРОВЕРКА КОНКРЕТНОЙ ТРАНЗАКЦИИ")
+    print("=" * 80)
+    
+    transaction_id = input("Введите ID транзакции: ").strip()
+    
+    if not transaction_id:
+        print("❌ ID транзакции не указан!")
+        return
+    
+    days = input("За сколько дней искать похожие транзакции? (по умолчанию 30): ").strip()
+    days = int(days) if days.isdigit() else 30
+    
+    checker = TransactionDuplicateChecker(days)
+    result = checker.check_specific_transaction(transaction_id)
+    
+    return result
+
+
+def check_order_transactions_interactive():
+    """
+    Проверка транзакций для конкретного ордера
+    """
+    print("=" * 80)
+    print("🔍 ПРОВЕРКА ТРАНЗАКЦИЙ ДЛЯ ОРДЕРА")
+    print("=" * 80)
+    
+    order_id = input("Введите ID ордера: ").strip()
+    
+    if not order_id:
+        print("❌ ID ордера не указан!")
+        return
+    
+    checker = TransactionDuplicateChecker(30)
+    duplicates = checker.find_duplicates_for_order(order_id)
+    
+    if duplicates:
+        print(f"\n⚠️  Найдено {len(duplicates)} групп дубликатов для ордера {order_id}")
+        
+        # Предлагаем исправить
+        fix = input("\nИсправить найденные дубликаты? (yes/no): ").strip().lower()
+        
+        if fix == 'yes':
+            fix_transaction_duplicates(duplicates)
+    else:
+        print(f"\n✅ Дубликатов для ордера {order_id} не найдено!")
+    
+    return duplicates
+
+
+def fix_transaction_duplicates(duplicate_groups):
+    """
+    Исправление найденных дубликатов транзакций
+    """
+    from django.db import transaction as db_transaction
+    
+    print("=" * 80)
+    print("🛠️  ИСПРАВЛЕНИЕ ДУБЛИКАТОВ ТРАНЗАКЦИЙ")
+    print("=" * 80)
+    
+    total_fixed = 0
+    total_errors = 0
+    
+    for group_num, group in enumerate(duplicate_groups, 1):
+        if len(group) <= 1:
+            continue
+        
+        print(f"\nГруппа {group_num} ({len(group)} транзакций):")
+        
+        # Оставляем первую транзакцию, остальные помечаем как дубликаты
+        keep_tx = group[0]
+        duplicate_txs = group[1:]
+        
+        print(f"  Оставляем транзакцию: {keep_tx.id}")
+        print(f"  Помечаем как дубликаты: {len(duplicate_txs)} транзакций")
+        
+        try:
+            with db_transaction.atomic():
+                for dup_tx in duplicate_txs:
+                    # Обновляем комментарий
+                    new_comment = f"[ДУБЛИКАТ {keep_tx.id}] {dup_tx.comment}"
+                    dup_tx.comment = new_comment
+                    dup_tx.save()
+                    
+                    print(f"    • Транзакция {dup_tx.id} помечена как дубликат")
+                
+                total_fixed += len(duplicate_txs)
+                
+        except Exception as e:
+            total_errors += 1
+            print(f"    ❌ Ошибка при обработке группы: {str(e)}")
+    
+    print(f"\n{'='*40}")
+    print(f"ИТОГ ИСПРАВЛЕНИЙ:")
+    print(f"  Помечено как дубликаты: {total_fixed} транзакций")
+    print(f"  Ошибок: {total_errors}")
+    print(f"{'='*40}")
+
+
+def find_transaction_by_comment(search_term):
+    """
+    Поиск транзакций по комментарию
+    """
+    print("=" * 80)
+    print(f"🔍 ПОИСК ТРАНЗАКЦИЙ ПО КОММЕНТАРИЮ: '{search_term}'")
+    print("=" * 80)
+    
+    transactions = Transaction.objects.filter(
+        comment__icontains=search_term
+    ).select_related(
+        'transaction_type',
+        'linked_in_order',
+        'linked_out_order'
+    ).order_by('-creation_date')[:50]
+    
+    print(f"Найдено транзакций: {transactions.count()}")
+    
+    if transactions.exists():
+        print("\nПоследние транзакции:")
+        for tx in transactions:
+            print(f"\n  ID: {tx.id}")
+            print(f"  Дата: {tx.creation_date}")
+            print(f"  Тип: {tx.transaction_type.name if tx.transaction_type else 'N/A'}")
+            print(f"  Сумма: {tx.value} USDT")
+            print(f"  Комментарий: {tx.comment[:80]}...")
+            
+            if tx.linked_in_order:
+                print(f"  InOrder: {tx.linked_in_order.id}")
+            elif tx.linked_out_order:
+                print(f"  OutOrder: {tx.linked_out_order.id}")
+    
+    return transactions
+
+
+# Меню для интерактивного использования
+def transaction_duplicate_menu():
+    """
+    Меню для работы с дубликатами транзакций
+    """
+    while True:
+        print("\n" + "=" * 80)
+        print("🔍 МЕНЮ ПРОВЕРКИ ДУБЛИКАТОВ ТРАНЗАКЦИЙ")
+        print("=" * 80)
+        print("1. Полная проверка дубликатов за период")
+        print("2. Проверить конкретную транзакцию по ID")
+        print("3. Проверить транзакции для ордера")
+        print("4. Найти транзакции по комментарию")
+        print("5. Экспорт результатов последней проверки")
+        print("0. Выход")
+        
+        choice = input("\nВыберите действие (0-5): ").strip()
+        
+        if choice == "0":
+            print("Выход...")
+            break
+        
+        elif choice == "1":
+            days = input("За сколько дней проверять? (по умолчанию 30): ").strip()
+            days = int(days) if days.isdigit() else 30
+            
+            results = check_transaction_duplicates(days)
+        
+        elif choice == "2":
+            check_specific_transaction_interactive()
+        
+        elif choice == "3":
+            check_order_transactions_interactive()
+        
+        elif choice == "4":
+            search_term = input("Введите текст для поиска в комментариях: ").strip()
+            if search_term:
+                find_transaction_by_comment(search_term)
+            else:
+                print("❌ Не указан текст для поиска!")
+        
+        elif choice == "5":
+            filename = input("Имя файла для экспорта (по умолчанию transaction_duplicates.csv): ").strip()
+            filename = filename if filename else "transaction_duplicates.csv"
+            
+            # Здесь нужно сохранять результаты в объекте
+            print("Для экспорта сначала выполните проверку (пункт 1)")
+        
+        else:
+            print("❌ Неверный выбор!")
+        
+        input("\nНажмите Enter для продолжения...")
+
+
+# Для быстрого запуска
+if __name__ == "__main__":
+    # Запуск полной проверки
+    # check_transaction_duplicates(30)
+    
+    # Запуск меню
+    transaction_duplicate_menu()
+
+
+
+
+# Проверка конкретной транзакции
+checker = TransactionDuplicateChecker()
+checker.check_specific_transaction("ab58a020-8dd6-494a-b73e-0e7855bf1fac")
+
+# Проверка всех транзакций для ордера
+# checker.find_duplicates_for_order("b47c0c42-94ff-48f5-a43a-deff6fd3e3dc")
+
+# Поиск по комментарию
+find_transaction_by_comment("дублированному пополнению")
+
+# Экспорт в CSV
+checker.export_duplicates_to_csv("my_report.csv")

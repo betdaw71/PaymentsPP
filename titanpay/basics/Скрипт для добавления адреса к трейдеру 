@@ -1,0 +1,147 @@
+import uuid
+from django.db import transaction
+from basics.models import Trader
+from trade.models import Address, Balance
+
+def add_address_to_trader(trader_username='changefasstt'):
+    """
+    Добавляет адрес трейдеру
+    
+    Аргументы:
+    - trader_username: имя пользователя трейдера (по умолчанию 'changefasstt')
+    """
+    print(f"🔍 Поиск трейдера '{trader_username}'...")
+    
+    try:
+        # Находим трейдера
+        trader = Trader.objects.get(user__username=trader_username)
+        print(f"✅ Трейдер найден: {trader.user.username}")
+        print(f"   ID: {trader.id}")
+        print(f"   Команда: {trader.team.name if trader.team else 'Нет'}")
+        
+        # Проверяем баланс трейдера
+        if not trader.balance_usdt:
+            print("❌ У трейдера нет баланса USDT!")
+            return False
+        
+        print(f"💰 Баланс USDT: ${trader.balance_usdt.amount}")
+        print(f"   ID баланса: {trader.balance_usdt.id}")
+        
+        # Проверяем, есть ли уже адреса у этого баланса
+        existing_addresses = Address.objects.filter(balance=trader.balance_usdt)
+        if existing_addresses.exists():
+            print(f"⚠️ У баланса уже есть {existing_addresses.count()} адрес(ов):")
+            for addr in existing_addresses:
+                print(f"   • {addr.address_public[:20]}... ({addr.id[:8]}...)")
+            
+            confirm = input("Добавить ещё один адрес? (y/n): ").strip().lower()
+            if confirm != 'y':
+                print("❌ Отмена операции")
+                return False
+        
+        # Генерируем фейковый адрес (в реальности тут должна быть ваша логика)
+        fake_address = "TFiTroWngmYvnVTRA79tHEqAmP2oGy3DTJ"
+        
+        with transaction.atomic():
+            # Создаем адрес
+            address = Address.objects.create(
+                id=uuid.uuid4(),
+                address_public=fake_address,
+                balance=trader.balance_usdt
+            )
+            
+            print(f"\n✅ Адрес успешно добавлен!")
+            print(f"   Адрес: {fake_address}")
+            print(f"   ID адреса: {address.id}")
+            print(f"   Баланс: {address.balance.id}")
+            
+            # Показываем обновленную информацию
+            print(f"\n📊 Проверка после создания:")
+            all_addresses = Address.objects.filter(balance=trader.balance_usdt)
+            print(f"   Всего адресов у баланса: {all_addresses.count()}")
+            
+            return address
+            
+    except Trader.DoesNotExist:
+        print(f"❌ Трейдер с username '{trader_username}' не найден!")
+        print("\nДоступные трейдеры:")
+        traders = Trader.objects.all()[:10]  # Показываем первые 10
+        for t in traders:
+            print(f"   • {t.user.username}")
+        return False
+    except Exception as e:
+        print(f"❌ Ошибка: {str(e)}")
+        return False
+
+
+# Дополнительные функции для удобства
+
+def show_trader_addresses(trader_username='changefasstt'):
+    """Показывает все адреса трейдера"""
+    try:
+        trader = Trader.objects.get(user__username=trader_username)
+        print(f"🔍 Адреса трейдера {trader.user.username}:")
+        
+        if trader.balance_usdt:
+            addresses = Address.objects.filter(balance=trader.balance_usdt)
+            
+            if addresses.exists():
+                print(f"💰 Баланс: ${trader.balance_usdt.amount}")
+                print(f"   ID баланса: {trader.balance_usdt.id}")
+                print(f"   Количество адресов: {addresses.count()}")
+                
+                for i, addr in enumerate(addresses, 1):
+                    print(f"\n{i}. Адрес:")
+                    print(f"   ID: {addr.id}")
+                    print(f"   Публичный адрес: {addr.address_public}")
+                    print(f"   Дата создания: {addr.id}")  # В модели нет created_at
+            else:
+                print("❌ У баланса нет адресов")
+        else:
+            print("❌ У трейдера нет баланса USDT")
+            
+    except Trader.DoesNotExist:
+        print(f"❌ Трейдер не найден")
+
+def create_real_address_for_all_traders():
+    """Создает адреса для всех трейдеров без них"""
+    traders_without_address = []
+    
+    for trader in Trader.objects.all():
+        if trader.balance_usdt:
+            if not Address.objects.filter(balance=trader.balance_usdt).exists():
+                traders_without_address.append(trader)
+    
+    if not traders_without_address:
+        print("✅ У всех трейдеров уже есть адреса")
+        return
+    
+    print(f"🔍 Найдено {len(traders_without_address)} трейдеров без адресов")
+    
+    for trader in traders_without_address:
+        print(f"\nСоздание адреса для {trader.user.username}...")
+        add_address_to_trader(trader.user.username)
+
+
+# Быстрые команды для использования
+def add_changefasstt():
+    """Быстрое добавление адреса для changefasstt"""
+    return add_address_to_trader('changefasstt')
+
+def show_changefasstt():
+    """Показать адреса changefasstt"""
+    return show_trader_addresses('changefasstt')
+
+
+# Если скрипт запускается напрямую
+if __name__ == "__main__":
+    # Добавляем адрес для changefasstt
+    add_address_to_trader('changefasstt')
+else:
+    print("✅ Скрипт для работы с адресами трейдеров загружен!")
+    print("\n🚀 Быстрые команды:")
+    print("   add_changefasstt() - добавить адрес трейдеру changefasstt")
+    print("   show_changefasstt() - показать адреса changefasstt")
+    print("   add_address_to_trader('username') - добавить адрес любому трейдеру")
+    print("   show_trader_addresses('username') - показать адреса трейдера")
+    print("   create_real_address_for_all_traders() - создать адреса всем трейдерам без них")

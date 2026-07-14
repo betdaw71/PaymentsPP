@@ -1,0 +1,581 @@
+from decimal import Decimal
+from datetime import datetime, timedelta
+from django.utils import timezone
+from django.db import transaction
+from trade.models import Transaction, TransactionType, InOrder, OutOrder
+from basics.models import Balance
+from collections import defaultdict
+import uuid
+
+
+def analyze_duplicates_for_date(date_start, date_end, threshold_minutes=5):
+    """
+    Анализирует дубликаты за указанный период
+    
+    Args:
+        date_start: Начало периода
+        date_end: Конец периода
+        threshold_minutes: Максимальное время между дубликатами
+    """
+    print(f"\n📅 Анализ периода: {date_start.strftime('%Y-%m-%d %H:%M')} - {date_end.strftime('%Y-%m-%d %H:%M')}")
+    print("-" * 60)
+    
+    results = {
+        'total_analyzed': 0,
+        'duplicates_found': 0,
+        'in_duplicates': 0,
+        'out_duplicates': 0,
+        'damage_summary': defaultdict(lambda: {'amount': Decimal('0'), 'count': 0}),
+        'total_damage': Decimal('0'),
+        'duplicate_details': []
+    }
+    
+    # 1. Анализ входящих заявок
+    print("1. ВХОДЯЩИЕ ЗАЯВКИ (InOrder):")
+    
+    completed_in_orders = InOrder.objects.filter(
+        status__name="Completed",
+        completion_date__gte=date_start,
+        completion_date__lt=date_end
+    ).select_related(
+        'solution__merchant__user',
+        'payment_details__group__trader__user'
+    ).order_by('creation_date')
+    
+    results['total_analyzed'] += completed_in_orders.count()
+    print(f"   Всего заявок: {completed_in_orders.count()}")
+    
+    # Группируем по ключу для поиска дубликатов
+    in_order_groups = defaultdict(list)
+    
+    for order in completed_in_orders:
+        if order.solution and order.solution.merchant and order.payment_details and order.payment_details.group:
+            key = (
+                order.solution.merchant.id,
+                order.payment_details.group.trader.id,
+                round(order.usd_amount, 2),
+                order.creation_date.strftime('%Y-%m-%d %H')
+            )
+            in_order_groups[key].append(order)
+    
+    # Находим дубликаты
+    for key, orders in in_order_groups.items():
+        if len(orders) > 1:
+            orders.sort(key=lambda x: x.creation_date)
+            
+            for i in range(len(orders)):
+                for j in range(i + 1, len(orders)):
+                    time_diff = abs((orders[i].creation_date - orders[j].creation_date).total_seconds())
+                    if time_diff < threshold_minutes * 60:
+                        results['duplicates_found'] += 1
+                        results['in_duplicates'] += 1
+                        
+                        merchant = orders[j].solution.merchant.user.username
+                        trader = orders[j].payment_details.group.trader.user.username
+                        amount = orders[j].usd_amount
+                        
+                        results['damage_summary'][(merchant, trader)]['amount'] += amount
+                        results['damage_summary'][(merchant, trader)]['count'] += 1
+                        results['total_damage'] += amount
+                        
+                        results['duplicate_details'].append({
+                            'order': orders[j],
+                            'primary': orders[i],
+                            'time_diff': time_diff,
+                            'type': 'in'
+                        })
+                        break
+    
+    print(f"   Найдено дубликатов: {results['in_duplicates']}")
+    
+    # 2. Анализ исходящих заявок
+    print("\n2. ИСХОДЯЩИЕ ЗАЯВКИ (OutOrder):")
+    
+    completed_out_orders = OutOrder.objects.filter(
+        status__name="Completed",
+        completion_date__gte=date_start,
+        completion_date__lt=date_end
+    ).select_related(
+        'solution__merchant__user',
+        'payment_details__group__trader__user'
+    ).order_by('creation_date')
+    
+    results['total_analyzed'] += completed_out_orders.count()
+    print(f"   Всего заявок: {completed_out_orders.count()}")
+    
+    # Группируем по ключу для поиска дубликатов
+    out_order_groups = defaultdict(list)
+    
+    for order in completed_out_orders:
+        if order.solution and order.solution.merchant and order.payment_details and order.payment_details.group:
+            key = (
+                order.solution.merchant.id,
+                order.payment_details.group.trader.id,
+                round(order.usd_amount, 2),
+                order.creation_date.strftime('%Y-%m-%d %H')
+            )
+            out_order_groups[key].append(order)
+    
+    # Находим дубликаты
+    for key, orders in out_order_groups.items():
+        if len(orders) > 1:
+            orders.sort(key=lambda x: x.creation_date)
+            
+            for i in range(len(orders)):
+                for j in range(i + 1, len(orders)):
+                    time_diff = abs((orders[i].creation_date - orders[j].creation_date).total_seconds())
+                    if time_diff < threshold_minutes * 60:
+                        results['duplicates_found'] += 1
+                        results['out_duplicates'] += 1
+                        
+                        merchant = orders[j].solution.merchant.user.username
+                        trader = orders[j].payment_details.group.trader.user.username
+                        amount = orders[j].usd_amount
+                        
+                        results['damage_summary'][(merchant, trader)]['amount'] += amount
+                        results['damage_summary'][(merchant, trader)]['count'] += 1
+                        results['total_damage'] += amount
+                        
+                        results['duplicate_details'].append({
+                            'order': orders[j],
+                            'primary': orders[i],
+                            'time_diff': time_diff,
+                            'type': 'out'
+                        })
+                        break
+    
+    print(f"   Найдено дубликатов: {results['out_duplicates']}")
+    
+    # 3. Выводим итог по периоду
+    print(f"\n3. ИТОГ ЗА ПЕРИОД:")
+    print(f"   Всего проанализировано заявок: {results['total_analyzed']}")
+    print(f"   Всего найдено дубликатов: {results['duplicates_found']}")
+    print(f"   Общий ущерб: {results['total_damage']} USDT")
+    
+    if results['damage_summary']:
+        print(f"\n4. ДЕТАЛИ УЩЕРБА:")
+        for (merchant, trader), data in results['damage_summary'].items():
+            print(f"   {merchant} -> {trader}:")
+            print(f"     Сумма: {data['amount']} USDT")
+            print(f"     Количество дубликатов: {data['count']}")
+    
+    # Выводим примеры дубликатов
+    if results['duplicate_details']:
+        print(f"\n5. ПРИМЕРЫ ДУБЛИКАТОВ (первые 3):")
+        for i, dup in enumerate(results['duplicate_details'][:3], 1):
+            order = dup['order']
+            order_type = "Входящий" if dup['type'] == 'in' else "Исходящий"
+            order_id_str = str(order.id)[:8] + "..."
+            
+            print(f"   {i}. {order_type} ордер {order_id_str}")
+            print(f"      Мерчант: {order.solution.merchant.user.username}")
+            print(f"      Трейдер: {order.payment_details.group.trader.user.username}")
+            print(f"      Сумма: {order.usd_amount} USDT")
+            print(f"      Дата: {order.creation_date.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"      Разница во времени: {dup['time_diff']:.0f} сек")
+    
+    print("\n" + "-" * 60)
+    
+    return results
+
+
+def analyze_yesterday_today():
+    """
+    Анализирует дубликаты за вчерашний и позавчерашний день
+    """
+    now = timezone.now()
+    
+    # Сегодняшний день (от начала до текущего момента)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = now
+    
+    # Вчерашний день (полные сутки)
+    yesterday_start = today_start - timedelta(days=1)
+    yesterday_end = today_start
+    
+    # Позавчерашний день
+    day_before_yesterday_start = yesterday_start - timedelta(days=1)
+    day_before_yesterday_end = yesterday_start
+    
+    print("=" * 80)
+    print("АНАЛИЗ ДУБЛИКАТОВ ЗА ПОСЛЕДНИЕ 3 ДНЯ")
+    print("=" * 80)
+    
+    print(f"\nТекущее время: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Сегодня (частично): {today_start.strftime('%Y-%m-%d')} - сейчас")
+    print(f"Вчера: {yesterday_start.strftime('%Y-%m-%d')}")
+    print(f"Позавчера: {day_before_yesterday_start.strftime('%Y-%m-%d')}")
+    
+    threshold = input("\nПорог времени между дубликатами в минутах (по умолчанию 5): ").strip()
+    threshold_minutes = int(threshold) if threshold.isdigit() else 5
+    
+    all_results = {
+        'today': None,
+        'yesterday': None,
+        'day_before_yesterday': None,
+        'total': {
+            'duplicates_found': 0,
+            'total_damage': Decimal('0'),
+            'damage_by_day': {}
+        }
+    }
+    
+    # Анализируем позавчерашний день
+    print("\n" + "=" * 80)
+    print("📅 ПОЗАВЧЕРАШНИЙ ДЕНЬ")
+    print("=" * 80)
+    results_day_before = analyze_duplicates_for_date(
+        day_before_yesterday_start,
+        day_before_yesterday_end,
+        threshold_minutes
+    )
+    all_results['day_before_yesterday'] = results_day_before
+    
+    # Анализируем вчерашний день
+    print("\n" + "=" * 80)
+    print("📅 ВЧЕРАШНИЙ ДЕНЬ")
+    print("=" * 80)
+    results_yesterday = analyze_duplicates_for_date(
+        yesterday_start,
+        yesterday_end,
+        threshold_minutes
+    )
+    all_results['yesterday'] = results_yesterday
+    
+    # Анализируем сегодняшний день (частично)
+    print("\n" + "=" * 80)
+    print("📅 СЕГОДНЯ (ЧАСТИЧНО)")
+    print("=" * 80)
+    results_today = analyze_duplicates_for_date(
+        today_start,
+        today_end,
+        threshold_minutes
+    )
+    all_results['today'] = results_today
+    
+    # Сводная статистика
+    print("\n" + "=" * 80)
+    print("📊 СВОДНАЯ СТАТИСТИКА ЗА 3 ДНЯ")
+    print("=" * 80)
+    
+    total_duplicates = 0
+    total_damage = Decimal('0')
+    
+    print("\nПо дням:")
+    print("-" * 40)
+    
+    # Позавчера
+    if all_results['day_before_yesterday']:
+        dup = all_results['day_before_yesterday']['duplicates_found']
+        damage = all_results['day_before_yesterday']['total_damage']
+        total_duplicates += dup
+        total_damage += damage
+        print(f"Позавчера ({day_before_yesterday_start.strftime('%Y-%m-%d')}):")
+        print(f"  Дубликатов: {dup}")
+        print(f"  Ущерб: {damage} USDT")
+        all_results['total']['damage_by_day'][day_before_yesterday_start.strftime('%Y-%m-%d')] = {
+            'duplicates': dup,
+            'damage': damage
+        }
+    
+    # Вчера
+    if all_results['yesterday']:
+        dup = all_results['yesterday']['duplicates_found']
+        damage = all_results['yesterday']['total_damage']
+        total_duplicates += dup
+        total_damage += damage
+        print(f"\nВчера ({yesterday_start.strftime('%Y-%m-%d')}):")
+        print(f"  Дубликатов: {dup}")
+        print(f"  Ущерб: {damage} USDT")
+        all_results['total']['damage_by_day'][yesterday_start.strftime('%Y-%m-%d')] = {
+            'duplicates': dup,
+            'damage': damage
+        }
+    
+    # Сегодня
+    if all_results['today']:
+        dup = all_results['today']['duplicates_found']
+        damage = all_results['today']['total_damage']
+        total_duplicates += dup
+        total_damage += damage
+        print(f"\nСегодня ({today_start.strftime('%Y-%m-%d')}, частично):")
+        print(f"  Дубликатов: {dup}")
+        print(f"  Ущерб: {damage} USDT")
+        all_results['total']['damage_by_day'][today_start.strftime('%Y-%m-%d')] = {
+            'duplicates': dup,
+            'damage': damage
+        }
+    
+    all_results['total']['duplicates_found'] = total_duplicates
+    all_results['total']['total_damage'] = total_damage
+    
+    print(f"\n{'='*40}")
+    print(f"ВСЕГО ЗА 3 ДНЯ:")
+    print(f"  Общее количество дубликатов: {total_duplicates}")
+    print(f"  Общий ущерб: {total_damage} USDT")
+    print(f"{'='*40}")
+    
+    # Анализ по мерчантам и трейдерам
+    print(f"\n📋 АНАЛИЗ ПО МЕРЧАНТАМ И ТРЕЙДЕРАМ")
+    print("-" * 40)
+    
+    # Объединяем все damage_summary
+    combined_damage = defaultdict(lambda: {'amount': Decimal('0'), 'count': 0})
+    
+    for day_key in ['day_before_yesterday', 'yesterday', 'today']:
+        if all_results[day_key]:
+            for (merchant, trader), data in all_results[day_key]['damage_summary'].items():
+                key = f"{merchant} -> {trader}"
+                combined_damage[key]['amount'] += data['amount']
+                combined_damage[key]['count'] += data['count']
+    
+    if combined_damage:
+        # Сортируем по ущербу (по убыванию)
+        sorted_damage = sorted(combined_damage.items(), key=lambda x: x[1]['amount'], reverse=True)
+        
+        print("ТОП-10 связок по ущербу:")
+        for i, (key, data) in enumerate(sorted_damage[:10], 1):
+            print(f"  {i}. {key}:")
+            print(f"     Ущерб: {data['amount']} USDT")
+            print(f"     Количество дубликатов: {data['count']}")
+    
+    # Анализ временного распределения
+    print(f"\n⏰ АНАЛИЗ ВРЕМЕННОГО РАСПРЕДЕЛЕНИЯ")
+    print("-" * 40)
+    
+    time_distribution = defaultdict(int)
+    for day_key in ['day_before_yesterday', 'yesterday', 'today']:
+        if all_results[day_key]:
+            for dup in all_results[day_key]['duplicate_details']:
+                hour = dup['order'].creation_date.hour
+                time_distribution[hour] += 1
+    
+    if time_distribution:
+        print("Распределение дубликатов по часам:")
+        for hour in sorted(time_distribution.keys()):
+            count = time_distribution[hour]
+            print(f"  {hour:02d}:00 - {hour:02d}:59: {count} дубликатов")
+    
+    return all_results
+
+
+def analyze_specific_date(date_str, threshold_minutes=5):
+    """
+    Анализирует дубликаты за конкретную дату
+    
+    Args:
+        date_str: Дата в формате 'YYYY-MM-DD'
+        threshold_minutes: Порог времени между дубликатами
+    """
+    try:
+        # Парсим дату
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Конвертируем в aware datetime
+        date_start = timezone.make_aware(datetime.combine(date_obj, datetime.min.time()))
+        date_end = date_start + timedelta(days=1)
+        
+        print("=" * 80)
+        print(f"АНАЛИЗ ДУБЛИКАТОВ ЗА {date_str}")
+        print("=" * 80)
+        
+        results = analyze_duplicates_for_date(date_start, date_end, threshold_minutes)
+        
+        # Предлагаем коррекцию
+        if results['duplicates_found'] > 0:
+            print(f"\n{'='*80}")
+            print(f"ОБНАРУЖЕНО {results['duplicates_found']} ДУБЛИКАТОВ НА СУММУ {results['total_damage']} USDT")
+            
+            response = input(f"\nВыполнить коррекцию? (yes/no): ").strip()
+            if response.lower() == 'yes':
+                # Корректируем все найденные дубликаты
+                correct_duplicates_for_results(results)
+        
+        return results
+        
+    except ValueError:
+        print(f"❌ Неверный формат даты. Используйте формат 'YYYY-MM-DD'")
+        return None
+
+
+def correct_duplicates_for_results(results):
+    """
+    Корректирует дубликаты на основе результатов анализа
+    """
+    if not results or not results['duplicate_details']:
+        print("Нет дубликатов для коррекции.")
+        return
+    
+    print(f"\nНачинаем коррекцию {len(results['duplicate_details'])} дубликатов...")
+    print("-" * 60)
+    
+    successful = 0
+    failed = 0
+    
+    for i, dup in enumerate(results['duplicate_details'], 1):
+        order = dup['order']
+        order_type = "Входящий" if dup['type'] == 'in' else "Исходящий"
+        order_id_str = str(order.id)[:8] + "..."
+        
+        print(f"\n[{i}/{len(results['duplicate_details'])}] Коррекция {order_type.lower()} ордера {order_id_str}")
+        print(f"   Мерчант: {order.solution.merchant.user.username}")
+        print(f"   Трейдер: {order.payment_details.group.trader.user.username}")
+        print(f"   Сумма: {order.usd_amount} USDT")
+        
+        # Создаем описание
+        description = f"Коррекционное списание по дублированному {'пополнению' if dup['type'] == 'in' else 'списанию'} по ордеру {order.id}"
+        
+        try:
+            with transaction.atomic():
+                if dup['type'] == 'in':
+                    from_balance = order.solution.merchant.balance
+                    to_balance = order.payment_details.group.trader.balance_usdt
+                else:
+                    from_balance = order.payment_details.group.trader.balance_usdt
+                    to_balance = order.solution.merchant.balance
+                
+                amount = order.usd_amount
+                
+                # Получаем объекты балансов
+                from_balance_obj = Balance.objects.get(id=from_balance.id)
+                to_balance_obj = Balance.objects.get(id=to_balance.id)
+                
+                # Проверяем баланс
+                if from_balance_obj.amount < amount:
+                    print(f"   ⚠️  Внимание: Недостаточно средств! Доступно: {from_balance_obj.amount}, Требуется: {amount}")
+                
+                # Обновляем балансы
+                from_balance_obj.amount -= amount
+                to_balance_obj.amount += amount
+                
+                from_balance_obj.save()
+                to_balance_obj.save()
+                
+                # Создаем транзакцию
+                tx_type = TransactionType.objects.get(name="Charge")
+                
+                if dup['type'] == 'in':
+                    tx = Transaction.objects.create(
+                        from_balance=from_balance_obj,
+                        to_balance=to_balance_obj,
+                        transaction_type=tx_type,
+                        linked_in_order=order,
+                        comment=description,
+                        value=amount
+                    )
+                else:
+                    tx = Transaction.objects.create(
+                        from_balance=from_balance_obj,
+                        to_balance=to_balance_obj,
+                        transaction_type=tx_type,
+                        linked_out_order=order,
+                        comment=description,
+                        value=amount
+                    )
+                
+                successful += 1
+                print(f"   ✅ Успешно! Транзакция: {tx.id}")
+                
+        except Exception as e:
+            failed += 1
+            print(f"   ❌ Ошибка: {str(e)}")
+    
+    print(f"\n{'='*60}")
+    print(f"ИТОГ КОРРЕКЦИИ:")
+    print(f"  Успешно: {successful}")
+    print(f"  С ошибками: {failed}")
+    print(f"{'='*60}")
+
+
+def export_daily_report(results, filename="daily_duplicates_report.txt"):
+    """
+    Экспортирует ежедневный отчет в файл
+    """
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write("=" * 80 + "\n")
+        f.write("ЕЖЕДНЕВНЫЙ ОТЧЕТ ПО ДУБЛИКАТАМ\n")
+        f.write("=" * 80 + "\n\n")
+        
+        f.write(f"Дата отчета: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        
+        for day_key, day_name in [
+            ('day_before_yesterday', 'Позавчера'),
+            ('yesterday', 'Вчера'),
+            ('today', 'Сегодня')
+        ]:
+            if results[day_key]:
+                day_results = results[day_key]
+                
+                # Определяем дату дня
+                if day_key == 'today':
+                    date_str = timezone.now().strftime('%Y-%m-%d') + " (частично)"
+                elif day_key == 'yesterday':
+                    date_str = (timezone.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+                else:  # day_before_yesterday
+                    date_str = (timezone.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+                
+                f.write(f"{day_name.upper()} ({date_str}):\n")
+                f.write("-" * 40 + "\n")
+                f.write(f"Всего заявок: {day_results['total_analyzed']}\n")
+                f.write(f"Дубликатов: {day_results['duplicates_found']}\n")
+                f.write(f"  - Входящих: {day_results['in_duplicates']}\n")
+                f.write(f"  - Исходящих: {day_results['out_duplicates']}\n")
+                f.write(f"Ущерб: {day_results['total_damage']} USDT\n")
+                
+                if day_results['damage_summary']:
+                    f.write("\nДетали ущерба:\n")
+                    for (merchant, trader), data in day_results['damage_summary'].items():
+                        f.write(f"  {merchant} -> {trader}:\n")
+                        f.write(f"    Сумма: {data['amount']} USDT\n")
+                        f.write(f"    Количество: {data['count']}\n")
+                
+                f.write("\n")
+        
+        # Сводка
+        f.write("=" * 40 + "\n")
+        f.write("СВОДНАЯ СТАТИСТИКА ЗА 3 ДНЯ\n")
+        f.write("=" * 40 + "\n")
+        f.write(f"Всего дубликатов: {results['total']['duplicates_found']}\n")
+        f.write(f"Общий ущерб: {results['total']['total_damage']} USDT\n\n")
+        
+        f.write("По дням:\n")
+        for date_str, data in results['total']['damage_by_day'].items():
+            f.write(f"  {date_str}: {data['duplicates']} дубликатов, {data['damage']} USDT\n")
+    
+    print(f"\n📄 Отчет экспортирован в файл: {filename}")
+
+
+# Простая функция для быстрого анализа
+def quick_daily_check():
+    """
+    Быстрая проверка дубликатов за последние 3 дня
+    """
+    print("=" * 80)
+    print("🚀 БЫСТРАЯ ПРОВЕРКА ДУБЛИКАТОВ ЗА ПОСЛЕДНИЕ 3 ДНЯ")
+    print("=" * 80)
+    
+    results = analyze_yesterday_today()
+    
+    # Предлагаем экспортировать отчет
+    export = input("\nЭкспортировать отчет в файл? (yes/no): ").strip()
+    if export.lower() == 'yes':
+        filename = input("Имя файла (по умолчанию daily_duplicates_report.txt): ").strip()
+        filename = filename if filename else "daily_duplicates_report.txt"
+        export_daily_report(results, filename)
+    
+    return results
+
+
+# Для использования в Django shell:
+if __name__ == "__main__":
+    # Быстрая проверка за последние 3 дня
+    # quick_daily_check()
+    
+    # Или анализ конкретной даты
+    # analyze_specific_date("2024-01-15")
+    pass
+
+
+# Вызов функции для анализа вчерашнего и позавчерашнего дня
+print("Запуск анализа за последние 3 дня...")
+results = quick_daily_check()

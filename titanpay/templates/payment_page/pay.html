@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="{{ default_locale|default:'ru' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b82f6'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-size='14' font-family='system-ui,sans-serif' font-weight='700'%3EA%3C/text%3E%3C/svg%3E">
+  <title>{{ brand }} — {% if default_locale == 'kk' %}төлем{% else %}оплата{% endif %}</title>
+  <style>
+    :root {
+      --bg: #0f1419; --card: #1a2332; --text: #e8edf4; --muted: #8b9cb3;
+      --accent: #3b82f6; --accent-hover: #2563eb; --err: #ef4444; --border: #2d3a4f;
+      --ok: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(ellipse at top, #1e293b 0%, var(--bg) 55%);
+      color: var(--text); display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    .wrap { width: 100%; max-width: 440px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .brand { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+    .lang-switch { display: flex; gap: 6px; }
+    .lang-switch button {
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+    }
+    .lang-switch button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 24px; box-shadow: 0 20px 50px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 4px; font-size: 28px; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+    .timer {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #111827; border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; font-size: 14px;
+    }
+    .timer.expired { border: 1px solid var(--err); color: #fca5a5; }
+    .timer-value { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .field { margin-bottom: 14px; }
+    .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
+    .value-row {
+      display: flex; gap: 8px; align-items: center;
+      background: #111827; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+    }
+    .value { flex: 1; font-size: 17px; font-weight: 600; word-break: break-all; }
+    .copy, .bank-btn {
+      border: none; background: var(--accent); color: #fff; border-radius: 8px;
+      padding: 8px 12px; font-size: 13px; cursor: pointer; white-space: nowrap;
+    }
+    .bank-btn { background: #0ea5e9; width: 100%; margin-top: 8px; padding: 12px; font-size: 15px; }
+    .bank-btn.secondary { background: #334155; }
+    .bank-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .hint { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 16px 0; }
+    .btn {
+      width: 100%; border: none; border-radius: 12px; padding: 14px 16px;
+      font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .state { text-align: center; padding: 24px 8px; }
+    .state-icon { font-size: 48px; margin-bottom: 12px; }
+    .state h2 { margin: 0 0 8px; font-size: 22px; }
+    .state p { color: var(--muted); margin: 0; line-height: 1.5; }
+    .spinner {
+      width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { color: #fca5a5; text-align: center; padding: 24px; }
+    .hidden { display: none !important; }
+    .bank-actions { margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">{{ brand }}</div>
+      <div class="lang-switch">
+        <button type="button" id="lang-kk" data-lang="kk">KZ</button>
+        <button type="button" id="lang-ru" data-lang="ru">RU</button>
+      </div>
+    </div>
+    <div class="card" id="app">
+      <div class="state" id="loading"><div class="spinner"></div><p id="txt-loading"></p></div>
+      <div class="error hidden" id="error"></div>
+
+      <div class="hidden" id="pay-screen">
+        <h1 id="amount-line">—</h1>
+        <div class="sub" id="ps-line"></div>
+        <div class="timer" id="timer-box">
+          <span id="txt-timer-label"></span>
+          <span class="timer-value" id="timer">—</span>
+        </div>
+        <div id="details"></div>
+        <div class="bank-actions" id="bank-actions"></div>
+        <p class="hint" id="txt-hint"></p>
+        <button class="btn btn-primary" id="btn-sent"></button>
+        <button class="btn btn-ghost" id="btn-cancel"></button>
+      </div>
+
+      <div class="state hidden" id="wait-screen">
+        <div class="state-icon">⏳</div>
+        <h2 id="txt-wait-title"></h2>
+        <p id="txt-wait-msg"></p>
+      </div>
+
+      <div class="state hidden" id="success-screen">
+        <div class="state-icon">✅</div>
+        <h2 id="txt-ok-title"></h2>
+        <p id="txt-ok-msg"></p>
+      </div>
+
+      <div class="state hidden" id="fail-screen">
+        <div class="state-icon">❌</div>
+        <h2 id="fail-title"></h2>
+        <p id="fail-msg"></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PAY_IN_ID = "{{ pay_in_id }}";
+    const API_BASE = "{{ api_base }}";
+    const CLIENT_GATE = "{{ client_gate|escapejs }}";
+    const DEFAULT_LOCALE = "{{ default_locale|default:'ru' }}";
+    const SENT_KEY = `pay_sent_${PAY_IN_ID}`;
+
+    let locale = localStorage.getItem(`pay_locale_${PAY_IN_ID}`) || DEFAULT_LOCALE;
+    let pollTimer = null, countdownTimer = null;
+
+    const I18N = {
+      kk: {
+        loading: "Төлем жүктелуде…",
+        timer: "Уақыт қалды",
+        card: "Карта нөмірі", phone: "Телефон", account: "Шот",
+        owner: "Алушы", bank: "Банк", bic: "БИК",
+        copy: "Көшіру", copied: "Көшірілді",
+        copyAll: "Барлығын көшіру",
+        hint: "Көрсетілген соманы нақты реквизитке аударыңыз, содан кейін «Төледім» басыңыз.",
+        sent: "Төледім", cancel: "Төлемді болдырмау", cancelConfirm: "Төлемді болдырмау керек пе?",
+        waitTitle: "Растау күтілуде",
+        waitMsg: "Төлеміңіз қабылданды. Растау бірнеше минут алуы мүмкін. Бетті жабуға болады.",
+        waitVerify: "Төлем тексерілуде. Редирект жоқ — растауды күтеміз.",
+        okTitle: "Төлем сәтті", okMsg: "Дүкен сайтына бағыттауда…",
+        failTitle: "Төлем орындалмады", failDeclined: "Төлем қабылданбады", failMsg: "Бағыттауда…",
+        noReq: "Реквизиттер уақытша жоқ", notFound: "Төлем табылмады",
+        sentErr: "Растау сәтсіз", cancelErr: "Болдырмау қатесі",
+        bankSection: "Банк қосымшасы",
+      },
+      ru: {
+        loading: "Загрузка платежа…",
+        timer: "Осталось времени",
+        card: "Номер карты", phone: "Телефон", account: "Счёт",
+        owner: "Получатель", bank: "Банк", bic: "БИК",
+        copy: "Копировать", copied: "Скопировано",
+        copyAll: "Скопировать всё",
+        hint: "Переведите точную сумму на указанные реквизиты, затем нажмите «Я оплатил».",
+        sent: "Я оплатил", cancel: "Отменить платёж", cancelConfirm: "Отменить платёж?",
+        waitTitle: "Ожидаем подтверждение",
+        waitMsg: "Платёж принят в обработку. Обычно это занимает несколько минут. Можно закрыть страницу.",
+        waitVerify: "Платёж проверяется. Редиректа не будет — ждём подтверждение.",
+        okTitle: "Оплата успешна", okMsg: "Перенаправляем на сайт магазина…",
+        failTitle: "Платёж не выполнен", failDeclined: "Платёж отклонён", failMsg: "Перенаправляем…",
+        noReq: "Реквизиты временно недоступны", notFound: "Платёж не найден",
+        sentErr: "Не удалось подтвердить оплату", cancelErr: "Ошибка отмены",
+        bankSection: "Приложение банка",
+      },
+    };
+
+    function t(k) { return (I18N[locale] || I18N.ru)[k] || k; }
+
+    function obtainUrl() {
+      return `${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/obtain/?lang=${locale}`;
+    }
+
+    function apiHeaders() {
+      const h = { Accept: "application/json" };
+      if (CLIENT_GATE) h.GATE = CLIENT_GATE;
+      return h;
+    }
+
+    function show(id) {
+      ["loading", "error", "pay-screen", "wait-screen", "success-screen", "fail-screen"].forEach(el => {
+        document.getElementById(el).classList.toggle("hidden", el !== id);
+      });
+    }
+
+    function applyStaticI18n() {
+      document.documentElement.lang = locale;
+      document.getElementById("lang-kk").classList.toggle("active", locale === "kk");
+      document.getElementById("lang-ru").classList.toggle("active", locale === "ru");
+      document.getElementById("txt-loading").textContent = t("loading");
+      document.getElementById("txt-timer-label").textContent = t("timer");
+      document.getElementById("txt-hint").textContent = t("hint");
+      document.getElementById("btn-sent").textContent = t("sent");
+      document.getElementById("btn-cancel").textContent = t("cancel");
+      document.getElementById("txt-wait-title").textContent = t("waitTitle");
+      document.getElementById("txt-wait-msg").textContent = t("waitMsg");
+      document.getElementById("txt-ok-title").textContent = t("okTitle");
+      document.getElementById("txt-ok-msg").textContent = t("okMsg");
+    }
+
+    function fmtAmount(amount, currency) {
+      const loc = locale === "kk" ? "kk-KZ" : "ru-RU";
+      return `${Number(amount).toLocaleString(loc)} ${currency || ""}`.trim();
+    }
+
+    function detailField(label, value, copyable) {
+      if (!value) return "";
+      const id = "f-" + Math.random().toString(36).slice(2, 8);
+      return `<div class="field"><div class="label">${label}</div><div class="value-row">
+        <div class="value" id="${id}">${value}</div>
+        ${copyable ? `<button type="button" class="copy" data-target="${id}">${t("copy")}</button>` : ""}
+      </div></div>`;
+    }
+
+    function renderDetails(pd) {
+      if (!pd || typeof pd !== "object") return `<p class="hint">${t("noReq")}</p>`;
+      let html = "";
+      if (pd.card_number) html += detailField(t("card"), pd.card_number, true);
+      if (pd.phone) html += detailField(t("phone"), pd.phone, true);
+      if (pd.deposit_number) html += detailField(t("account"), pd.deposit_number, true);
+      if (pd.owner) html += detailField(t("owner"), pd.owner, false);
+      if (pd.bank) html += detailField(t("bank"), pd.bank, false);
+      if (pd.bic) html += detailField(t("bic"), pd.bic, true);
+      return html || `<p class="hint">${t("noReq")}</p>`;
+    }
+
+    function renderBankActions(data) {
+      const box = document.getElementById("bank-actions");
+      box.innerHTML = "";
+      const actions = data.bank_actions || [];
+      if (!actions.length && !data.clipboard_text) return;
+
+      let html = `<div class="label">${t("bankSection")}</div>`;
+      if (data.clipboard_text) {
+        html += `<button type="button" class="bank-btn" id="btn-copy-all">${t("copyAll")}</button>`;
+      }
+      actions.forEach((a) => {
+        html += `<button type="button" class="bank-btn secondary" data-bank-url="${a.url}">${a.label}</button>`;
+        if (a.hint) html += `<div class="bank-hint">${a.hint}</div>`;
+      });
+      box.innerHTML = html;
+
+      document.getElementById("btn-copy-all")?.addEventListener("click", () => {
+        navigator.clipboard.writeText(data.clipboard_text).then(() => alert(t("copied")));
+      });
+      box.querySelectorAll("[data-bank-url]").forEach(btn => {
+        btn.onclick = async () => {
+          if (data.clipboard_text) {
+            try { await navigator.clipboard.writeText(data.clipboard_text); } catch (_) {}
+          }
+          window.location.href = btn.dataset.bankUrl;
+        };
+      });
+    }
+
+    function wireCopyButtons() {
+      document.querySelectorAll(".copy").forEach(btn => {
+        btn.onclick = () => {
+          const el = document.getElementById(btn.dataset.target);
+          navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+            btn.textContent = t("copied");
+            setTimeout(() => { btn.textContent = t("copy"); }, 1500);
+          });
+        };
+      });
+    }
+
+    function startCountdown(expiresAt) {
+      clearInterval(countdownTimer);
+      const box = document.getElementById("timer-box");
+      const el = document.getElementById("timer");
+      function tick() {
+        const left = expiresAt - Math.floor(Date.now() / 1000);
+        if (left <= 0) {
+          el.textContent = "00:00";
+          box.classList.add("expired");
+          clearInterval(countdownTimer);
+          return;
+        }
+        const m = Math.floor(left / 60), s = left % 60;
+        el.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      }
+      tick();
+      countdownTimer = setInterval(tick, 1000);
+    }
+
+    function markSent() { sessionStorage.setItem(SENT_KEY, "1"); }
+    function wasSent() { return sessionStorage.getItem(SENT_KEY) === "1"; }
+
+    function shouldStayOnWait(data) {
+      return data.waiting_confirmation || data.pending_verification || wasSent();
+    }
+
+    function handleTerminal(data) {
+      if (data.status === "Success") {
+        clearInterval(pollTimer);
+        sessionStorage.removeItem(SENT_KEY);
+        show("success-screen");
+        if (data.success_url) window.location.href = data.success_url;
+        return true;
+      }
+      if (data.status === "Failed" || data.status === "Declined") {
+        if (shouldStayOnWait(data)) {
+          show("wait-screen");
+          document.getElementById("txt-wait-msg").textContent = t("waitVerify");
+          startPolling();
+          return true;
+        }
+        clearInterval(pollTimer);
+        sessionStorage.removeItem(SENT_KEY);
+        show("fail-screen");
+        document.getElementById("fail-title").textContent =
+          data.status === "Declined" ? t("failDeclined") : t("failTitle");
+        document.getElementById("fail-msg").textContent = t("failMsg");
+        if (data.failed_url) window.location.href = data.failed_url;
+        return true;
+      }
+      return false;
+    }
+
+    function renderPay(data) {
+      if (data.locale) locale = data.locale;
+      applyStaticI18n();
+      if (handleTerminal(data)) return;
+
+      if (data.waiting_confirmation || data.pending_verification || wasSent()) {
+        show("wait-screen");
+        startPolling();
+        return;
+      }
+
+      show("pay-screen");
+      document.getElementById("amount-line").textContent = fmtAmount(data.amount, data.currency);
+      document.getElementById("ps-line").textContent = data.payment_system || "";
+      document.getElementById("details").innerHTML = renderDetails(data.payment_details);
+      renderBankActions(data);
+      wireCopyButtons();
+      if (data.expires_at) startCountdown(data.expires_at);
+    }
+
+    async function fetchObtain() {
+      const res = await fetch(obtainUrl(), { headers: apiHeaders() });
+      if (!res.ok) throw new Error(t("notFound"));
+      return res.json();
+    }
+
+    async function load() {
+      applyStaticI18n();
+      try {
+        renderPay(await fetchObtain());
+      } catch (e) {
+        show("error");
+        document.getElementById("error").textContent = e.message || t("notFound");
+      }
+    }
+
+    function startPolling() {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const data = await fetchObtain();
+          if (handleTerminal(data)) return;
+          if (shouldStayOnWait(data)) return;
+          renderPay(data);
+        } catch (_) {}
+      }, 3000);
+    }
+
+    document.getElementById("btn-sent").onclick = async () => {
+      const btn = document.getElementById("btn-sent");
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, {
+          method: "POST", headers: apiHeaders(),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.details || err.error || t("sentErr"));
+        }
+        markSent();
+        show("wait-screen");
+        startPolling();
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    document.getElementById("btn-cancel").onclick = async () => {
+      if (!confirm(t("cancelConfirm"))) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/cancel/`, {
+          method: "POST", headers: apiHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.details || data.error || t("cancelErr"));
+        sessionStorage.removeItem(SENT_KEY);
+        const fresh = await fetchObtain();
+        handleTerminal({ ...fresh, status: "Failed", failed_url: fresh.failed_url });
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+
+    document.getElementById("lang-kk").onclick = () => {
+      locale = "kk"; localStorage.setItem(`pay_locale_${PAY_IN_ID}`, "kk"); load();
+    };
+    document.getElementById("lang-ru").onclick = () => {
+      locale = "ru"; localStorage.setItem(`pay_locale_${PAY_IN_ID}`, "ru"); load();
+    };
+
+    load();
+  </script>
+</body>
+</html>

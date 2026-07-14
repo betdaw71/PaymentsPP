@@ -1,0 +1,325 @@
+import logging
+
+import requests
+import json
+from django.utils import timezone
+from rest_framework.exceptions import ValidationError
+
+from titanpay.settings import CRYPTO_URL
+from decimal import Decimal
+import requests
+
+
+def generate_address():
+    r = requests.post(f'{CRYPTO_URL}/create/')
+
+    data = r.json()
+
+    return data.get("address")
+
+
+def get_binance_rate(currency_code, payment_system_name):
+    json_data = {
+        'fiat': currency_code,
+        'page': 1,
+        'rows': 10,
+        'tradeType': 'BUY',
+        'asset': 'USDT',
+        'countries': [],
+        'proMerchantAds': False,
+        'shieldMerchantAds': False,
+        'publisherType': 'merchant',
+        'payTypes': [
+            payment_system_name,
+        ],
+    }
+
+    response = requests.post(
+        'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
+        json=json_data,
+    )
+    # print(response.json())
+    # print(response.json()['data'])
+
+    if not response.json()['data']:
+        json_data['publisherType'] = None
+
+    response = requests.post(
+        'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
+        json=json_data,
+    )
+
+    prices = [float(adv['adv']['price']) for adv in response.json()['data'][:3]]
+    return round(sum(prices[:min(len(prices), 3)]) / min(len(prices), 3), 3)
+
+
+def get_garantex_rate():
+    market = "usdtrub"
+    response = requests.get(f"https://garantex.org/api/v2/depth?market={market}")
+    return round(float(response.json()['asks'][0]['price']) * 1.0025, 3)
+
+
+def get_usdt_rate(currency_code, payment_system_name):
+    # return 1
+    if currency_code == 'RUB':
+        return get_garantex_rate()
+    else:
+        return get_binance_rate(currency_code, payment_system_name)
+
+
+def get_range(_min, _max):
+    if _min == _max:
+        return [0, _max]
+    return [_min, _max]
+
+
+def get_forex_rate(currency):
+    url = "https://api.apilayer.com/currency_data/convert"
+    params = {"to": currency, "from": "USD", "amount": 1}
+    payload = {}
+    headers = {
+      "apikey": "OkmvwfIuJ1HbaO06LpyCWpai46zuvquS"
+    }
+
+    response = requests.request("GET", url, headers=headers, data=payload, params=params)
+
+    status_code = response.status_code
+    if status_code != 200:
+        return False, 1
+    else:
+        result = response.json()
+        return True, result['result']
+
+
+import requests
+from decimal import Decimal
+
+
+def check_pd_data(data):
+    if data.get('phone') == '':
+        data['phone'] = None
+    if data.get('card_number') == '':
+        data['card_number'] = None
+    if data.get('sberpay_enabled') == '':
+        data['sberpay_enabled'] = False
+    if data.get('sbp_enabled') == '':
+        data['sbp_enabled'] = False
+
+    if data['phone'] is None and (data['sbp_enabled'] or data['sberpay_enabled']):
+        raise ValidationError({'details': 'Phone cannot be empty if SBP or SberPay is enabled'})
+    return data
+
+
+def get_binance_kzt_halyk_rate():
+    """
+    USDT/KZT с Binance P2P: Halyk Bank, среднее со 2–4 объявления (индексы 1–3).
+    payTypes задаётся PROTOCOL_BINANCE_PAY_TYPE (по умолчанию HalykBank).
+    """
+    from django.conf import settings
+
+    pay_type = getattr(settings, "PROTOCOL_BINANCE_PAY_TYPE", "HalykBank")
+    json_data = {
+        "fiat": "KZT",
+        "page": 1,
+        "rows": 10,
+        "tradeType": "BUY",
+        "asset": "USDT",
+        "countries": [],
+        "proMerchantAds": False,
+        "shieldMerchantAds": False,
+        "publisherType": "merchant",
+        "payTypes": [pay_type],
+    }
+    try:
+        response = requests.post(
+            "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",
+            json=json_data,
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json().get("data") or []
+        if not data:
+            json_data["publisherType"] = None
+            response = requests.post(
+                "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",
+                json=json_data,
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json().get("data") or []
+        if len(data) < 2:
+            logging.warning("Binance KZT Halyk: not enough ads (%s)", len(data))
+            return None
+        slice_end = min(4, len(data))
+        prices = [float(adv["adv"]["price"]) for adv in data[1:slice_end]]
+        if not prices:
+            return None
+        avg = sum(prices) / len(prices)
+        logging.info("Binance KZT Halyk rate (ads 2-%s): %s", slice_end, avg)
+        return Decimal(str(round(avg, 3)))
+    except Exception as exc:
+        logging.error("Binance KZT Halyk rate failed: %s", exc)
+        return None
+
+
+
+
+def get_bybit_kzt_rate():
+    """
+    Парсит курс USDT/KZT с Bybit P2P.
+    Правила: Kaspi Bank, лимит >= 100 000 KZT, проверенные мерчанты,
+    среднее со 2 по 6 объявление.
+    """
+    json_data = {
+        'userId': '',
+        'tokenId': 'USDT',
+        'currencyId': 'KZT',
+        'payment': ['150'],
+        'side': '1',
+        'size': '50',
+        'page': '1',
+        'amount': '100000',
+        'authMaker': False,
+        'canTrade': False,
+    }
+
+    try:
+        response = requests.post('https://api2.bybit.com/fiat/otc/item/online',
+                                 json=json_data, timeout=15)
+        response.raise_for_status()
+    except Exception as e:
+        logging.error(f"Bybit P2P request failed: {e}")
+        return None
+
+    data = response.json()
+    if data.get('ret_code') != 0:
+        logging.error(f"Bybit API error: {data.get('ret_msg')}")
+        return None
+
+    items = data.get('result', {}).get('items', [])
+    if not items:
+        logging.warning("No items returned")
+        return None
+
+    filtered_prices = []
+
+    for item in items:
+        payments = item.get('payments', [])
+        if '150' not in payments:
+            continue
+
+        max_amount_str = item.get('maxAmount') or item.get('maxSingleTransAmount') or '0'
+        try:
+            max_amount = Decimal(max_amount_str)
+        except:
+            max_amount = Decimal('0')
+
+        if max_amount < Decimal('100000'):
+            continue
+
+        finish_rate_str = item.get('finishRate') or item.get('recentExecuteRate') or '0'
+        try:
+            finish_rate = Decimal(finish_rate_str)
+        except:
+            finish_rate = Decimal('0')
+
+        total_orders_str = item.get('totalOrderCount') or item.get('recentOrderNum') or '0'
+        try:
+            total_orders = int(total_orders_str)
+        except:
+            total_orders = 0
+
+        if finish_rate <= Decimal('95') or total_orders <= 100:
+            continue
+
+        price_str = item.get('price', '0')
+        try:
+            price = Decimal(price_str)
+        except:
+            continue
+
+        if price > 0:
+            filtered_prices.append(price)
+
+    # Дополнительная защита от пустого списка
+    if not filtered_prices:
+        logging.warning("No valid Kaspi ads found")
+        return None
+
+    if len(filtered_prices) < 6:
+        logging.warning(f"Not enough valid Kaspi ads: {len(filtered_prices)}")
+        if len(filtered_prices) >= 2:
+            avg_price = sum(filtered_prices) / Decimal(len(filtered_prices))
+            logging.info(f"Fallback: average of {len(filtered_prices)} ads = {avg_price}")
+            return avg_price
+        elif len(filtered_prices) == 1:
+            logging.info(f"Using single ad: {filtered_prices[0]}")
+            return filtered_prices[0]
+        else:
+            return None
+
+    filtered_prices.sort()
+    selected_prices = filtered_prices[1:6]
+    
+    # Ещё одна защита
+    if not selected_prices:
+        logging.warning("No prices selected after slicing")
+        return None
+        
+    avg_price = sum(selected_prices) / Decimal(len(selected_prices))
+    logging.info(f"Bybit KZT rate (orders 2-6): {avg_price}")
+    return avg_price
+
+def get_bybit_rate(payment_system_name):
+    json_data = {
+        'userId': '',
+        'tokenId': 'USDT',
+        'currencyId': 'RUB',
+        'payment': [
+            '582',
+        ],
+        'side': '1',
+        'size': '10',
+        'page': '1',
+        'amount': '100000',
+        'authMaker': False,
+        'canTrade': False,
+    }
+
+    response = requests.post('https://api2.bybit.com/fiat/otc/item/online', json=json_data)
+    
+    result = response.json().get('result', {}).get('items', [])
+    
+    # Защита от пустого результата
+    if not result:
+        logging.error("No items returned from Bybit for RUB rate")
+        return Decimal('90')  # fallback курс (можно изменить)
+    
+    start_from = 0 if len(result) == 1 else 1
+    end_at = min(6, len(result))
+    
+    # Защита от пустого списка цен
+    prices = []
+    for i in range(start_from, end_at):
+        try:
+            price = Decimal(result[i]['price'])
+            if price > 0:
+                prices.append(price)
+        except (KeyError, ValueError, IndexError) as e:
+            logging.error(f"Error parsing price: {e}")
+            continue
+    
+    if not prices:
+        logging.error("No valid prices found for RUB rate")
+        return Decimal('90')  # fallback курс
+    
+    avg_price = sum(prices) / Decimal(len(prices))
+    return avg_price
+
+
+def get_balances():
+    r = requests.post(f'{CRYPTO_URL}/deposits/')
+
+    deposits = r.json().get('deposits', [])
+    logging.debug(f"Deposits: {deposits}")
+    return deposits

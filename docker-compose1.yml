@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: titanpay_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: titanpay_db
+      POSTGRES_USER: titanpay_user
+      POSTGRES_PASSWORD: admin123
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U titanpay_user -d titanpay_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+    networks:
+      - project_network
+
+  redis:
+    image: redis:alpine
+    container_name: titanpay_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - project_network
+
+  app:
+    build: ./titanpay
+    container_name: titanpay_app
+    restart: unless-stopped
+    environment:
+      - LOCAL=false
+      - MAIN_DB_NAME=titanpay_db
+      - MAIN_DB_USER=titanpay_user
+      - MAIN_DB_PASSWORD=admin123
+      - MAIN_DB_HOST=db
+      - MAIN_DB_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DEBUG=True
+      - SECRET_KEY=sjhkefkyusfdk
+      - DJANGO_SETTINGS_MODULE=titanpay.settings
+    ports:
+      - "8000:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./titanpay:/app
+      - /app/__pycache__
+    networks:
+      - project_network
+
+  frontend:
+    build: ./taserPayFrontend
+    container_name: titanpay_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - project_network
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  project_network:
+    driver: bridge

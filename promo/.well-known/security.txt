@@ -1,0 +1,5 @@
+Contact: mailto:support@avapay.net
+Contact: https://t.me/avapay_manager
+Preferred-Languages: en, ru
+Canonical: https://promo.avapay.net/.well-known/security.txt
+Policy: https://avapay.net/

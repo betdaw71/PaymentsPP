@@ -1,0 +1,85 @@
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'titanpay.settings')
+
+import django
+django.setup()
+
+from django.contrib.auth.models import User
+from merchant.models import Merchant
+from trade.models import Transaction, TransactionType, Balance
+from decimal import Decimal
+from django.db import transaction
+
+def deduct_from_merchant(merchant_username, amount, comment="Списание средств"):
+    """
+    Списание средств с баланса мерчанта
+    
+    Args:
+        merchant_username (str): Имя пользователя мерчанта
+        amount (float): Сумма для списания
+        comment (str): Комментарий к операции
+    """
+    
+    print(f"💰 СПИСАНИЕ СРЕДСТВ С МЕРЧАНТА")
+    print(f"   Мерчант: {merchant_username}")
+    print(f"   Сумма: ${amount}")
+    print(f"   Причина: {comment}")
+    print("-" * 50)
+    
+    try:
+        with transaction.atomic():
+            # 1. Находим мерчанта
+            user = User.objects.get(username=merchant_username)
+            merchant = Merchant.objects.get(user=user)
+            
+            print(f"✅ Найден мерчант: {merchant.user.username}")
+            print(f"   Текущий баланс: ${merchant.balance.amount}")
+            
+            # 2. Проверяем достаточность средств
+            if merchant.balance.amount < Decimal(str(amount)):
+                print(f"❌ Недостаточно средств!")
+                print(f"   Необходимо: ${amount}")
+                print(f"   Доступно: ${merchant.balance.amount}")
+                return False
+            
+            # 3. Создаем транзакцию списания
+            # Находим баланс агрегатора (тип 2)
+            aggregator_balance = Balance.objects.get(type=2)
+            
+            # Находим тип транзакции "Charge" (списание)
+            charge_type = TransactionType.objects.get(name="Charge")
+            
+            # Создаем транзакцию списания
+            Transaction.create(
+                _from=merchant.balance,
+                _to=aggregator_balance,
+                value=Decimal(str(amount)),
+                _transaction_type=charge_type,
+                _comment=comment
+            )
+            
+            print(f"✅ Транзакция успешно создана")
+            print(f"   Новый баланс: ${merchant.balance.amount}")
+            
+            return True
+            
+    except User.DoesNotExist:
+        print(f"❌ Пользователь {merchant_username} не найден")
+        return False
+    except Merchant.DoesNotExist:
+        print(f"❌ Мерчант {merchant_username} не найден")
+        return False
+    except Balance.DoesNotExist:
+        print(f"❌ Баланс агрегатора не найден")
+        return False
+    except TransactionType.DoesNotExist:
+        print(f"❌ Тип транзакции 'Charge' не найден")
+        return False
+    except Exception as e:
+        print(f"❌ Ошибка: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+# Списать 3279 с luck_exchange1
+deduct_from_merchant("lucky_exchange1", 1515 , "Списание по требованию")

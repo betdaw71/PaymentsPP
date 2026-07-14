@@ -1,0 +1,323 @@
+from datetime import datetime, date, timedelta
+from django.utils import timezone
+from django.db.models import Sum, Count, Q, F
+from decimal import Decimal
+
+# ============== КОНФИГУРАЦИЯ ==============
+TARGET_DATE = date(2026, 2, 22)  # <-- ИЗМЕНИТЕ ДАТУ НА НУЖНУЮ!
+# ==========================================
+
+print(f"📊 РАСЧЕТ СТАТИСТИКИ ЗА {TARGET_DATE}")
+print("=" * 80)
+
+# Определяем временной диапазон
+start_datetime = timezone.make_aware(datetime.combine(TARGET_DATE, datetime.min.time()))
+end_datetime = start_datetime + timedelta(days=1)
+
+# === 1. ВХОДЯЩИЕ ПЛАТЕЖИ (IN ORDERS) ===
+from trade.models import InOrder
+
+in_orders = InOrder.objects.filter(
+    Q(status__name="Completed") &
+    Q(completion_date__gte=start_datetime, completion_date__lt=end_datetime)
+).select_related(
+    'solution__merchant',
+    'payment_details__group__trader',
+    'payment_details__group__trader__team'
+)
+
+in_stats = in_orders.aggregate(
+    total_count=Count('id'),
+    total_amount_fiat=Sum('amount'),
+    total_amount_usd=Sum('usd_amount'),
+    total_merchant_fee=Sum('merchant_fee'),
+    total_trader_fee=Sum('trader_fee')
+)
+
+print(f"\n📥 ВХОДЯЩИЕ ПЛАТЕЖИ:")
+print(f"   Количество сделок: {in_stats['total_count'] or 0}")
+print(f"   Объем (фиат): {in_stats['total_amount_fiat'] or Decimal('0'):,.2f}₽")
+print(f"   Объем (USD): ${in_stats['total_amount_usd'] or Decimal('0'):,.2f}")
+print(f"   Комиссия мерчантов: ${in_stats['total_merchant_fee'] or Decimal('0'):,.2f}")
+print(f"   Комиссия трейдеров: ${in_stats['total_trader_fee'] or Decimal('0'):,.2f}")
+
+# === 2. ИСХОДЯЩИЕ ПЛАТЕЖИ (OUT ORDERS) ===
+from trade.models import OutOrder
+
+out_orders = OutOrder.objects.filter(
+    Q(status__name="Completed") &
+    Q(completion_date__gte=start_datetime, completion_date__lt=end_datetime)
+).select_related(
+    'solution__merchant',
+    'payment_details__group__trader',
+    'payment_details__group__trader__team'
+)
+
+out_stats = out_orders.aggregate(
+    total_count=Count('id'),
+    total_amount_fiat=Sum('amount'),
+    total_amount_usd=Sum('usd_amount'),
+    total_merchant_fee=Sum('merchant_fee'),
+    total_trader_fee=Sum('trader_fee')
+)
+
+print(f"\n📤 ИСХОДЯЩИЕ ПЛАТЕЖИ:")
+print(f"   Количество сделок: {out_stats['total_count'] or 0}")
+print(f"   Объем (фиат): {out_stats['total_amount_fiat'] or Decimal('0'):,.2f}₽")
+print(f"   Объем (USD): ${out_stats['total_amount_usd'] or Decimal('0'):,.2f}")
+print(f"   Комиссия мерчантов: ${out_stats['total_merchant_fee'] or Decimal('0'):,.2f}")
+print(f"   Комиссия трейдеров: ${out_stats['total_trader_fee'] or Decimal('0'):,.2f}")
+
+# === 3. ОБЩАЯ СТАТИСТИКА ===
+total_in_usd = in_stats['total_amount_usd'] or Decimal('0')
+total_out_usd = out_stats['total_amount_usd'] or Decimal('0')
+total_volume_usd = total_in_usd + total_out_usd
+
+total_in_merchant_fee = in_stats['total_merchant_fee'] or Decimal('0')
+total_out_merchant_fee = out_stats['total_merchant_fee'] or Decimal('0')
+total_merchant_fee = total_in_merchant_fee + total_out_merchant_fee
+
+total_in_trader_fee = in_stats['total_trader_fee'] or Decimal('0')
+total_out_trader_fee = out_stats['total_trader_fee'] or Decimal('0')
+total_trader_fee = total_in_trader_fee + total_out_trader_fee
+
+platform_profit = (total_in_merchant_fee - total_in_trader_fee) + (total_out_merchant_fee - total_out_trader_fee)
+
+print(f"\n📈 ОБЩАЯ СТАТИСТИКА:")
+print("=" * 60)
+print(f"💰 Общий оборот: ${total_volume_usd:,.2f}")
+print(f"   • Ввод: ${total_in_usd:,.2f}")
+print(f"   • Вывод: ${total_out_usd:,.2f}")
+print(f"📊 Количество сделок: {in_stats['total_count'] or 0} ввод + {out_stats['total_count'] or 0} вывод = {in_stats['total_count'] + out_stats['total_count'] or 0}")
+print(f"💵 Комиссии:")
+print(f"   • Мерчанты: ${total_merchant_fee:,.2f} (ввод: ${total_in_merchant_fee:,.2f}, вывод: ${total_out_merchant_fee:,.2f})")
+print(f"   • Трейдеры: ${total_trader_fee:,.2f} (ввод: ${total_in_trader_fee:,.2f}, вывод: ${total_out_trader_fee:,.2f})")
+print(f"🏦 Прибыль платформы: ${platform_profit:,.2f}")
+
+# === 4. СТАТИСТИКА ПО МЕРЧАНТАМ ===
+print(f"\n🏢 СТАТИСТИКА ПО МЕРЧАНТАМ:")
+print("=" * 60)
+
+# Мерчанты с входящими платежами
+merchants_in = in_orders.values(
+    'solution__merchant__user__username'
+).annotate(
+    count=Count('id'),
+    amount_usd=Sum('usd_amount'),
+    commission=Sum('merchant_fee'),
+    avg_amount=F('amount_usd') / F('count')
+).order_by('-amount_usd')
+
+# Мерчанты с исходящими платежами
+merchants_out = out_orders.values(
+    'solution__merchant__user__username'
+).annotate(
+    count=Count('id'),
+    amount_usd=Sum('usd_amount'),
+    commission=Sum('merchant_fee'),
+    avg_amount=F('amount_usd') / F('count')
+).order_by('-amount_usd')
+
+# Объединяем данные
+merchant_data = {}
+for m in merchants_in:
+    username = m['solution__merchant__user__username']
+    merchant_data[username] = {
+        'username': username,
+        'in_count': m['count'],
+        'in_amount': m['amount_usd'] or Decimal('0'),
+        'in_commission': m['commission'] or Decimal('0'),
+        'out_count': 0,
+        'out_amount': Decimal('0'),
+        'out_commission': Decimal('0')
+    }
+
+for m in merchants_out:
+    username = m['solution__merchant__user__username']
+    if username in merchant_data:
+        merchant_data[username]['out_count'] = m['count']
+        merchant_data[username]['out_amount'] = m['amount_usd'] or Decimal('0')
+        merchant_data[username]['out_commission'] = m['commission'] or Decimal('0')
+    else:
+        merchant_data[username] = {
+            'username': username,
+            'in_count': 0,
+            'in_amount': Decimal('0'),
+            'in_commission': Decimal('0'),
+            'out_count': m['count'],
+            'out_amount': m['amount_usd'] or Decimal('0'),
+            'out_commission': m['commission'] or Decimal('0')
+        }
+
+# Сортируем по общему объему
+sorted_merchants = sorted(
+    merchant_data.values(),
+    key=lambda x: x['in_amount'] + x['out_amount'],
+    reverse=True
+)
+
+print(f"Всего активных мерчантов: {len(sorted_merchants)}")
+print("\nТоп-10 мерчантов по обороту:")
+for i, merch in enumerate(sorted_merchants[:10], 1):
+    total_amount = merch['in_amount'] + merch['out_amount']
+    total_commission = merch['in_commission'] + merch['out_commission']
+    print(f"{i:2}. {merch['username']:<20} | "
+          f"Оборот: ${total_amount:9,.2f} | "
+          f"Ввод: {merch['in_count']:3} сделок на ${merch['in_amount']:9,.2f} | "
+          f"Вывод: {merch['out_count']:3} сделок на ${merch['out_amount']:9,.2f} | "
+          f"Комиссия: ${total_commission:7,.2f}")
+
+# === 5. СТАТИСТИКА ПО ТРЕЙДЕРАМ ===
+print(f"\n👤 СТАТИСТИКА ПО ТРЕЙДЕРАМ:")
+print("=" * 60)
+
+# Трейдеры с входящими платежами
+traders_in = in_orders.values(
+    'payment_details__group__trader__user__username',
+    'payment_details__group__trader__team__name'
+).annotate(
+    count=Count('id'),
+    amount_usd=Sum('usd_amount'),
+    commission=Sum('trader_fee'),
+    avg_amount=F('amount_usd') / F('count')
+).order_by('-amount_usd')
+
+# Трейдеры с исходящими платежами
+traders_out = out_orders.values(
+    'payment_details__group__trader__user__username',
+    'payment_details__group__trader__team__name'
+).annotate(
+    count=Count('id'),
+    amount_usd=Sum('usd_amount'),
+    commission=Sum('trader_fee'),
+    avg_amount=F('amount_usd') / F('count')
+).order_by('-amount_usd')
+
+# Объединяем данные
+trader_data = {}
+for t in traders_in:
+    username = t['payment_details__group__trader__user__username']
+    team = t['payment_details__group__trader__team__name'] or 'Без команды'
+    trader_data[username] = {
+        'username': username,
+        'team': team,
+        'in_count': t['count'],
+        'in_amount': t['amount_usd'] or Decimal('0'),
+        'in_commission': t['commission'] or Decimal('0'),
+        'out_count': 0,
+        'out_amount': Decimal('0'),
+        'out_commission': Decimal('0')
+    }
+
+for t in traders_out:
+    username = t['payment_details__group__trader__user__username']
+    team = t['payment_details__group__trader__team__name'] or 'Без команды'
+    if username in trader_data:
+        trader_data[username]['out_count'] = t['count']
+        trader_data[username]['out_amount'] = t['amount_usd'] or Decimal('0')
+        trader_data[username]['out_commission'] = t['commission'] or Decimal('0')
+    else:
+        trader_data[username] = {
+            'username': username,
+            'team': team,
+            'in_count': 0,
+            'in_amount': Decimal('0'),
+            'in_commission': Decimal('0'),
+            'out_count': t['count'],
+            'out_amount': t['amount_usd'] or Decimal('0'),
+            'out_commission': t['commission'] or Decimal('0')
+        }
+
+# Сортируем по общему объему
+sorted_traders = sorted(
+    trader_data.values(),
+    key=lambda x: x['in_amount'] + x['out_amount'],
+    reverse=True
+)
+
+print(f"Всего активных трейдеров: {len(sorted_traders)}")
+print("\nТоп-15 трейдеров по обороту:")
+for i, trader in enumerate(sorted_traders[:15], 1):
+    total_amount = trader['in_amount'] + trader['out_amount']
+    total_commission = trader['in_commission'] + trader['out_commission']
+    print(f"{i:2}. {trader['username']:<15} ({trader['team']:<15}) | "
+          f"Оборот: ${total_amount:9,.2f} | "
+          f"Ввод: {trader['in_count']:3} сделок на ${trader['in_amount']:9,.2f} | "
+          f"Вывод: {trader['out_count']:3} сделок на ${trader['out_amount']:9,.2f} | "
+          f"Заработок: ${total_commission:7,.2f}")
+
+# === 6. СТАТИСТИКА ПО КОМАНДАМ ===
+print(f"\n👥 СТАТИСТИКА ПО КОМАНДАМ:")
+print("=" * 60)
+
+team_data = {}
+for trader in sorted_traders:
+    team = trader['team']
+    if team not in team_data:
+        team_data[team] = {
+            'team': team,
+            'traders_count': 1,
+            'total_count': trader['in_count'] + trader['out_count'],
+            'total_amount': trader['in_amount'] + trader['out_amount'],
+            'total_commission': trader['in_commission'] + trader['out_commission'],
+            'in_amount': trader['in_amount'],
+            'out_amount': trader['out_amount']
+        }
+    else:
+        team_data[team]['traders_count'] += 1
+        team_data[team]['total_count'] += trader['in_count'] + trader['out_count']
+        team_data[team]['total_amount'] += trader['in_amount'] + trader['out_amount']
+        team_data[team]['total_commission'] += trader['in_commission'] + trader['out_commission']
+        team_data[team]['in_amount'] += trader['in_amount']
+        team_data[team]['out_amount'] += trader['out_amount']
+
+# Сортируем команды по обороту
+sorted_teams = sorted(
+    team_data.values(),
+    key=lambda x: x['total_amount'],
+    reverse=True
+)
+
+print(f"Всего команд: {len(sorted_teams)}")
+print("\nСтатистика по командам:")
+for i, team in enumerate(sorted_teams, 1):
+    print(f"{i:2}. {team['team']:<20} | "
+          f"Трейдеров: {team['traders_count']:2} | "
+          f"Сделок: {team['total_count']:4} | "
+          f"Оборот: ${team['total_amount']:10,.2f} | "
+          f"Заработок: ${team['total_commission']:8,.2f} | "
+          f"Ввод/Вывод: ${team['in_amount']:,.2f}/${team['out_amount']:,.2f}")
+
+# === 7. ДОПОЛНИТЕЛЬНАЯ СТАТИСТИКА ===
+print(f"\n📊 ДОПОЛНИТЕЛЬНАЯ СТАТИСТИКА:")
+print("=" * 60)
+
+# Средний чек
+if in_stats['total_count']:
+    avg_in_check_usd = total_in_usd / in_stats['total_count']
+    avg_in_check_fiat = (in_stats['total_amount_fiat'] or Decimal('0')) / in_stats['total_count']
+    print(f"Средний чек ввода: ${avg_in_check_usd:,.2f} ({avg_in_check_fiat:,.0f}₽)")
+
+if out_stats['total_count']:
+    avg_out_check_usd = total_out_usd / out_stats['total_count']
+    avg_out_check_fiat = (out_stats['total_amount_fiat'] or Decimal('0')) / out_stats['total_count']
+    print(f"Средний чек вывода: ${avg_out_check_usd:,.2f} ({avg_out_check_fiat:,.0f}₽)")
+
+# Маржинальность
+if total_volume_usd > 0:
+    margin_percentage = (platform_profit / total_volume_usd) * 100
+    print(f"Маржинальность платформы: {margin_percentage:.2f}%")
+
+# Распределение по типам сделок
+print(f"\nРаспределение сделок:")
+print(f"  • Ввод: {in_stats['total_count'] or 0} сделок ({total_in_usd:,.2f}$)")
+print(f"  • Вывод: {out_stats['total_count'] or 0} сделок ({total_out_usd:,.2f}$)")
+print(f"  • Соотношение ввод/вывод: {total_in_usd/total_out_usd:.2f}:1" if total_out_usd > 0 else "")
+
+print(f"\n✅ РАСЧЕТ ЗАВЕРШЕН!")
+print(f"📅 Дата: {TARGET_DATE}")
+print(f"💰 Общий оборот: ${total_volume_usd:,.2f}")
+print(f"👥 Активных мерчантов: {len(sorted_merchants)}")
+print(f"👤 Активных трейдеров: {len(sorted_traders)}")
+print(f"🏢 Прибыль платформы: ${platform_profit:,.2f}")
+

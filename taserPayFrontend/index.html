@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8"/>
+    <link rel="icon" href="/logo.svg"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>AvaPay - Dashboard</title>
+    <meta property="og:site_name" content="AvaPay - Dashboard">
+    <meta property="og:title" content="AvaPay - Dashboard">
+    <meta name="theme-color" content="#0C24FB">
+    <meta property="og:description"
+          content="AvaPay - dashboard">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <style>
+        body {
+            margin: 0;
+        }
+
+        html {
+            overflow-x: hidden;
+            overflow-y: scroll;
+        }
+
+        #loading-bg {
+            position: absolute;
+            display: block;
+            background: var(--initial-loader-bg, #fff);
+            block-size: 100%;
+            inline-size: 100%;
+        }
+
+        .loading-logo {
+            position: absolute;
+            inset-block-start: 40%;
+            inset-inline-start: calc(50% - 45px);
+        }
+
+        .loading {
+            position: absolute;
+            box-sizing: border-box;
+            border: 3px solid transparent;
+            block-size: 55px;
+            border-radius: 50%;
+            inline-size: 55px;
+            inset-block-start: 50%;
+            inset-inline-start: calc(50% - 35px);
+        }
+
+        .loading .effect-1,
+        .loading .effect-2,
+        .loading .effect-3 {
+            position: absolute;
+            box-sizing: border-box;
+            border: 3px solid transparent;
+            block-size: 100%;
+            border-inline-start: 3px solid var(--initial-loader-color, #eee);
+            border-radius: 50%;
+            inline-size: 100%;
+        }
+
+        .loading .effect-1 {
+            animation: rotate 1s ease infinite;
+        }
+
+        .loading .effect-2 {
+            animation: rotate-opacity 1s ease infinite 0.1s;
+        }
+
+        .loading .effect-3 {
+            animation: rotate-opacity 1s ease infinite 0.2s;
+        }
+
+        .loading .effects {
+            transition: all 0.3s ease;
+        }
+
+        @keyframes rotate {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(1turn);
+            }
+        }
+
+        @keyframes rotate-opacity {
+            0% {
+                opacity: 0.1;
+                transform: rotate(0deg);
+            }
+
+            100% {
+                opacity: 1;
+                transform: rotate(1turn);
+            }
+        }
+    </style>
+</head>
+
+<body>
+<div id="app">
+    <div id="loading-bg">
+        <div class="loading-logo">
+            <img width="78" height="78" src="/logo.svg" alt="Logo"/>
+        </div>
+        <div class="loading">
+            <div class="effect-1 effects"></div>
+            <div class="effect-2 effects"></div>
+            <div class="effect-3 effects"></div>
+        </div>
+    </div>
+</div>
+<script type="module" src="/src/main.js"></script>
+<script>
+  const loaderColor = localStorage.getItem ('app-initial-loader-bg') || '#F5F5F5'
+  const primaryColor = localStorage.getItem ('app-initial-loader-color') || '#2563eb'
+
+  if (loaderColor)
+    document.documentElement.style.setProperty ('--initial-loader-bg', loaderColor)
+  if (primaryColor)
+    document.documentElement.style.setProperty ('--initial-loader-color', primaryColor)
+
+</script>
+</body>
+
+</html>

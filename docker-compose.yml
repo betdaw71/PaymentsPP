@@ -1,0 +1,268 @@
+services:
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=project_network"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.preferredchain=ISRG Root X1"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
+      - "./traefik/middlewares.yml:/etc/traefik/middlewares.yml"
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.avapay.net`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+
+  doc:
+    build:
+      context: ./titanpay/docs
+      dockerfile: Dockerfile
+    container_name: avapay_doc
+    restart: unless-stopped
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.doc.rule=Host(`doc.avapay.net`)"
+      - "traefik.http.routers.doc.entrypoints=websecure"
+      - "traefik.http.routers.doc.tls=true"
+      - "traefik.http.routers.doc.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.doc.service=doc"
+      - "traefik.http.services.doc.loadbalancer.server.port=80"
+      - "traefik.http.routers.doc-http.rule=Host(`doc.avapay.net`)"
+      - "traefik.http.routers.doc-http.entrypoints=web"
+      - "traefik.http.routers.doc-http.middlewares=doc-redirect@docker"
+      - "traefik.http.middlewares.doc-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.doc-redirect.redirectscheme.permanent=true"
+
+  promo:
+    image: nginx:alpine
+    container_name: titanpay_promo
+    restart: unless-stopped
+    volumes:
+      - ./promo:/usr/share/nginx/html:ro
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.promo.rule=Host(`promo.avapay.net`)"
+      - "traefik.http.routers.promo.entrypoints=websecure"
+      - "traefik.http.routers.promo.tls=true"
+      - "traefik.http.routers.promo.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.promo.service=promo"
+      - "traefik.http.services.promo.loadbalancer.server.port=80"
+      - "traefik.http.routers.promo-http.rule=Host(`promo.avapay.net`)"
+      - "traefik.http.routers.promo-http.entrypoints=web"
+      - "traefik.http.routers.promo-http.middlewares=promo-redirect@docker"
+      - "traefik.http.middlewares.promo-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.promo-redirect.redirectscheme.permanent=true"
+
+  db:
+    image: postgres:15
+    container_name: titanpay_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./titanpay/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - project_network
+
+  redis:
+    image: redis:alpine
+    container_name: titanpay_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - project_network
+
+  app:
+    build: ./titanpay
+    container_name: titanpay_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`api.avapay.net`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=8080"
+      - "traefik.http.routers.media.rule=Host(`api.avapay.net`) && PathPrefix(`/media/`)"
+      - "traefik.http.routers.media.entrypoints=websecure"
+      - "traefik.http.routers.media.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.media.service=app"
+      - "traefik.http.routers.pay.rule=Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`)"
+      - "traefik.http.routers.pay.entrypoints=websecure"
+      - "traefik.http.routers.pay.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay.service=app"
+      - "traefik.http.routers.pay-http.rule=Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`)"
+      - "traefik.http.routers.pay-http.entrypoints=web"
+      - "traefik.http.routers.pay-http.middlewares=pay-redirect@docker"
+      - "traefik.http.middlewares.pay-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.pay-redirect.redirectscheme.permanent=true"
+
+  frontend:
+    build:
+      context: ./taserPayFrontend
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_AUTHORIZATION_HEADER: Bearer
+        VITE_ASSETS_URL: /
+    container_name: titanpay_frontend
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`avapay.net`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.frontend.service=frontend"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+      - "traefik.http.routers.frontend-http.rule=Host(`avapay.net`)"
+      - "traefik.http.routers.frontend-http.entrypoints=web"
+      - "traefik.http.routers.frontend-http.middlewares=frontend-redirect@docker"
+      - "traefik.http.middlewares.frontend-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.frontend-redirect.redirectscheme.permanent=true"
+
+  crypto:
+    build: ./crypto
+    container_name: titanpay_crypto
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${CRYPTO_DB_NAME}
+    depends_on:
+      - db
+    networks:
+      - project_network
+    ports:
+      - "8082:8082"
+
+  emergency:
+    build: ./emergency
+    container_name: titanpay_emergency
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://app:8080/api/v1/bot
+      TGBOT_TOKEN: ${TGBOT_TOKEN}
+      TELEBOT_TOKEN: ${EMERGENCY_TELEBOT_TOKEN}
+    depends_on:
+      - app
+    networks:
+      - project_network
+
+  orderbot:
+    build: ./orderbot
+    container_name: titanpay_orderbot
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://app:8080/api/v1/bot
+      TGBOT_TOKEN: ${TGBOT_TOKEN}
+      TELEBOT_TOKEN: ${ORDERBOT_TELEBOT_TOKEN}
+    depends_on:
+      - app
+    networks:
+      - project_network
+
+  autosms:
+    build: ./autosms
+    container_name: titanpay_autosms
+    restart: unless-stopped
+    environment:
+      BACKEND_ENDPOINT: http://app:8080/api/v1/sms
+      BUCKET_NAME: ${AUTOSMS_BUCKET_NAME}
+      S3_ENDPOINT: ${AUTOSMS_S3_ENDPOINT}
+      ACCESS_KEY: ${AUTOSMS_ACCESS_KEY}
+      SECRET_KEY: ${AUTOSMS_SECRET_KEY}
+    depends_on:
+      - app
+    networks:
+      - project_network
+
+  autosmsbot:
+    build: ./autosmsbot
+    container_name: titanpay_autosmsbot
+    restart: unless-stopped
+    environment:
+      TGBOT_TOKEN: ${TGBOT_TOKEN}
+      BACKEND_URL: http://app:8080/api/v1/bot
+      TELEBOT_TOKEN: ${AUTOSMSBOT_TELEBOT_TOKEN}
+    depends_on:
+      - app
+    networks:
+      - project_network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: titanpay_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    depends_on:
+      - db
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pgadmin.rule=Host(`pgadmin.avapay.net`)"
+      - "traefik.http.routers.pgadmin.entrypoints=websecure"
+      - "traefik.http.routers.pgadmin.tls.certresolver=letsencrypt"
+      - "traefik.http.services.pgadmin.loadbalancer.server.port=80"
+
+volumes:
+  pg_data:
+  redis_data:
+  static_files:
+  media_files:
+
+networks:
+  project_network:
+    name: project_network
+    driver: bridge

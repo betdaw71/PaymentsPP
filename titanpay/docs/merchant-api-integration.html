@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AvaPay — документация Merchant API</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-soft: #eff6ff;
+      --bg: #f8f7fa;
+      --surface: #ffffff;
+      --text: #2f2b3d;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+      --success: #28c76f;
+      --warning: #f59e0b;
+      --error: #ea5455;
+      --code: #111827;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(47, 43, 61, 0.08), 0 8px 24px rgba(47, 43, 61, 0.06);
+      --sidebar-width: 280px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 18px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--primary);
+    }
+
+    .brand-badge {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 0.85rem;
+      font-weight: 800;
+    }
+
+    .sidebar p {
+      margin: 0 0 20px;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+
+    .nav-section {
+      margin: 18px 0 8px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .sidebar a {
+      display: block;
+      padding: 8px 10px;
+      margin: 2px 0;
+      border-radius: 8px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+
+    .sidebar a:hover,
+    .sidebar a.active {
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
+    .content {
+      flex: 1;
+      padding: 32px 40px 80px;
+      max-width: 980px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      color: #fff;
+      border-radius: calc(var(--radius) + 4px);
+      padding: 32px;
+      box-shadow: var(--shadow);
+      margin-bottom: 28px;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 1.9rem;
+      line-height: 1.2;
+    }
+
+    .hero .subtitle { opacity: 0.92; max-width: 720px; }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .pill {
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+    }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    section h2 {
+      margin: 0 0 6px;
+      font-size: 1.35rem;
+    }
+
+    section h3 {
+      margin: 22px 0 8px;
+      font-size: 1.05rem;
+    }
+
+    .lead { color: var(--text-muted); margin-top: 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      margin: 12px 0;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: #f9fafb; font-weight: 600; }
+
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.88em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    pre {
+      background: var(--code);
+      color: #e5e7eb;
+      padding: 16px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      position: relative;
+      margin: 12px 0;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      color: inherit;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      border: 1px solid #374151;
+      background: #1f2937;
+      color: #d1d5db;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .copy-btn:hover { background: #374151; }
+
+    /* Payment page preview (invoice UI mock) */
+    .pay-preview-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 20px 0 8px;
+      background: linear-gradient(180deg, #1e293b 0%, #0f1419 100%);
+      border-radius: var(--radius);
+      margin: 16px 0;
+      border: 1px solid var(--border);
+    }
+    .pay-preview {
+      width: 100%;
+      max-width: 360px;
+      color: #e8edf4;
+      font-size: 0.88rem;
+    }
+    .pay-preview .pp-brand { text-align: center; font-size: 0.7rem; letter-spacing: 0.12em; color: #8b9cb3; margin-bottom: 10px; text-transform: uppercase; }
+    .pay-preview .pp-card {
+      background: #1a2332;
+      border: 1px solid #2d3a4f;
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .pay-preview .pp-amount { font-size: 1.6rem; font-weight: 700; margin: 0 0 4px; }
+    .pay-preview .pp-sub { color: #8b9cb3; font-size: 0.8rem; margin-bottom: 14px; }
+    .pay-preview .pp-timer {
+      display: flex; justify-content: space-between; background: #111827;
+      border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 0.82rem;
+    }
+    .pay-preview .pp-field { margin-bottom: 10px; }
+    .pay-preview .pp-label { font-size: 0.65rem; color: #8b9cb3; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+    .pay-preview .pp-value {
+      background: #111827; border: 1px solid #2d3a4f; border-radius: 8px;
+      padding: 10px 12px; font-weight: 600; font-size: 0.95rem;
+    }
+    .pay-preview .pp-btn {
+      display: block; width: 100%; text-align: center; border-radius: 10px;
+      padding: 11px; margin-top: 8px; font-weight: 600; font-size: 0.88rem;
+    }
+    .pp-btn-primary { background: #3b82f6; color: #fff; }
+    .pp-btn-secondary { background: #0ea5e9; color: #fff; }
+    .pp-btn-ghost { background: transparent; border: 1px solid #2d3a4f; color: #8b9cb3; }
+    .deploy-files { font-size: 0.85rem; }
+    .deploy-files code { font-size: 0.82rem; }
+    .deploy-files tr td:first-child { white-space: nowrap; font-family: ui-monospace, monospace; }
+
+    .alert {
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin: 14px 0;
+      font-size: 0.92rem;
+    }
+
+    .alert-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; }
+    .alert-warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .alert-danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+    .method {
+      display: inline-block;
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 4px 8px;
+      border-radius: 6px;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    .method-get { background: #dbeafe; color: #1d4ed8; }
+    .method-post { background: #dcfce7; color: #166534; }
+
+    .endpoint {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.92rem;
+      word-break: break-all;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin: 2px 4px 2px 0;
+    }
+
+    .status-ok { background: #ecfdf5; color: #047857; }
+    .status-pending { background: #eff6ff; color: #1d4ed8; }
+    .status-bad { background: #fef2f2; color: #b91c1c; }
+
+    ul { padding-left: 1.2rem; }
+    li { margin: 4px 0; }
+
+    @media (max-width: 960px) {
+      .layout { flex-direction: column; }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .content { padding: 20px 16px 60px; }
+    }
+
+    @media print {
+      .sidebar, .copy-btn { display: none; }
+      .content { max-width: none; padding: 0; }
+      section, .hero { box-shadow: none; break-inside: avoid; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-badge">AP</span> AvaPay Docs</div>
+      <p>Merchant API — интеграция pay-in / pay-out</p>
+
+      <div class="nav-section">Старт</div>
+      <a href="#overview">Обзор</a>
+      <a href="#base-url">Базовый URL</a>
+      <a href="#auth">Аутентификация</a>
+      <a href="#signature">Подпись запросов</a>
+      <a href="#callbacks">Callback-уведомления</a>
+
+      <div class="nav-section">API Keys</div>
+      <a href="#keys-create">Создание ключа</a>
+      <a href="#keys-whitelist">IP whitelist</a>
+
+      <div class="nav-section">Pay-in</div>
+      <a href="#payin-h2h">H2H (реквизиты в ответе)</a>
+      <a href="#payin-invoice">Invoice (редирект)</a>
+      <a href="#payin-invoice-ui">Окно оплаты (UI)</a>
+      <a href="#payin-invoice-api">Публичное API страницы</a>
+      <a href="#payin-invoice-deploy">Развёртывание</a>
+      <a href="#payin-statuses">Статусы</a>
+      <a href="#payin-actions">Доп. действия</a>
+
+      <div class="nav-section">Pay-out</div>
+      <a href="#payout-h2h">Создание выплаты</a>
+
+      <div class="nav-section">Справочники</div>
+      <a href="#currencies">Валюты</a>
+      <a href="#payment-systems">Платёжные системы</a>
+
+      <div class="nav-section">Практика</div>
+      <a href="#errors">Ошибки</a>
+      <a href="#security">Безопасность</a>
+      <a href="#checklist">Чеклист запуска</a>
+    </aside>
+
+    <main class="content">
+      <header class="hero">
+        <h1>Документация Merchant API</h1>
+        <p class="subtitle">
+          Руководство для мерчантов AvaPay: приём платежей (pay-in), выплаты (pay-out),
+          статусы операций, callback-уведомления и апелляции. Все примеры используют тестовые данные.
+        </p>
+        <div class="meta-row">
+          <span class="pill">Версия API: v1</span>
+          <span class="pill">Формат: JSON</span>
+          <span class="pill">Кодировка: UTF-8</span>
+        </div>
+      </header>
+
+      <section id="overview">
+        <h2>Обзор</h2>
+        <p class="lead">Merchant API позволяет:</p>
+        <ul>
+          <li>Создавать заявки на входящие платежи и получать реквизиты для оплаты</li>
+          <li>Создавать заявки на исходящие выплаты</li>
+          <li>Получать callback при смене статуса операции</li>
+          <li>Управлять API-ключами и IP whitelist</li>
+          <li>Подавать апелляции по спорным pay-in транзакциям</li>
+        </ul>
+        <div class="alert alert-info">
+          <strong>Два режима pay-in:</strong> <code>H2H</code> — реквизиты сразу в ответе API;
+          <code>Invoice</code> — ссылка на платёжную страницу (<code>redirect_url</code>).
+        </div>
+      </section>
+
+      <section id="base-url">
+        <h2>Базовый URL</h2>
+        <p class="lead">Все эндпоинты payments API:</p>
+        <pre><code>https://api.avapay.net/api/v1/payments/</code></pre>
+        <p>Ключи, валюты и платёжные системы доступны в личном кабинете мерчанта (раздел API Keys).</p>
+      </section>
+
+      <section id="auth">
+        <h2>Аутентификация</h2>
+        <p class="lead">Каждый запрос к API должен содержать заголовок:</p>
+        <pre><code>Authorization: Token &lt;ваш_api_token&gt;</code></pre>
+        <table>
+          <tr><th>Параметр</th><th>Описание</th></tr>
+          <tr><td><code>Token</code></td><td>API token, выдаётся при создании пары ключей (см. ниже)</td></tr>
+          <tr><td><code>private_key</code></td><td>UUID для подписи запросов и проверки callback. Храните только на сервере.</td></tr>
+        </table>
+        <div class="alert alert-danger">
+          <strong>Важно:</strong> не передавайте <code>private_key</code> во frontend, мобильные приложения
+          и публичную документацию. В примерах ниже используются вымышленные значения.
+        </div>
+      </section>
+
+      <section id="signature">
+        <h2>Подпись запросов</h2>
+        <p class="lead">
+          Для всех <strong>POST</strong>-запросов с телом (pay-in, pay-out, whitelist) обязателен заголовок
+          <code>Signature</code>.
+        </p>
+        <h3>Алгоритм</h3>
+        <ol>
+          <li>Сериализуйте JSON-тело запроса с сортировкой ключей, без пробелов</li>
+          <li>Добавьте к строке ваш <code>private_key</code> (как текст)</li>
+          <li>Вычислите SHA-256 hex-дайджест</li>
+        </ol>
+        <p><code>Signature = SHA256( JSON_sorted(body) + private_key )</code></p>
+
+        <h3>Пример (Python)</h3>
+        <pre><code>import hashlib
+import json
+
+PRIVATE_KEY = "00000000-0000-4000-8000-000000000001"  # пример, не боевой ключ
+
+request_data = {
+    "amount": "2000.00",
+    "currency": "KZT",
+    "payment_system": "C2CKZT",
+    "merchant_order_id": "order-demo-10001",
+    "callback_url": "https://merchant.example.com/callbacks/avapay",
+    "ftd": False,
+    "client": {
+        "client_id": "user-demo-42",
+        "email": "client@example.com",
+        "phone": "+77000000000",
+        "name": "Demo Client"
+    }
+}
+
+sorted_json = json.dumps(request_data, sort_keys=True, separators=(",", ":"))
+signature = hashlib.sha256((sorted_json + PRIVATE_KEY).encode()).hexdigest()
+
+headers = {
+    "Authorization": "Token 0000000000000000000000000000000000000000",
+    "Content-Type": "application/json",
+    "Signature": signature,
+}</code></pre>
+
+        <div class="alert alert-warn">
+          Подписывайте <strong>точно то тело</strong>, которое отправляете в запросе.
+          Любое изменение полей или формата суммы потребует пересчёта подписи.
+        </div>
+      </section>
+
+      <section id="callbacks">
+        <h2>Callback-уведомления</h2>
+        <p class="lead">
+          При смене статуса pay-in / pay-out AvaPay отправляет POST на <code>callback_url</code>,
+          указанный при создании заявки.
+        </p>
+        <h3>Тело callback (пример)</h3>
+        <pre><code>{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "order_id": "order-demo-10001",
+  "amount": 2000.0,
+  "currency": "KZT",
+  "payment_system": "C2CKZT",
+  "status": "Success",
+  "recalculated": false,
+  "timestamp": 1718123456
+}</code></pre>
+        <h3>Заголовок</h3>
+        <pre><code>Signature: &lt;sha256 подпись тела callback + private_key&gt;</code></pre>
+        <p>Алгоритм тот же, что для исходящих запросов. Всегда проверяйте подпись на своей стороне.</p>
+        <div class="alert alert-info">
+          Ответьте HTTP <code>2xx</code> в разумные сроки. При ошибке доставки возможны повторные попытки.
+        </div>
+      </section>
+
+      <section id="keys-create">
+        <h2>API Keys — создание</h2>
+        <p>
+          <span class="method method-post">POST</span>
+          <span class="endpoint">/api/v1/payments/keys/</span>
+        </p>
+        <p class="lead">Создаёт новую активную пару ключей. Предыдущие активные ключи деактивируются.</p>
+        <p><strong>Тело запроса:</strong> пустое <code>{}</code></p>
+        <h3>Ответ 201</h3>
+        <pre><code>{
+  "id": "9e3e624c-175c-496a-a7e7-e408ed671163",
+  "token": "0000000000000000000000000000000000000000",
+  "private_key": "00000000-0000-4000-8000-000000000001",
+  "created_at": "2026-06-01T12:00:00Z",
+  "whitelist_on": false,
+  "whitelist_ips": []
+}</code></pre>
+        <div class="alert alert-warn">
+          <code>private_key</code> отображается только при создании. Сохраните его сразу в защищённом хранилище.
+        </div>
+      </section>
+
+      <section id="keys-whitelist">
+        <h2>API Keys — IP whitelist</h2>
+        <p>
+          <span class="method method-post">POST</span>
+          <span class="endpoint">/api/v1/payments/keys/{id}/whitelist/</span>
+        </p>
+        <pre><code>{
+  "whitelist_on": true,
+  "whitelist": ["203.0.113.10", "203.0.113.11"]
+}</code></pre>
+        <p>Рекомендуется включать whitelist в production.</p>
+      </section>
+
+      <section id="payin-h2h">
+        <h2>Pay-in — H2H</h2>
+        <p>
+          <span class="method method-post">POST</span>
+          <span class="endpoint">/api/v1/payments/in/h2h/</span>
+        </p>
+        <p class="lead">Создание заявки с немедленной выдачей реквизитов в поле <code>payment_details</code>.</p>
+
+        <h3>Тело запроса</h3>
+        <pre><code>{
+  "amount": "3000.00",
+  "currency": "KZT",
+  "payment_system": "C2CKZT",
+  "merchant_order_id": "order-demo-10002",
+  "callback_url": "https://merchant.example.com/callbacks/avapay",
+  "success_url": "https://merchant.example.com/payment/success",
+  "failed_url": "https://merchant.example.com/payment/failed",
+  "ftd": false,
+  "client": {
+    "client_id": "user-demo-42",
+    "email": "client@example.com",
+    "phone": "+77000000000",
+    "name": "Demo Client"
+  }
+}</code></pre>
+
+        <table>
+          <tr><th>Поле</th><th>Обяз.</th><th>Описание</th></tr>
+          <tr><td><code>amount</code></td><td>да</td><td>Сумма в валюте операции (строка или число)</td></tr>
+          <tr><td><code>currency</code></td><td>да</td><td>Код валюты, напр. <code>KZT</code>, <code>RUB</code></td></tr>
+          <tr><td><code>payment_system</code></td><td>да</td><td>Имя метода из справочника / договора (напр. <code>Sber</code>, <code>SBP</code>, <code>C2C</code>, <code>C2CKZT</code>)</td></tr>
+          <tr><td><code>merchant_order_id</code></td><td>да</td><td>Уникальный ID заказа в вашей системе</td></tr>
+          <tr><td><code>callback_url</code></td><td>да</td><td>URL для webhook статусов</td></tr>
+          <tr><td><code>success_url</code></td><td>нет</td><td>Редирект при успехе (invoice-режим)</td></tr>
+          <tr><td><code>failed_url</code></td><td>нет</td><td>Редирект при ошибке</td></tr>
+          <tr><td><code>ftd</code></td><td>да</td><td><code>true</code> — первый депозит клиента, <code>false</code> — повторный</td></tr>
+          <tr><td><code>client</code></td><td>да</td><td>Объект клиента (см. ниже)</td></tr>
+        </table>
+
+        <h3>Объект client</h3>
+        <table>
+          <tr><th>Поле</th><th>Обяз.</th><th>Описание</th></tr>
+          <tr><td><code>client_id</code></td><td>да</td><td>Стабильный ID пользователя у мерчанта</td></tr>
+          <tr><td><code>email</code></td><td>нет</td><td>Email клиента</td></tr>
+          <tr><td><code>phone</code></td><td>нет</td><td>Телефон в международном формате</td></tr>
+          <tr><td><code>name</code></td><td>нет</td><td>Имя получателя / плательщика</td></tr>
+        </table>
+
+        <h3>Ответ 201 (успех)</h3>
+        <pre><code>{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "currency": "KZT",
+  "amount": "3000.00",
+  "payment_system": "C2CKZT",
+  "status": "New",
+  "merchant_order_id": "order-demo-10002",
+  "callback_url": "https://merchant.example.com/callbacks/avapay",
+  "payment_details": {
+    "card_number": "4000000000000001",
+    "owner": "Иванов И. И.",
+    "bank": "Example Bank"
+  },
+  "expires_at": 1718127056,
+  "recalculated": false,
+  "usd_amount": 5.77
+}</code></pre>
+
+        <p>Формат <code>payment_details</code> зависит от <code>payment_system</code>:</p>
+        <ul>
+          <li><code>Sber</code>, <code>C2C</code>, <code>C2CKZT</code> — <code>card_number</code>, <code>owner</code>, <code>bank</code></li>
+          <li><code>SBP</code>, <code>SberPay</code> — <code>phone</code>, <code>owner</code>, <code>bank</code></li>
+          <li><code>SberDep</code> — <code>deposit_number</code>, <code>bic</code>, <code>owner</code></li>
+        </ul>
+
+        <div class="alert alert-info">
+          Лимиты сумм (<code>min</code> / <code>max</code>) и доступные <code>payment_system</code> настраиваются
+          индивидуально для вашего мерчанта. Уточняйте в личном кабинете или у менеджера.
+        </div>
+      </section>
+
+      <section id="payin-invoice">
+        <h2>Pay-in — Invoice (редирект)</h2>
+        <p>
+          <span class="method method-post">POST</span>
+          <span class="endpoint">/api/v1/payments/in/invoice/</span>
+        </p>
+        <p class="lead">
+          Те же поля, что у H2H. В ответе дополнительно <code>redirect_url</code> — ссылка на hosted-страницу оплаты AvaPay.
+          Рекомендуется для мерчантов без собственного UI: редирект пользователя на <code>redirect_url</code>, подтверждение — через callback.
+        </p>
+        <p>Начальный статус: <span class="status status-pending">In Progress</span></p>
+
+        <h3>Пример запроса</h3>
+        <pre><code>{
+  "amount": 10000,
+  "currency": "KZT",
+  "payment_system": "C2CKZT",
+  "merchant_order_id": "order-12345",
+  "callback_url": "https://merchant.example.com/webhook/payin",
+  "success_url": "https://merchant.example.com/payment/success",
+  "failed_url": "https://merchant.example.com/payment/fail",
+  "ftd": false,
+  "client": { "client_id": "user-42" }
+}</code></pre>
+
+        <h3>Пример ответа 201</h3>
+        <pre><code>{
+  "id": "03f502ce-572d-4e39-b986-0275597b59f7",
+  "currency": "KZT",
+  "amount": "10000.00",
+  "payment_system": "C2CKZT",
+  "status": "In Progress",
+  "merchant_order_id": "order-12345",
+  "redirect_url": "https://pay.avapay.net/03f502ce-572d-4e39-b986-0275597b59f7",
+  "payment_details": {
+    "card_number": "5488880767284602",
+    "owner": "naira baldarian",
+    "bank": "bank of georgia"
+  },
+  "expires_at": 1782228707,
+  "success_url": "https://merchant.example.com/payment/success",
+  "failed_url": "https://merchant.example.com/payment/fail"
+}</code></pre>
+
+        <h3>Схема интеграции</h3>
+        <ol>
+          <li>Backend мерчанта: <code>POST /api/v1/payments/in/invoice/</code> (Token + Signature)</li>
+          <li>Редирект пользователя на <code>redirect_url</code> из ответа</li>
+          <li>Клиент видит страницу оплаты, копирует реквизиты / открывает банк, нажимает «Я оплатил»</li>
+          <li>AvaPay шлёт webhook на <code>callback_url</code> при смене статуса</li>
+          <li>После <span class="status status-ok">Success</span> / <span class="status status-bad">Failed</span> — редирект на <code>success_url</code> / <code>failed_url</code></li>
+        </ol>
+
+        <div class="alert alert-info">
+          <strong>redirect_url</strong> формируется автоматически:<br>
+          <code>https://pay.{domain}/{pay_in_id}</code> — C2C / C2CKZT и др.<br>
+          <code>https://payment.{domain}/{id}</code> — SBP<br>
+          <code>https://payments.{domain}/{id}</code> — SberPay
+        </div>
+
+        <div class="alert alert-warning">
+          <strong>Deep links (Kaspi / Homebank):</strong> кнопки на странице оплаты <em>открывают приложение банка</em>
+          и копируют реквизиты в буфер («Скопировать всё»). Автоматическая подстановка номера карты и суммы
+          внутри Kaspi <strong>не поддерживается</strong> публичным API — клиент вставляет данные вручную
+          (Перевод → на карту другого банка). Полный prefill возможен только через официальную merchant-интеграцию Kaspi Pay.
+        </div>
+      </section>
+
+      <section id="payin-invoice-ui">
+        <h2>Платёжное окно (UI)</h2>
+        <p class="lead">Так выглядит hosted-страница для KZT (локализация KZ/RU, переключатель в шапке).</p>
+
+        <div class="pay-preview-wrap">
+          <div class="pay-preview">
+            <div class="pp-brand">AvaPay · KZ | RU</div>
+            <div class="pp-card">
+              <div class="pp-amount">10 000 KZT</div>
+              <div class="pp-sub">C2CKZT</div>
+              <div class="pp-timer"><span>Уақыт қалды</span><span>14:32</span></div>
+              <div class="pp-field">
+                <div class="pp-label">Карта нөмірі</div>
+                <div class="pp-value">5488 8807 6728 4602</div>
+              </div>
+              <div class="pp-field">
+                <div class="pp-label">Алушы</div>
+                <div class="pp-value">naira baldarian</div>
+              </div>
+              <div class="pp-field">
+                <div class="pp-label">Банк</div>
+                <div class="pp-value">bank of georgia</div>
+              </div>
+              <div class="pp-btn pp-btn-secondary">Барлығын көшіру</div>
+              <div class="pp-btn pp-btn-secondary">Kaspi-де ашу</div>
+              <p style="color:#8b9cb3;font-size:0.75rem;margin:10px 0 0;line-height:1.4">
+                Көрсетілген соманы нақты реквизитке аударыңыз, содан кейін «Төледім» басыңыз.
+              </p>
+              <div class="pp-btn pp-btn-primary">Төледім</div>
+              <div class="pp-btn pp-btn-ghost">Төлемді болдырмау</div>
+            </div>
+          </div>
+        </div>
+
+        <h3>Экраны</h3>
+        <table>
+          <tr><th>Экран</th><th>Когда</th></tr>
+          <tr><td>Оплата</td><td>Реквизиты выданы, таймер активен</td></tr>
+          <tr><td>Ожидаем подтверждение</td><td>После «Я оплатил» — статус проверяется, refresh не ведёт на fail</td></tr>
+          <tr><td>Success / Failed</td><td>Редирект на <code>success_url</code> / <code>failed_url</code></td></tr>
+        </table>
+      </section>
+
+      <section id="payin-invoice-api">
+        <h2>Публичное API платёжной страницы</h2>
+        <p class="lead">Вызывается страницей оплаты. Авторизация мерчанта не требуется.</p>
+        <table>
+          <tr><th>Метод</th><th>URL</th><th>Назначение</th></tr>
+          <tr><td><span class="method method-get">GET</span></td><td><code>/api/v1/payments/in/invoice/{id}/obtain/</code></td><td>Реквизиты, таймер, bank_actions, locale</td></tr>
+          <tr><td><span class="method method-post">POST</span></td><td><code>.../sent/</code></td><td>Клиент нажал «Я оплатил»</td></tr>
+          <tr><td><span class="method method-post">POST</span></td><td><code>.../cancel/</code></td><td>Отмена платежа</td></tr>
+          <tr><td><span class="method method-get">GET</span></td><td><code>.../complete/</code></td><td>Терминальный статус + URL редиректа</td></tr>
+          <tr><td><span class="method method-post">POST</span></td><td><code>.../arbitrage/</code></td><td>Апелляция (multipart, file)</td></tr>
+        </table>
+        <p>Query-параметр <code>?lang=kk</code> или <code>?lang=ru</code> на <code>obtain</code>.</p>
+        <p>Страница: <code>GET https://pay.avapay.net/{pay_in_id}/</code></p>
+      </section>
+
+      <section id="payin-invoice-deploy">
+        <h2>Развёртывание (для администратора)</h2>
+        <p class="lead">Файлы, которые нужно обновить на сервере для hosted checkout + invoice API.</p>
+        <table class="deploy-files">
+          <tr><th>Файл</th><th>Назначение</th></tr>
+          <tr><td><code>titanpay/templates/payment_page/pay.html</code></td><td>UI страницы оплаты</td></tr>
+          <tr><td><code>titanpay/payments/payment_page.py</code></td><td>Django view страницы</td></tr>
+          <tr><td><code>titanpay/payments/payment_page_enrich.py</code></td><td>locale, bank_actions для obtain</td></tr>
+          <tr><td><code>titanpay/payments/bank_deeplinks.py</code></td><td>Kaspi / Homebank кнопки</td></tr>
+          <tr><td><code>titanpay/payments/invoice_obtain.py</code></td><td>obtain по статусу</td></tr>
+          <tr><td><code>titanpay/payments/viewsets.py</code></td><td>obtain, complete</td></tr>
+          <tr><td><code>titanpay/payments/serializers.py</code></td><td>waiting_confirmation</td></tr>
+          <tr><td><code>titanpay/titanpay/urls.py</code></td><td><code>/{uuid}/</code> маршрут страницы</td></tr>
+          <tr><td><code>titanpay/trade/utils2.py</code></td><td>expire: не сбрасывать «Money sent by user»</td></tr>
+        </table>
+        <h3>docker-compose (Traefik)</h3>
+        <pre><code># app.environment
+PAYMENT_PAGE_URL=avapay.net
+PUBLIC_API_URL=https://api.avapay.net
+
+# app.labels — router pay.avapay.net → app:8080
+# DNS A: pay.avapay.net, payment.avapay.net, payments.avapay.net</code></pre>
+        <pre><code>docker compose build app && docker compose up -d app traefik</code></pre>
+
+        <h3>HTTPS и favicon на pay.avapay.net</h3>
+        <div class="alert alert-danger">
+          «Небезопасное соединение» = нет валидного Let's Encrypt сертификата для <code>pay.avapay.net</code>.
+          Проверьте DNS, Traefik labels и логи ACME.
+        </div>
+        <ol>
+          <li><code>dig +short pay.avapay.net</code> — A-запись на IP сервера</li>
+          <li>Traefik router с <code>tls.certresolver=letsencrypt</code> для <code>pay.avapay.net</code></li>
+          <li><code>docker compose logs traefik 2>&1 | grep -i acme</code></li>
+          <li>После выпуска cert — предупреждение браузера исчезнет</li>
+        </ol>
+        <p>Favicon задаётся в <code>pay.html</code> (inline SVG логотип AvaPay). Обновите образ <code>app</code> после деплоя шаблона.</p>
+      </section>
+
+      <section id="payin-statuses">
+        <h2>Статусы pay-in</h2>
+        <table>
+          <tr><th>Статус</th><th>Описание</th></tr>
+          <tr><td><span class="status status-pending">New</span></td><td>Заявка создана, ожидается оплата (H2H)</td></tr>
+          <tr><td><span class="status status-pending">In Progress</span></td><td>В обработке (invoice-режим)</td></tr>
+          <tr><td><span class="status status-ok">Success</span></td><td>Платёж подтверждён</td></tr>
+          <tr><td><span class="status status-bad">Failed</span></td><td>Ошибка / истечение без оплаты</td></tr>
+          <tr><td><span class="status status-bad">Declined</span></td><td>Заявка отклонена при создании (нет реквизитов, лимиты, метод неактивен)</td></tr>
+        </table>
+        <p>Поле <code>expires_at</code> — Unix timestamp, до которого действительны реквизиты.</p>
+      </section>
+
+      <section id="payin-actions">
+        <h2>Дополнительные действия pay-in</h2>
+
+        <h3>Получить заявку</h3>
+        <p><span class="method method-get">GET</span> <code>/api/v1/payments/in/h2h/{id}/</code></p>
+
+        <h3>Отметить «деньги отправлены»</h3>
+        <p><span class="method method-post">POST</span> <code>/api/v1/payments/in/h2h/{id}/sent/</code></p>
+        <p>Для invoice: <code>/api/v1/payments/in/invoice/{id}/sent/</code> (вызывается со страницы оплаты)</p>
+
+        <h3>Отмена заявки</h3>
+        <p><span class="method method-post">POST</span> <code>/api/v1/payments/in/h2h/{id}/cancel/</code></p>
+        <p>Для invoice: <code>/api/v1/payments/in/invoice/{id}/cancel/</code></p>
+
+        <h3>Апелляция</h3>
+        <p><span class="method method-post">POST</span> <code>/api/v1/payments/in/h2h/{id}/arbitrage/</code></p>
+        <p>Для invoice: <code>/api/v1/payments/in/invoice/{id}/arbitrage/</code></p>
+        <p>Формат: <code>multipart/form-data</code>, поле <code>file</code> — PNG, JPEG или PDF (до 5 MB).</p>
+        <p>Используйте, если клиент утверждает, что оплатил, а статус не перешёл в Success.</p>
+      </section>
+
+      <section id="payout-h2h">
+        <h2>Pay-out — H2H</h2>
+        <p>
+          <span class="method method-post">POST</span>
+          <span class="endpoint">/api/v1/payments/out/h2h/</span>
+        </p>
+        <pre><code>{
+  "amount": "5000.00",
+  "currency": "RUB",
+  "payment_system": "Sber",
+  "merchant_order_id": "payout-demo-20001",
+  "callback_url": "https://merchant.example.com/callbacks/avapay-payout",
+  "ftd": false,
+  "client": {
+    "client_id": "user-demo-42",
+    "email": "client@example.com",
+    "phone": "+79000000000",
+    "name": "Demo Client"
+  },
+  "details": {
+    "card_number": "4000000000000002"
+  }
+}</code></pre>
+        <p>Поле <code>details</code> обязательно. Набор полей зависит от <code>payment_system</code> — см. <code>required_fields</code> в справочнике.</p>
+      </section>
+
+      <section id="currencies">
+        <h2>Справочник валют</h2>
+        <p><span class="method method-get">GET</span> <code>/api/v1/payments/currencies/</code></p>
+        <p>Возвращает валюты, доступные вашему мерчанту.</p>
+        <pre><code>[
+  { "symbol": "KZT" },
+  { "symbol": "RUB" }
+]</code></pre>
+      </section>
+
+      <section id="payment-systems">
+        <h2>Справочник платёжных систем</h2>
+        <p><span class="method method-get">GET</span> <code>/api/v1/payments/payment-systems/</code></p>
+        <pre><code>[
+  {
+    "name": "C2CKZT",
+    "currency": "KZT",
+    "required_fields": {
+      "card_number": {
+        "regex": "^\\d{16}$",
+        "pattern": "16 digits"
+      }
+    }
+  }
+]</code></pre>
+      </section>
+
+      <section id="errors">
+        <h2>Типичные ошибки</h2>
+        <table>
+          <tr><th>HTTP</th><th>Сообщение</th><th>Причина</th></tr>
+          <tr><td>403</td><td>Invalid signature</td><td>Неверная подпись тела запроса</td></tr>
+          <tr><td>403</td><td>Signature required</td><td>Нет заголовка Signature на POST</td></tr>
+          <tr><td>403</td><td>This IP is not in whitelist</td><td>IP не в whitelist API-ключа</td></tr>
+          <tr><td>400</td><td>This method is not active</td><td>Метод не подключён или неверный ftd</td></tr>
+          <tr><td>400</td><td>Amount out of limits!</td><td>Сумма вне лимитов для метода</td></tr>
+          <tr><td>400</td><td>Order with such merchant_order_id already exists</td><td>Дубликат ID заказа</td></tr>
+          <tr><td>400</td><td>Could not allocate payment requisites...</td><td>Временно нет реквизитов — повторите позже или другую сумму</td></tr>
+        </table>
+      </section>
+
+      <section id="security">
+        <h2>Безопасность</h2>
+        <ul>
+          <li>Храните <code>private_key</code> только на backend</li>
+          <li>Используйте HTTPS для callback URL</li>
+          <li>Включите IP whitelist в production</li>
+          <li>Проверяйте подпись каждого callback</li>
+          <li>Не логируйте полные реквизиты карт в открытом виде</li>
+          <li>Ротируйте ключи при компрометации: создайте новую пару в кабинете</li>
+        </ul>
+        <div class="alert alert-danger">
+          Если ключи или токены когда-либо попадали в публичные документы, чаты или репозитории —
+          немедленно создайте новую пару API Keys.
+        </div>
+      </section>
+
+      <section id="checklist">
+        <h2>Чеклист запуска</h2>
+        <ol>
+          <li>Получите доступ в личный кабинет AvaPay</li>
+          <li>Создайте API Keys, сохраните <code>token</code> и <code>private_key</code></li>
+          <li>Реализуйте подпись исходящих POST-запросов</li>
+          <li>Реализуйте приём и проверку callback</li>
+          <li>Для redirect-интеграции: <code>POST /in/invoice/</code> → редирект на <code>redirect_url</code></li>
+          <li>Укажите <code>success_url</code> и <code>failed_url</code> для возврата клиента после оплаты</li>
+          <li>Проверьте доступные <code>payment_system</code> и лимиты для вашего аккаунта</li>
+          <li>Проведите тестовые заявки на минимальных суммах</li>
+          <li>Включите IP whitelist перед production</li>
+        </ol>
+        <p class="lead">Техническая поддержка: обращайтесь к вашему менеджеру AvaPay.</p>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    document.querySelectorAll('pre').forEach((block) => {
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = 'Copy';
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(block.innerText);
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      });
+      block.appendChild(btn);
+    });
+
+    const links = document.querySelectorAll('.sidebar a');
+    const sections = [...links].map((a) => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        links.forEach((l) => l.classList.toggle('active', l.getAttribute('href') === '#' + entry.target.id));
+      });
+    }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+    sections.forEach((s) => observer.observe(s));
+  </script>
+</body>
+</html>

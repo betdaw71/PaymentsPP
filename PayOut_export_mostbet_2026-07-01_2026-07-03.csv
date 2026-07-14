@@ -1,0 +1,2 @@
+ID,Client,Merchant Order ID,Order Amount,Comission Amount in Order Currency,Currency,Amount in USDT,Comission Amount in USDT,Order Type,Status,Created At,Updated At,Currency Rate
+c2460083-2d0e-4719-826c-bbff218c1ff8,Ivan Petrov,59844237,20000.00,598.38,KZT,39.77,1.19,PayOut,succeeded,2026-07-02T10:17:17Z,2026-07-02T11:40:03Z,502.84

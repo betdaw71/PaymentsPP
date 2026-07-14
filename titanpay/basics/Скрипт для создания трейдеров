@@ -1,0 +1,480 @@
+import uuid
+from decimal import Decimal
+from django.contrib.auth.models import User
+from django.db import transaction
+
+# Импорт моделей (у вас уже должны быть в окружении)
+from basics.models import (
+    Language, Currency, Balance, TrafficType, PaymentSystem,
+    Trader, TraderTeam, TraderTeamRates, TeamLead, PaymentDetailsGroup
+)
+
+def create_trader_team_interactive():
+    """
+    Интерактивное создание команды трейдеров
+    """
+    print("\n" + "="*60)
+    print("🚀 СОЗДАНИЕ НОВОЙ КОМАНДЫ ТРЕЙДЕРОВ")
+    print("="*60)
+    
+    try:
+        with transaction.atomic():
+            # ============ 1. ОСНОВНЫЕ НАСТРОЙКИ ============
+            print("\n📋 1. ОСНОВНЫЕ НАСТРОЙКИ КОМАНДЫ")
+            
+            team_name = input("Название команды: ").strip()
+            if not team_name:
+                print("❌ Название команды обязательно!")
+                return
+            
+            # Проверяем, не существует ли уже команда
+            if TraderTeam.objects.filter(name=team_name).exists():
+                print(f"❌ Команда '{team_name}' уже существует!")
+                return
+            
+            # ============ 2. КОМИССИИ КОМАНДЫ ============
+            print("\n💰 2. НАСТРОЙКА КОМИССИЙ")
+            
+            try:
+                rate_in = Decimal(input("Комиссия на ВВОД (в %, например 1.5): ") or "1.5")
+                rate_out = Decimal(input("Комиссия на ВЫВОД (в %, например 2.5): ") or "2.5")
+                
+                if not (0 <= rate_in <= 100 and 0 <= rate_out <= 100):
+                    print("❌ Комиссии должны быть от 0 до 100%!")
+                    return
+            except ValueError:
+                print("❌ Неверный формат числа!")
+                return
+            
+            # ============ 3. СТРАХОВОЙ ДЕПОЗИТ ============
+            print("\n🏦 3. СТРАХОВОЙ ДЕПОЗИТ")
+            
+            try:
+                insurance_deposit = Decimal(input("Страховой депозит ($, по умолчанию 1000): ") or "1000")
+                if insurance_deposit < 0:
+                    print("❌ Депозит не может быть отрицательным!")
+                    return
+            except ValueError:
+                print("❌ Неверный формат числа!")
+                return
+            
+            # ============ 4. ТИМЛИД ============
+            print("\n👑 4. НАСТРОЙКА ТИМЛИДА")
+            
+            add_teamlead = input("Добавить тимлида к команде? (y/n): ").strip().lower()
+            
+            teamlead = None
+            teamlead_percentage = Decimal('0')
+            
+            if add_teamlead == 'y':
+                # Настройки тимлида
+                teamlead_username = input("Имя пользователя тимлида: ").strip().lower()
+                if not teamlead_username:
+                    print("❌ Имя пользователя обязательно для тимлида!")
+                    return
+                
+                try:
+                    teamlead_percentage = Decimal(input("Процент тимлида от комиссий (в %, по умолчанию 10): ") or "10")
+                    if not (0 <= teamlead_percentage <= 100):
+                        print("❌ Процент должен быть от 0 до 100!")
+                        return
+                except ValueError:
+                    print("❌ Неверный формат числа!")
+                    return
+                
+                # Получаем или создаем язык по умолчанию
+                default_language, _ = Language.objects.get_or_create(
+                    name="English",
+                    defaults={'id': uuid.uuid4()}
+                )
+                
+                # Создаем баланс для тимлида
+                teamlead_balance = Balance.objects.create(
+                    id=uuid.uuid4(),
+                    type=0,
+                    amount=Decimal('0')
+                )
+                
+                # Создаем или получаем пользователя
+                user, created = User.objects.get_or_create(
+                    username=teamlead_username,
+                    defaults={
+                        'email': f"{teamlead_username}@example.com",
+                        'is_active': True
+                    }
+                )
+                
+                if created:
+                    user.set_password('TempPass123!')
+                    user.save()
+                    print(f"✅ Создан пользователь: {teamlead_username}")
+                else:
+                    print(f"⚠️ Используем существующего пользователя: {teamlead_username}")
+                
+                # Создаем тимлида
+                teamlead = TeamLead.objects.create(
+                    id=uuid.uuid4(),
+                    user=user,
+                    balance=teamlead_balance,
+                    language=default_language,
+                    telegram=None,
+                    phone=None
+                )
+                print(f"✅ Создан тимлид: {teamlead_username}")
+            
+            # ============ 5. СОЗДАНИЕ КОМАНДЫ ============
+            print("\n🏢 5. СОЗДАНИЕ КОМАНДЫ")
+            
+            team = TraderTeam.objects.create(
+                id=uuid.uuid4(),
+                name=team_name,
+                rate_in=rate_in,
+                rate_out=rate_out,
+                teamlead=teamlead,
+                teamlead_percentage=teamlead_percentage if add_teamlead == 'y' else Decimal('0'),
+                insurance_deposit=insurance_deposit
+            )
+            
+            print(f"✅ Создана команда: {team_name}")
+            
+            # ============ 6. ДОБАВЛЕНИЕ ТРЕЙДЕРА-ТИМЛИДА ============
+            if add_teamlead == 'y' and teamlead:
+                print("\n🤝 6. СОЗДАНИЕ ТРЕЙДЕРА-ТИМЛИДА")
+                
+                # Получаем валюту по умолчанию (первую в списке)
+                default_currency = Currency.objects.first()
+                if not default_currency:
+                    default_currency = Currency.objects.create(
+                        id=uuid.uuid4(),
+                        name="US Dollar",
+                        symbol="USD"
+                    )
+                
+                # Создаем балансы для трейдера
+                trader_balance = Balance.objects.create(
+                    id=uuid.uuid4(),
+                    type=0,
+                    amount=Decimal('0')
+                )
+                
+                trader_frozen_balance = Balance.objects.create(
+                    id=uuid.uuid4(),
+                    type=1,
+                    amount=Decimal('0')
+                )
+                
+                # Создаем трейдера (тимлида команды)
+                trader = Trader.objects.create(
+                    id=uuid.uuid4(),
+                    user=teamlead.user,
+                    language=teamlead.language,
+                    telegram=teamlead.telegram,
+                    phone=teamlead.phone,
+                    boss=None,  # Тимлид не имеет босса
+                    is_boss=True,  # Является боссом команды
+                    team=team,
+                    balance_usdt=trader_balance,
+                    frozen_balance_usdt=trader_frozen_balance,
+                    currency=default_currency,
+                    blocked=False,
+                    super_blocked=False
+                )
+                
+                print(f"✅ Создан трейдер-тимлид: {trader.user.username}")
+                print(f"   Является боссом команды: {trader.is_boss}")
+            
+            # ============ 7. ДОБАВЛЕНИЕ СТАВОК ДЛЯ ПЛАТЕЖНЫХ СИСТЕМ ============
+            print("\n📊 7. НАСТРОЙКА СТАВОК ДЛЯ ПЛАТЕЖНЫХ СИСТЕМ")
+            
+            add_rates = input("Добавить ставки для платежных систем? (y/n): ").strip().lower()
+            
+            if add_rates == 'y':
+                # Получаем все платежные системы
+                payment_systems = PaymentSystem.objects.all()
+                
+                if payment_systems.exists():
+                    print(f"\nНайдено {payment_systems.count()} платежных систем:")
+                    
+                    for i, ps in enumerate(payment_systems, 1):
+                        print(f"{i}. {ps.name} ({ps.currency.symbol if ps.currency else 'N/A'})")
+                    
+                    print("\nДля каждой системы можно установить свои ставки MDR")
+                    
+                    for ps in payment_systems:
+                        print(f"\n--- {ps.name} ---")
+                        try:
+                            # Используем ставки команды по умолчанию или запрашиваем
+                            use_default = input(f"Использовать ставки команды ({rate_in}% IN, {rate_out}% OUT)? (y/n): ").strip().lower()
+                            
+                            if use_default == 'y':
+                                mdr_in = rate_in
+                                mdr_out = rate_out
+                            else:
+                                mdr_in = Decimal(input(f"MDR IN для {ps.name} (%): ") or str(rate_in))
+                                mdr_out = Decimal(input(f"MDR OUT для {ps.name} (%): ") or str(rate_out))
+                            
+                            # Создаем ставки
+                            TraderTeamRates.objects.create(
+                                id=uuid.uuid4(),
+                                team=team,
+                                payment_system=ps,
+                                mdr_in=mdr_in,
+                                mdr_out=mdr_out
+                            )
+                            
+                            print(f"✅ Добавлены ставки: IN {mdr_in}%, OUT {mdr_out}%")
+                            
+                        except ValueError:
+                            print(f"⚠️ Пропущена система {ps.name} из-за ошибки ввода")
+                else:
+                    print("⚠️ Нет доступных платежных систем")
+            
+            # ============ 8. ИТОГИ ============
+            print("\n" + "="*60)
+            print("🎉 КОМАНДА УСПЕШНО СОЗДАНА!")
+            print("="*60)
+            
+            print(f"\n📋 ОСНОВНАЯ ИНФОРМАЦИЯ:")
+            print(f"   Название команды: {team.name}")
+            print(f"   ID команды: {team.id}")
+            print(f"   Комиссия IN: {team.rate_in}%")
+            print(f"   Комиссия OUT: {team.rate_out}%")
+            print(f"   Страховой депозит: ${team.insurance_deposit}")
+            
+            if team.teamlead:
+                print(f"\n👑 ТИМЛИД:")
+                print(f"   Имя: {team.teamlead.user.username}")
+                print(f"   Email: {team.teamlead.user.email}")
+                print(f"   Доля от комиссий: {team.teamlead_percentage}%")
+                print(f"   Баланс: ${team.teamlead.balance.amount}")
+            
+            # Количество ставок
+            rates_count = TraderTeamRates.objects.filter(team=team).count()
+            print(f"\n📊 СТАТИСТИКА:")
+            print(f"   Ставок для платежных систем: {rates_count}")
+            
+            print(f"\n⚠️  ВАЖНЫЕ ЗАМЕЧАНИЯ:")
+            if team.teamlead:
+                print(f"   1. Тимлид должен сменить пароль при первом входе")
+            print(f"   2. Добавьте дополнительных трейдеров в команду")
+            print(f"   3. Настройте платежные реквизиты для работы")
+            print(f"   4. Проверьте ставки для каждой платежной системы")
+            
+            return team
+            
+    except Exception as e:
+        print(f"\n❌ ОШИБКА ПРИ СОЗДАНИИ КОМАНДЫ: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def add_trader_to_team_interactive():
+    """
+    Интерактивное добавление трейдера в существующую команду
+    """
+    print("\n" + "="*60)
+    print("🤝 ДОБАВЛЕНИЕ ТРЕЙДЕРА В КОМАНДУ")
+    print("="*60)
+    
+    # Показываем все команды
+    teams = TraderTeam.objects.all().order_by('name')
+    
+    if not teams.exists():
+        print("❌ Нет созданных команд. Сначала создайте команду.")
+        return None
+    
+    print("\n📋 ДОСТУПНЫЕ КОМАНДЫ:")
+    for i, team in enumerate(teams, 1):
+        traders_count = Trader.objects.filter(team=team).count()
+        teamlead_name = team.teamlead.user.username if team.teamlead else "Нет"
+        print(f"{i}. {team.name} (Трейдеров: {traders_count}, Тимлид: {teamlead_name})")
+    
+    try:
+        choice = int(input("\nВыберите номер команды: ").strip())
+        if 1 <= choice <= len(teams):
+            team = teams[choice - 1]
+        else:
+            print("❌ Неверный номер!")
+            return None
+    except ValueError:
+        print("❌ Неверный формат числа!")
+        return None
+    
+    # Получаем информацию о боссе команды
+    boss = None
+    if team.teamlead:
+        boss = Trader.objects.filter(user=team.teamlead.user, team=team).first()
+    
+    # Данные нового трейдера
+    print(f"\n🏢 Выбрана команда: {team.name}")
+    print(f"   Босс команды: {boss.user.username if boss else 'Нет'}")
+    
+    trader_username = input("\nИмя пользователя нового трейдера: ").strip().lower()
+    if not trader_username:
+        print("❌ Имя пользователя обязательно!")
+        return None
+    
+    is_boss_input = input("Этот трейдер является дополнительным боссом? (y/n): ").strip().lower()
+    is_boss = is_boss_input == 'y'
+    
+    try:
+        with transaction.atomic():
+            # Получаем язык по умолчанию
+            default_language, _ = Language.objects.get_or_create(
+                name="English",
+                defaults={'id': uuid.uuid4()}
+            )
+            
+            # Получаем валюту (первую в списке)
+            default_currency = Currency.objects.first()
+            if not default_currency:
+                print("❌ Нет доступных валют!")
+                return None
+            
+            # Создаем или получаем пользователя
+            user, created = User.objects.get_or_create(
+                username=trader_username,
+                defaults={
+                    'email': f"{trader_username}@example.com",
+                    'is_active': True
+                }
+            )
+            
+            if created:
+                user.set_password('TempPass123!')
+                user.save()
+                print(f"✅ Создан пользователь: {trader_username}")
+            else:
+                print(f"⚠️ Используем существующего пользователя: {trader_username}")
+            
+            # Создаем балансы
+            trader_balance = Balance.objects.create(
+                id=uuid.uuid4(),
+                type=0,
+                amount=Decimal('0')
+            )
+            
+            trader_frozen_balance = Balance.objects.create(
+                id=uuid.uuid4(),
+                type=1,
+                amount=Decimal('0')
+            )
+            
+            # Создаем трейдера
+            trader = Trader.objects.create(
+                id=uuid.uuid4(),
+                user=user,
+                language=default_language,
+                telegram=None,
+                phone=None,
+                boss=boss if not is_boss else None,  # Боссы не имеют босса выше
+                is_boss=is_boss,
+                team=team,
+                balance_usdt=trader_balance,
+                frozen_balance_usdt=trader_frozen_balance,
+                currency=default_currency,
+                blocked=False,
+                super_blocked=False
+            )
+            
+            print(f"\n✅ Трейдер успешно добавлен в команду!")
+            print(f"   Имя: {trader.user.username}")
+            print(f"   Команда: {trader.team.name}")
+            print(f"   Босс: {trader.boss.user.username if trader.boss else 'Сам является боссом'}")
+            print(f"   Является боссом: {'✅ Да' if trader.is_boss else '❌ Нет'}")
+            print(f"   Баланс: ${trader.balance_usdt.amount}")
+            
+            return trader
+            
+    except Exception as e:
+        print(f"❌ Ошибка при добавлении трейдера: {str(e)}")
+        return None
+
+
+def show_all_teams():
+    """Показать все команды"""
+    teams = TraderTeam.objects.all().order_by('name')
+    
+    print("\n" + "="*80)
+    print("📋 ВСЕ КОМАНДЫ ТРЕЙДЕРОВ")
+    print("="*80)
+    
+    if not teams.exists():
+        print("   ❌ Команды не найдены")
+        return
+    
+    for i, team in enumerate(teams, 1):
+        traders_count = Trader.objects.filter(team=team).count()
+        teamlead_name = team.teamlead.user.username if team.teamlead else "Нет"
+        
+        print(f"\n{i}. 🏢 {team.name}")
+        print(f"   👑 Тимлид: {teamlead_name}")
+        print(f"   👥 Трейдеров: {traders_count}")
+        print(f"   💰 Комиссии: IN {team.rate_in}% | OUT {team.teamlead_percentage}%")
+        print(f"   📊 Доля тимлида: {team.teamlead_percentage}%")
+        print(f"   🛡️  Депозит: ${team.insurance_deposit}")
+        
+        # Показываем трейдеров
+        traders = Trader.objects.filter(team=team)
+        if traders.exists():
+            print(f"   👤 Трейдеры:")
+            for trader in traders:
+                boss_mark = "👑" if trader.is_boss else ""
+                boss_name = trader.boss.user.username if trader.boss else "Нет"
+                print(f"      • {trader.user.username} {boss_mark} (Босс: {boss_name})")
+
+
+def main_menu():
+    """Главное меню"""
+    while True:
+        print("\n" + "="*60)
+        print("🏢 МЕНЕДЖЕР КОМАНД ТРЕЙДЕРОВ")
+        print("="*60)
+        print("\n📋 ДОСТУПНЫЕ ДЕЙСТВИЯ:")
+        print("   1. Создать новую команду")
+        print("   2. Добавить трейдера в команду")
+        print("   3. Показать все команды")
+        print("   4. Выйти")
+        
+        choice = input("\n👉 Выберите действие (1-4): ").strip()
+        
+        if choice == "1":
+            create_trader_team_interactive()
+        elif choice == "2":
+            add_trader_to_team_interactive()
+        elif choice == "3":
+            show_all_teams()
+        elif choice == "4":
+            print("\n👋 Выход...")
+            break
+        else:
+            print("❌ Неверный выбор!")
+
+
+# Быстрые команды для использования в Django shell
+def quick_create():
+    """Быстрое создание команды с дефолтными настройками"""
+    return create_trader_team_interactive()
+
+def quick_add():
+    """Быстрое добавление трейдера"""
+    return add_trader_to_team_interactive()
+
+
+# Запуск
+if __name__ == "__main__":
+    main_menu()
+else:
+    print("\n✅ Менеджер команд трейдеров загружен!")
+    print("\n🚀 Быстрые команды для Django shell:")
+    print("   quick_create() - создать команду")
+    print("   quick_add() - добавить трейдера")
+    print("   show_all_teams() - показать все команды")
+    print("   main_menu() - открыть интерактивное меню")
+
+
+
+
+
+

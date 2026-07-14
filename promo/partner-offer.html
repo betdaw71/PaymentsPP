@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AvaPay — Коммерческое предложение для партнёров</title>
+  <link rel="icon" href="favicon.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #0c24fb;
+      --primary-dark: #0a1ecc;
+      --primary-soft: #eef1ff;
+      --primary-muted: #c7d2fe;
+      --dark: #0c0f1a;
+      --bg: #ffffff;
+      --bg-muted: #f4f5f7;
+      --text: #0c0f1a;
+      --text-muted: #5c6370;
+      --border: #e8eaef;
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Inter", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      font-size: 15px;
+    }
+
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 40px 24px 56px; }
+
+    .print-sheet {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 32px;
+    }
+
+    .print-sheet--last { margin-bottom: 0; }
+
+    .doc-cover { margin-bottom: 0; }
+
+    .doc-cover--compact .doc-header {
+      padding-bottom: 14px;
+      margin-bottom: 14px;
+    }
+
+    .doc-cover--compact .hero-block {
+      padding: 18px 20px;
+      margin-bottom: 12px;
+    }
+
+    .doc-cover--compact .hero-block h2 {
+      font-size: 1.25rem;
+      margin-bottom: 8px;
+    }
+
+    .doc-cover--compact .hero-block .lead {
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .doc-cover--compact .advantage {
+      padding: 14px 18px;
+      margin-bottom: 10px;
+    }
+
+    .doc-cover--compact .advantage h3 { font-size: 0.98rem; }
+    .doc-cover--compact .advantage p { font-size: 0.82rem; margin-top: 4px; }
+
+
+    .doc-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand img { width: 52px; height: 52px; border-radius: 22%; object-fit: cover; }
+    .brand h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; }
+    .brand p { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; }
+
+    .doc-meta { text-align: right; font-size: 0.8rem; color: var(--text-muted); }
+    .doc-meta strong { display: block; color: var(--text); font-size: 0.9rem; margin-bottom: 4px; }
+
+    .hero-block {
+      background: linear-gradient(165deg, #f4f6ff 0%, #fff 48%, #eef1ff 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      margin-bottom: 28px;
+    }
+
+    .hero-block h2 {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 12px;
+      max-width: 28em;
+    }
+
+    .hero-block .lead { color: var(--text-muted); font-size: 1rem; max-width: 36em; }
+
+    .advantage {
+      background: var(--dark);
+      color: #fff;
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      margin-bottom: 32px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .advantage h3 { font-size: 1.1rem; font-weight: 700; }
+    .advantage p { color: #9ca3af; font-size: 0.9rem; margin-top: 6px; max-width: 32em; }
+    .advantage .hl { color: #93b4ff; }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+
+    .section-head {
+      margin-bottom: 24px;
+    }
+
+    .section-head--in-grid {
+      grid-column: 1 / -1;
+      margin-bottom: 2px;
+    }
+
+    .section-head--in-grid h2 {
+      font-size: 1.1rem;
+    }
+
+    .section-head h2 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .offer-page {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+      align-items: start;
+      align-content: start;
+    }
+
+    .offer-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--bg);
+      page-break-inside: avoid;
+      break-inside: avoid;
+      height: auto;
+    }
+
+    .info-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: linear-gradient(165deg, #f4f6ff 0%, #fff 70%);
+      padding: 14px 16px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .info-card h3 {
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .info-card ul {
+      list-style: none;
+      display: grid;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .info-card li strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .info-card .info-contact {
+      margin-top: 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    .offer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      background: var(--primary-soft);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .offer-head h3 {
+      font-size: 1rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .offer-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+
+    .badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .badge.primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .offer-body { padding: 12px 14px 14px; }
+
+    .offer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .offer-page .offer-grid {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+
+    @media (max-width: 720px) {
+      .offer-page { grid-template-columns: 1fr; }
+      .offer-grid { grid-template-columns: 1fr; }
+    }
+
+    .offer-block {
+      background: var(--bg-muted);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .offer-block h4 {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+
+    .offer-block dl { display: grid; gap: 4px; }
+
+    .offer-block dt {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .offer-block dd {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .offer-full {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .offer-full h4 {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .offer-full p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    .settle-note {
+      margin-top: 8px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      padding: 6px 10px;
+      background: var(--bg-muted);
+      border-radius: 6px;
+    }
+
+    .settle-note strong { color: var(--text); }
+
+    .footer-cta {
+      grid-column: 1 / -1;
+      margin-top: 4px;
+      text-align: center;
+      padding: 28px 20px;
+      background: linear-gradient(135deg, var(--primary) 0%, #1e3a8a 100%);
+      border-radius: var(--radius);
+      color: #fff;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .footer-cta h2 { font-size: 1.35rem; font-weight: 800; margin-bottom: 10px; }
+    .footer-cta p { opacity: 0.9; margin-bottom: 20px; font-size: 0.95rem; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      background: #fff;
+      color: var(--primary);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: #fff;
+      border: 1.5px solid rgba(255,255,255,0.5);
+      margin-left: 10px;
+    }
+
+    .doc-footer {
+      grid-column: 1 / -1;
+      margin-top: 0;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .note-warn {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-style: italic;
+      margin-top: 6px;
+    }
+
+    .pdf-download {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .pdf-download:hover { text-decoration: underline; }
+
+    @page {
+      size: A4;
+      margin: 9mm;
+    }
+
+    @media print {
+      body { background: #fff; font-size: 13px; }
+      .wrap { padding: 0; max-width: none; }
+      .pdf-download { display: none; }
+      .advantage .btn { display: none; }
+
+      .print-sheet {
+        page-break-after: always;
+        break-after: page;
+        gap: 8px;
+        margin-bottom: 0;
+      }
+
+      .print-sheet--last {
+        page-break-after: auto;
+        break-after: auto;
+      }
+
+      .print-sheet:first-of-type .doc-cover--compact {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 10px;
+      }
+
+      .print-sheet:first-of-type .doc-header {
+        grid-column: 1 / -1;
+        padding-bottom: 8px;
+        margin-bottom: 0;
+      }
+
+      .print-sheet:first-of-type .hero-block {
+        grid-column: 1;
+        margin-bottom: 0;
+      }
+
+      .print-sheet:first-of-type .advantage {
+        grid-column: 2;
+        margin-bottom: 0;
+        align-self: stretch;
+      }
+
+      .doc-cover--compact .doc-header {
+        padding-bottom: 10px;
+        margin-bottom: 10px;
+      }
+
+      .doc-cover--compact .brand img {
+        width: 40px;
+        height: 40px;
+      }
+
+      .doc-cover--compact .brand h1 { font-size: 1.2rem; }
+
+      .doc-cover--compact .hero-block {
+        padding: 12px 14px;
+        margin-bottom: 8px;
+      }
+
+      .doc-cover--compact .hero-block h2 {
+        font-size: 1.05rem;
+        margin-bottom: 4px;
+      }
+
+      .doc-cover--compact .hero-block .lead {
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
+
+      .doc-cover--compact .advantage {
+        padding: 10px 14px;
+        margin-bottom: 6px;
+      }
+
+      .doc-cover--compact .advantage h3 { font-size: 0.85rem; }
+      .doc-cover--compact .advantage p { font-size: 0.72rem; }
+
+      .section-head--in-grid {
+        margin-bottom: 0;
+      }
+
+      .section-head--in-grid h2 { font-size: 0.95rem; }
+      .section-head--in-grid .section-title { margin-bottom: 2px; }
+
+      .offer-page {
+        align-items: start;
+        align-content: start;
+      }
+
+      .offer-page .offer-head {
+        padding: 7px 10px;
+        flex-direction: row;
+        align-items: center;
+      }
+
+      .offer-page .offer-head h3 {
+        font-size: 0.82rem;
+      }
+
+      .offer-page .badge {
+        font-size: 0.58rem;
+        padding: 1px 6px;
+      }
+
+      .offer-page .offer-body {
+        padding: 7px 9px 9px;
+      }
+
+      .offer-page .offer-block {
+        padding: 6px 8px;
+      }
+
+      .offer-page .offer-block h4 {
+        margin-bottom: 4px;
+        font-size: 0.6rem;
+      }
+
+      .offer-page .offer-block dt { font-size: 0.65rem; }
+      .offer-page .offer-block dd { font-size: 0.72rem; }
+      .offer-page .offer-block dl { gap: 3px; }
+
+      .offer-page .offer-full {
+        margin-top: 6px;
+        padding-top: 6px;
+      }
+
+      .offer-page .offer-full h4 {
+        margin-bottom: 3px;
+        font-size: 0.6rem;
+      }
+
+      .offer-page .settle-note {
+        margin-top: 5px;
+        padding: 4px 7px;
+        font-size: 0.65rem;
+      }
+
+      .offer-page .note-warn { font-size: 0.65rem; margin-top: 4px; }
+
+      .footer-cta,
+      .advantage,
+      .info-card,
+      .offer-head {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .offer-card,
+      .info-card,
+      .footer-cta,
+      .doc-footer {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .offer-page .offer-full p {
+        font-size: 0.65rem;
+        line-height: 1.3;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="print-sheet">
+    <div class="doc-cover doc-cover--compact">
+    <header class="doc-header">
+      <div class="brand">
+        <img src="logo.png" alt="AvaPay" />
+        <div>
+          <h1>AvaPay</h1>
+          <p>Payment Solution · PSP</p>
+        </div>
+      </div>
+      <div class="doc-meta">
+        <strong>Коммерческое предложение</strong>
+        для партнёров<br />
+        promo.avapay.net
+        <a class="pdf-download" href="AvaPay-partner-offer.pdf" download>Скачать PDF</a>
+      </div>
+    </header>
+
+    <section class="hero-block">
+      <p class="section-title">Партнёрская программа</p>
+      <h2>Условия по приёму и выплатам в ключевых гео</h2>
+      <p class="lead">
+        AvaPay предлагает стабильные рельсы для pay-in и pay-out: P2P, C2C, QR, CVU, IBAN и локальные методы.
+        Ниже — актуальные офферы по странам. Детали подключения и онбординг — через персонального менеджера в Telegram.
+      </p>
+    </section>
+
+    <section class="advantage">
+      <div>
+        <h3>Онбординг через <span class="hl">@avapay_manager</span> — без веб-форм</h3>
+        <p>Быстрый старт: обсуждение гео, ставок, лимитов и интеграции напрямую с менеджером.</p>
+      </div>
+      <a class="btn" href="https://t.me/avapay_manager" style="background:#fff;color:var(--primary)">Написать в Telegram</a>
+    </section>
+
+    </div>
+
+    <div class="offer-page">
+      <section class="section-head section-head--in-grid">
+        <p class="section-title">Офферы</p>
+        <h2>Ставки и лимиты по странам</h2>
+      </section>
+
+      <!-- Uzbekistan -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇺🇿 Узбекистан</h3>
+          <div class="offer-badges">
+            <span class="badge primary">P2P</span>
+            <span class="badge">UZS</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Вход (pay-in)</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>3%</dd></div>
+                <div><dt>Лимиты</dt><dd>10 000 – 35 000 000 UZS</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты (pay-out)</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>2%</dd></div>
+                <div><dt>Лимиты</dt><dd>20 000 – 35 000 000 UZS</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="offer-full">
+            <h4>Выплаты в криптовалюту</h4>
+            <p>Курс: HTX, зелёный стакан, среднее 5–10; банк HUMO, сумма 10 000 000 UZS</p>
+          </div>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. сумма 1 000 $ · комиссия за сеттл 5 $</p>
+        </div>
+      </article>
+
+      <!-- Azerbaijan -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇦🇿 Азербайджан</h3>
+          <div class="offer-badges">
+            <span class="badge primary">P2P</span>
+            <span class="badge">USDT</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Вход</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>6,5%</dd></div>
+                <div><dt>Лимиты</dt><dd>5 – 5 000 AZN</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>2%</dd></div>
+                <div><dt>Лимиты</dt><dd>40 – 5 000 AZN</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="offer-full">
+            <h4>Выплаты в криптовалюту</h4>
+            <p>Курс: 1,75 fix</p>
+          </div>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. 1 000 $ · комиссия 5 $</p>
+        </div>
+      </article>
+
+      <!-- Bolivia -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇧🇴 Боливия</h3>
+          <div class="offer-badges">
+            <span class="badge primary">QR · C2C</span>
+            <span class="badge">BOB</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Вход</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>6,5%</dd></div>
+                <div><dt>Лимиты</dt><dd>35 – 10 000 BOB</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>2,5%</dd></div>
+                <div><dt>Лимиты</dt><dd>200 – 10 000 BOB</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="offer-full">
+            <h4>Выплаты в криптовалюту</h4>
+            <p>Bybit, среднее 7–10 строка; проверенные мерчанты</p>
+          </div>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. 1 000 $ · комиссия 5 $</p>
+        </div>
+      </article>
+
+      <!-- Mongolia -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇲🇳 Монголия</h3>
+          <div class="offer-badges">
+            <span class="badge primary">P2P</span>
+            <span class="badge">MNT</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Вход</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>6,5%</dd></div>
+                <div><dt>Лимиты</dt><dd>20 000 – 3 000 000 MNT</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>2,5%</dd></div>
+                <div><dt>Лимиты</dt><dd>100 000 – 3 000 000 MNT</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="offer-full">
+            <h4>Курс (крипто)</h4>
+            <p>Binance, зелёный стакан; Khan Bank, 8–10 строка</p>
+          </div>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. 1 000 $ · комиссия 5 $</p>
+        </div>
+      </article>
+
+    </div>
+    </section>
+
+    <section class="print-sheet">
+    <div class="offer-page">
+
+      <!-- Tajikistan -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇹🇯 Таджикистан</h3>
+          <div class="offer-badges">
+            <span class="badge primary">C2C · СБП</span>
+            <span class="badge">TJS</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Вход</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>5,5%</dd></div>
+                <div><dt>Лимиты</dt><dd>1 – 200 000 TJS</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>2%</dd></div>
+                <div><dt>Лимиты</dt><dd>1 – 200 000 TJS</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="offer-full">
+            <h4>Курс</h4>
+            <p>Bybit, среднее 1–5 строка</p>
+          </div>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. 1 000 $ · комиссия 5 $</p>
+        </div>
+      </article>
+
+      <!-- Argentina -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇦🇷 Аргентина</h3>
+          <div class="offer-badges">
+            <span class="badge primary">CVU</span>
+            <span class="badge">ARS</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Вход</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>4%</dd></div>
+                <div><dt>Лимиты</dt><dd>1 000 – 3 000 000 ARS</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>1,5%</dd></div>
+                <div><dt>Лимиты</dt><dd>5 000 – 3 000 000 ARS</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="offer-full">
+            <h4>Курс</h4>
+            <p>Bybit, Mercado Pago; объём от 500 000, 10 строка</p>
+          </div>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. 1 000 $ · комиссия 5 $</p>
+        </div>
+      </article>
+
+      <!-- Turkey -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇹🇷 Турция</h3>
+          <div class="offer-badges">
+            <span class="badge primary">HAVALE · IBAN · P2P</span>
+            <span class="badge">TRY</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Вход</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>6%</dd></div>
+                <div><dt>Лимиты</dt><dd>100 – 100 000 TRY</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>2%</dd></div>
+                <div><dt>Лимиты</dt><dd>2 000 – 100 000 TRY</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="offer-full">
+            <h4>Курс</h4>
+            <p>Binance, проверенные мерчанты, среднее 7–10</p>
+          </div>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. 1 000 $ · комиссия 5 $</p>
+        </div>
+      </article>
+
+      <!-- Kazakhstan -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇰🇿 Казахстан</h3>
+          <div class="offer-badges">
+            <span class="badge primary">Card2Card · Phone</span>
+            <span class="badge">USDT</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Вход</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>8%</dd></div>
+                <div><dt>Лимиты</dt><dd>5 000 – 1 500 000 KZT</dd></div>
+                <div><dt>Курс</dt><dd>xe.com +2%</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты</h4>
+              <dl>
+                <div><dt>Комиссия</dt><dd>2,5%</dd></div>
+                <div><dt>Лимиты</dt><dd>10 000 – 1 500 000 KZT</dd></div>
+                <div><dt>Курс</dt><dd>xe.com</dd></div>
+              </dl>
+            </div>
+          </div>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. 1 000 $ · комиссия 5 $</p>
+        </div>
+      </article>
+
+    </div>
+    </section>
+
+    <section class="print-sheet print-sheet--last">
+    <div class="offer-page offer-page--last">
+
+      <!-- Tanzania -->
+      <article class="offer-card">
+        <div class="offer-head">
+          <h3>🇹🇿 Танзания</h3>
+          <div class="offer-badges">
+            <span class="badge primary">P2P</span>
+            <span class="badge">TZS · Mixx</span>
+            <span class="badge">FTD / Trusted</span>
+          </div>
+        </div>
+        <div class="offer-body">
+          <div class="offer-grid">
+            <div class="offer-block">
+              <h4>Приём</h4>
+              <dl>
+                <div><dt>Лимиты транзакции</dt><dd>1 300 – 2 600 000 TZS</dd></div>
+                <div><dt>Комиссия</dt><dd>по согласованию</dd></div>
+              </dl>
+            </div>
+            <div class="offer-block">
+              <h4>Выплаты на карты</h4>
+              <dl>
+                <div><dt>Лимиты транзакции</dt><dd>5 000 – 2 600 000 TZS</dd></div>
+                <div><dt>Комиссия</dt><dd>по согласованию</dd></div>
+              </dl>
+            </div>
+          </div>
+          <p class="note-warn">Ставки по Танзании уточняйте у менеджера — в исходном оффере проценты не указаны.</p>
+          <p class="settle-note"><strong>Сеттл:</strong> мин. 1 000 $ · комиссия 5 $ (если применимо)</p>
+        </div>
+      </article>
+
+      <aside class="info-card">
+        <h3>Общие условия</h3>
+        <ul>
+          <li><strong>Сеттл:</strong> минимум 1 000 $, комиссия 5 $ (если не указано иное)</li>
+          <li><strong>Онбординг:</strong> персональный менеджер, без веб-форм</li>
+          <li><strong>Интеграция:</strong> API, H2H, white-label — по запросу</li>
+          <li><strong>Ставки:</strong> зависят от типа трафика (FTD / Trusted) и объёма</li>
+          <li><strong>Актуальность:</strong> условия уточняются на дату подключения</li>
+        </ul>
+        <p class="info-contact">Telegram: @avapay_manager · avapay.net</p>
+      </aside>
+
+      <section class="footer-cta">
+        <h2>Готовы подключить гео?</h2>
+        <p>Напишите менеджеру: укажите страны, объёмы и тип трафика — подготовим индивидуальные условия.</p>
+        <a class="btn" href="https://t.me/avapay_manager">@avapay_manager</a>
+        <a class="btn btn-outline" href="https://avapay.net/">Платформа avapay.net</a>
+      </section>
+
+      <footer class="doc-footer">
+        <span>© AvaPay · Коммерческое предложение для партнёров</span>
+        <span>Ставки актуальны на дату рассылки · условия могут уточняться</span>
+      </footer>
+
+    </div>
+    </section>
+  </div>
+</body>
+</html>
