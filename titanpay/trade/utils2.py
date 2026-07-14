@@ -227,7 +227,7 @@ def send_to_fastapi(order: dict, file) -> dict:
 
 def build_orders_excel_buffer(queryset):
     data = list(queryset.values(
-        'id', 'status__name', 'amount', 'usd_amount', 'trader_fee',
+        'id', 'pay_in__id', 'status__name', 'amount', 'usd_amount', 'trader_fee',
         'payment_details__group__owner', 'solution__payment_system__name', 'creation_date',
     ))
 
@@ -238,7 +238,8 @@ def build_orders_excel_buffer(queryset):
     df = pd.DataFrame(data)
 
     column_mapping = {
-        'id': 'ID',
+        'id': 'ID (InOrder)',
+        'pay_in__id': 'PayIn ID',
         'status__name': 'Статус',
         'amount': 'Сумма (Фиат)',
         'usd_amount': 'Сумма (USDT)',
