@@ -38,7 +38,6 @@ import HeadSupportTransactions from "@/views/user/headsupport/HeadSupportTransac
 import HeadSupportTradersBalance from "@/views/user/headsupport/HeadSupportTradersBalance.vue"
 import HeadSupportMerchantsBalance from "@/views/user/headsupport/HeadSupportMerchantsBalance.vue"
 import HeadSupportWithdrawals from "@/views/user/headsupport/HeadSupportWithdrawals.vue"
-import HeadSupportExchangeRates from "@/views/user/headsupport/HeadSupportExchangeRates.vue"
 import HeadSupportDashboard from "@/views/user/headsupport/HeadSupportDashboard.vue"
 
 
@@ -137,11 +136,6 @@ const tabs = computed(
       title: t ('tabs.merchants_api'),
     }
 
-    const exchangeRatesTab = {
-      icon: 'tabler-currency-dollar',
-      title: t ('tabs.exchange_rates'),
-    }
-
     const dashboardTab = {
       icon: 'tabler-chart-dots-3',
       title: t ('tabs.dashboard'),
@@ -194,7 +188,6 @@ const tabs = computed(
         transactionsTab,
         tradersBalanceTab,
         merchantsBalanceTab,
-        exchangeRatesTab,
         withdrawalsTab,
       ]
     }
@@ -397,9 +390,6 @@ const getUser = (polling = true) => {
           </VWindowItem>
           <VWindowItem>
             <HeadSupportMerchantsBalance />
-          </VWindowItem>
-          <VWindowItem>
-            <HeadSupportExchangeRates />
           </VWindowItem>
           <VWindowItem>
             <HeadSupportWithdrawals />

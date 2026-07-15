@@ -441,6 +441,7 @@
     "turnover_in": "Оборот In",
     "turnover_out": "Оборот Out",
     "margin": "Маржа",
+    "turnover_total": "Общий оборот",
     "pending_withdrawals": "Выводы в очереди",
     "manual_check": "Manual check",
     "arbitrage_in": "Arbitrage In",

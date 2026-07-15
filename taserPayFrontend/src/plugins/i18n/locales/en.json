@@ -442,6 +442,7 @@
     "turnover_in": "In turnover",
     "turnover_out": "Out turnover",
     "margin": "Margin",
+    "turnover_total": "Total turnover",
     "pending_withdrawals": "Pending withdrawals",
     "manual_check": "Manual check",
     "arbitrage_in": "Arbitrage In",
