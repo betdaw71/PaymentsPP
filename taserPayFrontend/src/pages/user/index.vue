@@ -39,6 +39,7 @@ import HeadSupportTradersBalance from "@/views/user/headsupport/HeadSupportTrade
 import HeadSupportMerchantsBalance from "@/views/user/headsupport/HeadSupportMerchantsBalance.vue"
 import HeadSupportWithdrawals from "@/views/user/headsupport/HeadSupportWithdrawals.vue"
 import HeadSupportExchangeRates from "@/views/user/headsupport/HeadSupportExchangeRates.vue"
+import HeadSupportDashboard from "@/views/user/headsupport/HeadSupportDashboard.vue"
 
 
 import UserBioPanel from '@/views/user/UserBioPanel.vue'
@@ -141,7 +142,12 @@ const tabs = computed(
       title: t ('tabs.exchange_rates'),
     }
 
-    if (authStore.is_senior_trader ()))
+    const dashboardTab = {
+      icon: 'tabler-chart-dots-3',
+      title: t ('tabs.dashboard'),
+    }
+
+    if (authStore.is_senior_trader ())
       return [
         mainInfoTab,
         teamTab,
@@ -182,6 +188,7 @@ const tabs = computed(
     }
     if (authStore.is_head_of_support ()) {
       return [
+        dashboardTab,
         mainInfoTab,
         teamTab,
         transactionsTab,
@@ -349,7 +356,7 @@ const getUser = (polling = true) => {
           </VWindowItem>
           <VWindowItem>
             <TeamLeadWithdrawals />
-          </vwindowitem>
+          </VWindowItem>
         </template>
         <template
           v-else-if="authStore.is_merchant()"
@@ -365,14 +372,17 @@ const getUser = (polling = true) => {
           </VWindowItem>
           <VWindowItem>
             <MerchantWithdrawals />
-          </vwindowitem>
+          </VWindowItem>
           <VWindowItem>
             <MerchantApiKeys />
-          </vwindowitem>
+          </VWindowItem>
         </template>
         <template
           v-else-if="authStore.is_head_of_support()"
         >
+          <VWindowItem>
+            <HeadSupportDashboard />
+          </VWindowItem>
           <VWindowItem>
             <MainHeadSupportInfo />
           </VWindowItem>

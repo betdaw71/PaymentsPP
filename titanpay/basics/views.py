@@ -14,6 +14,7 @@ from merchant.models import Merchant
 from titanpay.settings import SBER_NAME, TBANK_NAME
 from trade.models import Address
 from basics.utils import get_balances, get_range
+from basics.dashboard import build_dashboard_data
 from django.db.models import Min, Max, Sum
 from decimal import Decimal
 from django.db import transaction
@@ -305,4 +306,11 @@ def get_filters_payment_details(request, *args, **kwargs):
 def get_exchange_rates(request, *args, **kwargs):
     payment_systems = PaymentSystem.objects.select_related('currency').order_by('name')
     data = PaymentSystemExchangeRateSerializer(payment_systems, many=True).data
+    return Response(status=status.HTTP_200_OK, data=data)
+
+
+@api_view(['GET'])
+@permission_classes([HeadSupportPermission])
+def get_dashboard(request, *args, **kwargs):
+    data = build_dashboard_data(request)
     return Response(status=status.HTTP_200_OK, data=data)
