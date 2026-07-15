@@ -227,13 +227,16 @@ def send_to_fastapi(order: dict, file) -> dict:
 
 def build_orders_excel_buffer(queryset):
     data = list(queryset.values(
-        'id', 'pay_in__id', 'status__name', 'amount', 'usd_amount', 'trader_fee',
+        'id', 'pay_in__id', 'status__name', 'amount', 'usd_amount', 'merchant_fee', 'trader_fee',
         'payment_details__group__owner', 'solution__payment_system__name', 'creation_date',
     ))
 
     for item in data:
         if item['creation_date']:
             item['creation_date'] = item['creation_date'].astimezone(pytz.utc).replace(tzinfo=None)
+        mf = Decimal(str(item.get('merchant_fee') or 0))
+        tf = Decimal(str(item.get('trader_fee') or 0))
+        item['platform_commission'] = mf - tf
 
     df = pd.DataFrame(data)
 
@@ -243,7 +246,9 @@ def build_orders_excel_buffer(queryset):
         'status__name': 'Статус',
         'amount': 'Сумма (Фиат)',
         'usd_amount': 'Сумма (USDT)',
-        'trader_fee': 'Прибыль',
+        'merchant_fee': 'Комиссия мерчанта (USDT)',
+        'trader_fee': 'Комиссия трейдера (USDT)',
+        'platform_commission': 'Комиссия платформы (USDT)',
         'payment_details__group__owner': 'ФИО',
         'solution__payment_system__name': 'Платёжная система',
         'creation_date': 'Дата создания',

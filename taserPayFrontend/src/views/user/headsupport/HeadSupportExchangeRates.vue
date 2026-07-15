@@ -14,16 +14,6 @@ const rates = ref ([])
 const loading = ref (false)
 let pollingTimer = null
 
-const headers = computed (() => [
-  { title: t ('payment_system'), key: 'name' },
-  { title: t ('currency'), key: 'currency_symbol' },
-  { title: t ('exchange_rate'), key: 'usdt_exchange_rate' },
-  { title: t ('rate_source'), key: 'rate_source' },
-  { title: t ('last_update'), key: 'last_update' },
-  { title: t ('in_on'), key: 'in_on' },
-  { title: t ('out_on'), key: 'out_on' },
-])
-
 const formatRate = rate => {
   if (rate === null || rate === undefined) {
     return '—'
@@ -50,7 +40,7 @@ const fetchRates = () => {
       if (response.error) {
         throw response.error
       }
-      rates.value = response.data
+      rates.value = Array.isArray (response.data) ? response.data : []
     },
   ).catch (
     error => {
@@ -113,46 +103,79 @@ onBeforeUnmount (
             />
           </VCardTitle>
           <VCol cols="12">
-            <VDataTable
-              :headers="headers"
-              :items="rates"
-              :loading="loading"
-              item-value="id"
+            <VCardText v-if="loading && rates.length === 0">
+              {{ $t('data.loading') }}
+            </VCardText>
+            <VCardText v-else-if="rates.length === 0">
+              {{ $t('data.empty') }}
+            </VCardText>
+            <VTable
+              v-else
               class="text-no-wrap"
             >
-              <template #item.usdt_exchange_rate="{ item }">
-                <span v-if="item.currency_symbol">
-                  1 USDT = {{ formatRate(item.usdt_exchange_rate) }} {{ item.currency_symbol }}
-                </span>
-                <span v-else>
-                  {{ formatRate(item.usdt_exchange_rate) }}
-                </span>
-              </template>
-              <template #item.rate_source="{ item }">
-                {{ item.rate_source || '—' }}
-              </template>
-              <template #item.last_update="{ item }">
-                {{ formatLastUpdate(item.last_update) }}
-              </template>
-              <template #item.in_on="{ item }">
-                <VChip
-                  :color="item.in_on ? 'success' : 'error'"
-                  size="small"
-                  label
+              <thead>
+                <tr>
+                  <th scope="col">
+                    {{ $t('payment_system') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('currency') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('exchange_rate') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('rate_source') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('last_update') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('in_on') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('out_on') }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in rates"
+                  :key="item.id"
                 >
-                  {{ item.in_on ? $t('on') : $t('off') }}
-                </VChip>
-              </template>
-              <template #item.out_on="{ item }">
-                <VChip
-                  :color="item.out_on ? 'success' : 'error'"
-                  size="small"
-                  label
-                >
-                  {{ item.out_on ? $t('on') : $t('off') }}
-                </VChip>
-              </template>
-            </VDataTable>
+                  <td>{{ item.name }}</td>
+                  <td>{{ item.currency_symbol || '—' }}</td>
+                  <td>
+                    <span v-if="item.currency_symbol">
+                      1 USDT = {{ formatRate(item.usdt_exchange_rate) }} {{ item.currency_symbol }}
+                    </span>
+                    <span v-else>
+                      {{ formatRate(item.usdt_exchange_rate) }}
+                    </span>
+                  </td>
+                  <td>{{ item.rate_source || '—' }}</td>
+                  <td>{{ formatLastUpdate(item.last_update) }}</td>
+                  <td>
+                    <VChip
+                      :color="item.in_on ? 'success' : 'error'"
+                      size="small"
+                      label
+                    >
+                      {{ item.in_on ? $t('on') : $t('off') }}
+                    </VChip>
+                  </td>
+                  <td>
+                    <VChip
+                      :color="item.out_on ? 'success' : 'error'"
+                      size="small"
+                      label
+                    >
+                      {{ item.out_on ? $t('on') : $t('off') }}
+                    </VChip>
+                  </td>
+                </tr>
+              </tbody>
+            </VTable>
           </VCol>
         </VCard>
       </VCol>
