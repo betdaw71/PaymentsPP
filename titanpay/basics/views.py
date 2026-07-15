@@ -1,8 +1,8 @@
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from basics.serializers import TraderShortSupportSerializer, TraderToTransferSerializer, \
-    TraderFromTransferSerializer, PaymentSystemSerializer, CurrencySerializer, TrafficTypeSerializer, \
-    TraderTeamRatesSerializer
+    TraderFromTransferSerializer, PaymentSystemSerializer, PaymentSystemExchangeRateSerializer, \
+    CurrencySerializer, TrafficTypeSerializer, TraderTeamRatesSerializer
 from rest_framework import status
 from rest_framework.response import Response
 from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates
@@ -297,4 +297,12 @@ def get_filters_payment_details(request, *args, **kwargs):
         payment_systems = PaymentSystem.objects.filter(currency__in=currencies).distinct()
         data["payment_system"] = [{"name": ps.name} for ps in payment_systems]
 
+    return Response(status=status.HTTP_200_OK, data=data)
+
+
+@api_view(['GET'])
+@permission_classes([HeadSupportPermission])
+def get_exchange_rates(request, *args, **kwargs):
+    payment_systems = PaymentSystem.objects.select_related('currency').order_by('name')
+    data = PaymentSystemExchangeRateSerializer(payment_systems, many=True).data
     return Response(status=status.HTTP_200_OK, data=data)

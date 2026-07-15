@@ -427,7 +427,8 @@
     "total_balance": "Общий баланс",
     "traders_balance": "Баланс трейдеров",
     "transactions": "Транзакции",
-    "withdrawals": "Выводы"
+    "withdrawals": "Выводы",
+    "exchange_rates": "Курсы валют"
   },
   "team": "Команда",
   "team_balances": "Балансы Команды",
@@ -473,6 +474,14 @@
   "updated_date": "Дата обновления",
   "usd_amount": "Сумма (USD)",
   "usdt_exchange_rate": "Курс обмена USDT (1 USDT = ? {currency})",
+  "exchange_rate": "Курс",
+  "rate_source": "Источник",
+  "last_update": "Обновлено",
+  "rate_not_updated": "Не обновлялся",
+  "in_on": "In",
+  "out_on": "Out",
+  "on": "Вкл",
+  "off": "Выкл",
   "user": {
     "2fa_dialog": {
       "description": "",

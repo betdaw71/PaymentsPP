@@ -1,0 +1,139 @@
+# Staging stack — runs alongside production on the same server.
+# Traefik from docker-compose.yml routes staging subdomains; do NOT start a second Traefik.
+#
+# First time:
+#   cp .env.staging.example .env.staging
+#   nano .env.staging
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging exec app python manage.py migrate
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging exec app python manage.py createsuperuser
+#
+# Update after git pull (branch develop):
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging build app frontend
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d app frontend
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging exec app python manage.py migrate
+
+name: paymentspp-staging
+
+services:
+  db:
+    image: postgres:15
+    container_name: titanpay_staging_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data_staging:/var/lib/postgresql/data
+      - ./titanpay/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - project_network
+
+  redis:
+    image: redis:alpine
+    container_name: titanpay_staging_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data_staging:/data
+    networks:
+      - project_network
+
+  app:
+    build: ./titanpay
+    container_name: titanpay_staging_app
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    volumes:
+      - static_files_staging:/app/staticfiles
+      - media_files_staging:/app/media
+    ports:
+      - "9080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.staging-app.rule=Host(`api-staging.avapay.net`)"
+      - "traefik.http.routers.staging-app.entrypoints=websecure"
+      - "traefik.http.routers.staging-app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.staging-app.loadbalancer.server.port=8080"
+      - "traefik.http.routers.staging-media.rule=Host(`api-staging.avapay.net`) && PathPrefix(`/media/`)"
+      - "traefik.http.routers.staging-media.entrypoints=websecure"
+      - "traefik.http.routers.staging-media.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.staging-media.service=staging-app"
+      - "traefik.http.routers.staging-pay.rule=Host(`pay-staging.avapay.net`)"
+      - "traefik.http.routers.staging-pay.entrypoints=websecure"
+      - "traefik.http.routers.staging-pay.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.staging-pay.service=staging-app"
+      - "traefik.http.routers.staging-pay-http.rule=Host(`pay-staging.avapay.net`)"
+      - "traefik.http.routers.staging-pay-http.entrypoints=web"
+      - "traefik.http.routers.staging-pay-http.middlewares=staging-pay-redirect@docker"
+      - "traefik.http.middlewares.staging-pay-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.staging-pay-redirect.redirectscheme.permanent=true"
+
+  frontend:
+    build:
+      context: ./taserPayFrontend
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_AUTHORIZATION_HEADER: Bearer
+        VITE_ASSETS_URL: /
+    container_name: titanpay_staging_frontend
+    restart: unless-stopped
+    ports:
+      - "9081:80"
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.staging-frontend.rule=Host(`staging.avapay.net`)"
+      - "traefik.http.routers.staging-frontend.entrypoints=websecure"
+      - "traefik.http.routers.staging-frontend.tls=true"
+      - "traefik.http.routers.staging-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.staging-frontend.service=staging-frontend"
+      - "traefik.http.services.staging-frontend.loadbalancer.server.port=80"
+      - "traefik.http.routers.staging-frontend-http.rule=Host(`staging.avapay.net`)"
+      - "traefik.http.routers.staging-frontend-http.entrypoints=web"
+      - "traefik.http.routers.staging-frontend-http.middlewares=staging-frontend-redirect@docker"
+      - "traefik.http.middlewares.staging-frontend-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.staging-frontend-redirect.redirectscheme.permanent=true"
+
+  crypto:
+    build: ./crypto
+    container_name: titanpay_staging_crypto
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${CRYPTO_DB_NAME}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - project_network
+    ports:
+      - "9082:8082"
+
+volumes:
+  pg_data_staging:
+  redis_data_staging:
+  static_files_staging:
+  media_files_staging:
+
+networks:
+  project_network:
+    external: true
+    name: project_network

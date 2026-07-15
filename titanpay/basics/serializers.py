@@ -37,6 +37,38 @@ class PaymentSystemSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'currency', 'in_on', 'out_on']
 
 
+class PaymentSystemExchangeRateSerializer(serializers.ModelSerializer):
+    currency_symbol = serializers.SerializerMethodField()
+    rate_source = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PaymentSystem
+        fields = [
+            'id', 'name', 'currency_symbol', 'usdt_exchange_rate',
+            'last_update', 'in_on', 'out_on', 'rate_source',
+        ]
+
+    def get_currency_symbol(self, obj):
+        return obj.currency.symbol if obj.currency else None
+
+    def get_rate_source(self, obj):
+        from django.conf import settings
+
+        playments_ps_name = getattr(settings, "PLAYMENTS_C2C_NAME", "C2CTRY")
+        protocol_ps_name = getattr(settings, "PROTOCOL_C2C_NAME", "C2CKZT")
+
+        if obj.name == playments_ps_name:
+            return "manual"
+        currency = obj.currency.symbol if obj.currency else None
+        if currency == "KZT":
+            if obj.name == protocol_ps_name:
+                return "Binance/Halyk"
+            return "Bybit/Kaspi"
+        if currency == "RUB":
+            return "Bybit/Sber"
+        return None
+
+
 class BalanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Balance

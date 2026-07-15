@@ -29,6 +29,7 @@ urlpatterns = [
     path(r'pdgroup-creation-data/', views.get_pdgroup_creation_data),
     path(r'pd-creation-data/', views.get_pd_creation_data),
     path(r'get-filters-pd/', views.get_filters_payment_details),
+    path(r'exchange-rates/', views.get_exchange_rates),
     path(r'autoclose-off/', views.autoclose_off),
     path(r'autoclose-on/', views.autoclose_on),
     path('', include(router.urls)),

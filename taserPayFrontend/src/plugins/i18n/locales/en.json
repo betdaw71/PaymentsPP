@@ -428,7 +428,8 @@
     "total_balance": "Total Balance",
     "traders_balance": "Traders Balance",
     "transactions": "Transactions",
-    "withdrawals": "Withdrawals"
+    "withdrawals": "Withdrawals",
+    "exchange_rates": "Exchange Rates"
   },
   "team": "Team",
   "team_balances": "Team Balances",
@@ -474,6 +475,14 @@
   "updated_date": "Updated Date",
   "usd_amount": "Amount (USDT)",
   "usdt_exchange_rate": "USDT Exchange Rate (1 USDT = ? {currency})",
+  "exchange_rate": "Rate",
+  "rate_source": "Source",
+  "last_update": "Updated",
+  "rate_not_updated": "Never updated",
+  "in_on": "In",
+  "out_on": "Out",
+  "on": "On",
+  "off": "Off",
   "user": {
     "2fa_dialog": {
       "description": "",

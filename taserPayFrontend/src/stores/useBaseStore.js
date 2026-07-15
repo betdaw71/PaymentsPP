@@ -696,6 +696,20 @@ export const useBaseStore = defineStore ({
         error: response.data,
       }
     },
+    async getExchangeRates (params) {
+      const response = await instance.get (`/base/exchange-rates/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
     async getTradingTeamTrader (params) {
       const response = await instance.get (`/base/trading-team/trader/`, { params })
       if (response.status === 200) {
