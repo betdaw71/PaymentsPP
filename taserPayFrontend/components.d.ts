@@ -9,6 +9,8 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
+    ApActionZone: typeof import('./src/components/ap/ApActionZone.vue')['default']
+    ApBlock: typeof import('./src/components/ap/ApBlock.vue')['default']
     ApDataGrid: typeof import('./src/components/ap/ApDataGrid.vue')['default']
     ApFilterBar: typeof import('./src/components/ap/ApFilterBar.vue')['default']
     ApFilterPanel: typeof import('./src/components/ap/ApFilterPanel.vue')['default']
@@ -28,7 +30,9 @@ declare module '@vue/runtime-core' {
     AppStepper: typeof import('./src/@core/components/AppStepper.vue')['default']
     AppTextarea: typeof import('./src/@core/components/app-form-elements/AppTextarea.vue')['default']
     AppTextField: typeof import('./src/@core/components/app-form-elements/AppTextField.vue')['default']
+    ApQueueStrip: typeof import('./src/components/ap/ApQueueStrip.vue')['default']
     ApStatusBadge: typeof import('./src/components/ap/ApStatusBadge.vue')['default']
+    ApTruthStrip: typeof import('./src/components/ap/ApTruthStrip.vue')['default']
     ApWorkspace: typeof import('./src/components/ap/ApWorkspace.vue')['default']
     BuyNow: typeof import('./src/@core/components/BuyNow.vue')['default']
     CardAddEditDialog: typeof import('./src/@core/components/CardAddEditDialog.vue')['default']

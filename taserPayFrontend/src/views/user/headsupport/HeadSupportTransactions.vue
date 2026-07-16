@@ -222,11 +222,15 @@ const switchSelection = (values, name, key) => {
     filters.value[name] = JSON.parse (JSON.stringify (values.map (item => item[key])))
   }
 }
+
+const transactionTruthMetrics = computed (() => [
+  { label: t ('tabs.transactions'), value: String (total.value), tone: 'primary' },
+])
 </script>
 
 
 <template>
-  <VCol>
+  <div>
     <VSnackbar
       v-model="snackbar.enabled"
       :color="snackbar.type"
@@ -235,199 +239,171 @@ const switchSelection = (values, name, key) => {
     >
       {{ snackbar.message }}
     </VSnackbar>
-    <VRow>
-      <VCol cols="12">
-        <VCard>
-          <VCardTitle class="mt-2 ms-2">
-            <VAvatar
-              size="50"
-              variant="text"
-              color="primary"
-              icon="tabler-layout-list"
+
+    <ApWorkspace>
+      <template #header>
+        <ApPageHeader
+          :title="t('tabs.transactions')"
+          :subtitle="t('nav.finance')"
+        />
+      </template>
+
+      <div class="ap-filter-toolbar">
+        <VSelect
+          v-model="filters.rowsPerPage"
+          :items="rowsPerPageOptions"
+          :label="$t('rows')"
+          item-title="name"
+          item-value="value"
+          scroll-strategy="close"
+          color="primary"
+          density="compact"
+          hide-details
+          style="max-width: 7rem;"
+        />
+        <VBtn
+          icon="tabler-refresh"
+          size="small"
+          variant="tonal"
+          @click="getTransactions"
+        />
+      </div>
+
+      <ApFilterPanel class="mb-3">
+        <VRow>
+          <VCol
+            cols="12"
+            sm="4"
+            md="3"
+          >
+            <AppSelect
+              v-model="filters.selectedType"
+              :label="$t('type')"
+              :items="itemTypes"
+              item-title="name"
+              item-value="value"
+              multiple
+              clearable
+              clear-icon="tabler-x"
+              :prepend-inner-icon="filters.selectedType.length === itemTypes.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+              @click:prependInner="switchSelection(itemTypes, 'selectedType', 'value')"
             />
-            {{ t ('tabs.transactions') }}
-          </VCardTitle>
-          <VCol cols="12">
-            <VCard>
-              <VCardText class="d-flex align-center flex-wrap gap-3">
-                <VCardText
-                  class="text-h5 mb-0"
-                  style="padding: 0.5rem;"
-                >
-                  {{ t ('tabs.transactions') }}
-                </VCardText>
+          </VCol>
+          <VCol
+            cols="12"
+            sm="4"
+            md="3"
+          >
+            <AppDateTimePicker
+              v-model="filters.dateRange"
+              :label="$t('creation_date_range')"
+              :config="{ mode: 'range' }"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="4"
+            md="2"
+          >
+            <AppTextField
+              v-model="filters.minAmount"
+              :label="$t('min_amount_usdt')"
+              type="number"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="4"
+            md="2"
+          >
+            <AppTextField
+              v-model="filters.maxAmount"
+              :label="$t('max_amount_usdt')"
+              type="number"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="4"
+            md="2"
+          >
+            <AppSelect
+              v-model="filters.ordering"
+              :label="$t('ordering')"
+              :items="orderingTypes"
+              item-title="name"
+              item-value="value"
+              clear-icon="tabler-x"
+            />
+          </VCol>
+        </VRow>
+      </ApFilterPanel>
 
-                <VSpacer />
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.rowsPerPage"
-                    :items="rowsPerPageOptions"
-                    :label="$t('rows')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
-                  />
-                </VCol>
-                <VBtn
-                  icon="tabler-refresh"
-                  size="small"
-                  @click="getTransactions"
-                />
-              </VCardText>
+      <ApTruthStrip :items="transactionTruthMetrics" />
 
-              <VCardText>
-                <VRow>
-                  <!-- 👉 Select Role -->
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="3"
-                  >
-                    <AppSelect
-                      v-model="filters.selectedType"
-                      :label="$t('type')"
-                      :items="itemTypes"
-                      item-title="name"
-                      item-value="value"
-                      multiple
-                      clearable
-                      clear-icon="tabler-x"
-                      :prepend-inner-icon="filters.selectedType.length === itemTypes.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                      @click:prependInner="switchSelection(itemTypes, 'selectedType', 'value')"
-                    />
-                  </VCol>
-                  <!-- 👉 Select Plan -->
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="3"
-                  >
-                    <AppDateTimePicker
-                      v-model="filters.dateRange"
-                      :label="$t('creation_date_range')"
-                      :config="{ mode: 'range' }"
-                      clearable
-                      clear-icon="tabler-x"
-                    />
-                  </VCol>
-                  <!-- 👉 Select Status -->
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="2"
-                  >
-                    <AppTextField
-                      v-model="filters.minAmount"
-                      :label="$t('min_amount_usdt')"
-                      type="number"
-                      clearable
-                      clear-icon="tabler-x"
-                    />
-                  </VCol>
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="2"
-                  >
-                    <AppTextField
-                      v-model="filters.maxAmount"
-                      :label="$t('max_amount_usdt')"
-                      type="number"
-                      clearable
-                      clear-icon="tabler-x"
-                    />
-                  </VCol>
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="2"
-                  >
-                    <AppSelect
-                      v-model="filters.ordering"
-                      :label="$t('ordering')"
-                      :items="orderingTypes"
-                      item-title="name"
-                      item-value="value"
-                      clear-icon="tabler-x"
-                    />
-                  </VCol>
-                </VRow>
-              </VCardText>
+      <ApActionZone sticky>
+        <VBtn
+          variant="tonal"
+          @click="isUserFilterFromTransactionsDialogOpen = true"
+        >
+          {{ $t('from_filters') }}
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          @click="isUserFilterToTransactionsDialogOpen = true"
+        >
+          {{ $t('to_filters') }}
+        </VBtn>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchQueryId"
+            :placeholder="$t('id')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchQueryIn"
+            :placeholder="$t('search_in_order')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchQueryOut"
+            :placeholder="$t('search_out_order')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <VBtn
+          variant="tonal"
+          color="secondary"
+          prepend-icon="tabler-screen-share"
+        >
+          {{ $t('export') }}
+        </VBtn>
+        <VBtn
+          color="primary"
+          prepend-icon="tabler-search"
+          @click="getTransactions"
+        >
+          {{ $t('search') }}
+        </VBtn>
+      </ApActionZone>
 
-              <VDivider />
-
-              <VCardText class="d-flex flex-wrap py-4 gap-4">
-                <VSpacer />
-                <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
-                  <div style="inline-size: 10rem;">
-                    <VBtn
-                      variant="tonal"
-                      @click="isUserFilterFromTransactionsDialogOpen = true"
-                    >
-                      {{ $t('from_filters') }}
-                    </VBtn>
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <VBtn
-                      variant="tonal"
-                      @click="isUserFilterToTransactionsDialogOpen = true"
-                    >
-                      {{ $t('to_filters') }}
-                    </VBtn>
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryId"
-                      :placeholder="$t('id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryIn"
-                      :placeholder="$t('search_in_order')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryOut"
-                      :placeholder="$t('search_out_order')"
-                      density="compact"
-                    />
-                  </div>
-                  <VBtn
-                    variant="tonal"
-                    color="secondary"
-                    prepend-icon="tabler-screen-share"
-                  >
-                    {{ $t('export') }}
-                  </VBtn>
-                  <VBtn
-                    color="primary"
-                    prepend-icon="tabler-search"
-                    @click="getTransactions"
-                  >
-                    {{ $t('search') }}
-                  </VBtn>
-                </div>
-              </VCardText>
-
-              <VDivider />
-              <!-- SECTION Table -->
-              <VTable class="text-no-wrap invoice-list-table">
+      <ApDataGrid class="text-body-2">
                 <!-- 👉 Table head -->
                 <thead>
                   <tr>
-                    <th scope="col">
-                      {{ $t ('id').toUpperCase () }}
-                    </th>
                     <th scope="col">
                       {{ $t ('type').toUpperCase () }}
                     </th>
@@ -452,6 +428,9 @@ const switchSelection = (values, name, key) => {
                     <th scope="col">
                       {{ $t ('date').toUpperCase () }}
                     </th>
+                    <th scope="col">
+                      {{ $t ('id').toUpperCase () }}
+                    </th>
                   </tr>
                 </thead>
 
@@ -460,25 +439,6 @@ const switchSelection = (values, name, key) => {
                     v-for="item in items"
                     :key="item.id"
                   >
-                    <td>
-                      <VTooltip
-                        location="end"
-                      >
-                        <template #activator="{ props }">
-                          <VBtn
-                            variant="text"
-                            v-bind="props"
-                            @click="copyToClipboard (item.id, 'Transaction ID copied!', 'success')"
-                          >
-                            {{ formatUUID (item.id) }}
-                          </VBtn>
-                        </template>
-                        <span>
-                          {{ item.id }}
-                        </span>
-                      </VTooltip>
-                    </td>
-
                     <td>
                       <VTooltip>
                         <template #activator="{ props }">
@@ -497,10 +457,10 @@ const switchSelection = (values, name, key) => {
                         <p class="mb-0">
                           {{ resolveTransactionTypeVariantAndIcon (item.transaction_type).text }}
                         </p>
-                      </vtooltip>
+                      </VTooltip>
                     </td>
 
-                    <td>
+                    <td class="font-weight-bold text-high-emphasis">
                       USD&nbsp;{{ item.value }}
                     </td>
                     <td>
@@ -508,7 +468,6 @@ const switchSelection = (values, name, key) => {
                         color="alternative"
                         text-color="white"
                         small
-                        class=""
                       >
                         @{{ item.from }}
                       </VChip>
@@ -519,7 +478,6 @@ const switchSelection = (values, name, key) => {
                         color="alternative"
                         text-color="white"
                         small
-                        class=""
                       >
                         @{{ item.to }}
                       </VChip>
@@ -573,6 +531,25 @@ const switchSelection = (values, name, key) => {
                         </p>
                       </VTooltip>
                     </td>
+                    <td>
+                      <VTooltip
+                        location="end"
+                      >
+                        <template #activator="{ props }">
+                          <VBtn
+                            variant="text"
+                            size="small"
+                            v-bind="props"
+                            @click="copyToClipboard (item.id, 'Transaction ID copied!', 'success')"
+                          >
+                            {{ formatUUID (item.id) }}
+                          </VBtn>
+                        </template>
+                        <span>
+                          {{ item.id }}
+                        </span>
+                      </VTooltip>
+                    </td>
                   </tr>
                 </tbody>
 
@@ -609,32 +586,23 @@ const switchSelection = (values, name, key) => {
                     />
                   </tr>
                 </tfoot>
-              </VTable>
-              <!-- !SECTION -->
+      </ApDataGrid>
 
-              <VDivider />
+      <template #footer>
+        <div class="d-flex align-center flex-wrap justify-space-between gap-4 w-100">
+          <span class="text-sm text-disabled">{{ paginationData }}</span>
+          <VPagination
+            v-model="currentPage"
+            size="small"
+            :total-visible="5"
+            :length="totalPage"
+            @next="selectedRows = []"
+            @prev="selectedRows = []"
+          />
+        </div>
+      </template>
+    </ApWorkspace>
 
-              <!-- SECTION Pagination -->
-              <VCardText class="d-flex align-center flex-wrap justify-space-between gap-4 py-4">
-                <!-- 👉  Pagination meta -->
-                <span class="text-sm text-disabled">{{ paginationData }}</span>
-
-                <!-- 👉 Pagination -->
-                <VPagination
-                  v-model="currentPage"
-                  size="small"
-                  :total-visible="5"
-                  :length="totalPage"
-                  @next="selectedRows = []"
-                  @prev="selectedRows = []"
-                />
-              </VCardText>
-              <!-- !SECTION -->
-            </VCard>
-          </VCol>
-        </VCard>
-      </VCol>
-    </VRow>
     <FilterTransactions
       v-model:is-dialog-visible="isUserFilterFromTransactionsDialogOpen"
       v-model:data="filters.from"
@@ -647,5 +615,5 @@ const switchSelection = (values, name, key) => {
       type="to"
       @update:data="filters.to = $event"
     />
-  </vcol>
+  </div>
 </template>

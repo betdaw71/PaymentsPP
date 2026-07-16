@@ -286,21 +286,15 @@ const getUser = (polling = true) => {
 </script>
 
 <template>
-  <VRow v-if="userData">
-    <!--    <VCol -->
-    <!--      cols="12" -->
-    <!--      md="3" -->
-    <!--      lg="3" -->
-    <!--    > -->
-    <!--      <UserBioPanel -->
-    <!--        v-model:user-data="userData" -->
-    <!--        @update:userData="userData = $event" -->
-    <!--      /> -->
-    <!--    </VCol> -->
+  <ApWorkspace v-if="userData">
+      <template #header>
+        <ApPageHeader
+          v-if="activeSection"
+          :title="activeSection.title"
+          :subtitle="$t('nav.finance')"
+        />
+      </template>
 
-    <VCol
-      cols="12"
-    >
       <VAlert
         v-if="!authStore.userData.deposit"
         variant="tonal"
@@ -313,11 +307,6 @@ const getUser = (polling = true) => {
         <span>
           {{ $t('alerts.balance_low.requirements') }}</span>
       </VAlert>
-      <ApPageHeader
-        v-if="activeSection"
-        class="mb-4"
-        :title="activeSection.title"
-      />
 
       <VWindow
         :model-value="activeTabIndex"
@@ -452,8 +441,7 @@ const getUser = (polling = true) => {
           </VWindowItem>
         </template>
       </VWindow>
-    </VCol>
-  </VRow>
+  </ApWorkspace>
   <template v-else>
     <VCardItem>
       <div

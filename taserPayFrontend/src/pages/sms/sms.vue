@@ -317,11 +317,15 @@ const changeStatus = (item, status) => {
     }
   })
 }
+
+const smsTruthMetrics = computed (() => [
+  { label: t ('sms'), value: String (total.value), tone: 'primary' },
+])
 </script>
 
 
 <template>
-  <VCol>
+  <div>
     <VSnackbar
       v-model="snackbar.enabled"
       :color="snackbar.type"
@@ -330,234 +334,210 @@ const changeStatus = (item, status) => {
     >
       {{ snackbar.message }}
     </VSnackbar>
-    <VRow v-if="authStore.is_authenticated()">
-      <VCol cols="12">
-        <VCard>
-          <VCardTitle class="mt-2 ms-2">
-            <VAvatar
-              size="50"
-              variant="text"
-              color="primary"
-              icon="tabler-device-mobile-message"
+
+    <ApWorkspace v-if="authStore.is_authenticated()">
+      <template #header>
+        <ApPageHeader
+          :title="t('sms')"
+          :subtitle="t('nav.operations')"
+        />
+      </template>
+
+      <div class="ap-filter-toolbar">
+        <VSelect
+          v-model="filters.rowsPerPage"
+          :items="rowsPerPageOptions"
+          :label="$t('rows')"
+          item-title="name"
+          item-value="value"
+          scroll-strategy="close"
+          color="primary"
+          density="compact"
+          hide-details
+          style="max-width: 7rem;"
+        />
+        <VBtn
+          icon="tabler-refresh"
+          size="small"
+          variant="tonal"
+          @click="getSms"
+        />
+      </div>
+
+      <ApFilterPanel class="mb-3">
+        <VRow>
+          <VCol
+            cols="12"
+            sm="4"
+            md="3"
+            lg="2"
+          >
+            <AppSelect
+              v-model="filters.selectedStatus"
+              :label="$t('status')"
+              :items="filterOptions.status"
+              :item-title="option => $t (`sms_status.${option.value.toLowerCase()}`)"
+              item-value="value"
+              multiple
+              clearable
+              clear-icon="tabler-x"
+              :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+              @click:prepend-inner="switchSelection(filterOptions.status, 'selectedStatus', 'value')"
             />
-            {{ t ('sms') }}
-          </VCardTitle>
-          <VCol cols="12">
-            <VCard>
-              <VCardText class="d-flex align-center flex-wrap gap-3">
-                <VCardText
-                  class="text-h5 mb-0"
-                  style="padding: 0.5rem;"
-                >
-                  {{ t ('sms') }}
-                </VCardText>
+          </VCol>
+          <VCol
+            cols="12"
+            sm="4"
+            md="4"
+          >
+            <AppSelect
+              v-model="filters.ordering"
+              :label="$t ('ordering')"
+              :items="orderingTypes"
+              :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
+              item-value="value"
+              clear-icon="tabler-x"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <AppDateTimePicker
+              v-model="filters.dateRange"
+              :label="$t('creation_date_range')"
+              :config="{ mode: 'range' }"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+        </VRow>
 
-                <VSpacer />
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.rowsPerPage"
-                    :items="rowsPerPageOptions"
-                    :label="$t('rows')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
-                  />
-                </VCol>
-                <VBtn
-                  icon="tabler-refresh"
-                  size="small"
-                  @click="getSms"
-                />
-              </VCardText>
+        <div
+          v-if="authStore.is_support() || authStore.is_senior_trader()"
+          class="ap-section"
+        >
+          <VRow>
+            <VCol
+              cols="12"
+              sm="4"
+              md="3"
+              lg="2"
+            >
+              <AppSelect
+                v-model="filters.selectedTraders"
+                :label="$t('traders')"
+                :items="filterOptions.traders"
+                item-title="name"
+                item-value="name"
+                multiple
+                clearable
+                clear-icon="tabler-x"
+                :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
+              />
+            </VCol>
+            <VCol
+              v-if="authStore.is_support()"
+              cols="12"
+              sm="4"
+              md="3"
+              lg="2"
+            >
+              <AppSelect
+                v-model="filters.selectedTeams"
+                :label="$t('teams')"
+                :items="filterOptions.teams"
+                item-title="name"
+                item-value="name"
+                multiple
+                clearable
+                clear-icon="tabler-x"
+                :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
+              />
+            </VCol>
+          </VRow>
+        </div>
+      </ApFilterPanel>
 
-              <VExpansionPanels class="px-5 pb-5">
-                <VExpansionPanel>
-                  <VExpansionPanelTitle>
-                    <div class="text-h6">
-                      {{ $t ('filters') }}
-                    </div>
-                  </VExpansionPanelTitle>
-                  <VExpansionPanelText>
-                    <VCardText>
-                      <VRow>
-                        <!-- 👉 Select Role -->
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                          lg="2"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedStatus"
-                            :label="$t('status')"
-                            :items="filterOptions.status"
-                            :item-title="option => $t (`sms_status.${option.value.toLowerCase()}`)"
-                            item-value="value"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prepend-inner="switchSelection(filterOptions.status, 'selectedStatus', 'value')"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="4"
-                        >
-                          <AppSelect
-                            v-model="filters.ordering"
-                            :label="$t ('ordering')"
-                            :items="orderingTypes"
-                            :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
-                            item-value="value"
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                      </VRow>
-                    </VCardText>
-                    <template
-                      v-if="authStore.is_support() || authStore.is_senior_trader()"
-                    >
-                      <VDivider />
-                      <VCardText class="d-flex flex-wrap py-4 gap-4">
-                        <VRow>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTraders"
-                              :label="$t('traders')"
-                              :items="filterOptions.traders"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            v-if="authStore.is_support()"
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTeams"
-                              :label="$t('teams')"
-                              :items="filterOptions.teams"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
-                            />
-                          </VCol>
-                        </VRow>
-                      </VCardText>
-                    </template>
-                  </VExpansionPanelText>
-                </VExpansionPanel>
-              </VExpansionPanels>
+      <ApTruthStrip :items="smsTruthMetrics" />
 
+      <ApActionZone sticky>
+        <template #leading>
+          <VSwitch
+            v-model="filters.apply_filters"
+            :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
+            hide-details
+            density="compact"
+            @change="getSms"
+          />
+        </template>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchId"
+            :placeholder="$t('id')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchDevice"
+            :placeholder="$t('device')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchText"
+            :placeholder="$t('text')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchDeviceOwner"
+            :placeholder="$t('device_owner')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchInOrder"
+            :placeholder="$t('search_in_order')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <div style="inline-size: 10rem;">
+          <AppTextField
+            v-model="filters.searchOutOrder"
+            :placeholder="$t('search_out_order')"
+            density="compact"
+            hide-details
+          />
+        </div>
+        <VBtn
+          variant="tonal"
+          color="secondary"
+          prepend-icon="tabler-screen-share"
+        >
+          {{ $t ('export') }}
+        </VBtn>
+        <VBtn
+          color="primary"
+          prepend-icon="tabler-search"
+          @click="getSms"
+        >
+          {{ $t ('search') }}
+        </VBtn>
+      </ApActionZone>
 
-              <VDivider />
-              <VCardText class="d-flex flex-wrap py-4 gap-4">
-                <VSpacer />
-                <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
-                  <!-- 👉 Search  -->
-                  <div style="inline-size: 10rem;">
-                    <VSwitch
-                      v-model="filters.apply_filters"
-                      :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
-                      @change="getSms"
-                    />
-                  </div>
-                  <div style="inline-size: 15rem;">
-                    <AppDateTimePicker
-                      v-model="filters.dateRange"
-                      :placeholder="$t('creation_date_range')"
-                      :config="{ mode: 'range' }"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchId"
-                      :placeholder="$t('id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchDevice"
-                      :placeholder="$t('device')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchText"
-                      :placeholder="$t('text')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchDeviceOwner"
-                      :placeholder="$t('device_owner')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchInOrder"
-                      :placeholder="$t('search_in_order')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchOutOrder"
-                      :placeholder="$t('search_out_order')"
-                      density="compact"
-                    />
-                  </div>
-                  <VBtn
-                    variant="tonal"
-                    color="secondary"
-                    prepend-icon="tabler-screen-share"
-                  >
-                    {{ $t ('export') }}
-                  </VBtn>
-                  <VBtn
-                    color="primary"
-                    prepend-icon="tabler-search"
-                    @click="getSms"
-                  >
-                    {{ $t ('search') }}
-                  </VBtn>
-                </div>
-              </VCardText>
-
-              <VDivider />
-              <!-- SECTION Table -->
-              <VTable
-                class="text-no-wrap invoice-list-table text-body-2"
-              >
+      <ApDataGrid class="text-body-2">
                 <!-- 👉 Table head -->
                 <thead>
                   <tr class="text-wrap">
@@ -707,31 +687,21 @@ const changeStatus = (item, status) => {
                     />
                   </tr>
                 </tfoot>
-              </VTable>
-              <!-- !SECTION -->
+      </ApDataGrid>
 
-              <VDivider />
-
-              <!-- SECTION Pagination -->
-              <VCardText class="d-flex align-center flex-wrap justify-space-between gap-4 py-4">
-                <!-- 👉  Pagination meta -->
-                <span class="text-sm text-disabled">{{ paginationData }}</span>
-
-                <!-- 👉 Pagination -->
-                <VPagination
-                  v-model="currentPage"
-                  size="small"
-                  :total-visible="5"
-                  :length="totalPage"
-                  @next="selectedRows = []"
-                  @prev="selectedRows = []"
-                />
-              </VCardText>
-              <!-- !SECTION -->
-            </VCard>
-          </VCol>
-        </VCard>
-      </VCol>
-    </VRow>
-  </vcol>
+      <template #footer>
+        <div class="d-flex align-center flex-wrap justify-space-between gap-4 w-100">
+          <span class="text-sm text-disabled">{{ paginationData }}</span>
+          <VPagination
+            v-model="currentPage"
+            size="small"
+            :total-visible="5"
+            :length="totalPage"
+            @next="selectedRows = []"
+            @prev="selectedRows = []"
+          />
+        </div>
+      </template>
+    </ApWorkspace>
+  </div>
 </template>
