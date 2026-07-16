@@ -409,6 +409,15 @@
   },
   "system_field": "System Field",
   "system_field_required": "System Field Required",
+  "nav": {
+    "operations": "Operations",
+    "assets": "Assets",
+    "finance": "Finance",
+    "people": "People",
+    "analytics": "Analytics",
+    "admin": "Administration",
+    "add_user": "Add User"
+  },
   "tabs": {
     "add_merchant": "Add Merchant",
     "add_payment_system": "Add Payment System",

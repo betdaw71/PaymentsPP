@@ -9,6 +9,10 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
+    ApDataGrid: typeof import('./src/components/ap/ApDataGrid.vue')['default']
+    ApFilterBar: typeof import('./src/components/ap/ApFilterBar.vue')['default']
+    ApMetricCard: typeof import('./src/components/ap/ApMetricCard.vue')['default']
+    ApPageHeader: typeof import('./src/components/ap/ApPageHeader.vue')['default']
     AppAutocomplete: typeof import('./src/@core/components/app-form-elements/AppAutocomplete.vue')['default']
     AppBarSearch: typeof import('./src/@core/components/AppBarSearch.vue')['default']
     AppCardActions: typeof import('./src/@core/components/cards/AppCardActions.vue')['default']
@@ -23,6 +27,8 @@ declare module '@vue/runtime-core' {
     AppStepper: typeof import('./src/@core/components/AppStepper.vue')['default']
     AppTextarea: typeof import('./src/@core/components/app-form-elements/AppTextarea.vue')['default']
     AppTextField: typeof import('./src/@core/components/app-form-elements/AppTextField.vue')['default']
+    ApStatusBadge: typeof import('./src/components/ap/ApStatusBadge.vue')['default']
+    ApWorkspace: typeof import('./src/components/ap/ApWorkspace.vue')['default']
     BuyNow: typeof import('./src/@core/components/BuyNow.vue')['default']
     CardAddEditDialog: typeof import('./src/@core/components/CardAddEditDialog.vue')['default']
     CardStatisticsHorizontal: typeof import('./src/@core/components/cards/CardStatisticsHorizontal.vue')['default']

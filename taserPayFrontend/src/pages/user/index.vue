@@ -47,6 +47,9 @@ import MerchantApiKeys from "@/views/user/merchant/MerchantApiKeys.vue"
 import { useBaseStore } from "@/stores/useBaseStore"
 
 
+import { tabQueryKeys } from '@/design/tokens'
+
+
 const { t } = useI18n ()
 const pollingThreshold = ref (120)
 const route = useRoute ()
@@ -208,6 +211,32 @@ const tabs = computed(
       transactionsTab,
     ]
   },
+)
+
+const resolveTabIndex = tabKey => {
+  if (!tabKey) {
+    return -1
+  }
+
+  const i18nKey = tabQueryKeys[tabKey]
+  if (!i18nKey) {
+    return -1
+  }
+
+  const label = t (i18nKey)
+
+  return tabs.value.findIndex (tab => tab.title === label)
+}
+
+watch (
+  () => route.query.tab,
+  tabKey => {
+    const index = resolveTabIndex (String (tabKey || ''))
+    if (index >= 0) {
+      profileSettings.value.user_info_tab = index
+    }
+  },
+  { immediate: true },
 )
 
 const getUser = (polling = true) => {

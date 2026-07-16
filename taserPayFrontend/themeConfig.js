@@ -18,7 +18,7 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
     enableI18n: true,
     theme: 'custom',
     isRtl: false,
-    skin: Skins.Bordered,
+    skin: Skins.Default,
     routeTransition: RouteTransitions.Fade,
     iconRenderer: VIcon,
   },
@@ -29,7 +29,7 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
   footer: { type: FooterType.Sticky },
   verticalNav: {
     isVerticalNavCollapsed: false,
-    defaultNavItemIconProps: { icon: 'tabler-circle', size: 10 },
+    defaultNavItemIconProps: { icon: 'tabler-point-filled', size: 6 },
     isVerticalNavSemiDark: false,
   },
   horizontalNav: {
@@ -40,8 +40,8 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
     chevronDown: { icon: 'tabler-chevron-down' },
     chevronRight: { icon: 'tabler-chevron-right', size: 18 },
     close: { icon: 'tabler-x' },
-    verticalNavPinned: { icon: 'tabler-circle-dot' },
-    verticalNavUnPinned: { icon: 'tabler-circle' },
-    sectionTitlePlaceholder: { icon: 'tabler-separator' },
+    verticalNavPinned: { icon: 'tabler-pin-filled' },
+    verticalNavUnPinned: { icon: 'tabler-pin' },
+    sectionTitlePlaceholder: { icon: 'tabler-minus-vertical' },
   },
 })
