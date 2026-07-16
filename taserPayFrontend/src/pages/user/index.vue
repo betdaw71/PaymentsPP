@@ -47,12 +47,10 @@ import MerchantApiKeys from "@/views/user/merchant/MerchantApiKeys.vue"
 import { useBaseStore } from "@/stores/useBaseStore"
 
 
-import { tabQueryKeys } from '@/design/tokens'
-
-
 const { t } = useI18n ()
 const pollingThreshold = ref (120)
 const route = useRoute ()
+const router = useRouter ()
 const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
 const userData = ref (null)
@@ -100,47 +98,56 @@ const tabs = computed(
   () => {
 
     const mainInfoTab = {
+      key: 'main_info',
       icon: 'tabler-info-circle',
       title: t ('tabs.main_info'),
     }
 
     const teamTab = {
+      key: 'team',
       icon: 'tabler-vector-triangle',
       title: t ('tabs.team'),
     }
 
     const balanceTab = {
+      key: 'balance',
       icon: 'tabler-wallet',
       title: t ('tabs.balance'),
     }
 
     const transactionsTab = {
+      key: 'transactions',
       icon: 'tabler-layout-list',
       title: t ('tabs.transactions'),
     }
 
     const withdrawalsTab = {
+      key: 'withdrawals',
       icon: 'tabler-stack-pop',
       title: t ('tabs.withdrawals'),
     }
 
     const tradersBalanceTab = {
+      key: 'traders_balance',
       icon: 'tabler-coin',
       title: t ('tabs.traders_balance'),
     }
 
     const merchantsBalanceTab = {
+      key: 'merchants_balance',
       icon: 'tabler-coin',
       title: t ('tabs.merchants_balance'),
     }
 
     const merchantsApiTab = {
+      key: 'merchants_api',
       icon: 'tabler-api',
       title: t ('tabs.merchants_api'),
     }
 
     const dashboardTab = {
-      icon: 'tabler-chart-dots-3',
+      key: 'dashboard',
+      icon: 'tabler-chart-histogram',
       title: t ('tabs.dashboard'),
     }
 
@@ -218,15 +225,16 @@ const resolveTabIndex = tabKey => {
     return -1
   }
 
-  const i18nKey = tabQueryKeys[tabKey]
-  if (!i18nKey) {
-    return -1
-  }
-
-  const label = t (i18nKey)
-
-  return tabs.value.findIndex (tab => tab.title === label)
+  return tabs.value.findIndex (tab => tab.key === tabKey)
 }
+
+const activeTabIndex = computed (() => {
+  const index = resolveTabIndex (String (route.query.tab || ''))
+
+  return index >= 0 ? index : 0
+})
+
+const activeSection = computed (() => tabs.value[activeTabIndex.value])
 
 watch (
   () => route.query.tab,
@@ -234,6 +242,19 @@ watch (
     const index = resolveTabIndex (String (tabKey || ''))
     if (index >= 0) {
       profileSettings.value.user_info_tab = index
+    }
+  },
+  { immediate: true },
+)
+
+watch (
+  () => [userData.value, tabs.value.length, route.query.tab],
+  () => {
+    if (!userData.value || !tabs.value.length) {
+      return
+    }
+    if (!route.query.tab && tabs.value[0]?.key) {
+      router.replace ({ name: 'user', query: { tab: tabs.value[0].key } })
     }
   },
   { immediate: true },
@@ -292,28 +313,15 @@ const getUser = (polling = true) => {
         <span>
           {{ $t('alerts.balance_low.requirements') }}</span>
       </VAlert>
-      <VTabs
-        v-model="profileSettings.user_info_tab"
-        class="v-tabs-pill"
-        show-arrows
-      >
-        <VTab
-          v-for="tab in tabs"
-          :key="tab.icon"
-          class="me-1"
-        >
-          <VIcon
-            :size="18"
-            :icon="tab.icon"
-            class="me-1"
-          />
-          <span>{{ tab.title }}</span>
-        </VTab>
-      </VTabs>
+      <ApPageHeader
+        v-if="activeSection"
+        class="mb-4"
+        :title="activeSection.title"
+      />
 
       <VWindow
-        v-model="profileSettings.user_info_tab"
-        class="mt-6 disable-tab-transition"
+        :model-value="activeTabIndex"
+        class="disable-tab-transition"
         :touch="false"
       >
         <template

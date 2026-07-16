@@ -518,16 +518,8 @@ const exportOrders = async () => {
                 />
               </VCardText>
 
-              <VExpansionPanels class="px-5 pb-5">
-                <VExpansionPanel>
-                  <VExpansionPanelTitle>
-                    <div class="text-h6">
-                      {{ $t ('filters') }}
-                    </div>
-                  </VExpansionPanelTitle>
-                  <VExpansionPanelText>
-                    <VCardText>
-                      <VRow>
+              <ApFilterPanel class="mx-5 mb-4">
+                    <VRow>
                         <!-- 👉 Select Role -->
                         <VCol
                           cols="12"
@@ -643,10 +635,8 @@ const exportOrders = async () => {
                           />
                         </VCol>
                       </VRow>
-                    </VCardText>
 
-                    <VDivider />
-                    <VCardText class="d-flex flex-wrap py-4 gap-4">
+                    <div class="ap-section">
                       <template
                         v-if="authStore.is_merchant()"
                       >
@@ -1063,10 +1053,8 @@ const exportOrders = async () => {
                           </VCol>
                         </VRow>
                       </template>
-                    </VCardText>
-                  </VExpansionPanelText>
-                </VExpansionPanel>
-              </VExpansionPanels>
+                    </div>
+              </ApFilterPanel>
 
               <VDivider />
               <VCardText class="d-flex flex-wrap py-4 gap-4">
