@@ -18,7 +18,7 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
     enableI18n: true,
     theme: 'custom',
     isRtl: false,
-    skin: Skins.Default,
+    skin: Skins.Bordered,
     routeTransition: RouteTransitions.Fade,
     iconRenderer: VIcon,
   },
@@ -29,7 +29,7 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
   footer: { type: FooterType.Sticky },
   verticalNav: {
     isVerticalNavCollapsed: false,
-    defaultNavItemIconProps: { icon: 'tabler-point', size: 8 },
+    defaultNavItemIconProps: { icon: 'tabler-circle', size: 10 },
     isVerticalNavSemiDark: false,
   },
   horizontalNav: {
