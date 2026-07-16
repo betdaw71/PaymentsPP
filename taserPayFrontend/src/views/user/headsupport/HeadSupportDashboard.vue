@@ -1,8 +1,8 @@
 <script setup>
 import VueApexCharts from 'vue3-apexcharts'
 import { useTheme } from 'vuetify'
-import { hexToRgb } from '@layouts/utils'
 import { useBaseStore } from '@/stores/useBaseStore'
+import { getAreaChartSplineConfig, getBarChartConfig, getColumnChartConfig } from '@core/libs/apex-chart/apexCharConfig'
 
 const { t } = useI18n ()
 const baseStore = useBaseStore ()
@@ -30,6 +30,12 @@ const periodItems = [
   { name: t ('dashboard.period_7d'), value: '7d' },
   { name: t ('dashboard.period_30d'), value: '30d' },
 ]
+
+const periodLabel = computed (() => {
+  const item = periodItems.find (p => p.value === period.value)
+
+  return item?.name || period.value
+})
 
 const paymentSystemItems = computed (() => {
   const all = { name: t ('dashboard.all_payment_systems'), value: null }
@@ -89,143 +95,98 @@ const queueItems = computed (() => [
   { key: 'cannot_process_out', label: 'dashboard.cannot_process_out', color: 'error' },
 ])
 
-const themeColors = computed (() => vuetifyTheme.current.value.colors)
-
-const chartPalette = computed (() => [
-  themeColors.value.primary,
-  themeColors.value.info,
-  themeColors.value.success,
-])
-
-const chartUi = computed (() => {
-  const theme = vuetifyTheme.current.value
-  const labelColor = `rgba(${hexToRgb(theme.colors['on-surface'])},${theme.variables['medium-emphasis-opacity']})`
-  const borderColor = `rgba(${hexToRgb(String(theme.variables['border-color']))},${theme.variables['border-opacity']})`
-
-  return { labelColor, borderColor }
-})
-
-const buildChartOptions = (categories = [], horizontal = false) => ({
-  chart: {
-    parentHeightOffset: 0,
-    toolbar: { show: false },
-    fontFamily: 'inherit',
-  },
-  colors: chartPalette.value,
-  dataLabels: { enabled: false },
-  stroke: {
-    curve: 'smooth',
-    width: horizontal ? 0 : 2,
-  },
-  grid: {
-    borderColor: chartUi.value.borderColor,
-    strokeDashArray: 4,
-    xaxis: { lines: { show: !horizontal } },
-    yaxis: { lines: { show: horizontal } },
-  },
-  legend: {
-    position: 'top',
-    horizontalAlign: 'left',
-    fontSize: '13px',
-    fontWeight: 500,
-    labels: { colors: chartUi.value.labelColor },
-    markers: { offsetX: -3, radius: 12 },
-  },
-  plotOptions: {
-    bar: {
-      horizontal,
-      borderRadius: 8,
-      borderRadiusApplication: 'end',
-      columnWidth: horizontal ? '30%' : '45%',
-      barHeight: horizontal ? '30%' : undefined,
-    },
-  },
-  xaxis: {
-    categories,
-    axisBorder: { show: false },
-    axisTicks: { color: chartUi.value.borderColor },
-    labels: {
-      style: { colors: chartUi.value.labelColor, fontSize: '0.8125rem' },
-      rotate: horizontal ? 0 : -35,
-    },
-  },
-  yaxis: {
-    labels: {
-      style: { colors: chartUi.value.labelColor, fontSize: '0.8125rem' },
-      formatter: val => `$${Math.round (val)}`,
-    },
-  },
-  fill: {
-    type: horizontal ? 'solid' : 'gradient',
-    opacity: horizontal ? 1 : 0.85,
-    gradient: {
-      shadeIntensity: 0.35,
-      opacityFrom: 0.45,
-      opacityTo: 0.05,
-      stops: [0, 90, 100],
-    },
-  },
-  tooltip: {
-    theme: vuetifyTheme.current.value.dark ? 'dark' : 'light',
-  },
-})
-
 const turnoverChartSeries = computed (() => [
   { name: t ('dashboard.turnover_in'), data: dailyChart.value.map (d => d.in_usd) },
   { name: t ('dashboard.turnover_out'), data: dailyChart.value.map (d => d.out_usd) },
   { name: t ('dashboard.margin'), data: dailyChart.value.map (d => d.margin) },
 ])
 
-const turnoverChartOptions = computed (() =>
-  buildChartOptions (dailyChart.value.map (d => d.date), false),
-)
+const turnoverChartOptions = computed (() => {
+  const base = getAreaChartSplineConfig (vuetifyTheme.current.value)
 
-const funnelInChart = computed (() => ({
-  series: [{ name: t ('dashboard.orders'), data: funnelIn.value.map (r => r.count) }],
-  options: {
-    ...buildChartOptions (funnelIn.value.map (r => r.status), true),
-    colors: [themeColors.value.primary],
-    title: {
-      text: t ('dashboard.funnel_in'),
-      align: 'left',
-      style: { fontSize: '15px', fontWeight: 600, color: chartUi.value.labelColor },
+  return {
+    ...base,
+    chart: { ...base.chart, stacked: false },
+    xaxis: {
+      ...base.xaxis,
+      categories: dailyChart.value.map (d => d.date),
     },
-  },
-}))
+    yaxis: {
+      labels: {
+        formatter: val => `$${Math.round (val)}`,
+        style: base.yaxis?.labels?.style,
+      },
+    },
+  }
+})
 
-const funnelOutChart = computed (() => ({
-  series: [{ name: t ('dashboard.orders'), data: funnelOut.value.map (r => r.count) }],
-  options: {
-    ...buildChartOptions (funnelOut.value.map (r => r.status), true),
-    colors: [themeColors.value.primary],
-    title: {
-      text: t ('dashboard.funnel_out'),
-      align: 'left',
-      style: { fontSize: '15px', fontWeight: 600, color: chartUi.value.labelColor },
+const makeFunnelChart = (title, data) => {
+  const base = getBarChartConfig (vuetifyTheme.current.value)
+
+  return {
+    series: [{ name: t ('dashboard.orders'), data: data.map (row => row.count) }],
+    options: {
+      ...base,
+      chart: { ...base.chart, type: 'bar' },
+      plotOptions: {
+        bar: {
+          ...base.plotOptions.bar,
+          horizontal: true,
+        },
+      },
+      title: { text: title, align: 'left', style: { fontSize: '14px' } },
+      xaxis: {
+        ...base.xaxis,
+        categories: data.map (row => row.status),
+      },
     },
-  },
-}))
+  }
+}
+
+const funnelInChart = computed (() => makeFunnelChart (t ('dashboard.funnel_in'), funnelIn.value))
+const funnelOutChart = computed (() => makeFunnelChart (t ('dashboard.funnel_out'), funnelOut.value))
 
 const psChartSeries = computed (() => [
   { name: t ('dashboard.turnover_in'), data: byPaymentSystem.value.map (r => r.in_completed_usd) },
   { name: t ('dashboard.turnover_out'), data: byPaymentSystem.value.map (r => r.out_completed_usd) },
 ])
 
-const psChartOptions = computed (() =>
-  buildChartOptions (
-    byPaymentSystem.value.map (r => `${r.name} (${r.currency || '?'})`),
-    false,
-  ),
-)
+const psChartOptions = computed (() => {
+  const base = getColumnChartConfig (vuetifyTheme.current.value)
+
+  return {
+    ...base,
+    chart: { ...base.chart, stacked: false },
+    xaxis: {
+      ...base.xaxis,
+      categories: byPaymentSystem.value.map (r => `${r.name} (${r.currency || '?'})`),
+    },
+    yaxis: {
+      labels: { formatter: val => `$${Math.round (val)}` },
+    },
+  }
+})
 
 const currencyChartSeries = computed (() => [
   { name: t ('dashboard.turnover_in'), data: byCurrency.value.map (r => r.in_completed_usd) },
   { name: t ('dashboard.turnover_out'), data: byCurrency.value.map (r => r.out_completed_usd) },
 ])
 
-const currencyChartOptions = computed (() =>
-  buildChartOptions (byCurrency.value.map (r => r.currency), false),
-)
+const currencyChartOptions = computed (() => {
+  const base = getColumnChartConfig (vuetifyTheme.current.value)
+
+  return {
+    ...base,
+    chart: { ...base.chart, stacked: false },
+    xaxis: {
+      ...base.xaxis,
+      categories: byCurrency.value.map (r => r.currency),
+    },
+    yaxis: {
+      labels: { formatter: val => `$${Math.round (val)}` },
+    },
+  }
+})
 
 const fetchDashboard = () => {
   loading.value = true
@@ -294,12 +255,55 @@ onMounted (fetchDashboard)
 
           <VCol cols="12">
             <VCard>
+              <!-- Toolbar -->
               <VCardText class="d-flex align-center flex-wrap gap-3">
                 <VCardText
                   class="text-h5 mb-0"
                   style="padding: 0.5rem;"
                 >
                   {{ t('tabs.dashboard') }}
+                  <VTooltip location="right">
+                    <template #activator="{ props }">
+                      <VChip
+                        v-bind="props"
+                        class="ms-1 p-1 font-weight-bold"
+                        color="success"
+                        text-color="white"
+                        small
+                      >
+                        $ {{ fmtUsd(kpi.in_turnover_usd + kpi.out_turnover_usd) }}
+                      </VChip>
+                    </template>
+                    <span>{{ t('dashboard.turnover_total') }}</span>
+                  </VTooltip>
+                  <VTooltip location="right">
+                    <template #activator="{ props }">
+                      <VChip
+                        v-bind="props"
+                        class="ms-1 p-1 font-weight-bold"
+                        color="primary"
+                        text-color="white"
+                        small
+                      >
+                        $ {{ fmtUsd(kpi.margin_usd) }}
+                      </VChip>
+                    </template>
+                    <span>{{ t('dashboard.margin') }}</span>
+                  </VTooltip>
+                  <VTooltip location="right">
+                    <template #activator="{ props }">
+                      <VChip
+                        v-bind="props"
+                        class="ms-1 p-1 font-weight-bold"
+                        color="warning"
+                        text-color="white"
+                        small
+                      >
+                        {{ kpi.pending_withdrawals || 0 }}
+                      </VChip>
+                    </template>
+                    <span>{{ t('dashboard.pending_withdrawals') }}</span>
+                  </VTooltip>
                 </VCardText>
 
                 <VSpacer />
@@ -312,79 +316,69 @@ onMounted (fetchDashboard)
                 />
               </VCardText>
 
-              <VExpansionPanels class="px-5 pb-5">
-                <VExpansionPanel>
-                  <VExpansionPanelTitle>
-                    <div class="text-h6">
-                      {{ t('filters') }}
-                    </div>
-                  </VExpansionPanelTitle>
-                  <VExpansionPanelText>
-                    <VCardText>
-                      <VRow>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                        >
-                          <AppSelect
-                            v-model="period"
-                            :label="t('dashboard.period')"
-                            :items="periodItems"
-                            item-title="name"
-                            item-value="value"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="4"
-                        >
-                          <AppSelect
-                            v-model="paymentSystem"
-                            :label="t('payment_system')"
-                            :items="paymentSystemItems"
-                            item-title="name"
-                            item-value="value"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                        >
-                          <AppSelect
-                            v-model="currency"
-                            :label="t('currency')"
-                            :items="currencyItems"
-                            item-title="name"
-                            item-value="value"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="2"
-                          class="d-flex align-center"
-                        >
-                          <VBtn
-                            color="primary"
-                            prepend-icon="tabler-search"
-                            block
-                            @click="fetchDashboard"
-                          >
-                            {{ t('search') }}
-                          </VBtn>
-                        </VCol>
-                      </VRow>
-                    </VCardText>
-                  </VExpansionPanelText>
-                </VExpansionPanel>
-              </VExpansionPanels>
+              <!-- Filters -->
+              <VCardText>
+                <VRow>
+                  <VCol
+                    cols="12"
+                    sm="4"
+                    md="3"
+                  >
+                    <AppSelect
+                      v-model="period"
+                      :label="t('dashboard.period')"
+                      :items="periodItems"
+                      item-title="name"
+                      item-value="value"
+                    />
+                  </VCol>
+                  <VCol
+                    cols="12"
+                    sm="4"
+                    md="4"
+                  >
+                    <AppSelect
+                      v-model="paymentSystem"
+                      :label="t('payment_system')"
+                      :items="paymentSystemItems"
+                      item-title="name"
+                      item-value="value"
+                      clearable
+                      clear-icon="tabler-x"
+                    />
+                  </VCol>
+                  <VCol
+                    cols="12"
+                    sm="4"
+                    md="3"
+                  >
+                    <AppSelect
+                      v-model="currency"
+                      :label="t('currency')"
+                      :items="currencyItems"
+                      item-title="name"
+                      item-value="value"
+                      clearable
+                      clear-icon="tabler-x"
+                    />
+                  </VCol>
+                  <VCol
+                    cols="12"
+                    sm="4"
+                    md="2"
+                    class="d-flex align-center"
+                  >
+                    <VBtn
+                      color="primary"
+                      prepend-icon="tabler-search"
+                      block
+                      @click="fetchDashboard"
+                    >
+                      {{ t('search') }}
+                    </VBtn>
+                  </VCol>
+                </VRow>
+              </VCardText>
 
               <VDivider />
 
@@ -402,378 +396,350 @@ onMounted (fetchDashboard)
               </template>
 
               <template v-else-if="dashboard">
-                <VCardText class="d-flex flex-wrap py-4 gap-4">
-                  <VTooltip location="right">
-                    <template #activator="{ props }">
-                      <VChip
-                        v-bind="props"
-                        class="ms-1 px-3 font-weight-bold"
-                        color="primary"
-                        text-color="white"
-                        size="lg"
-                      >
+                <!-- KPI row -->
+                <VCardText>
+                  <VRow>
+                    <VCol
+                      cols="12"
+                      sm="6"
+                      md="3"
+                    >
+                      <div class="text-caption text-medium-emphasis">
+                        {{ t('dashboard.turnover_in') }}
+                      </div>
+                      <div class="text-h6">
                         $ {{ fmtUsd(kpi.in_turnover_usd) }}
-                      </VChip>
-                    </template>
-                    <span>{{ t('dashboard.turnover_in') }} · {{ fmtPct(kpi.in_conversion) }}</span>
-                  </VTooltip>
-
-                  <VTooltip location="right">
-                    <template #activator="{ props }">
-                      <VChip
-                        v-bind="props"
-                        class="ms-1 px-3 font-weight-bold"
-                        color="primary"
-                        text-color="white"
-                        size="lg"
-                      >
+                      </div>
+                      <div class="text-caption">
+                        {{ kpi.in_completed }} / {{ kpi.in_created }} · {{ fmtPct(kpi.in_conversion) }}
+                      </div>
+                    </VCol>
+                    <VCol
+                      cols="12"
+                      sm="6"
+                      md="3"
+                    >
+                      <div class="text-caption text-medium-emphasis">
+                        {{ t('dashboard.turnover_out') }}
+                      </div>
+                      <div class="text-h6">
                         $ {{ fmtUsd(kpi.out_turnover_usd) }}
-                      </VChip>
-                    </template>
-                    <span>{{ t('dashboard.turnover_out') }} · {{ fmtPct(kpi.out_conversion) }}</span>
-                  </VTooltip>
+                      </div>
+                      <div class="text-caption">
+                        {{ kpi.out_completed }} / {{ kpi.out_created }} · {{ fmtPct(kpi.out_conversion) }}
+                      </div>
+                    </VCol>
+                    <VCol
+                      cols="12"
+                      sm="6"
+                      md="3"
+                    >
+                      <div class="text-caption text-medium-emphasis">
+                        {{ t('tabs.traders_balance') }}
+                      </div>
+                      <div class="text-body-1">
+                        <VChip
+                          class="me-1"
+                          color="success"
+                          size="small"
+                          label
+                        >
+                          $ {{ fmtUsd(kpi.traders_available) }}
+                        </VChip>
+                        <VChip
+                          color="info"
+                          size="small"
+                          label
+                          append-icon="tabler-snowflake"
+                        >
+                          $ {{ fmtUsd(kpi.traders_frozen) }}
+                        </VChip>
+                      </div>
+                    </VCol>
+                    <VCol
+                      cols="12"
+                      sm="6"
+                      md="3"
+                    >
+                      <div class="text-caption text-medium-emphasis">
+                        {{ t('tabs.merchants_balance') }}
+                      </div>
+                      <div class="text-body-1">
+                        <VChip
+                          class="me-1"
+                          color="success"
+                          size="small"
+                          label
+                        >
+                          $ {{ fmtUsd(kpi.merchants_available) }}
+                        </VChip>
+                        <VChip
+                          color="info"
+                          size="small"
+                          label
+                          append-icon="tabler-snowflake"
+                        >
+                          $ {{ fmtUsd(kpi.merchants_frozen) }}
+                        </VChip>
+                      </div>
+                    </VCol>
+                  </VRow>
+                </VCardText>
 
-                  <VTooltip location="right">
-                    <template #activator="{ props }">
-                      <VChip
-                        v-bind="props"
-                        class="ms-1 px-3 font-weight-bold"
-                        color="primary"
-                        text-color="white"
-                        size="lg"
-                      >
-                        $ {{ fmtUsd(kpi.margin_usd) }}
-                      </VChip>
-                    </template>
-                    <span>{{ t('dashboard.margin') }}</span>
-                  </VTooltip>
+                <VDivider />
 
-                  <VTooltip location="right">
-                    <template #activator="{ props }">
-                      <VChip
-                        v-bind="props"
-                        class="ms-1 px-3 font-weight-bold"
-                        color="info"
-                        text-color="white"
-                        size="lg"
-                        prepend-icon="tabler-snowflake"
-                      >
-                        {{ kpi.pending_withdrawals || 0 }}
-                      </VChip>
-                    </template>
-                    <span>{{ t('dashboard.pending_withdrawals') }} · $ {{ fmtUsd(kpi.pending_withdrawals_usd) }}</span>
-                  </VTooltip>
-
-                  <VTooltip location="right">
-                    <template #activator="{ props }">
-                      <VChip
-                        v-bind="props"
-                        class="ms-1 p-1 font-weight-bold"
-                        color="success"
-                        text-color="white"
-                        small
-                      >
-                        $ {{ fmtUsd(kpi.traders_available) }}
-                      </VChip>
-                    </template>
-                    <span>{{ t('available_balance') }} ({{ t('tabs.traders_balance') }})</span>
-                  </VTooltip>
-
-                  <VTooltip location="right">
-                    <template #activator="{ props }">
-                      <VChip
-                        v-bind="props"
-                        class="ms-1 p-1 font-weight-bold"
-                        color="info"
-                        text-color="white"
-                        small
-                        append-icon="tabler-snowflake"
-                      >
-                        $ {{ fmtUsd(kpi.traders_frozen) }}
-                      </VChip>
-                    </template>
-                    <span>{{ t('frozen_balance') }} ({{ t('tabs.traders_balance') }})</span>
-                  </VTooltip>
-
-                  <VTooltip location="right">
-                    <template #activator="{ props }">
-                      <VChip
-                        v-bind="props"
-                        class="ms-1 p-1 font-weight-bold"
-                        color="success"
-                        text-color="white"
-                        small
-                      >
-                        $ {{ fmtUsd(kpi.merchants_available) }}
-                      </VChip>
-                    </template>
-                    <span>{{ t('available_balance') }} ({{ t('tabs.merchants_balance') }})</span>
-                  </VTooltip>
-
+                <!-- Queues -->
+                <VCardText class="d-flex flex-wrap gap-2">
                   <VChip
                     v-for="item in queueItems"
                     :key="item.key"
-                    :color="kpi[item.key] > 0 ? item.color : 'secondary'"
+                    :color="kpi[item.key] > 0 ? item.color : 'default'"
                     variant="tonal"
-                    size="small"
                     label
-                    class="font-weight-medium"
                   >
                     {{ t(item.label) }}: {{ kpi[item.key] || 0 }}
+                  </VChip>
+                  <VChip
+                    color="secondary"
+                    variant="tonal"
+                    label
+                  >
+                    {{ t('dashboard.period') }}: {{ periodLabel }}
                   </VChip>
                 </VCardText>
 
                 <VDivider />
 
-                <VExpansionPanels class="px-5 pb-2">
-                  <VExpansionPanel>
-                    <VExpansionPanelTitle>
-                      <div class="text-h6">
-                        {{ t('dashboard.daily_turnover') }}
-                      </div>
-                    </VExpansionPanelTitle>
-                    <VExpansionPanelText>
-                      <VueApexCharts
-                        v-if="dailyChart.length"
-                        type="area"
-                        height="320"
-                        :series="turnoverChartSeries"
-                        :options="turnoverChartOptions"
-                      />
-                      <div
-                        v-else
-                        class="text-center text-body-1 text-medium-emphasis pa-8"
-                      >
-                        {{ t('data.empty') }}
-                      </div>
-                    </VExpansionPanelText>
-                  </VExpansionPanel>
-
-                  <VExpansionPanel>
-                    <VExpansionPanelTitle>
-                      <div class="text-h6">
-                        {{ t('dashboard.funnel_in') }} / {{ t('dashboard.funnel_out') }}
-                      </div>
-                    </VExpansionPanelTitle>
-                    <VExpansionPanelText>
-                      <VRow>
-                        <VCol
-                          cols="12"
-                          md="6"
-                        >
-                          <VueApexCharts
-                            v-if="funnelIn.length"
-                            type="bar"
-                            height="280"
-                            :series="funnelInChart.series"
-                            :options="funnelInChart.options"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          md="6"
-                        >
-                          <VueApexCharts
-                            v-if="funnelOut.length"
-                            type="bar"
-                            height="280"
-                            :series="funnelOutChart.series"
-                            :options="funnelOutChart.options"
-                          />
-                        </VCol>
-                      </VRow>
-                    </VExpansionPanelText>
-                  </VExpansionPanel>
-                </VExpansionPanels>
-
-                <VDivider />
-
-                <VCardText class="d-flex flex-wrap py-4 gap-4">
-                  <div class="text-h6">
-                    {{ t('dashboard.by_payment_system') }}
+                <!-- Daily chart -->
+                <VCardText>
+                  <div class="text-h6 mb-3">
+                    {{ t('dashboard.daily_turnover') }}
+                  </div>
+                  <VueApexCharts
+                    v-if="dailyChart.length"
+                    type="area"
+                    height="320"
+                    :series="turnoverChartSeries"
+                    :options="turnoverChartOptions"
+                  />
+                  <div
+                    v-else
+                    class="text-center text-medium-emphasis pa-8"
+                  >
+                    {{ t('data.empty') }}
                   </div>
                 </VCardText>
 
-                <VCardText
-                  v-if="byPaymentSystem.length"
-                  class="pt-0"
-                >
+                <VDivider />
+
+                <!-- Funnels -->
+                <VCardText>
+                  <VRow>
+                    <VCol
+                      cols="12"
+                      md="6"
+                    >
+                      <VueApexCharts
+                        v-if="funnelIn.length"
+                        type="bar"
+                        height="280"
+                        :series="funnelInChart.series"
+                        :options="funnelInChart.options"
+                      />
+                    </VCol>
+                    <VCol
+                      cols="12"
+                      md="6"
+                    >
+                      <VueApexCharts
+                        v-if="funnelOut.length"
+                        type="bar"
+                        height="280"
+                        :series="funnelOutChart.series"
+                        :options="funnelOutChart.options"
+                      />
+                    </VCol>
+                  </VRow>
+                </VCardText>
+
+                <VDivider />
+
+                <!-- By payment system -->
+                <VCardText>
+                  <div class="text-h6 mb-3">
+                    {{ t('dashboard.by_payment_system') }}
+                  </div>
                   <VueApexCharts
+                    v-if="byPaymentSystem.length"
                     type="bar"
                     height="280"
                     :series="psChartSeries"
                     :options="psChartOptions"
-                    class="mb-2"
+                    class="mb-4"
                   />
-                </VCardText>
-
-                <VTable class="text-no-wrap invoice-list-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">{{ t('payment_system').toUpperCase() }}</th>
-                      <th scope="col">{{ t('currency').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.in_orders').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.in_completed').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.in_usd').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.out_orders').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.out_completed').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.out_usd').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.margin').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.conversion').toUpperCase() }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="row in byPaymentSystem"
-                      :key="row.id"
-                    >
-                      <td>{{ row.name }}</td>
-                      <td>{{ row.currency || '—' }}</td>
-                      <td>{{ row.in_count }}</td>
-                      <td>{{ row.in_completed }}</td>
-                      <td>$ {{ fmtUsd(row.in_completed_usd) }}</td>
-                      <td>{{ row.out_count }}</td>
-                      <td>{{ row.out_completed }}</td>
-                      <td>$ {{ fmtUsd(row.out_completed_usd) }}</td>
-                      <td>$ {{ fmtUsd(row.margin) }}</td>
-                      <td>In {{ fmtPct(row.in_conversion) }} / Out {{ fmtPct(row.out_conversion) }}</td>
-                    </tr>
-                    <tr v-if="!byPaymentSystem.length">
-                      <td
-                        colspan="10"
-                        class="text-center text-body-1 text-medium-emphasis"
+                  <VTable class="text-no-wrap invoice-list-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">{{ t('payment_system').toUpperCase() }}</th>
+                        <th scope="col">{{ t('currency').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.in_orders').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.in_completed').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.in_usd').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.out_orders').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.out_completed').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.out_usd').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.margin').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.conversion').toUpperCase() }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="row in byPaymentSystem"
+                        :key="row.id"
                       >
-                        {{ t('data.empty') }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </VTable>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.currency || '—' }}</td>
+                        <td>{{ row.in_count }}</td>
+                        <td>{{ row.in_completed }}</td>
+                        <td>$ {{ fmtUsd(row.in_completed_usd) }}</td>
+                        <td>{{ row.out_count }}</td>
+                        <td>{{ row.out_completed }}</td>
+                        <td>$ {{ fmtUsd(row.out_completed_usd) }}</td>
+                        <td>$ {{ fmtUsd(row.margin) }}</td>
+                        <td>In {{ fmtPct(row.in_conversion) }} / Out {{ fmtPct(row.out_conversion) }}</td>
+                      </tr>
+                      <tr v-if="!byPaymentSystem.length">
+                        <td
+                          colspan="10"
+                          class="text-center text-medium-emphasis"
+                        >
+                          {{ t('data.empty') }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </VTable>
+                </VCardText>
 
                 <VDivider />
 
-                <VCardText class="d-flex flex-wrap py-4 gap-4">
-                  <div class="text-h6">
+                <!-- By currency -->
+                <VCardText>
+                  <div class="text-h6 mb-3">
                     {{ t('dashboard.by_currency') }}
                   </div>
-                </VCardText>
-
-                <VCardText
-                  v-if="byCurrency.length"
-                  class="pt-0"
-                >
                   <VueApexCharts
+                    v-if="byCurrency.length"
                     type="bar"
                     height="260"
                     :series="currencyChartSeries"
                     :options="currencyChartOptions"
-                    class="mb-2"
+                    class="mb-4"
                   />
-                </VCardText>
-
-                <VTable class="text-no-wrap invoice-list-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">{{ t('currency').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.in_orders').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.in_completed').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.in_usd').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.out_orders').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.out_completed').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.out_usd').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.margin').toUpperCase() }}</th>
-                      <th scope="col">{{ t('dashboard.conversion').toUpperCase() }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="row in byCurrency"
-                      :key="row.currency"
-                    >
-                      <td>{{ row.currency }}</td>
-                      <td>{{ row.in_count }}</td>
-                      <td>{{ row.in_completed }}</td>
-                      <td>$ {{ fmtUsd(row.in_completed_usd) }}</td>
-                      <td>{{ row.out_count }}</td>
-                      <td>{{ row.out_completed }}</td>
-                      <td>$ {{ fmtUsd(row.out_completed_usd) }}</td>
-                      <td>$ {{ fmtUsd(row.margin) }}</td>
-                      <td>In {{ fmtPct(row.in_conversion) }} / Out {{ fmtPct(row.out_conversion) }}</td>
-                    </tr>
-                    <tr v-if="!byCurrency.length">
-                      <td
-                        colspan="9"
-                        class="text-center text-body-1 text-medium-emphasis"
+                  <VTable class="text-no-wrap invoice-list-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">{{ t('currency').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.in_orders').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.in_completed').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.in_usd').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.out_orders').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.out_completed').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.out_usd').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.margin').toUpperCase() }}</th>
+                        <th scope="col">{{ t('dashboard.conversion').toUpperCase() }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="row in byCurrency"
+                        :key="row.currency"
                       >
-                        {{ t('data.empty') }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </VTable>
+                        <td>{{ row.currency }}</td>
+                        <td>{{ row.in_count }}</td>
+                        <td>{{ row.in_completed }}</td>
+                        <td>$ {{ fmtUsd(row.in_completed_usd) }}</td>
+                        <td>{{ row.out_count }}</td>
+                        <td>{{ row.out_completed }}</td>
+                        <td>$ {{ fmtUsd(row.out_completed_usd) }}</td>
+                        <td>$ {{ fmtUsd(row.margin) }}</td>
+                        <td>In {{ fmtPct(row.in_conversion) }} / Out {{ fmtPct(row.out_conversion) }}</td>
+                      </tr>
+                      <tr v-if="!byCurrency.length">
+                        <td
+                          colspan="9"
+                          class="text-center text-medium-emphasis"
+                        >
+                          {{ t('data.empty') }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </VTable>
+                </VCardText>
 
                 <VDivider />
 
-                <VCardText class="d-flex flex-wrap py-4 gap-4">
-                  <div class="text-h6">
+                <!-- Exchange rates -->
+                <VCardText>
+                  <div class="text-h6 mb-3">
                     {{ t('tabs.exchange_rates') }}
                   </div>
-                </VCardText>
-
-                <VTable class="text-no-wrap invoice-list-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">{{ t('payment_system').toUpperCase() }}</th>
-                      <th scope="col">{{ t('currency').toUpperCase() }}</th>
-                      <th scope="col">{{ t('exchange_rate').toUpperCase() }}</th>
-                      <th scope="col">{{ t('rate_source').toUpperCase() }}</th>
-                      <th scope="col">{{ t('last_update').toUpperCase() }}</th>
-                      <th scope="col">{{ t('in_on').toUpperCase() }}</th>
-                      <th scope="col">{{ t('out_on').toUpperCase() }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="rate in exchangeRates"
-                      :key="rate.id"
-                    >
-                      <td>{{ rate.name }}</td>
-                      <td>{{ rate.currency_symbol || '—' }}</td>
-                      <td>
-                        <span v-if="rate.currency_symbol">
-                          1 USDT = {{ fmtUsd(rate.usdt_exchange_rate) }} {{ rate.currency_symbol }}
-                        </span>
-                        <span v-else>{{ fmtUsd(rate.usdt_exchange_rate) }}</span>
-                      </td>
-                      <td>{{ rate.rate_source || '—' }}</td>
-                      <td>{{ formatLastUpdate(rate.last_update) }}</td>
-                      <td>
-                        <VChip
-                          :color="rate.in_on ? 'success' : 'error'"
-                          size="small"
-                          label
-                        >
-                          {{ rate.in_on ? t('on') : t('off') }}
-                        </VChip>
-                      </td>
-                      <td>
-                        <VChip
-                          :color="rate.out_on ? 'success' : 'error'"
-                          size="small"
-                          label
-                        >
-                          {{ rate.out_on ? t('on') : t('off') }}
-                        </VChip>
-                      </td>
-                    </tr>
-                    <tr v-if="!exchangeRates.length">
-                      <td
-                        colspan="7"
-                        class="text-center text-body-1 text-medium-emphasis"
+                  <VTable class="text-no-wrap invoice-list-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">{{ t('payment_system').toUpperCase() }}</th>
+                        <th scope="col">{{ t('currency').toUpperCase() }}</th>
+                        <th scope="col">{{ t('exchange_rate').toUpperCase() }}</th>
+                        <th scope="col">{{ t('rate_source').toUpperCase() }}</th>
+                        <th scope="col">{{ t('last_update').toUpperCase() }}</th>
+                        <th scope="col">{{ t('in_on').toUpperCase() }}</th>
+                        <th scope="col">{{ t('out_on').toUpperCase() }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="rate in exchangeRates"
+                        :key="rate.id"
                       >
-                        {{ t('data.empty') }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </VTable>
+                        <td>{{ rate.name }}</td>
+                        <td>{{ rate.currency_symbol || '—' }}</td>
+                        <td>
+                          <span v-if="rate.currency_symbol">
+                            1 USDT = {{ fmtUsd(rate.usdt_exchange_rate) }} {{ rate.currency_symbol }}
+                          </span>
+                          <span v-else>{{ fmtUsd(rate.usdt_exchange_rate) }}</span>
+                        </td>
+                        <td>{{ rate.rate_source || '—' }}</td>
+                        <td>{{ formatLastUpdate(rate.last_update) }}</td>
+                        <td>
+                          <VChip
+                            :color="rate.in_on ? 'success' : 'error'"
+                            size="small"
+                            label
+                          >
+                            {{ rate.in_on ? t('on') : t('off') }}
+                          </VChip>
+                        </td>
+                        <td>
+                          <VChip
+                            :color="rate.out_on ? 'success' : 'error'"
+                            size="small"
+                            label
+                          >
+                            {{ rate.out_on ? t('on') : t('off') }}
+                          </VChip>
+                        </td>
+                      </tr>
+                      <tr v-if="!exchangeRates.length">
+                        <td
+                          colspan="7"
+                          class="text-center text-medium-emphasis"
+                        >
+                          {{ t('data.empty') }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </VTable>
+                </VCardText>
               </template>
             </VCard>
           </VCol>
