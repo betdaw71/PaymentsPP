@@ -291,7 +291,7 @@ const getUser = (polling = true) => {
         <ApPageHeader
           v-if="activeSection"
           :title="activeSection.title"
-          :subtitle="$t('nav.finance')"
+          :subtitle="activeSection.key === 'dashboard' ? $t('nav.analytics') : $t('nav.finance')"
         />
       </template>
 

@@ -240,14 +240,7 @@ const transactionTruthMetrics = computed (() => [
       {{ snackbar.message }}
     </VSnackbar>
 
-    <ApWorkspace>
-      <template #header>
-        <ApPageHeader
-          :title="t('tabs.transactions')"
-          :subtitle="t('nav.finance')"
-        />
-      </template>
-
+    <ApWorkspace embedded>
       <div class="ap-filter-toolbar">
         <VSelect
           v-model="filters.rowsPerPage"

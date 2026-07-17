@@ -13,10 +13,18 @@ import NavBarNotifications from '@/layouts/components/NavBarNotifications.vue'
 import { VerticalNavLayout } from '@layouts'
 
 const authStore = useAuthStore ()
-const { appRouteTransition, isLessThanOverlayNavBreakpoint } = useThemeConfig()
+const { appRouteTransition, isLessThanOverlayNavBreakpoint, isVerticalNavCollapsed } = useThemeConfig()
 const { width: windowWidth } = useWindowSize()
 
 const navItemsFiltered = ref ([])
+
+const handleNavToggle = toggleOverlayFn => {
+  if (isLessThanOverlayNavBreakpoint(windowWidth.value)) {
+    toggleOverlayFn(true)
+  } else {
+    isVerticalNavCollapsed.value = !isVerticalNavCollapsed.value
+  }
+}
 
 watchEffect(
   () => {
@@ -33,8 +41,8 @@ watchEffect(
   <VerticalNavLayout :nav-items="navItemsFiltered">
     <template #navbar="{ toggleVerticalOverlayNavActive }">
       <ApAppBar
-        :show-menu-toggle="isLessThanOverlayNavBreakpoint(windowWidth)"
-        @toggle-nav="toggleVerticalOverlayNavActive(true)"
+        show-menu-toggle
+        @toggle-nav="handleNavToggle(toggleVerticalOverlayNavActive)"
       >
         <TraderData
           v-if="authStore.is_trader()"

@@ -14,7 +14,7 @@ const authStore = useAuthStore ()
     <span
       class="font-weight-bold"
       style="color: rgba(var(--v-theme-on-background), var(--v-high-emphasis-opacity))"
-    >{{ $t('balance') }}: {{ authStore.userData.current_balance }}&nbsp;USD | {{ $t('hold') }}: {{ authStore.userData.hold }}&nbsp;USD</span>
+    >{{ $t('balance') }}: {{ authStore.userData.current_balance }}&nbsp;USD</span>
   </VBtn>
 </template>
 

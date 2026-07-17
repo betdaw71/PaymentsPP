@@ -313,14 +313,9 @@ onMounted (fetchDashboard)
       {{ snackbar.message }}
     </VSnackbar>
 
-    <ApWorkspace>
-      <template #header>
-        <ApPageHeader
-          :title="t('tabs.dashboard')"
-          :subtitle="t('nav.analytics')"
-        />
-      </template>
-      <template #actions>
+    <ApWorkspace embedded>
+      <div class="ap-filter-toolbar mb-3">
+        <VSpacer />
         <VBtn
           icon="tabler-refresh"
           size="small"
@@ -328,7 +323,7 @@ onMounted (fetchDashboard)
           :loading="loading"
           @click="fetchDashboard"
         />
-      </template>
+      </div>
 
       <ApFilterPanel class="mb-3">
         <VRow>

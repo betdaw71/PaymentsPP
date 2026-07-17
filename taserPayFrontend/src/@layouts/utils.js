@@ -53,6 +53,8 @@ export const isNavLinkActive = (link, router) => {
     : router.resolve(linkTo)
 
   const nameMatch = current.matched.some(route => route.name === resolved.name)
+    || current.name === resolved.name
+
   if (!nameMatch) {
     return false
   }
@@ -63,21 +65,20 @@ export const isNavLinkActive = (link, router) => {
     )
   }
 
+  if (typeof linkTo === 'object' && linkTo.params) {
+    return Object.entries(linkTo.params).every(
+      ([key, value]) => String(current.params[key] ?? '') === String(value),
+    )
+  }
+
   if (resolved.name === 'user' && current.query.tab) {
     return false
   }
 
-  const matchedRoutes = current.matched
   const resolveRouted = resolveNavLinkRoute(link, router)
 
-  if (!resolveRouted?.name) {
-    return false
-  }
-
-  return matchedRoutes.some(route => {
-    return (route.name === resolveRouted.name && (!link.params || (resolveRouted.params === link.params)))
-      || route.meta.navActiveLink === resolveRouted.name
-  })
+  return current.matched.some(route => route.meta.navActiveLink === resolveRouted)
+    || current.name === resolved.name
 }
 
 /**

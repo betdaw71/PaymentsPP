@@ -4,6 +4,10 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  embedded: {
+    type: Boolean,
+    default: false,
+  },
   noPadding: {
     type: Boolean,
     default: false,
@@ -12,9 +16,11 @@ defineProps({
 </script>
 
 <template>
-  <VCard
+  <component
+    :is="embedded ? 'div' : 'VCard'"
     class="ap-workspace"
-    :flat="flat"
+    :class="{ 'ap-workspace--embedded': embedded }"
+    :flat="embedded || flat"
   >
     <div
       v-if="$slots.header || $slots.actions"
@@ -44,5 +50,5 @@ defineProps({
     >
       <slot name="footer" />
     </div>
-  </VCard>
+  </component>
 </template>
