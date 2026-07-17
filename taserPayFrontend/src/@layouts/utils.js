@@ -71,14 +71,11 @@ export const isNavLinkActive = (link, router) => {
     )
   }
 
-  if (resolved.name === 'user' && current.query.tab) {
-    return false
+  if (resolved.name === 'user') {
+    return !current.query.tab
   }
 
-  const resolveRouted = resolveNavLinkRoute(link, router)
-
-  return current.matched.some(route => route.meta.navActiveLink === resolveRouted)
-    || current.name === resolved.name
+  return current.name === resolved.name
 }
 
 /**

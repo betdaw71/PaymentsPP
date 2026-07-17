@@ -2,10 +2,7 @@
 import { useLayouts } from '@layouts'
 import { config } from '@layouts/config'
 import { can } from '@layouts/plugins/casl'
-import {
-  getComputedNavLinkToProp,
-  isNavLinkActive,
-} from '@layouts/utils'
+import { isNavLinkActive } from '@layouts/utils'
 
 const props = defineProps({
   item: {
@@ -14,9 +11,21 @@ const props = defineProps({
   },
 })
 
+const router = useRouter()
 const { width: windowWidth } = useWindowSize()
 const { isVerticalNavMini, dynamicI18nProps } = useLayouts()
 const hideTitleAndBadge = isVerticalNavMini(windowWidth)
+
+const isActive = computed(() => isNavLinkActive(props.item, router))
+
+const navigate = () => {
+  const linkTo = props.item.to
+  if (!linkTo) {
+    return
+  }
+
+  router.push(typeof linkTo === 'string' ? { name: linkTo } : linkTo)
+}
 </script>
 
 <template>
@@ -25,12 +34,11 @@ const hideTitleAndBadge = isVerticalNavMini(windowWidth)
     class="nav-link"
     :class="{ disabled: item.disable }"
   >
-    <Component
-      :is="item.to ? 'RouterLink' : 'a'"
-      v-bind="getComputedNavLinkToProp(item)"
-      active-class=""
-      exact-active-class=""
-      :class="{ 'ap-nav-link--active': isNavLinkActive(item, $router) }"
+    <a
+      href="#"
+      class="ap-nav-link"
+      :class="{ 'ap-nav-link--active': isActive }"
+      @click.prevent="navigate"
     >
       <Component
         :is="config.app.iconRenderer || 'div'"
@@ -38,7 +46,6 @@ const hideTitleAndBadge = isVerticalNavMini(windowWidth)
         class="nav-item-icon"
       />
       <TransitionGroup name="transition-slide-x">
-        <!-- 👉 Title -->
         <Component
           :is="config.app.enableI18n ? 'i18n-t' : 'span'"
           v-show="!hideTitleAndBadge"
@@ -49,7 +56,6 @@ const hideTitleAndBadge = isVerticalNavMini(windowWidth)
           {{ item.title }}
         </Component>
 
-        <!-- 👉 Badge -->
         <Component
           :is="config.app.enableI18n ? 'i18n-t' : 'span'"
           v-if="item.badgeContent"
@@ -62,13 +68,14 @@ const hideTitleAndBadge = isVerticalNavMini(windowWidth)
           {{ item.badgeContent }}
         </Component>
       </TransitionGroup>
-    </Component>
+    </a>
   </li>
 </template>
 
 <style lang="scss">
 .layout-vertical-nav {
-  .nav-link a {
+  .nav-link a,
+  .nav-link .ap-nav-link {
     display: flex;
     align-items: center;
   }

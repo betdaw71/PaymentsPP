@@ -6,6 +6,14 @@ import EventBus from "@/services/EventBus"
 const authStore = useAuthStore ()
 const router = useRouter ()
 
+const profileRoute = computed(() => {
+  if (authStore.is_head_of_support()) {
+    return { name: 'user', query: { tab: 'dashboard' } }
+  }
+
+  return { name: 'user', query: { tab: 'main_info' } }
+})
+
 const logout = () => {
   EventBus.dispatch("logout")
 }
@@ -21,10 +29,10 @@ const logout = () => {
     color="success"
   >
     <VBtn
-      rounded
       class="cursor-pointer text-lowercase"
       color="primary"
       variant="tonal"
+      rounded="0"
       append-icon="tabler-user"
     >
       {{ authStore.userData.email }}
@@ -80,7 +88,7 @@ const logout = () => {
           <VDivider class="my-2" />
 
           <!-- 👉 Profile -->
-          <VListItem :to="{ name: 'user'}">
+          <VListItem :to="profileRoute">
             <template #prepend>
               <VIcon
                 class="me-2"

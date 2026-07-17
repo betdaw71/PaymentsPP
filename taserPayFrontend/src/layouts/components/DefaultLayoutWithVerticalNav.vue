@@ -19,8 +19,8 @@ const { width: windowWidth } = useWindowSize()
 const navItemsFiltered = ref ([])
 
 const handleNavToggle = toggleOverlayFn => {
-  if (isLessThanOverlayNavBreakpoint(windowWidth.value)) {
-    toggleOverlayFn(true)
+  if (isLessThanOverlayNavBreakpoint.value(windowWidth.value)) {
+    toggleOverlayFn()
   } else {
     isVerticalNavCollapsed.value = !isVerticalNavCollapsed.value
   }

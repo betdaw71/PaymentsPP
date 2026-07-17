@@ -6,10 +6,10 @@ const authStore = useAuthStore ()
 
 <template>
   <VBtn
-    rounded
     class="d-none d-md-block cursor-pointer me-4"
     color="primary"
     variant="tonal"
+    rounded="0"
   >
     <span
       class="font-weight-bold"
