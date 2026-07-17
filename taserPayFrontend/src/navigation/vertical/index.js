@@ -1,5 +1,4 @@
 export default [
-  { heading: 'nav.operations' },
   {
     title: 'tabs.orders_in',
     icon: { icon: 'tabler-arrow-down-left' },
@@ -81,7 +80,6 @@ export default [
     role: [1, 2, 4, 5],
   },
 
-  { heading: 'nav.assets' },
   {
     title: 'payment_details',
     to: { name: 'payment-details' },
@@ -107,7 +105,6 @@ export default [
     role: 5,
   },
 
-  { heading: 'nav.finance' },
   {
     title: 'tabs.transactions',
     to: { name: 'user', query: { tab: 'transactions' } },
@@ -127,7 +124,6 @@ export default [
     role: 3,
   },
 
-  { heading: 'nav.people' },
   {
     title: 'tabs.team',
     to: { name: 'user', query: { tab: 'team' } },
@@ -141,7 +137,6 @@ export default [
     role: 1,
   },
 
-  { heading: 'nav.analytics' },
   {
     title: 'tabs.dashboard',
     to: { name: 'user', query: { tab: 'dashboard' } },
@@ -149,7 +144,6 @@ export default [
     role: 5,
   },
 
-  { heading: 'nav.admin' },
   {
     title: 'tabs.manage_merchants',
     to: { name: 'user-manage' },

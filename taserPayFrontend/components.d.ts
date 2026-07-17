@@ -14,6 +14,7 @@ declare module '@vue/runtime-core' {
     ApDataGrid: typeof import('./src/components/ap/ApDataGrid.vue')['default']
     ApFilterBar: typeof import('./src/components/ap/ApFilterBar.vue')['default']
     ApFilterPanel: typeof import('./src/components/ap/ApFilterPanel.vue')['default']
+    ApHeaderBalance: typeof import('./src/components/ap/ApHeaderBalance.vue')['default']
     ApMetricCard: typeof import('./src/components/ap/ApMetricCard.vue')['default']
     ApPageHeader: typeof import('./src/components/ap/ApPageHeader.vue')['default']
     AppAutocomplete: typeof import('./src/@core/components/app-form-elements/AppAutocomplete.vue')['default']
