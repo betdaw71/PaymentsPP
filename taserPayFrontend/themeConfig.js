@@ -24,7 +24,7 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
   },
   navbar: {
     type: NavbarType.Sticky,
-    navbarBlur: true,
+    navbarBlur: false,
   },
   footer: { type: FooterType.Sticky },
   verticalNav: {

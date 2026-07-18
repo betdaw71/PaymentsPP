@@ -12,22 +12,36 @@ body,
 }
 
 // ——— Layout shell ———
-.layout-nav-type-vertical {
+.layout-wrapper.layout-nav-type-vertical {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100vh;
+  --ap-navbar-height: 64px;
+
   .layout-navbar {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1005;
     box-shadow: none !important;
+    border-block-end: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.5));
+    background: rgb(var(--v-theme-surface)) !important;
 
     &::before,
     &::after {
       display: none !important;
     }
-  }
 
-  .layout-navbar .navbar-content-container {
-    border-radius: 0 !important;
-    margin-block-start: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-    background: rgb(var(--v-theme-surface)) !important;
+    .navbar-content-container {
+      border-radius: 0 !important;
+      margin-block-start: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+      background: transparent !important;
+      max-inline-size: none !important;
+      inline-size: 100%;
+      padding-inline: 1.25rem;
+      block-size: var(--ap-navbar-height) !important;
+    }
   }
 
   &.window-scrolled .layout-navbar .navbar-content-container {
@@ -36,6 +50,17 @@ body,
 
   .layout-page-content {
     margin-block-start: 0 !important;
+  }
+
+  .layout-vertical-nav {
+    inset-block-start: var(--ap-navbar-height) !important;
+    block-size: calc(100vh - var(--ap-navbar-height)) !important;
+    box-shadow: none !important;
+  }
+
+  &.layout-overlay-nav .layout-vertical-nav {
+    inset-block-start: 0 !important;
+    block-size: 100% !important;
   }
 }
 
@@ -55,9 +80,10 @@ body,
 }
 
 .ap-app-bar {
-  border-block-end: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.55));
+  border-block-end: none;
   background: transparent !important;
   box-shadow: none !important;
+  block-size: var(--ap-navbar-height, 64px);
 }
 
 // ——— Header chips (balance, profile) ———
@@ -421,11 +447,70 @@ body,
 
 .layout-page-content {
   .v-btn {
-    border-radius: var(--ap-radius-sm);
+    border-radius: var(--ap-radius-chip);
     letter-spacing: 0.01em;
     text-transform: none;
     font-weight: 500;
-    box-shadow: none !important;
+    transition: box-shadow 180ms ease, filter 180ms ease, transform 180ms ease;
+  }
+
+  // Primary CTA — glossy gradient (Vuexy-inspired, ops-friendly)
+  .v-btn.bg-primary,
+  .v-btn.v-btn--variant-flat.bg-primary,
+  .v-btn.v-btn--variant-elevated.bg-primary {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.14) 0%,
+      rgba(255, 255, 255, 0) 42%
+    ),
+    linear-gradient(
+      72.47deg,
+      rgb(var(--v-theme-primary)) 22.16%,
+      rgba(var(--v-theme-primary), 0.78) 76.47%
+    ) !important;
+    box-shadow: 0 2px 6px rgba(var(--v-theme-primary), 0.42) !important;
+    color: rgb(var(--v-theme-on-primary)) !important;
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.5) !important;
+      filter: brightness(1.04);
+    }
+
+    &:active {
+      transform: translateY(1px);
+      box-shadow: 0 1px 4px rgba(var(--v-theme-primary), 0.35) !important;
+    }
+  }
+
+  .v-btn--variant-tonal {
+    border: 1px solid rgba(var(--v-theme-primary), 0.18);
+    border-radius: var(--ap-radius-chip);
+
+    &:hover {
+      background: rgba(var(--v-theme-primary), 0.1) !important;
+    }
+  }
+
+  .v-btn--variant-outlined {
+    border-radius: var(--ap-radius-chip);
+  }
+}
+
+.ap-action-zone {
+  .v-btn.bg-primary,
+  .v-btn.v-btn--variant-flat.bg-primary {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.14) 0%,
+      rgba(255, 255, 255, 0) 42%
+    ),
+    linear-gradient(
+      72.47deg,
+      rgb(var(--v-theme-primary)) 22.16%,
+      rgba(var(--v-theme-primary), 0.78) 76.47%
+    ) !important;
+    box-shadow: 0 2px 6px rgba(var(--v-theme-primary), 0.42) !important;
+    color: rgb(var(--v-theme-on-primary)) !important;
   }
 }
 
@@ -547,7 +632,7 @@ body,
   &--sticky {
     position: sticky;
     z-index: 3;
-    inset-block-start: 0;
+    inset-block-start: var(--ap-navbar-height, 64px);
     background: rgb(var(--v-theme-background));
   }
 }
