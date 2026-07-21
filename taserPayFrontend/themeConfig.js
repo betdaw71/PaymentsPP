@@ -12,7 +12,7 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
     title: 'AvaPay',
     slogan: "&dash; Payment Solution &dash;",
     logo: h('div', { innerHTML: logo, style: 'line-height:0; color: rgb(var(--v-global-theme-primary));' }),
-    contentWidth: ContentWidth.Fluid,
+    contentWidth: ContentWidth.Boxed,
     contentLayoutNav: AppContentLayoutNav.Vertical,
     overlayNavFromBreakpoint: breakpointsVuetify.md + 16,
     enableI18n: true,
