@@ -37,11 +37,11 @@ watchEffect(
         <IconBtn
           v-if="isLessThanOverlayNavBreakpoint(windowWidth)"
           id="vertical-nav-toggle-btn"
-          class="ms-n1"
+          class="ms-n3"
           @click="toggleVerticalOverlayNavActive(true)"
         >
           <VIcon
-            size="22"
+            size="26"
             icon="lucide:menu"
           />
         </IconBtn>
@@ -53,24 +53,26 @@ watchEffect(
         <MerchantData
           v-if="authStore.is_merchant()"
         />
-        <NavBarI18n />
-        <template
-          v-if="isNavLinkActive({to: 'auth-login'}, $router) || isNavLinkActive({to: 'auth-register'}, $router)"
-        />
-        <template v-else-if="!authStore.userData.role">
-          <VBtn
-            rounded="lg"
-            class="me-2"
-            color="primary"
-            :to="{ name: 'auth-login' }"
-          >
-            Войти
-          </VBtn>
-        </template>
-        <template v-else>
-          <NavBarNotifications class="me-1" />
-          <UserProfile />
-        </template>
+        <div class="ap-header-tools">
+          <NavBarI18n />
+          <template
+            v-if="isNavLinkActive({to: 'auth-login'}, $router) || isNavLinkActive({to: 'auth-register'}, $router)"
+          />
+          <template v-else-if="!authStore.userData.role">
+            <VBtn
+              rounded="lg"
+              class="ms-2"
+              color="primary"
+              :to="{ name: 'auth-login' }"
+            >
+              Войти
+            </VBtn>
+          </template>
+          <template v-else>
+            <NavBarNotifications />
+            <UserProfile />
+          </template>
+        </div>
       </div>
     </template>
 
