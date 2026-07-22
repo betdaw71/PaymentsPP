@@ -38,8 +38,8 @@ const toggleTheme = () => {
       @click="toggleTheme"
     >
       <VIcon
-        size="18"
-        :icon="isDarkTheme ? 'lucide:sun' : 'lucide:moon'"
+        size="22"
+        :icon="isDarkTheme ? 'tabler-sun' : 'tabler-moon'"
       />
     </VBtn>
 

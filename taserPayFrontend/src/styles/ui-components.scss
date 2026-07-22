@@ -898,6 +898,17 @@
   background-color: var(--ui-accent) !important;
 }
 
+.v-btn.bg-primary:not(.ui-btn) {
+  background-color: var(--ui-primary) !important;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none !important;
+}
+
+.v-btn.bg-primary:not(.ui-btn):hover {
+  background-color: var(--ui-primary-hover) !important;
+}
+
 // ——— Sidebar (Telegram-inspired, minimal) ———
 .layout-vertical-nav {
   .nav-link > a,
