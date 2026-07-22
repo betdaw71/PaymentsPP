@@ -408,15 +408,6 @@
   },
   "system_field": "Системное Поле",
   "system_field_required": "Требуется Системное Поле",
-  "nav": {
-    "operations": "Операции",
-    "assets": "Активы",
-    "finance": "Финансы",
-    "people": "Команда",
-    "analytics": "Аналитика",
-    "admin": "Администрирование",
-    "add_user": "Добавить пользователя"
-  },
   "tabs": {
     "add_merchant": "Добавить мерчанта",
     "add_payment_system": "Добавить платежную систему",

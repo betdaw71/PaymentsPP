@@ -50,7 +50,6 @@ import { useBaseStore } from "@/stores/useBaseStore"
 const { t } = useI18n ()
 const pollingThreshold = ref (120)
 const route = useRoute ()
-const router = useRouter ()
 const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
 const userData = ref (null)
@@ -98,56 +97,47 @@ const tabs = computed(
   () => {
 
     const mainInfoTab = {
-      key: 'main_info',
       icon: 'tabler-info-circle',
       title: t ('tabs.main_info'),
     }
 
     const teamTab = {
-      key: 'team',
       icon: 'tabler-vector-triangle',
       title: t ('tabs.team'),
     }
 
     const balanceTab = {
-      key: 'balance',
       icon: 'tabler-wallet',
       title: t ('tabs.balance'),
     }
 
     const transactionsTab = {
-      key: 'transactions',
       icon: 'tabler-layout-list',
       title: t ('tabs.transactions'),
     }
 
     const withdrawalsTab = {
-      key: 'withdrawals',
       icon: 'tabler-stack-pop',
       title: t ('tabs.withdrawals'),
     }
 
     const tradersBalanceTab = {
-      key: 'traders_balance',
       icon: 'tabler-coin',
       title: t ('tabs.traders_balance'),
     }
 
     const merchantsBalanceTab = {
-      key: 'merchants_balance',
       icon: 'tabler-coin',
       title: t ('tabs.merchants_balance'),
     }
 
     const merchantsApiTab = {
-      key: 'merchants_api',
       icon: 'tabler-api',
       title: t ('tabs.merchants_api'),
     }
 
     const dashboardTab = {
-      key: 'dashboard',
-      icon: 'tabler-chart-histogram',
+      icon: 'tabler-chart-dots-3',
       title: t ('tabs.dashboard'),
     }
 
@@ -220,46 +210,6 @@ const tabs = computed(
   },
 )
 
-const resolveTabIndex = tabKey => {
-  if (!tabKey) {
-    return -1
-  }
-
-  return tabs.value.findIndex (tab => tab.key === tabKey)
-}
-
-const activeTabIndex = computed (() => {
-  const index = resolveTabIndex (String (route.query.tab || ''))
-
-  return index >= 0 ? index : 0
-})
-
-const activeSection = computed (() => tabs.value[activeTabIndex.value])
-
-watch (
-  () => route.query.tab,
-  tabKey => {
-    const index = resolveTabIndex (String (tabKey || ''))
-    if (index >= 0) {
-      profileSettings.value.user_info_tab = index
-    }
-  },
-  { immediate: true },
-)
-
-watch (
-  () => [userData.value, tabs.value.length, route.query.tab],
-  () => {
-    if (!userData.value || !tabs.value.length) {
-      return
-    }
-    if (!route.query.tab && tabs.value[0]?.key) {
-      router.replace ({ name: 'user', query: { tab: tabs.value[0].key } })
-    }
-  },
-  { immediate: true },
-)
-
 const getUser = (polling = true) => {
   if (polling && pollingThreshold.value <= 0) {
     return
@@ -286,15 +236,21 @@ const getUser = (polling = true) => {
 </script>
 
 <template>
-  <ApWorkspace v-if="userData">
-      <template #header>
-        <ApPageHeader
-          v-if="activeSection"
-          :title="activeSection.title"
-          :subtitle="activeSection.key === 'dashboard' ? $t('nav.analytics') : $t('nav.finance')"
-        />
-      </template>
+  <VRow v-if="userData">
+    <!--    <VCol -->
+    <!--      cols="12" -->
+    <!--      md="3" -->
+    <!--      lg="3" -->
+    <!--    > -->
+    <!--      <UserBioPanel -->
+    <!--        v-model:user-data="userData" -->
+    <!--        @update:userData="userData = $event" -->
+    <!--      /> -->
+    <!--    </VCol> -->
 
+    <VCol
+      cols="12"
+    >
       <VAlert
         v-if="!authStore.userData.deposit"
         variant="tonal"
@@ -307,10 +263,28 @@ const getUser = (polling = true) => {
         <span>
           {{ $t('alerts.balance_low.requirements') }}</span>
       </VAlert>
+      <VTabs
+        v-model="profileSettings.user_info_tab"
+        class="v-tabs-pill"
+        show-arrows
+      >
+        <VTab
+          v-for="tab in tabs"
+          :key="tab.icon"
+          class="me-1"
+        >
+          <VIcon
+            :size="18"
+            :icon="tab.icon"
+            class="me-1"
+          />
+          <span>{{ tab.title }}</span>
+        </VTab>
+      </VTabs>
 
       <VWindow
-        :model-value="activeTabIndex"
-        class="disable-tab-transition"
+        v-model="profileSettings.user_info_tab"
+        class="mt-6 disable-tab-transition"
         :touch="false"
       >
         <template
@@ -441,7 +415,8 @@ const getUser = (polling = true) => {
           </VWindowItem>
         </template>
       </VWindow>
-  </ApWorkspace>
+    </VCol>
+  </VRow>
   <template v-else>
     <VCardItem>
       <div

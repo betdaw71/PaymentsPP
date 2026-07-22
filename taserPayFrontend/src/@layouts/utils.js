@@ -41,41 +41,17 @@ export const resolveNavLinkRoute = (link, router) => {
  * @param {Object} link nav-link object
  */
 export const isNavLinkActive = (link, router) => {
-  const current = router.currentRoute.value
-  const linkTo = link.to
+  // Matched routes array of current route
+  const matchedRoutes = router.currentRoute.value.matched
 
-  if (!linkTo) {
+  // Check if provided route matches route's matched route
+  const resolveRouted = resolveNavLinkRoute(link, router)
+  if (!resolveRouted || !resolveRouted.name)
     return false
-  }
 
-  const resolved = typeof linkTo === 'string'
-    ? router.resolve({ name: linkTo })
-    : router.resolve(linkTo)
-
-  const nameMatch = current.matched.some(route => route.name === resolved.name)
-    || current.name === resolved.name
-
-  if (!nameMatch) {
-    return false
-  }
-
-  if (typeof linkTo === 'object' && linkTo.query) {
-    return Object.entries(linkTo.query).every(
-      ([key, value]) => String(current.query[key] ?? '') === String(value),
-    )
-  }
-
-  if (typeof linkTo === 'object' && linkTo.params) {
-    return Object.entries(linkTo.params).every(
-      ([key, value]) => String(current.params[key] ?? '') === String(value),
-    )
-  }
-
-  if (resolved.name === 'user') {
-    return !current.query.tab
-  }
-
-  return current.name === resolved.name
+  return matchedRoutes.some(route => {
+    return (route.name === resolveRouted.name && (!link.params || (resolveRouted.params === link.params))) || route.meta.navActiveLink === resolveRouted.name
+  })
 }
 
 /**

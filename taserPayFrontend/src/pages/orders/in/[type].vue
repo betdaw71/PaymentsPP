@@ -61,6 +61,9 @@ watch (props, () => {
   currentType.value = structuredClone (toRaw (props.type))
 })
 
+console.log ({ nowTime: nowTime.value })
+
+
 const filters = ref (
   structuredClone (toRaw (baseStore.orders_in_filters)),
 )
@@ -405,12 +408,6 @@ onBeforeUnmount (
 
 const exportLoading = ref(false)
 
-const orderTruthMetrics = computed (() => [
-  { label: t ('total_usd_amount'), value: `$ ${totalUSDAmount.value}`, tone: 'primary' },
-  { label: t ('total_commission'), value: `$ ${totalComission.value}`, tone: 'primary' },
-  { label: t ('hold'), value: String (holdAmount.value), tone: 'info', icon: 'tabler-snowflake' },
-])
-
 const exportOrders = async () => {
   exportLoading.value = true
   tradeStore.exportTradeOrderIn ({}).then (
@@ -447,147 +444,90 @@ const exportOrders = async () => {
     >
       {{ snackbar.message }}
     </VSnackbar>
-    <ApWorkspace v-if="authStore.is_authenticated()">
-      <template #header>
-        <ApPageHeader :title="t('tabs.orders_in')" />
-      </template>
+    <VRow v-if="authStore.is_authenticated()">
+      <VCol cols="12">
+        <VCard>
+          <VCardTitle class="mt-2 ms-2">
+            <VAvatar
+              size="50"
+              variant="text"
+              color="primary"
+              icon="tabler-arrow-down-left"
+            />
+            {{ t ('tabs.orders_in') }}
+          </VCardTitle>
+          <VCol cols="12">
+            <VCard>
+              <VCardText class="d-flex align-center flex-wrap gap-3">
+                <VCardText
+                  class="text-h5 mb-0"
+                  style="padding: 0.5rem;"
+                >
+                  {{ t ('tabs.orders_in') }}
+                </VCardText>
 
-      <template #actions>
-        <div class="ap-filter-toolbar">
-          <VSelect
-            v-model="filters.rowsPerPage"
-            :items="rowsPerPageOptions"
-            :label="$t('rows')"
-            item-title="name"
-            item-value="value"
-            scroll-strategy="close"
-            color="primary"
-            density="compact"
-            hide-details
-            style="max-width: 7rem;"
-          />
-          <VSelect
-            v-model="filters.autoUpdateMode"
-            :items="autoUpdateModes"
-            :label="$t('auto_refresh')"
-            item-title="name"
-            item-value="value"
-            scroll-strategy="close"
-            color="primary"
-            density="compact"
-            hide-details
-            style="max-width: 8rem;"
-          />
-          <VProgressCircular
-            v-if="filters.autoUpdateMode"
-            v-model="autoUpdateProgress"
-            class="cursor-pointer"
-            :size="36"
-            :width="2"
-            color="primary"
-            @click="getOrders(true)"
-          >
-            {{ autoUpdateProgressSeconds }}s
-          </VProgressCircular>
-          <VBtn
-            v-else
-            icon="tabler-refresh"
-            size="small"
-            variant="tonal"
-            @click="getOrders(true)"
-          />
-        </div>
-      </template>
+                <VSpacer />
+                <VCol
+                  cols="4"
+                  sm="3"
+                  md="2"
+                  lg="1"
+                >
+                  <VSelect
+                    v-model="filters.rowsPerPage"
+                    :items="rowsPerPageOptions"
+                    :label="$t('rows')"
+                    item-title="name"
+                    item-value="value"
+                    scroll-strategy="close"
+                    color="primary"
+                  />
+                </VCol>
+                <VCol
+                  cols="4"
+                  sm="3"
+                  md="2"
+                  lg="1"
+                >
+                  <VSelect
+                    v-model="filters.autoUpdateMode"
+                    :items="autoUpdateModes"
+                    :label="$t('auto_refresh')"
+                    item-title="name"
+                    item-value="value"
+                    scroll-strategy="close"
+                    color="primary"
+                  />
+                </VCol>
+                <VProgressCircular
+                  v-if="filters.autoUpdateMode"
+                  v-model="autoUpdateProgress"
+                  class="cursor-pointer"
+                  :size="40"
+                  :width="2"
+                  color="primary"
+                  @click="getOrders(true)"
+                >
+                  {{ autoUpdateProgressSeconds }}s
+                </VProgressCircular>
+                <VBtn
+                  v-else
+                  icon="tabler-refresh"
+                  size="small"
+                  @click="getOrders(true)"
+                />
+              </VCardText>
 
-      <div class="ap-ops-toolbar">
-        <ApTruthStrip
-          compact
-          :items="orderTruthMetrics"
-        />
-        <div class="ap-ops-toolbar__actions">
-          <VSwitch
-            v-model="filters.apply_filters"
-            :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
-            hide-details
-            density="compact"
-            @change="getOrders"
-          />
-          <div
-            v-if="authStore.is_merchant() && !authStore.is_team_lead() || authStore.is_support()"
-            class="ap-ops-toolbar__field"
-          >
-            <AppTextField
-              v-model="filters.searchMerchantOrderId"
-              :placeholder="$t ('merchant_order_id')"
-              density="compact"
-              hide-details
-            />
-          </div>
-          <div class="ap-ops-toolbar__field">
-            <AppTextField
-              v-model="filters.searchQueryId"
-              placeholder="ID"
-              density="compact"
-              hide-details
-            />
-          </div>
-          <div
-            v-if="!authStore.is_trader() && !authStore.is_team_lead()"
-            class="ap-ops-toolbar__field"
-          >
-            <AppTextField
-              v-model="filters.searchCustomerId"
-              :placeholder="$t ('customer_id')"
-              density="compact"
-              hide-details
-            />
-          </div>
-          <div
-            v-if="!authStore.is_merchant()"
-            class="ap-ops-toolbar__field"
-          >
-            <AppTextField
-              v-model="filters.searchPaymentDetailsGroupId"
-              :placeholder="$t ('payment_details_group_id')"
-              density="compact"
-              hide-details
-            />
-          </div>
-          <div
-            v-if="!authStore.is_merchant()"
-            class="ap-ops-toolbar__field"
-          >
-            <AppTextField
-              v-model="filters.searchPaymentDetailsGroupOwner"
-              :placeholder="$t ('payment_details_group_owner')"
-              density="compact"
-              hide-details
-            />
-          </div>
-          <VBtn
-            :loading="exportLoading"
-            variant="tonal"
-            color="secondary"
-            prepend-icon="tabler-screen-share"
-            @click="exportOrders"
-          >
-            {{ $t ('export') }}
-          </VBtn>
-          <VBtn
-            color="primary"
-            prepend-icon="tabler-search"
-            @click="getOrders(true)"
-          >
-            {{ $t ('search') }}
-          </VBtn>
-        </div>
-      </div>
-
-      <ApFilterPanel
-        class="mb-3"
-        :default-open="false"
-      >
-                    <VRow>
+              <VExpansionPanels class="px-5 pb-5">
+                <VExpansionPanel>
+                  <VExpansionPanelTitle>
+                    <div class="text-h6">
+                      {{ $t ('filters') }}
+                    </div>
+                  </VExpansionPanelTitle>
+                  <VExpansionPanelText>
+                    <VCardText>
+                      <VRow>
                         <!-- 👉 Select Role -->
                         <VCol
                           cols="12"
@@ -703,8 +643,10 @@ const exportOrders = async () => {
                           />
                         </VCol>
                       </VRow>
+                    </VCardText>
 
-                    <div class="ap-section">
+                    <VDivider />
+                    <VCardText class="d-flex flex-wrap py-4 gap-4">
                       <template
                         v-if="authStore.is_merchant()"
                       >
@@ -1121,10 +1063,149 @@ const exportOrders = async () => {
                           </VCol>
                         </VRow>
                       </template>
-                    </div>
-              </ApFilterPanel>
+                    </VCardText>
+                  </VExpansionPanelText>
+                </VExpansionPanel>
+              </VExpansionPanels>
 
-              <ApDataGrid class="text-body-2">
+              <VDivider />
+              <VCardText class="d-flex flex-wrap py-4 gap-4">
+                <VTooltip
+                  location="right"
+                >
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="ms-1 px-3 font-weight-bold"
+                      color="primary"
+                      text-color="white"
+                      size="lg"
+                    >
+                      $ {{ totalUSDAmount }}
+                    </VChip>
+                  </template>
+                  <span>
+                    {{ $t ('total_usd_amount') }}
+                  </span>
+                </VTooltip>
+                <VTooltip
+                  location="right"
+                >
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="ms-1 px-3 font-weight-bold"
+                      color="primary"
+                      text-color="white"
+                      size="lg"
+                    >
+                      $ {{ totalComission }}
+                    </VChip>
+                  </template>
+                  <span>
+                    {{ $t ('total_commission') }}
+                  </span>
+                </VTooltip>
+                <VTooltip
+                  location="right"
+                >
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="ms-1 px-3 font-weight-bold"
+                      color="info"
+                      text-color="white"
+                      size="lg"
+                      prepend-icon="tabler-snowflake"
+                    >
+                      {{ holdAmount }}
+                    </VChip>
+                  </template>
+                  <span>
+                    {{ $t ('hold') }}
+                  </span>
+                </VTooltip>
+                <VSpacer />
+                <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
+                  <!-- 👉 Search  -->
+                  <div style="inline-size: 10rem;">
+                    <VSwitch
+                      v-model="filters.apply_filters"
+                      :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
+                      @change="getOrders"
+                    />
+                  </div>
+                  <div
+                    v-if="authStore.is_merchant() && !authStore.is_team_lead() || authStore.is_support()"
+                    style="inline-size: 12rem;"
+                  >
+                    <AppTextField
+                      v-model="filters.searchMerchantOrderId"
+                      :placeholder="$t ('merchant_order_id')"
+                      density="compact"
+                    />
+                  </div>
+                  <div style="inline-size: 10rem;">
+                    <AppTextField
+                      v-model="filters.searchQueryId"
+                      placeholder="ID"
+                      density="compact"
+                    />
+                  </div>
+                  <div
+                    v-if="!authStore.is_trader() && !authStore.is_team_lead()"
+                    style="inline-size: 10rem;"
+                  >
+                    <AppTextField
+                      v-model="filters.searchCustomerId"
+                      :placeholder="$t ('customer_id')"
+                      density="compact"
+                    />
+                  </div>
+                  <div
+                    v-if="!authStore.is_merchant()"
+                    style="inline-size: 10rem;"
+                  >
+                    <AppTextField
+                      v-model="filters.searchPaymentDetailsGroupId"
+                      :placeholder="$t ('payment_details_group_id')"
+                      density="compact"
+                    />
+                  </div>
+                  <div
+                    v-if="!authStore.is_merchant()"
+                    style="inline-size: 10rem;"
+                  >
+                    <AppTextField
+                      v-model="filters.searchPaymentDetailsGroupOwner"
+                      :placeholder="$t ('payment_details_group_owner')"
+                      density="compact"
+                    />
+                  </div>
+                  <VBtn
+                    :loading="exportLoading"
+                    variant="tonal"
+                    color="secondary"
+                    prepend-icon="tabler-screen-share"
+                    @click="exportOrders"
+                  >
+                    {{ $t ('export') }}
+                  </VBtn>
+                  <VBtn
+                    color="primary"
+                    prepend-icon="tabler-search"
+                    @click="getOrders(true)"
+                  >
+                    {{ $t ('search') }}
+                  </VBtn>
+                </div>
+              </VCardText>
+
+              <VDivider />
+              <!-- SECTION Table -->
+              <VTable
+                class="text-no-wrap invoice-list-table text-body-2"
+              >
                 <!-- 👉 Table head -->
                 <thead>
                   <tr class="text-wrap">
@@ -1409,27 +1490,36 @@ const exportOrders = async () => {
                     />
                   </tr>
                 </tfoot>
-              </ApDataGrid>
+              </VTable>
+              <!-- !SECTION -->
 
-      <template #footer>
-        <div class="d-flex align-center flex-wrap justify-space-between gap-4 w-100">
-          <span class="text-sm text-disabled">{{ paginationData }}</span>
-          <VPagination
-            v-model="currentPage"
-            size="small"
-            :total-visible="5"
-            :length="totalPage"
-            @next="selectedRows = []"
-            @prev="selectedRows = []"
-          />
-        </div>
-      </template>
-    </ApWorkspace>
+              <VDivider />
 
-    <OrderInDrawer
-      v-model:isDrawerOpen="isOrderInDrawerOpen"
-      v-model:order-id="orderItemId"
-      v-model:time="nowTime"
-    />
+              <!-- SECTION Pagination -->
+              <VCardText class="d-flex align-center flex-wrap justify-space-between gap-4 py-4">
+                <!-- 👉  Pagination meta -->
+                <span class="text-sm text-disabled">{{ paginationData }}</span>
+
+                <!-- 👉 Pagination -->
+                <VPagination
+                  v-model="currentPage"
+                  size="small"
+                  :total-visible="5"
+                  :length="totalPage"
+                  @next="selectedRows = []"
+                  @prev="selectedRows = []"
+                />
+              </VCardText>
+              <!-- !SECTION -->
+            </VCard>
+          </VCol>
+        </VCard>
+        <OrderInDrawer
+          v-model:isDrawerOpen="isOrderInDrawerOpen"
+          v-model:order-id="orderItemId"
+          v-model:time="nowTime"
+        />
+      </VCol>
+    </VRow>
   </div>
 </template>

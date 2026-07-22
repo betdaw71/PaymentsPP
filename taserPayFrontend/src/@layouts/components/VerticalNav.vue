@@ -48,10 +48,6 @@ const {
   isAppRtl,
 } = useLayouts()
 
-const toggleCollapsed = () => {
-  isCollapsed.value = !isCollapsed.value
-}
-
 const hideTitleAndIcon = isVerticalNavMini(windowWidth, isHovered)
 
 const resolveNavItemComponent = item => {
@@ -117,14 +113,14 @@ const handleNavScroll = evt => {
             v-show="isCollapsed && !hideTitleAndIcon"
             class="header-action"
             v-bind="config.icons.verticalNavUnPinned"
-            @click="toggleCollapsed"
+            @click="isCollapsed = !isCollapsed"
           />
           <Component
             :is="config.app.iconRenderer || 'div'"
             v-show="!isCollapsed && !hideTitleAndIcon"
             class="header-action"
             v-bind="config.icons.verticalNavPinned"
-            @click="toggleCollapsed"
+            @click="isCollapsed = !isCollapsed"
           />
         </template>
         <template v-else>

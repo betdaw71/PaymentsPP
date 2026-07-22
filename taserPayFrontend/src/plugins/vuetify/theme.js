@@ -58,6 +58,8 @@ const theme = {
         'switch-disabled-track-opacity': 0.3,
         'switch-disabled-thumb-opacity': 0.4,
         'switch-checked-disabled-opacity': 0.3,
+
+        // Shadows
         'shadow-key-umbra-color': '#2F2B3D',
       },
     },
@@ -114,13 +116,15 @@ const theme = {
         'switch-disabled-track-opacity': 0.4,
         'switch-disabled-thumb-opacity': 0.8,
         'switch-checked-disabled-opacity': 0.3,
+
+        // Shadows
         'shadow-key-umbra-color': '#0F1422',
       },
     },
     custom: {
       dark: false,
       colors: {
-        'primary': localStorage.getItem(`${themeConfig.app.title}-lightThemePrimaryColor`) || staticPrimaryColor,
+        'primary': localStorage.getItem (`${themeConfig.app.title}-lightThemePrimaryColor`) || staticPrimaryColor,
         'on-primary': '#fff',
         'secondary': '#A8AAAE',
         'on-secondary': '#fff',
@@ -169,6 +173,8 @@ const theme = {
         'switch-disabled-track-opacity': 0.3,
         'switch-disabled-thumb-opacity': 0.4,
         'switch-checked-disabled-opacity': 0.3,
+
+        // Shadows
         'shadow-key-umbra-color': '#2F2B3D',
       },
     },

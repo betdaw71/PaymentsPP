@@ -94,13 +94,11 @@ export default defineComponent({
       })
 
       return h('div', { class: ['layout-wrapper', ...layoutClasses.value(windowWidth.value, windowScrollY.value)] }, [
-        navbar,
-        h('div', { class: 'layout-shell' }, [
-          verticalNavWrapper ? h(verticalNavWrapper, verticalNavWrapperProps, { default: () => verticalNav }) : verticalNav,
-          h('div', { class: 'layout-content-wrapper' }, [
-            main,
-            footer,
-          ]),
+        verticalNavWrapper ? h(verticalNavWrapper, verticalNavWrapperProps, { default: () => verticalNav }) : verticalNav,
+        h('div', { class: 'layout-content-wrapper' }, [
+          navbar,
+          main,
+          footer,
         ]),
         layoutOverlay,
       ])
@@ -180,25 +178,13 @@ export default defineComponent({
     }
   }
 
-  &:not(.layout-overlay-nav) .layout-shell .layout-content-wrapper {
+  &:not(.layout-overlay-nav) .layout-content-wrapper {
     padding-inline-start: variables.$layout-vertical-nav-width;
   }
 
   // Adjust right column pl when vertical nav is collapsed
-  &.layout-vertical-nav-collapsed .layout-shell .layout-content-wrapper {
+  &.layout-vertical-nav-collapsed .layout-content-wrapper {
     padding-inline-start: variables.$layout-vertical-nav-collapsed-width;
-  }
-
-  .layout-shell {
-    display: flex;
-    flex: 1 1 auto;
-    min-block-size: 0;
-    position: relative;
-  }
-
-  .layout-navbar {
-    flex-shrink: 0;
-    inline-size: 100%;
   }
 
   // 👉 Content height fixed
