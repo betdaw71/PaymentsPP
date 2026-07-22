@@ -1,7 +1,19 @@
 <script setup>
 defineOptions({ name: 'AccountListLayout' })
 
-defineProps({
+const props = defineProps({
+  filterPanelExpanded: {
+    type: Boolean,
+    required: true,
+  },
+  rowsPerPage: {
+    type: Number,
+    required: true,
+  },
+  currentPage: {
+    type: Number,
+    required: true,
+  },
   advancedFilterCount: {
     type: Number,
     default: 0,
@@ -25,6 +37,9 @@ defineProps({
 })
 
 const emit = defineEmits([
+  'update:filterPanelExpanded',
+  'update:rowsPerPage',
+  'update:currentPage',
   'search',
   'reset',
   'remove-chip',
@@ -32,12 +47,8 @@ const emit = defineEmits([
   'refresh',
 ])
 
-const filterPanelExpanded = defineModel('filterPanelExpanded', { type: Boolean, required: true })
-const rowsPerPage = defineModel('rowsPerPage', { type: Number, required: true })
-const currentPage = defineModel('currentPage', { type: Number, required: true })
-
 const toggleFilterPanel = () => {
-  filterPanelExpanded.value = !filterPanelExpanded.value
+  emit('update:filterPanelExpanded', !props.filterPanelExpanded)
 }
 </script>
 
@@ -103,10 +114,11 @@ const toggleFilterPanel = () => {
       />
 
       <UiFilterPanel
-        v-model:expanded="filterPanelExpanded"
+        :expanded="filterPanelExpanded"
         :active-count="advancedFilterCount"
         :title="$t('advanced_filters')"
         embedded
+        @update:expanded="emit('update:filterPanelExpanded', $event)"
         @apply="emit('search')"
         @reset="emit('reset')"
       >
@@ -121,7 +133,7 @@ const toggleFilterPanel = () => {
       <div class="d-flex align-center gap-4">
         <div class="ui-orders-footer__rows">
           <VSelect
-            v-model="rowsPerPage"
+            :model-value="rowsPerPage"
             :items="rowsPerPageOptions"
             :label="$t('rows')"
             item-title="name"
@@ -130,13 +142,15 @@ const toggleFilterPanel = () => {
             hide-details
             scroll-strategy="close"
             color="primary"
+            @update:model-value="emit('update:rowsPerPage', $event)"
           />
         </div>
         <VPagination
-          v-model="currentPage"
+          :model-value="currentPage"
           size="small"
           :total-visible="5"
           :length="totalPage"
+          @update:model-value="emit('update:currentPage', $event)"
         />
       </div>
     </div>

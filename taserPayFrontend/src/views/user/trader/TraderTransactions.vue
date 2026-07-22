@@ -2,7 +2,6 @@
 import { useAuthStore } from "@/stores/useAuthStore"
 import { useTradeStore } from "@/stores/useTradeStore"
 import { formatUUID, resolveTransactionTypeVariantAndIcon } from "@core/utils/formatters"
-import FilterTransactions from "@/views/user/FilterTransactions.vue"
 import { useBaseStore } from "@/stores/useBaseStore"
 
 const { t } = useI18n ()
@@ -22,8 +21,6 @@ const totalPage = ref (1)
 const total = ref (0)
 const items = ref ([])
 const selectedRows = ref ([])
-const isUserFilterFromTransactionsDialogOpen = ref (false)
-const isUserFilterToTransactionsDialogOpen = ref (false)
 
 const filters = ref (
   structuredClone (toRaw (baseStore.transactions_filters)),

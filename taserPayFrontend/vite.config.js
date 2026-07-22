@@ -43,7 +43,7 @@ export default ({ mode }) => {
         layoutsDirs: './src/layouts/',
       }),
       Components ({
-        dirs: [ 'src/@core/components', 'src/views/demos', 'src/components/ui' ],
+        dirs: [ 'src/@core/components', 'src/views/demos', 'src/components/ui', 'src/components/account' ],
         dts: true,
       }),
       AutoImport ({
