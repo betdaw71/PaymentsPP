@@ -621,9 +621,17 @@ const exportOrders = async () => {
     </VSnackbar>
     <UiWorkspace v-if="authStore.is_authenticated()">
       <template #header>
-        <h1 class="ui-workspace__title">
-          {{ t('tabs.orders_in') }}
-        </h1>
+        <div class="ui-workspace__title-row">
+          <VAvatar
+            size="40"
+            variant="text"
+            color="primary"
+            icon="tabler-arrow-down-left"
+          />
+          <h1 class="ui-workspace__title">
+            {{ t('tabs.orders_in') }}
+          </h1>
+        </div>
       </template>
       <template #actions>
         <UiButton
