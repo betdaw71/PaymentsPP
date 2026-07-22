@@ -49,6 +49,11 @@ declare module '@vue/runtime-core' {
     Shortcuts: typeof import('./src/@core/components/Shortcuts.vue')['default']
     TheCustomizer: typeof import('./src/@core/components/TheCustomizer.vue')['default']
     ThemeSwitcher: typeof import('./src/@core/components/ThemeSwitcher.vue')['default']
+    UiButton: typeof import('./src/components/ui/UiButton.vue')['default']
+    UiFilterBar: typeof import('./src/components/ui/UiFilterBar.vue')['default']
+    UiFilterPanel: typeof import('./src/components/ui/UiFilterPanel.vue')['default']
+    UiSelect: typeof import('./src/components/ui/UiSelect.vue')['default']
+    UiTextField: typeof import('./src/components/ui/UiTextField.vue')['default']
     UserInfoEditDialog: typeof import('./src/@core/components/UserInfoEditDialog.vue')['default']
     UserUpgradePlanDialog: typeof import('./src/@core/components/UserUpgradePlanDialog.vue')['default']
   }

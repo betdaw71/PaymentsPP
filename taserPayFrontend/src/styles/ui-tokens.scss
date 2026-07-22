@@ -1,0 +1,63 @@
+// AvaPay UI — Telegram (чистота) + Grafana (ops/density) + Shopify Polaris (системность)
+:root {
+  --ui-font-sans: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ui-font-mono: 'SF Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+  /* Telegram blue — primary actions */
+  --ui-primary: #3390ec;
+  --ui-primary-hover: #2b7fd4;
+  --ui-primary-active: #1e6bb8;
+  --ui-primary-soft: #e7f3ff;
+  --ui-primary-muted: rgba(51, 144, 236, 0.12);
+
+  /* Grafana orange — accent / active metrics */
+  --ui-accent: #f05a00;
+  --ui-accent-hover: #d94f00;
+  --ui-accent-soft: #fff4ed;
+
+  /* Shopify green — success / confirm */
+  --ui-success: #008060;
+  --ui-success-hover: #006e52;
+  --ui-success-soft: #e3f1df;
+
+  --ui-danger: #d72c0d;
+  --ui-danger-soft: #fef1f0;
+
+  /* Surfaces — Grafana panels on light canvas */
+  --ui-bg: #f4f5f7;
+  --ui-surface: #ffffff;
+  --ui-surface-sunken: #f6f6f7;
+  --ui-surface-header: #fafbfb;
+  --ui-surface-hover: #f1f2f4;
+
+  --ui-border: #e3e5e8;
+  --ui-border-strong: #c9cccf;
+  --ui-border-focus: #3390ec;
+
+  --ui-text: #1a1d21;
+  --ui-text-muted: #616a75;
+  --ui-text-subtle: #8c9196;
+
+  --ui-radius-sm: 6px;
+  --ui-radius-md: 8px;
+  --ui-radius-lg: 10px;
+  --ui-radius-xl: 12px;
+
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 20px;
+  --ui-space-6: 24px;
+
+  --ui-control-height: 36px;
+  --ui-control-height-sm: 30px;
+  --ui-control-height-lg: 40px;
+
+  --ui-shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.05);
+  --ui-shadow-sm: 0 1px 2px rgba(26, 29, 33, 0.06);
+  --ui-shadow-md: 0 4px 12px rgba(26, 29, 33, 0.08);
+  --ui-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px rgba(51, 144, 236, 0.45);
+
+  --ui-transition: 140ms cubic-bezier(0.4, 0, 0.2, 1);
+}
