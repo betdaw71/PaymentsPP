@@ -663,242 +663,250 @@ const exportOrders = async () => {
                 </div>
               </div>
 
-              <!-- Primary search -->
-              <div class="ui-orders-search">
-                <div class="ui-orders-search__field">
-                  <AppTextField
-                    v-model="filters.searchQueryId"
-                    :label="$t('id')"
-                    placeholder="22652802379"
-                    density="compact"
-                    class="ui-field--mono"
-                    @keydown.enter="searchOrders"
-                  />
-                </div>
-                <div
-                  v-if="(authStore.is_merchant() && !authStore.is_team_lead()) || authStore.is_support() || authStore.is_head_of_support()"
-                  class="ui-orders-search__field"
-                >
-                  <AppTextField
-                    v-model="filters.searchMerchantOrderId"
-                    :label="$t('merchant_order_id')"
-                    density="compact"
-                    @keydown.enter="searchOrders"
-                  />
-                </div>
-                <UiButton
-                  variant="default"
-                  size="small"
-                  @click="toggleFilterPanel"
-                >
-                  <VIcon
-                    icon="tabler-filter"
-                    size="16"
-                    start
-                  />
-                  {{ $t('filters') }}
-                  <span
-                    v-if="advancedFilterCount > 0"
-                    class="ui-filter-panel__badge ms-1"
+              <!-- Search + filters zone (single wrapper) -->
+              <div class="ui-orders-filter-zone">
+                <div class="ui-orders-search">
+                  <div class="ui-orders-search__field">
+                    <AppTextField
+                      v-model="filters.searchQueryId"
+                      :label="$t('id')"
+                      placeholder="22652802379"
+                      density="compact"
+                      class="ui-field--mono"
+                      @keydown.enter="searchOrders"
+                    />
+                  </div>
+                  <div
+                    v-if="(authStore.is_merchant() && !authStore.is_team_lead()) || authStore.is_support() || authStore.is_head_of_support()"
+                    class="ui-orders-search__field"
                   >
-                    {{ advancedFilterCount }}
-                  </span>
-                </UiButton>
-                <UiButton
-                  variant="primary"
-                  size="small"
-                  @click="searchOrders"
+                    <AppTextField
+                      v-model="filters.searchMerchantOrderId"
+                      :label="$t('merchant_order_id')"
+                      density="compact"
+                      @keydown.enter="searchOrders"
+                    />
+                  </div>
+                  <UiButton
+                    variant="default"
+                    size="small"
+                    @click="toggleFilterPanel"
+                  >
+                    <VIcon
+                      icon="tabler-filter"
+                      size="16"
+                      start
+                    />
+                    {{ $t('filters') }}
+                    <span
+                      v-if="advancedFilterCount > 0"
+                      class="ui-filter-panel__badge ms-1"
+                    >
+                      {{ advancedFilterCount }}
+                    </span>
+                  </UiButton>
+                  <UiButton
+                    variant="primary"
+                    size="small"
+                    @click="searchOrders"
+                  >
+                    <VIcon
+                      icon="tabler-search"
+                      size="16"
+                      start
+                    />
+                    {{ $t('search') }}
+                  </UiButton>
+                </div>
+
+                <UiFilterChips
+                  :chips="activeFilterChips"
+                  :clear-label="$t('clear_all_filters')"
+                  @remove="removeFilterChip"
+                  @clear-all="resetFilters"
+                />
+
+                <UiFilterPanel
+                  v-model:expanded="filterPanelExpanded"
+                  :active-count="advancedFilterCount"
+                  :title="$t('advanced_filters')"
+                  embedded
+                  @apply="searchOrders"
+                  @reset="resetFilters"
                 >
-                  <VIcon
-                    icon="tabler-search"
-                    size="16"
-                    start
-                  />
-                  {{ $t('search') }}
-                </UiButton>
-              </div>
-
-              <!-- Active filter chips -->
-              <UiFilterChips
-                :chips="activeFilterChips"
-                :clear-label="$t('clear_all_filters')"
-                @remove="removeFilterChip"
-                @clear-all="resetFilters"
-              />
-
-              <!-- Advanced filters (collapsed by default) -->
-              <UiFilterPanel
-                v-model:expanded="filterPanelExpanded"
-                :active-count="advancedFilterCount"
-                :title="$t('advanced_filters')"
-                class="mx-4 mb-2"
-                @apply="searchOrders"
-                @reset="resetFilters"
-              >
-                <VCardText class="pa-0">
-                  <VRow class="mb-2">
-                    <VCol
-                      v-if="!authStore.is_trader() && !authStore.is_team_lead()"
-                      cols="12"
-                      sm="4"
-                      md="3"
-                    >
-                      <AppTextField
-                        v-model="filters.searchCustomerId"
-                        :label="$t('customer_id')"
-                        density="compact"
-                      />
-                    </VCol>
-                    <VCol
-                      v-if="!authStore.is_merchant()"
-                      cols="12"
-                      sm="4"
-                      md="3"
-                    >
-                      <AppTextField
-                        v-model="filters.searchPaymentDetailsGroupId"
-                        :label="$t('payment_details_group_id')"
-                        density="compact"
-                      />
-                    </VCol>
-                    <VCol
-                      v-if="!authStore.is_merchant()"
-                      cols="12"
-                      sm="4"
-                      md="3"
-                    >
-                      <AppTextField
-                        v-model="filters.searchPaymentDetailsGroupOwner"
-                        :label="$t('payment_details_group_owner')"
-                        density="compact"
-                      />
-                    </VCol>
-                  </VRow>
-                  <VRow>
-                        <!-- 👉 Select Role -->
-                        <VCol
-                          v-if="currentType === 'all'"
-                          cols="12"
-                          sm="5"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedStatus"
-                            :label="$t('status')"
-                            :items="filterOptions.status"
-                            :item-title="option => $t (`order_status.${option.name.toLowerCase()}`)"
-                            item-value="name"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prependInner="switchSelection(filterOptions.status, 'selectedStatus', 'name')"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                          lg="2"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedPaymentSystems"
-                            :label="$t('payment_systems')"
-                            :items="filterOptions.payment_system"
-                            item-title="name"
-                            item-value="name"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedPaymentSystems.length === filterOptions.payment_system.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prependInner="switchSelection(filterOptions.payment_system, 'selectedPaymentSystems', 'name')"
-                          />
-                        </VCol>
-                        <!-- 👉 Select Plan -->
-                        <VCol
-                          cols="12"
-                          sm="6"
-                        >
-                          <AppDateTimePicker
-                            v-model="filters.dateRange"
-                            :label="$t('creation_date_range')"
-                            :config="{ mode: 'range', enableTime: true, dateFormat: 'Y-m-d H:i'}"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <!-- 👉 Select Status -->
-                        <VCol
-                          cols="12"
-                          sm="3"
-                        >
-                          <AppTextField
-                            v-model="filters.minAmount"
-                            :label="$t('min_amount_fiat')"
-                            type="number"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="3"
-                        >
-                          <AppTextField
-                            v-model="filters.maxAmount"
-                            :label="$t('max_amount_fiat')"
-                            type="number"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="3"
-                        >
-                          <AppTextField
-                            v-model="filters.minUSDAmount"
-                            :label="$t('min_amount_usdt')"
-                            type="number"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="3"
-                        >
-                          <AppTextField
-                            v-model="filters.maxUSDAmount"
-                            :label="$t('max_amount_usdt')"
-                            type="number"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VSpacer />
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="4"
-                        >
-                          <AppSelect
-                            v-model="filters.ordering"
-                            :label="$t('ordering')"
-                            :items="orderingTypes"
-                            :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
-                            item-value="value"
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                      </VRow>
-                    </VCardText>
-
-                    <VDivider />
-                    <VCardText class="d-flex flex-wrap py-4 gap-4">
-                      <template
-                        v-if="authStore.is_merchant()"
+                  <UiFilterSection :title="$t('filter_section_identifiers')">
+                    <VRow dense>
+                      <VCol
+                        v-if="!authStore.is_trader() && !authStore.is_team_lead()"
+                        cols="12"
+                        sm="6"
+                        md="4"
                       >
-                        <VRow>
+                        <AppTextField
+                          v-model="filters.searchCustomerId"
+                          :label="$t('customer_id')"
+                          density="compact"
+                        />
+                      </VCol>
+                      <VCol
+                        v-if="!authStore.is_merchant()"
+                        cols="12"
+                        sm="6"
+                        md="4"
+                      >
+                        <AppTextField
+                          v-model="filters.searchPaymentDetailsGroupId"
+                          :label="$t('payment_details_group_id')"
+                          density="compact"
+                        />
+                      </VCol>
+                      <VCol
+                        v-if="!authStore.is_merchant()"
+                        cols="12"
+                        sm="6"
+                        md="4"
+                      >
+                        <AppTextField
+                          v-model="filters.searchPaymentDetailsGroupOwner"
+                          :label="$t('payment_details_group_owner')"
+                          density="compact"
+                        />
+                      </VCol>
+                    </VRow>
+                  </UiFilterSection>
+
+                  <UiFilterSection :title="$t('filter_section_status')">
+                    <VRow dense>
+                      <VCol
+                        v-if="currentType === 'all'"
+                        cols="12"
+                        sm="6"
+                        md="4"
+                      >
+                        <AppSelect
+                          v-model="filters.selectedStatus"
+                          :label="$t('status')"
+                          :items="filterOptions.status"
+                          :item-title="option => $t (`order_status.${option.name.toLowerCase()}`)"
+                          item-value="name"
+                          multiple
+                          clearable
+                          clear-icon="tabler-x"
+                          :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                          @click:prependInner="switchSelection(filterOptions.status, 'selectedStatus', 'name')"
+                        />
+                      </VCol>
+                      <VCol
+                        cols="12"
+                        sm="6"
+                        md="4"
+                      >
+                        <AppSelect
+                          v-model="filters.selectedPaymentSystems"
+                          :label="$t('payment_systems')"
+                          :items="filterOptions.payment_system"
+                          item-title="name"
+                          item-value="name"
+                          multiple
+                          clearable
+                          clear-icon="tabler-x"
+                          :prepend-inner-icon="filters.selectedPaymentSystems.length === filterOptions.payment_system.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                          @click:prependInner="switchSelection(filterOptions.payment_system, 'selectedPaymentSystems', 'name')"
+                        />
+                      </VCol>
+                    </VRow>
+                  </UiFilterSection>
+
+                  <UiFilterSection :title="$t('filter_section_amounts')">
+                    <VRow dense>
+                      <VCol
+                        cols="12"
+                        sm="6"
+                        md="4"
+                      >
+                        <AppDateTimePicker
+                          v-model="filters.dateRange"
+                          :label="$t('creation_date_range')"
+                          :config="{ mode: 'range', enableTime: true, dateFormat: 'Y-m-d H:i'}"
+                          clearable
+                          clear-icon="tabler-x"
+                        />
+                      </VCol>
+                      <VCol
+                        cols="12"
+                        sm="6"
+                        md="2"
+                      >
+                        <AppTextField
+                          v-model="filters.minAmount"
+                          :label="$t('min_amount_fiat')"
+                          type="number"
+                          clearable
+                          clear-icon="tabler-x"
+                        />
+                      </VCol>
+                      <VCol
+                        cols="12"
+                        sm="6"
+                        md="2"
+                      >
+                        <AppTextField
+                          v-model="filters.maxAmount"
+                          :label="$t('max_amount_fiat')"
+                          type="number"
+                          clearable
+                          clear-icon="tabler-x"
+                        />
+                      </VCol>
+                      <VCol
+                        cols="12"
+                        sm="6"
+                        md="2"
+                      >
+                        <AppTextField
+                          v-model="filters.minUSDAmount"
+                          :label="$t('min_amount_usdt')"
+                          type="number"
+                          clearable
+                          clear-icon="tabler-x"
+                        />
+                      </VCol>
+                      <VCol
+                        cols="12"
+                        sm="6"
+                        md="2"
+                      >
+                        <AppTextField
+                          v-model="filters.maxUSDAmount"
+                          :label="$t('max_amount_usdt')"
+                          type="number"
+                          clearable
+                          clear-icon="tabler-x"
+                        />
+                      </VCol>
+                      <VCol
+                        cols="12"
+                        sm="6"
+                        md="4"
+                      >
+                        <AppSelect
+                          v-model="filters.ordering"
+                          :label="$t('ordering')"
+                          :items="orderingTypes"
+                          :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
+                          item-value="value"
+                          clear-icon="tabler-x"
+                        />
+                      </VCol>
+                    </VRow>
+                  </UiFilterSection>
+
+                  <UiFilterSection
+                    v-if="authStore.is_merchant() || authStore.is_head_of_support() || authStore.is_support() || authStore.is_senior_trader() || authStore.is_trader()"
+                    :title="$t('filter_section_people')"
+                  >
+                    <template v-if="authStore.is_merchant()">
+                        <VRow dense>
                           <VCol
                             cols="12"
                             sm="4"
@@ -1311,8 +1319,9 @@ const exportOrders = async () => {
                           </VCol>
                         </VRow>
                       </template>
-                    </VCardText>
-              </UiFilterPanel>
+                  </UiFilterSection>
+                </UiFilterPanel>
+              </div>
 
               <!-- Summary for current result set (above table) -->
               <div class="ui-orders-metrics ui-orders-metrics--above-table">

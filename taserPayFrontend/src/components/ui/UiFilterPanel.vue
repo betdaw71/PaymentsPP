@@ -15,6 +15,10 @@ const props = defineProps({
     default: true,
   },
   loading: Boolean,
+  embedded: {
+    type: Boolean,
+    default: false,
+  },
   applyLabel: {
     type: String,
     default: 'Применить',
@@ -38,7 +42,13 @@ const toggle = () => {
 </script>
 
 <template>
-  <section class="ui-filter-panel mb-4">
+  <section
+    class="ui-filter-panel"
+    :class="{
+      'ui-filter-panel--embedded': embedded,
+      'ui-filter-panel--open': isOpen,
+    }"
+  >
     <header
       class="ui-filter-panel__header"
       @click="toggle"
@@ -57,21 +67,19 @@ const toggle = () => {
           {{ activeCount }}
         </span>
       </div>
-      <VBtn
-        variant="text"
-        size="x-small"
-        icon
-        @click.stop="toggle"
-      >
-        <VIcon
-          :icon="isOpen ? 'tabler-chevron-up' : 'tabler-chevron-down'"
-          size="18"
-        />
-      </VBtn>
+      <VIcon
+        :icon="isOpen ? 'tabler-chevron-up' : 'tabler-chevron-down'"
+        size="18"
+        class="ui-filter-panel__chevron"
+        color="var(--ui-text-muted)"
+      />
     </header>
 
     <VExpandTransition>
-      <div v-show="isOpen">
+      <div
+        v-show="isOpen"
+        class="ui-filter-panel__content"
+      >
         <div class="ui-filter-panel__body">
           <slot />
         </div>

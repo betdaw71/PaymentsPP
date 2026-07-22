@@ -149,6 +149,37 @@
   background: var(--ui-surface);
   box-shadow: var(--ui-shadow-sm);
   overflow: hidden;
+
+  &--embedded {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+
+    .ui-filter-panel__header {
+      margin: 0;
+      border-top: 1px solid var(--ui-border);
+      border-bottom: none;
+      background: var(--ui-surface-sunken);
+
+      &:hover {
+        background: var(--ui-surface-hover);
+      }
+    }
+
+    &.ui-filter-panel--open .ui-filter-panel__header {
+      border-bottom: 1px solid var(--ui-border);
+    }
+
+    .ui-filter-panel__body {
+      padding: 16px;
+      background: var(--ui-surface);
+    }
+
+    .ui-filter-panel__footer {
+      background: var(--ui-surface-sunken);
+    }
+  }
 }
 
 .ui-filter-panel__header {
@@ -156,7 +187,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--ui-space-3);
-  padding: 10px 14px;
+  padding: 10px 16px;
   background: var(--ui-surface-header);
   border-bottom: 1px solid var(--ui-border);
   cursor: pointer;
@@ -165,6 +196,15 @@
   &:hover {
     background: var(--ui-surface-hover);
   }
+}
+
+.ui-filter-panel__chevron {
+  flex-shrink: 0;
+  transition: transform var(--ui-transition);
+}
+
+.ui-filter-panel--open .ui-filter-panel__chevron {
+  transform: rotate(0deg);
 }
 
 .ui-filter-panel__title {
@@ -195,6 +235,10 @@
 .ui-filter-panel__body {
   padding: 14px 16px;
   background: var(--ui-surface);
+
+  .v-row {
+    margin-top: 0;
+  }
 }
 
 .ui-filter-panel__footer {
@@ -203,9 +247,52 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 10px 16px;
   border-top: 1px solid var(--ui-border);
   background: var(--ui-surface-sunken);
+}
+
+// ——— Filter sections inside panel ———
+.ui-filter-section {
+  & + & {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--ui-border);
+  }
+
+  &__title {
+    margin-bottom: 10px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ui-text-subtle);
+  }
+}
+
+// ——— Unified filter zone (search + chips + panel) ———
+.ui-orders-filter-zone {
+  margin: 0 16px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  overflow: hidden;
+  box-shadow: var(--ui-shadow-xs);
+
+  .ui-orders-search {
+    border-bottom: none;
+    padding: 12px 16px 10px;
+  }
+
+  .ui-filter-chips {
+    border-bottom: none;
+    padding: 0 16px 10px;
+    background: transparent;
+  }
+
+  .ui-filter-panel--embedded {
+    margin: 0;
+  }
 }
 
 // ——— Filter bar (Telegram compact chips row) ———
@@ -316,7 +403,6 @@
   align-items: flex-end;
   gap: 10px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--ui-border);
   background: var(--ui-surface);
 }
 

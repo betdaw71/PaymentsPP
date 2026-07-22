@@ -53,6 +53,7 @@ declare module '@vue/runtime-core' {
     UiFilterBar: typeof import('./src/components/ui/UiFilterBar.vue')['default']
     UiFilterChips: typeof import('./src/components/ui/UiFilterChips.vue')['default']
     UiFilterPanel: typeof import('./src/components/ui/UiFilterPanel.vue')['default']
+    UiFilterSection: typeof import('./src/components/ui/UiFilterSection.vue')['default']
     UiRefreshControl: typeof import('./src/components/ui/UiRefreshControl.vue')['default']
     UiSelect: typeof import('./src/components/ui/UiSelect.vue')['default']
     UiTextField: typeof import('./src/components/ui/UiTextField.vue')['default']
