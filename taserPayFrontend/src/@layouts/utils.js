@@ -42,38 +42,35 @@ export const resolveNavLinkRoute = (link, router) => {
  */
 export const isNavLinkActive = (link, router) => {
   const currentRoute = router.currentRoute.value
-  const matchedRoutes = currentRoute.matched
-  const resolveRouted = resolveNavLinkRoute(link, router)
 
-  if (!resolveRouted)
+  if (!link.to)
     return false
 
-  const routeName = typeof resolveRouted === 'string' ? resolveRouted : resolveRouted?.name
+  if (link.activeMatch?.name) {
+    if (currentRoute.name !== link.activeMatch.name)
+      return false
 
-  if (!routeName)
-    return false
+    if (link.activeMatch.tab)
+      return (currentRoute.query.tab ?? 'main_info') === link.activeMatch.tab
 
-  const routeMatches = matchedRoutes.some(route => {
-    return route.name === routeName || route.meta.navActiveLink === routeName
-  })
-
-  if (!routeMatches)
-    return false
-
-  if (link.activeMatch?.name)
-    return currentRoute.name === link.activeMatch.name
-
-  if (link.to && typeof link.to === 'object' && link.to.query?.tab)
-    return currentRoute.query.tab === link.to.query.tab
-
-  if (link.to && typeof link.to === 'object' && link.to.params) {
-    const resolved = router.resolve(link.to)
-
-    return Object.entries(link.to.params).every(([key, value]) => resolved.params[key] === value)
+    return true
   }
 
-  if (link.to && typeof link.to === 'object' && !link.to.query?.tab && routeName === 'user')
-    return !currentRoute.query.tab || currentRoute.query.tab === 'main_info'
+  const target = typeof link.to === 'string' ? { name: link.to } : link.to
+  const targetName = target.name
+
+  if (!targetName || currentRoute.name !== targetName)
+    return false
+
+  if (targetName === 'user') {
+    const targetTab = target.query?.tab ?? 'main_info'
+
+    return (currentRoute.query.tab ?? 'main_info') === targetTab
+  }
+
+  if (target.params) {
+    return Object.entries(target.params).every(([key, value]) => currentRoute.params[key] === value)
+  }
 
   return true
 }

@@ -31,8 +31,10 @@ const linkLabel = computed(() => props.item.title ? t(props.item.title) : '')
     <Component
       :is="item.to ? 'RouterLink' : 'a'"
       v-bind="getComputedNavLinkToProp(item)"
+      active-class=""
+      exact-active-class=""
       :title="hideTitleAndBadge ? linkLabel : undefined"
-      :class="{ 'router-link-active router-link-exact-active': isNavLinkActive(item, $router) }"
+      :class="{ 'nav-link--active': isNavLinkActive(item, $router) }"
     >
       <Component
         :is="config.app.iconRenderer || 'div'"

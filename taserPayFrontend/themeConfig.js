@@ -40,8 +40,8 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
     chevronDown: { icon: 'lucide:chevron-down' },
     chevronRight: { icon: 'lucide:chevron-right', size: 18 },
     close: { icon: 'lucide:x' },
-    verticalNavPinned: { icon: 'lucide:panel-left-close' },
-    verticalNavUnPinned: { icon: 'lucide:panel-left-open' },
+    verticalNavPinned: { icon: 'lucide:panel-left-close', size: 22 },
+    verticalNavUnPinned: { icon: 'lucide:panel-left-open', size: 22 },
     sectionTitlePlaceholder: { icon: 'lucide:minus' },
   },
 })
