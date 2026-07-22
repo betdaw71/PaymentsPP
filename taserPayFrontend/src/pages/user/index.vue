@@ -41,15 +41,16 @@ import HeadSupportWithdrawals from "@/views/user/headsupport/HeadSupportWithdraw
 import HeadSupportDashboard from "@/views/user/headsupport/HeadSupportDashboard.vue"
 
 
-import UserBioPanel from '@/views/user/UserBioPanel.vue'
+import { getProfileTabs } from '@/navigation/profile-tabs'
+import { UI_ICONS } from '@/constants/ui-icons'
 import { useAuthStore } from "@/stores/useAuthStore"
 import MerchantApiKeys from "@/views/user/merchant/MerchantApiKeys.vue"
 import { useBaseStore } from "@/stores/useBaseStore"
 
-
 const { t } = useI18n ()
 const pollingThreshold = ref (120)
 const route = useRoute ()
+const router = useRouter ()
 const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
 const userData = ref (null)
@@ -93,121 +94,47 @@ onUnmounted (
 
 
 
-const tabs = computed(
-  () => {
+const profileTabs = computed(() => getProfileTabs(authStore))
 
-    const mainInfoTab = {
-      icon: 'tabler-info-circle',
-      title: t ('tabs.main_info'),
-    }
-
-    const teamTab = {
-      icon: 'tabler-vector-triangle',
-      title: t ('tabs.team'),
+const activeTabIndex = computed({
+  get () {
+    const tabKey = route.query.tab
+    if (tabKey) {
+      const idx = profileTabs.value.findIndex(tab => tab.key === tabKey)
+      if (idx >= 0)
+        return idx
     }
 
-    const balanceTab = {
-      icon: 'tabler-wallet',
-      title: t ('tabs.balance'),
-    }
-
-    const transactionsTab = {
-      icon: 'tabler-layout-list',
-      title: t ('tabs.transactions'),
-    }
-
-    const withdrawalsTab = {
-      icon: 'tabler-stack-pop',
-      title: t ('tabs.withdrawals'),
-    }
-
-    const tradersBalanceTab = {
-      icon: 'tabler-coin',
-      title: t ('tabs.traders_balance'),
-    }
-
-    const merchantsBalanceTab = {
-      icon: 'tabler-coin',
-      title: t ('tabs.merchants_balance'),
-    }
-
-    const merchantsApiTab = {
-      icon: 'tabler-api',
-      title: t ('tabs.merchants_api'),
-    }
-
-    const dashboardTab = {
-      icon: 'tabler-chart-dots-3',
-      title: t ('tabs.dashboard'),
-    }
-
-    if (authStore.is_senior_trader ())
-      return [
-        mainInfoTab,
-        teamTab,
-        balanceTab,
-        transactionsTab,
-        withdrawalsTab,
-      ]
-    if (authStore.is_trader ())
-      return [
-        mainInfoTab,
-        teamTab,
-        balanceTab,
-        transactionsTab,
-      ]
-    if (authStore.is_merchant_assist ()) {
-      return [
-        mainInfoTab,
-        balanceTab,
-        transactionsTab,
-      ]
-    }
-    if (authStore.is_team_lead ()) {
-      return [
-        mainInfoTab,
-        balanceTab,
-        transactionsTab,
-        withdrawalsTab,
-      ]
-    }
-    if (authStore.is_merchant ()) {
-      return [
-        mainInfoTab,
-        balanceTab,
-        transactionsTab,
-        withdrawalsTab,
-        merchantsApiTab,
-      ]
-    }
-    if (authStore.is_head_of_support ()) {
-      return [
-        dashboardTab,
-        mainInfoTab,
-        teamTab,
-        transactionsTab,
-        tradersBalanceTab,
-        merchantsBalanceTab,
-        withdrawalsTab,
-      ]
-    }
-    if (authStore.is_support ()) {
-      return [
-        mainInfoTab,
-        teamTab,
-        transactionsTab,
-        tradersBalanceTab,
-        withdrawalsTab,
-      ]
-    }
-
-    return [
-      mainInfoTab,
-      teamTab,
-      balanceTab,
-      transactionsTab,
-    ]
+    return profileSettings.value.user_info_tab ?? 0
   },
+  set (idx) {
+    profileSettings.value.user_info_tab = idx
+    const tab = profileTabs.value[idx]
+    if (tab && route.query.tab !== tab.key)
+      router.replace({ name: 'user', query: { tab: tab.key } })
+  },
+})
+
+const currentTab = computed(() => profileTabs.value[activeTabIndex.value])
+
+watch(
+  () => route.query.tab,
+  tabKey => {
+    if (!profileTabs.value.length)
+      return
+
+    if (!tabKey) {
+      const preferred = profileTabs.value.find(tab => tab.key === 'balance') || profileTabs.value[0]
+      router.replace({ name: 'user', query: { tab: preferred.key } })
+
+      return
+    }
+
+    const idx = profileTabs.value.findIndex(tab => tab.key === tabKey)
+    if (idx >= 0)
+      profileSettings.value.user_info_tab = idx
+  },
+  { immediate: true },
 )
 
 const getUser = (polling = true) => {
@@ -236,55 +163,45 @@ const getUser = (polling = true) => {
 </script>
 
 <template>
-  <VRow v-if="userData">
-    <!--    <VCol -->
-    <!--      cols="12" -->
-    <!--      md="3" -->
-    <!--      lg="3" -->
-    <!--    > -->
-    <!--      <UserBioPanel -->
-    <!--        v-model:user-data="userData" -->
-    <!--        @update:userData="userData = $event" -->
-    <!--      /> -->
-    <!--    </VCol> -->
+  <UiWorkspace
+    v-if="userData"
+    :no-padding="false"
+  >
+    <template #header>
+      <div class="ui-workspace__title-row">
+        <VAvatar
+          size="40"
+          variant="text"
+          color="primary"
+          :icon="currentTab?.icon || UI_ICONS.profile"
+        />
+        <div>
+          <h1 class="ui-workspace__title">
+            {{ currentTab ? $t(currentTab.title) : $t('user.profile.title') }}
+          </h1>
+          <p class="ui-workspace__subtitle">
+            {{ $t('user.profile.title') }}
+          </p>
+        </div>
+      </div>
+    </template>
 
-    <VCol
-      cols="12"
+    <VAlert
+      v-if="!authStore.userData.deposit"
+      variant="tonal"
+      color="error"
+      class="mb-4 mx-4 mt-3"
     >
-      <VAlert
-        v-if="!authStore.userData.deposit"
-        variant="tonal"
-        color="error"
-        class="mb-4"
-      >
-        <VAlertTitle class="mb-1">
-          {{ $t('alerts.balance_low.requirements_description') }}
-        </VAlertTitle>
-        <span>
-          {{ $t('alerts.balance_low.requirements') }}</span>
-      </VAlert>
-      <VTabs
-        v-model="profileSettings.user_info_tab"
-        class="v-tabs-pill"
-        show-arrows
-      >
-        <VTab
-          v-for="tab in tabs"
-          :key="tab.icon"
-          class="me-1"
-        >
-          <VIcon
-            :size="18"
-            :icon="tab.icon"
-            class="me-1"
-          />
-          <span>{{ tab.title }}</span>
-        </VTab>
-      </VTabs>
+      <VAlertTitle class="mb-1">
+        {{ $t('alerts.balance_low.requirements_description') }}
+      </VAlertTitle>
+      <span>{{ $t('alerts.balance_low.requirements') }}</span>
+    </VAlert>
 
+    <div>
       <VWindow
-        v-model="profileSettings.user_info_tab"
-        class="mt-6 disable-tab-transition"
+        v-model="activeTabIndex"
+        class="disable-tab-transition"
         :touch="false"
       >
         <template
@@ -415,8 +332,8 @@ const getUser = (polling = true) => {
           </VWindowItem>
         </template>
       </VWindow>
-    </VCol>
-  </VRow>
+    </div>
+  </UiWorkspace>
   <template v-else>
     <VCardItem>
       <div
@@ -433,12 +350,12 @@ const getUser = (polling = true) => {
         <VIcon
           v-else-if="loadMessage.status === 1"
           color="success"
-          icon="tabler-tick"
+          icon="lucide-check"
         />
         <VIcon
           v-else
           color="error"
-          icon="tabler-x"
+          icon="lucide-x"
         />
       </div>
     </VCardItem>

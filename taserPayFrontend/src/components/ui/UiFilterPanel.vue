@@ -61,7 +61,7 @@ const toggle = () => {
     >
       <div class="ui-filter-panel__title">
         <VIcon
-          icon="tabler-filter"
+          icon="lucide:filter"
           size="16"
           color="var(--ui-text-muted)"
         />
@@ -74,7 +74,7 @@ const toggle = () => {
         </span>
       </div>
       <VIcon
-        :icon="isOpen ? 'tabler-chevron-up' : 'tabler-chevron-down'"
+        :icon="isOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'"
         size="18"
         class="ui-filter-panel__chevron"
         color="var(--ui-text-muted)"

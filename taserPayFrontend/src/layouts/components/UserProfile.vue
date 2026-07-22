@@ -25,7 +25,7 @@ const logout = () => {
       class="cursor-pointer text-lowercase"
       color="primary"
       variant="tonal"
-      append-icon="tabler-user"
+      append-icon="lucide:user"
     >
       {{ authStore.userData.email }}
 
@@ -56,7 +56,7 @@ const logout = () => {
                     variant="tonal"
                   >
                     <VIcon
-                      icon="tabler-user"
+                      icon="lucide:user"
                     />
                   </VAvatar>
                 </VBadge>
@@ -79,18 +79,7 @@ const logout = () => {
 
           <VDivider class="my-2" />
 
-          <!-- 👉 Profile -->
-          <VListItem :to="{ name: 'user'}">
-            <template #prepend>
-              <VIcon
-                class="me-2"
-                icon="tabler-user"
-                size="22"
-              />
-            </template>
-
-            <VListItemTitle>{{ $t('user.profile.title') }}</VListItemTitle>
-          </VListItem>
+          <!-- Profile shortcut removed — account tabs live in the sidebar -->
           <VListItem
             v-if="authStore.is_head_of_support()"
             :to="{ name: 'user-add'}"
@@ -98,7 +87,7 @@ const logout = () => {
             <template #prepend>
               <VIcon
                 class="me-2"
-                icon="tabler-geometry"
+                icon="lucide:shapes"
                 size="22"
               />
             </template>
@@ -112,7 +101,7 @@ const logout = () => {
             <template #prepend>
               <VIcon
                 class="me-2"
-                icon="tabler-subtask"
+                icon="lucide:list-todo"
                 size="22"
               />
             </template>
@@ -126,7 +115,7 @@ const logout = () => {
             <template #prepend>
               <VIcon
                 class="me-2"
-                icon="tabler-logout"
+                icon="lucide:log-out"
                 size="22"
               />
             </template>

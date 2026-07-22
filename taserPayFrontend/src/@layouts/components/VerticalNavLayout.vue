@@ -179,12 +179,12 @@ export default defineComponent({
   }
 
   &:not(.layout-overlay-nav) .layout-content-wrapper {
-    padding-inline-start: variables.$layout-vertical-nav-width;
+    padding-inline-start: var(--layout-nav-effective-width, var(--ui-nav-width, #{variables.$layout-vertical-nav-width}));
   }
 
   // Adjust right column pl when vertical nav is collapsed
-  &.layout-vertical-nav-collapsed .layout-content-wrapper {
-    padding-inline-start: variables.$layout-vertical-nav-collapsed-width;
+  &.layout-vertical-nav-collapsed:not(.layout-overlay-nav) .layout-content-wrapper {
+    padding-inline-start: var(--layout-nav-effective-width, var(--ui-nav-width-collapsed, #{variables.$layout-vertical-nav-collapsed-width}));
   }
 
   // 👉 Content height fixed

@@ -16,10 +16,13 @@ body,
 
 // ——— Layout shell ———
 .layout-wrapper.layout-nav-type-vertical {
-  display: flex;
-  flex-direction: column;
   min-block-size: 100vh;
   --ap-navbar-height: 64px;
+  --layout-nav-effective-width: var(--ui-nav-width);
+
+  &.layout-vertical-nav-collapsed:not(.layout-overlay-nav) {
+    --layout-nav-effective-width: var(--ui-nav-width-collapsed);
+  }
 
   .layout-navbar {
     position: sticky;
@@ -178,7 +181,12 @@ body,
   }
 
   .nav-section-title {
-    display: none;
+    display: block;
+    padding-block: 0.75rem 0.25rem;
+
+    &:first-child {
+      padding-block-start: 0.25rem;
+    }
   }
 
   // Kill vuexy gradient/shadow active styles
@@ -206,10 +214,6 @@ body,
     color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
     padding-inline-start: 0.75rem;
   }
-}
-
-.layout-wrapper.layout-vertical-nav-collapsed .layout-vertical-nav:not(.hovered) {
-  inline-size: 84px !important;
 }
 
 .layout-page-content {

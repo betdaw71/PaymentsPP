@@ -626,7 +626,7 @@ const exportOrders = async () => {
             size="40"
             variant="text"
             color="primary"
-            icon="tabler-arrow-down-left"
+            icon="lucide:arrow-down-left"
           />
           <h1 class="ui-workspace__title">
             {{ t('tabs.orders_in') }}
@@ -641,7 +641,7 @@ const exportOrders = async () => {
           @click="exportOrders"
         >
           <VIcon
-            icon="tabler-screen-share"
+            icon="lucide:share"
             size="16"
             start
           />
@@ -687,7 +687,7 @@ const exportOrders = async () => {
                     @click="toggleFilterPanel"
                   >
                     <VIcon
-                      icon="tabler-filter"
+                      icon="lucide:filter"
                       size="16"
                       start
                     />
@@ -705,7 +705,7 @@ const exportOrders = async () => {
                     @click="searchOrders"
                   >
                     <VIcon
-                      icon="tabler-search"
+                      icon="lucide:search"
                       size="16"
                       start
                     />
@@ -785,8 +785,8 @@ const exportOrders = async () => {
                           item-value="name"
                           multiple
                           clearable
-                          clear-icon="tabler-x"
-                          :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                          clear-icon="lucide:x"
+                          :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'lucide:square-check': 'lucide:square'"
                           @click:prependInner="switchSelection(filterOptions.status, 'selectedStatus', 'name')"
                         />
                       </VCol>
@@ -803,8 +803,8 @@ const exportOrders = async () => {
                           item-value="name"
                           multiple
                           clearable
-                          clear-icon="tabler-x"
-                          :prepend-inner-icon="filters.selectedPaymentSystems.length === filterOptions.payment_system.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                          clear-icon="lucide:x"
+                          :prepend-inner-icon="filters.selectedPaymentSystems.length === filterOptions.payment_system.length ? 'lucide:square-check': 'lucide:square'"
                           @click:prependInner="switchSelection(filterOptions.payment_system, 'selectedPaymentSystems', 'name')"
                         />
                       </VCol>
@@ -823,7 +823,7 @@ const exportOrders = async () => {
                           :label="$t('creation_date_range')"
                           :config="{ mode: 'range', enableTime: true, dateFormat: 'Y-m-d H:i'}"
                           clearable
-                          clear-icon="tabler-x"
+                          clear-icon="lucide:x"
                         />
                       </VCol>
                       <VCol
@@ -836,7 +836,7 @@ const exportOrders = async () => {
                           :label="$t('min_amount_fiat')"
                           type="number"
                           clearable
-                          clear-icon="tabler-x"
+                          clear-icon="lucide:x"
                         />
                       </VCol>
                       <VCol
@@ -849,7 +849,7 @@ const exportOrders = async () => {
                           :label="$t('max_amount_fiat')"
                           type="number"
                           clearable
-                          clear-icon="tabler-x"
+                          clear-icon="lucide:x"
                         />
                       </VCol>
                       <VCol
@@ -862,7 +862,7 @@ const exportOrders = async () => {
                           :label="$t('min_amount_usdt')"
                           type="number"
                           clearable
-                          clear-icon="tabler-x"
+                          clear-icon="lucide:x"
                         />
                       </VCol>
                       <VCol
@@ -875,7 +875,7 @@ const exportOrders = async () => {
                           :label="$t('max_amount_usdt')"
                           type="number"
                           clearable
-                          clear-icon="tabler-x"
+                          clear-icon="lucide:x"
                         />
                       </VCol>
                       <VCol
@@ -889,7 +889,7 @@ const exportOrders = async () => {
                           :items="orderingTypes"
                           :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
                           item-value="value"
-                          clear-icon="tabler-x"
+                          clear-icon="lucide:x"
                         />
                       </VCol>
                     </VRow>
@@ -915,8 +915,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
                             />
                           </VCol>
@@ -935,8 +935,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
                             />
                           </VCol>
@@ -955,8 +955,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
                             />
                           </VCol>
@@ -991,8 +991,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
                             />
                           </VCol>
@@ -1010,8 +1010,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
                             />
                           </VCol>
@@ -1051,8 +1051,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
                             />
                           </VCol>
@@ -1070,8 +1070,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
                             />
                           </VCol>
@@ -1089,8 +1089,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedMerchants.length === filterOptions.merchants.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedMerchants.length === filterOptions.merchants.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.merchants, 'selectedMerchants', 'name')"
                             />
                           </VCol>
@@ -1114,8 +1114,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
                             />
                           </VCol>
@@ -1133,8 +1133,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
                             />
                           </VCol>
@@ -1174,8 +1174,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
                             />
                           </VCol>
@@ -1193,8 +1193,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
                             />
                           </VCol>
@@ -1218,8 +1218,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
                             />
                           </VCol>
@@ -1259,8 +1259,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
                             />
                           </VCol>
@@ -1284,8 +1284,8 @@ const exportOrders = async () => {
                               item-value="name"
                               multiple
                               clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'tabler-square-check-filled': 'tabler-square-check'"
+                              clear-icon="lucide:x"
+                              :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
                               @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
                             />
                           </VCol>
@@ -1355,7 +1355,7 @@ const exportOrders = async () => {
                       color="info"
                       text-color="white"
                       size="default"
-                      prepend-icon="tabler-snowflake"
+                      prepend-icon="lucide:snowflake"
                     >
                       {{ holdAmount }}
                     </VChip>
@@ -1474,7 +1474,7 @@ const exportOrders = async () => {
                           <VIcon
                             v-bind="props"
                             color="error"
-                            icon="tabler-robot-face"
+                            icon="lucide:bot"
                           />
                         </template>
                         <span>
@@ -1638,12 +1638,12 @@ const exportOrders = async () => {
                       <VIcon
                         v-else-if="loadMessage.status === 1"
                         color="success"
-                        icon="tabler-tick"
+                        icon="lucide:check"
                       />
                       <VIcon
                         v-else
                         color="error"
-                        icon="tabler-x"
+                        icon="lucide:x"
                       />
                     </td>
 

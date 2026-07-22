@@ -1,5 +1,5 @@
 <script setup>
-import navItems from '@/navigation/vertical'
+import { buildVerticalNavItems } from '@/navigation/vertical/build'
 import { useThemeConfig } from '@core/composable/useThemeConfig'
 
 // Components
@@ -24,12 +24,7 @@ let navItemsFiltered = ref([])
 
 watchEffect(
   () => {
-    navItemsFiltered.value = navItems.filter (navItem => (
-      !navItem.role ||
-        (Number.isInteger(navItem.role) && authStore.userData.role >= navItem.role) ||
-        (Array.isArray(navItem.role) && navItem.role.includes(authStore.userData.role))
-    ),
-    )
+    navItemsFiltered.value = buildVerticalNavItems(authStore)
   },
 )
 </script>
@@ -47,7 +42,7 @@ watchEffect(
         >
           <VIcon
             size="26"
-            icon="tabler-menu-2"
+            icon="lucide-menu"
           />
         </IconBtn>
 

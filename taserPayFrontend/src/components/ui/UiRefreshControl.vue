@@ -54,7 +54,7 @@ const selectInterval = value => {
       @click="emit('refresh')"
     >
       <VIcon
-        icon="tabler-refresh"
+        icon="lucide:refresh-cw"
         size="18"
       />
     </UiButton>
@@ -72,7 +72,7 @@ const selectInterval = value => {
         >
           {{ intervalLabel }}
           <VIcon
-            icon="tabler-chevron-down"
+            icon="lucide:chevron-down"
             size="14"
             end
           />

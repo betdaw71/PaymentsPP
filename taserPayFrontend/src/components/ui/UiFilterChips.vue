@@ -31,7 +31,7 @@ const emit = defineEmits(['remove', 'clear-all'])
     >
       {{ chip.label }}
       <VIcon
-        icon="tabler-x"
+        icon="lucide:x"
         size="12"
       />
     </span>

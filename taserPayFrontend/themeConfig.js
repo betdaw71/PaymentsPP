@@ -29,7 +29,7 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
   footer: { type: FooterType.Sticky },
   verticalNav: {
     isVerticalNavCollapsed: false,
-    defaultNavItemIconProps: { icon: 'tabler-circle', size: 10 },
+    defaultNavItemIconProps: { icon: 'lucide:circle', size: 10 },
     isVerticalNavSemiDark: false,
   },
   horizontalNav: {
@@ -37,11 +37,11 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
     transition: 'slide-y-reverse-transition',
   },
   icons: {
-    chevronDown: { icon: 'tabler-chevron-down' },
-    chevronRight: { icon: 'tabler-chevron-right', size: 18 },
-    close: { icon: 'tabler-x' },
-    verticalNavPinned: { icon: 'tabler-circle-dot' },
-    verticalNavUnPinned: { icon: 'tabler-circle' },
-    sectionTitlePlaceholder: { icon: 'tabler-separator' },
+    chevronDown: { icon: 'lucide:chevron-down' },
+    chevronRight: { icon: 'lucide:chevron-right', size: 18 },
+    close: { icon: 'lucide:x' },
+    verticalNavPinned: { icon: 'lucide:panel-left-close' },
+    verticalNavUnPinned: { icon: 'lucide:panel-left-open' },
+    sectionTitlePlaceholder: { icon: 'lucide:minus' },
   },
 })

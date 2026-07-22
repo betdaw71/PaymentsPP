@@ -1,0 +1,61 @@
+/**
+ * Lucide icons (MIT) — visual alternative to Tabler for nav and UI kit surfaces.
+ * Use: { icon: UI_ICONS.ordersIn } or UI_ICONS.filter
+ */
+export const UI_ICONS = {
+  ordersIn: 'lucide:arrow-down-left',
+  ordersOut: 'lucide:arrow-up-right',
+  all: 'lucide:layout-grid',
+  active: 'lucide:loader',
+  success: 'lucide:circle-check',
+  recalculation: 'lucide:calculator',
+  declined: 'lucide:x',
+  arbitrage: 'lucide:shield',
+  manualCheck: 'lucide:scan-search',
+  paymentDetails: 'lucide:credit-card',
+  sms: 'lucide:smartphone',
+  wallet: 'lucide:wallet',
+  transactions: 'lucide:list',
+  withdrawals: 'lucide:banknote',
+  dashboard: 'lucide:layout-dashboard',
+  mainInfo: 'lucide:info',
+  team: 'lucide:users',
+  tradersBalance: 'lucide:coins',
+  merchantsBalance: 'lucide:coins',
+  api: 'lucide:key-round',
+  profile: 'lucide:user',
+  settings: 'lucide:settings',
+  menu: 'lucide:menu',
+  close: 'lucide:x',
+  chevronDown: 'lucide:chevron-down',
+  chevronUp: 'lucide:chevron-up',
+  chevronRight: 'lucide:chevron-right',
+  chevronLeft: 'lucide:chevron-left',
+  navExpand: 'lucide:panel-left-open',
+  navCollapse: 'lucide:panel-left-close',
+  filter: 'lucide:filter',
+  sliders: 'lucide:sliders-horizontal',
+  search: 'lucide:search',
+  refresh: 'lucide:refresh-cw',
+  export: 'lucide:share',
+  dot: 'lucide:circle',
+  separator: 'lucide:minus',
+  check: 'lucide:check',
+  squareCheck: 'lucide:square-check',
+  square: 'lucide:square',
+  alert: 'lucide:alert-circle',
+  pencil: 'lucide:pencil',
+  plus: 'lucide:plus',
+  minus: 'lucide:minus',
+  logout: 'lucide:log-out',
+  bell: 'lucide:bell',
+  creation: 'lucide:shapes',
+  management: 'lucide:list-todo',
+}
+
+export function uiIcon (name, extra = {}) {
+  return {
+    icon: UI_ICONS[name] ?? UI_ICONS.dot,
+    ...extra,
+  }
+}

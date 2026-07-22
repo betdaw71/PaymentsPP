@@ -29,7 +29,7 @@ const resolvedResetLabel = computed(() => props.resetLabel ?? t('filter_reset'))
   <div class="ui-filter-bar">
     <div class="ui-filter-bar__meta">
       <VIcon
-        icon="tabler-adjustments-horizontal"
+        icon="lucide:sliders-horizontal"
         size="16"
       />
       <span>Активные</span>

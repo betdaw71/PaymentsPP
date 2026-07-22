@@ -55,9 +55,12 @@ const resolveNavItemComponent = item => {
     return VerticalNavSectionTitle
   if ('children' in item)
     return VerticalNavGroup
-  
+
   return VerticalNavLink
 }
+
+const primaryNavItems = computed(() => props.navItems.filter(item => item.navSection !== 'footer'))
+const footerNavItems = computed(() => props.navItems.filter(item => item.navSection === 'footer'))
 
 const route = useRoute()
 
@@ -140,20 +143,33 @@ const handleNavScroll = evt => {
       name="nav-items"
       :update-is-vertical-nav-scrolled="updateIsVerticalNavScrolled"
     >
-      <PerfectScrollbar
-        :key="isAppRtl"
-        tag="ul"
-        class="nav-items"
-        :options="{ wheelPropagation: false }"
-        @ps-scroll-y="handleNavScroll"
-      >
-        <Component
-          :is="resolveNavItemComponent(item)"
-          v-for="(item, index) in navItems"
-          :key="index"
-          :item="item"
-        />
-      </PerfectScrollbar>
+      <div class="nav-items-shell">
+        <PerfectScrollbar
+          :key="isAppRtl"
+          tag="ul"
+          class="nav-items nav-items--primary"
+          :options="{ wheelPropagation: false }"
+          @ps-scroll-y="handleNavScroll"
+        >
+          <Component
+            :is="resolveNavItemComponent(item)"
+            v-for="(item, index) in primaryNavItems"
+            :key="index"
+            :item="item"
+          />
+        </PerfectScrollbar>
+        <ul
+          v-if="footerNavItems.length"
+          class="nav-items nav-items--footer"
+        >
+          <Component
+            :is="resolveNavItemComponent(item)"
+            v-for="(item, index) in footerNavItems"
+            :key="`footer-${index}`"
+            :item="item"
+          />
+        </ul>
+      </div>
     </slot>
   </Component>
 </template>
@@ -169,10 +185,11 @@ const handleNavScroll = evt => {
   display: flex;
   flex-direction: column;
   block-size: 100%;
-  inline-size: variables.$layout-vertical-nav-width;
+  inline-size: var(--layout-nav-effective-width, var(--ui-nav-width, #{variables.$layout-vertical-nav-width}));
+  max-inline-size: var(--layout-nav-effective-width, var(--ui-nav-width, #{variables.$layout-vertical-nav-width}));
   inset-block-start: 0;
   inset-inline-start: 0;
-  transition: transform 0.25s ease-in-out, inline-size 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
+  transition: transform 0.25s ease-in-out, inline-size 0.25s ease-in-out, max-inline-size 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
   will-change: transform, inline-size;
 
   .nav-header {
@@ -188,14 +205,28 @@ const handleNavScroll = evt => {
     margin-inline-end: auto;
   }
 
+  .nav-items-shell {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+  }
+
   .nav-items {
-    block-size: 100%;
+    &--primary {
+      flex: 1 1 auto;
+      min-block-size: 0;
+    }
 
-    // ℹ️ We no loner needs this overflow styles as perfect scrollbar applies it
-    // overflow-x: hidden;
-
-    // // ℹ️ We used `overflow-y` instead of `overflow` to mitigate overflow x. Revert back if any issue found.
-    // overflow-y: auto;
+    &--footer {
+      flex-shrink: 0;
+      margin-block-start: auto;
+      padding-block: 8px 12px;
+      border-block-start: 1px solid var(--ui-border, rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.35)));
+      list-style: none;
+      margin-inline: 0;
+      padding-inline: 0;
+    }
   }
 
   .nav-item-title {
@@ -205,11 +236,10 @@ const handleNavScroll = evt => {
     white-space: nowrap;
   }
 
-  // 👉 Collapsed
+  // 👉 Collapsed — keep icon rail width even when hovered (avoids overlap with content)
   .layout-vertical-nav-collapsed & {
-    &:not(.hovered) {
-      inline-size: variables.$layout-vertical-nav-collapsed-width;
-    }
+    inline-size: var(--layout-nav-effective-width, var(--ui-nav-width-collapsed, #{variables.$layout-vertical-nav-collapsed-width})) !important;
+    max-inline-size: var(--layout-nav-effective-width, var(--ui-nav-width-collapsed, #{variables.$layout-vertical-nav-collapsed-width})) !important;
   }
 
   // 👉 Overlay nav
