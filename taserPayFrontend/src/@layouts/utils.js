@@ -60,6 +60,9 @@ export const isNavLinkActive = (link, router) => {
   if (!routeMatches)
     return false
 
+  if (link.activeMatch?.name)
+    return currentRoute.name === link.activeMatch.name
+
   if (link.to && typeof link.to === 'object' && link.to.query?.tab)
     return currentRoute.query.tab === link.to.query.tab
 

@@ -23,16 +23,9 @@ export function buildVerticalNavItems (authStore) {
   const accountPrimary = profileItems.filter(item => item.navSection !== 'footer')
   const accountFooter = profileItems.filter(item => item.navSection === 'footer')
 
-  const items = [
+  return [
     ...operations,
-    { heading: 'nav_section_account' },
     ...accountPrimary,
+    ...accountFooter,
   ]
-
-  if (accountFooter.length) {
-    items.push({ heading: 'nav_section_settings', navSection: 'footer' })
-    items.push(...accountFooter)
-  }
-
-  return items
 }

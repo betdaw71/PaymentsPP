@@ -198,6 +198,23 @@ const getUser = (polling = true) => {
       <span>{{ $t('alerts.balance_low.requirements') }}</span>
     </VAlert>
 
+    <nav
+      v-if="profileTabs.length > 1"
+      class="ui-profile-tabs"
+      :aria-label="$t('user.profile.title')"
+    >
+      <button
+        v-for="(tab, idx) in profileTabs"
+        :key="tab.key"
+        type="button"
+        class="ui-profile-tabs__item"
+        :class="{ 'ui-profile-tabs__item--active': activeTabIndex === idx }"
+        @click="activeTabIndex = idx"
+      >
+        {{ $t(tab.title) }}
+      </button>
+    </nav>
+
     <div>
       <VWindow
         v-model="activeTabIndex"

@@ -16,7 +16,10 @@ const props = defineProps({
 
 const { width: windowWidth } = useWindowSize()
 const { isVerticalNavMini, dynamicI18nProps } = useLayouts()
+const { t } = useI18n()
 const hideTitleAndBadge = isVerticalNavMini(windowWidth)
+
+const linkLabel = computed(() => props.item.title ? t(props.item.title) : '')
 </script>
 
 <template>
@@ -28,6 +31,7 @@ const hideTitleAndBadge = isVerticalNavMini(windowWidth)
     <Component
       :is="item.to ? 'RouterLink' : 'a'"
       v-bind="getComputedNavLinkToProp(item)"
+      :title="hideTitleAndBadge ? linkLabel : undefined"
       :class="{ 'router-link-active router-link-exact-active': isNavLinkActive(item, $router) }"
     >
       <Component

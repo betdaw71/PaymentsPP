@@ -35,6 +35,9 @@ export function getProfileTabs (authStore) {
   return [mainInfo, team, balance, transactions]
 }
 
+/** Sidebar-only: high-frequency items + profile entry; rest stays on profile page */
+const SIDEBAR_TAB_KEYS = new Set(['dashboard', 'balance', 'transactions', 'withdrawals'])
+
 export function profileTabToNavItem (tab) {
   return {
     title: tab.title,
@@ -48,7 +51,17 @@ export function profileTabToNavItem (tab) {
 }
 
 export function getProfileNavItems (authStore) {
-  const items = getProfileTabs(authStore).map(profileTabToNavItem)
+  const tabs = getProfileTabs(authStore)
+  const items = tabs
+    .filter(tab => SIDEBAR_TAB_KEYS.has(tab.key))
+    .map(profileTabToNavItem)
+
+  items.push({
+    title: 'user.profile.title',
+    icon: { icon: UI_ICONS.profile },
+    to: { name: 'user', query: { tab: 'main_info' } },
+    navSection: 'footer',
+  })
 
   if (authStore.is_head_of_support()) {
     items.push(

@@ -172,47 +172,8 @@ body,
   background: rgb(var(--v-theme-surface)) !important;
   box-shadow: none !important;
 
-  .nav-link a,
-  .nav-link .ap-nav-link {
-    border-radius: var(--ap-radius-chip);
-    margin-inline: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    transition: background-color 150ms ease, color 150ms ease;
-  }
-
   .nav-section-title {
-    display: block;
-    padding-block: 0.75rem 0.25rem;
-
-    &:first-child {
-      padding-block-start: 0.25rem;
-    }
-  }
-
-  // Kill vuexy gradient/shadow active styles
-  .nav-link > a.router-link-active,
-  .nav-link > a.router-link-exact-active {
-    background: transparent !important;
-    box-shadow: none !important;
-    color: inherit !important;
-    font-weight: inherit !important;
-  }
-
-  .ap-nav-link--active {
-    background: rgba(var(--v-theme-primary), 0.1) !important;
-    color: rgb(var(--v-theme-primary)) !important;
-    font-weight: 600;
-    box-shadow: none !important;
-    border: 1px solid rgba(var(--v-theme-primary), 0.14);
-  }
-
-  .nav-section-title .title-text {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-    padding-inline-start: 0.75rem;
+    display: none;
   }
 }
 
