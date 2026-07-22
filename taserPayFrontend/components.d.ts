@@ -57,6 +57,7 @@ declare module '@vue/runtime-core' {
     UiRefreshControl: typeof import('./src/components/ui/UiRefreshControl.vue')['default']
     UiSelect: typeof import('./src/components/ui/UiSelect.vue')['default']
     UiTextField: typeof import('./src/components/ui/UiTextField.vue')['default']
+    UiWorkspace: typeof import('./src/components/ui/UiWorkspace.vue')['default']
     UserInfoEditDialog: typeof import('./src/@core/components/UserInfoEditDialog.vue')['default']
     UserUpgradePlanDialog: typeof import('./src/@core/components/UserUpgradePlanDialog.vue')['default']
   }

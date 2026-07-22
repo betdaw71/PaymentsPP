@@ -619,52 +619,38 @@ const exportOrders = async () => {
     >
       {{ snackbar.message }}
     </VSnackbar>
-    <VRow v-if="authStore.is_authenticated()">
-      <VCol cols="12">
-        <VCard>
-          <VCardTitle class="mt-2 ms-2">
-            <VAvatar
-              size="50"
-              variant="text"
-              color="primary"
-              icon="tabler-arrow-down-left"
-            />
-            {{ t ('tabs.orders_in') }}
-          </VCardTitle>
-          <VCol cols="12">
-            <VCard>
-              <!-- Toolbar: title + export + refresh -->
-              <div class="ui-orders-toolbar">
-                <h2 class="ui-orders-toolbar__title">
-                  {{ t('tabs.orders_in') }}
-                </h2>
-                <div class="ui-orders-toolbar__actions">
-                  <UiButton
-                    variant="default"
-                    size="small"
-                    :loading="exportLoading"
-                    @click="exportOrders"
-                  >
-                    <VIcon
-                      icon="tabler-screen-share"
-                      size="16"
-                      start
-                    />
-                    {{ $t('export') }}
-                  </UiButton>
-                  <UiRefreshControl
-                    :interval="filters.autoUpdateMode"
-                    :progress="autoUpdateProgress"
-                    :progress-seconds="autoUpdateProgressSeconds"
-                    :items="autoUpdateModes"
-                    @refresh="getOrders(true)"
-                    @update:interval="filters.autoUpdateMode = $event"
-                  />
-                </div>
-              </div>
+    <UiWorkspace v-if="authStore.is_authenticated()">
+      <template #header>
+        <h1 class="ui-workspace__title">
+          {{ t('tabs.orders_in') }}
+        </h1>
+      </template>
+      <template #actions>
+        <UiButton
+          variant="default"
+          size="small"
+          :loading="exportLoading"
+          @click="exportOrders"
+        >
+          <VIcon
+            icon="tabler-screen-share"
+            size="16"
+            start
+          />
+          {{ $t('export') }}
+        </UiButton>
+        <UiRefreshControl
+          :interval="filters.autoUpdateMode"
+          :progress="autoUpdateProgress"
+          :progress-seconds="autoUpdateProgressSeconds"
+          :items="autoUpdateModes"
+          @refresh="getOrders(true)"
+          @update:interval="filters.autoUpdateMode = $event"
+        />
+      </template>
 
-              <!-- Search + filters zone (single wrapper) -->
-              <div class="ui-orders-filter-zone">
+      <!-- Search + filters zone (single wrapper) -->
+      <div class="ui-orders-filter-zone">
                 <div class="ui-orders-search">
                   <div class="ui-orders-search__field">
                     <AppTextField
@@ -1660,47 +1646,42 @@ const exportOrders = async () => {
                   </tr>
                 </tfoot>
               </VTable>
-              <!-- !SECTION -->
 
-              <VDivider />
-
-              <!-- SECTION Pagination -->
-              <div class="ui-orders-footer">
-                <span class="text-sm text-disabled">{{ paginationData }}</span>
-                <div class="d-flex align-center gap-4">
-                  <div class="ui-orders-footer__rows">
-                    <VSelect
-                      v-model="filters.rowsPerPage"
-                      :items="rowsPerPageOptions"
-                      :label="$t('rows')"
-                      item-title="name"
-                      item-value="value"
-                      density="compact"
-                      hide-details
-                      scroll-strategy="close"
-                      color="primary"
+              <template #footer>
+                <div class="ui-orders-footer">
+                  <span class="text-sm text-disabled">{{ paginationData }}</span>
+                  <div class="d-flex align-center gap-4">
+                    <div class="ui-orders-footer__rows">
+                      <VSelect
+                        v-model="filters.rowsPerPage"
+                        :items="rowsPerPageOptions"
+                        :label="$t('rows')"
+                        item-title="name"
+                        item-value="value"
+                        density="compact"
+                        hide-details
+                        scroll-strategy="close"
+                        color="primary"
+                      />
+                    </div>
+                    <VPagination
+                      v-model="currentPage"
+                      size="small"
+                      :total-visible="5"
+                      :length="totalPage"
+                      @next="selectedRows = []"
+                      @prev="selectedRows = []"
                     />
                   </div>
-                  <VPagination
-                    v-model="currentPage"
-                    size="small"
-                    :total-visible="5"
-                    :length="totalPage"
-                    @next="selectedRows = []"
-                    @prev="selectedRows = []"
-                  />
                 </div>
-              </div>
-              <!-- !SECTION -->
-            </VCard>
-          </VCol>
-        </VCard>
-        <OrderInDrawer
-          v-model:isDrawerOpen="isOrderInDrawerOpen"
-          v-model:order-id="orderItemId"
-          v-model:time="nowTime"
-        />
-      </VCol>
-    </VRow>
+              </template>
+    </UiWorkspace>
+
+    <OrderInDrawer
+      v-if="authStore.is_authenticated()"
+      v-model:isDrawerOpen="isOrderInDrawerOpen"
+      v-model:order-id="orderItemId"
+      v-model:time="nowTime"
+    />
   </div>
 </template>
