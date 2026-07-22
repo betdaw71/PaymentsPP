@@ -228,6 +228,102 @@ const switchSelection = (values, name, key) => {
     filters.value[name] = JSON.parse (JSON.stringify (values.map (item => item[key])))
   }
 }
+const filterPanelExpanded = ref(false)
+
+const countAdvancedFilters = f => {
+  let n = 0
+  if (f.selectedType?.length) n++
+  if (f.selectedTarget?.length) n++
+  if (f.minAmount) n++
+  if (f.maxAmount) n++
+  if (f.dateRange) n++
+  if (f.ordering && f.ordering !== '-date') n++
+  return n
+}
+
+const advancedFilterCount = computed(() => countAdvancedFilters(filters.value))
+
+const activeFilterChips = computed(() => {
+  const chips = []
+  const f = filters.value
+
+  if (f.searchQueryId)
+    chips.push({ key: 'searchQueryId', label: `ID: ${f.searchQueryId}` })
+  if (f.searchQueryComment)
+    chips.push({ key: 'searchQueryComment', label: `${t('search_comment')}: ${f.searchQueryComment}` })
+  if (f.searchQueryAddress)
+    chips.push({ key: 'searchQueryAddress', label: `${t('search_address')}: ${f.searchQueryAddress}` })
+
+  f.selectedType?.forEach(type => {
+    const typeName = itemTypes.find(i => i.value === type)?.name ?? type
+    chips.push({ key: `type:${type}`, label: `${t('type')}: ${typeName}` })
+  })
+
+  f.selectedTarget?.forEach(target => {
+    chips.push({ key: `target:${target}`, label: `${t('from_user')}: ${target}` })
+  })
+
+  if (f.dateRange)
+    chips.push({ key: 'dateRange', label: `${t('creation_date_range')}: ${f.dateRange}` })
+  if (f.minAmount)
+    chips.push({ key: 'minAmount', label: `${t('min_amount_usdt')}: ${f.minAmount}` })
+  if (f.maxAmount)
+    chips.push({ key: 'maxAmount', label: `${t('max_amount_usdt')}: ${f.maxAmount}` })
+  if (f.ordering && f.ordering !== '-date') {
+    const orderingLabel = orderingTypes.find(o => o.value === f.ordering)?.name ?? f.ordering
+    chips.push({ key: 'ordering', label: `${t('ordering')}: ${orderingLabel}` })
+  }
+
+  return chips
+})
+
+const removeFilterChip = key => {
+  const f = filters.value
+  const scalarKeys = {
+    searchQueryId: '',
+    searchQueryComment: '',
+    searchQueryAddress: '',
+    dateRange: '',
+    minAmount: 0,
+    maxAmount: 0,
+    ordering: '-date',
+  }
+
+  if (key in scalarKeys) {
+    f[key] = scalarKeys[key]
+  } else if (key.startsWith('type:')) {
+    const type = parseInt(key.slice(5), 10)
+    f.selectedType = f.selectedType.filter(item => item !== type)
+  } else if (key.startsWith('target:')) {
+    const target = key.slice(7)
+    f.selectedTarget = f.selectedTarget.filter(item => item !== target)
+  }
+
+  searchWithdrawals()
+}
+
+const searchWithdrawals = () => {
+  currentPage.value = 1
+  getWithdrawals()
+}
+
+const resetFilters = () => {
+  const { rowsPerPage } = filters.value
+  filters.value = {
+    searchQueryId: '',
+    rowsPerPage,
+    selectedType: [],
+    minAmount: 0,
+    maxAmount: 0,
+    searchQueryComment: '',
+    searchQueryAddress: '',
+    dateRange: '',
+    selectedTarget: [],
+    ordering: '-date',
+  }
+  searchWithdrawals()
+}
+
 
 const approveWithdrawal = item => {
   isApproveWithdrawalDialogOpen.value = true
@@ -251,191 +347,129 @@ const rejectWithdrawal = item => {
     >
       {{ snackbar.message }}
     </VSnackbar>
-    <VRow>
-      <VCol cols="12">
-        <VCard>
-          <VCardTitle class="mt-2 ms-2">
-            <VAvatar
-              size="50"
-              variant="text"
-              color="primary"
-              icon="tabler-stack-pop"
-            />
-            {{ t ('tabs.withdrawals') }}
-          </VCardTitle>
-          <VCol cols="12">
-            <VCard>
-              <VCardText class="d-flex align-center flex-wrap gap-3">
-                <VCardText
-                  class="text-h5 mb-0"
-                  style="padding: 0.5rem;"
-                >
-                  {{ t ('tabs.withdrawals') }}
-                </VCardText>
 
-                <VSpacer />
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.rowsPerPage"
-                    :items="rowsPerPageOptions"
-                    :label="$t('rows')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
-                  />
-                </VCol>
-                <VBtn
-                  icon="tabler-refresh"
-                  size="small"
-                  @click="getWithdrawals"
-                />
-              </VCardText>
+    <AccountListLayout
+      v-model:filter-panel-expanded="filterPanelExpanded"
+      v-model:rows-per-page="filters.rowsPerPage"
+      v-model:current-page="currentPage"
+      :advanced-filter-count="advancedFilterCount"
+      :active-filter-chips="activeFilterChips"
+      :rows-per-page-options="rowsPerPageOptions"
+      :pagination-data="paginationData"
+      :total-page="totalPage"
+      @search="searchWithdrawals"
+      @reset="resetFilters"
+      @remove-chip="removeFilterChip"
+      @clear-all="resetFilters"
+      @refresh="getWithdrawals"
+    >
+      <template #search-fields>
+        <div class="ui-orders-search__field">
+          <AppTextField
+            v-model="filters.searchQueryId"
+            :label="$t('id')"
+            density="compact"
+            class="ui-field--mono"
+            @keydown.enter="searchWithdrawals"
+          />
+        </div>
+        <div class="ui-orders-search__field">
+          <AppTextField
+            v-model="filters.searchQueryComment"
+            :label="$t('search_comment')"
+            density="compact"
+            @keydown.enter="searchWithdrawals"
+          />
+        </div>
+        <div class="ui-orders-search__field">
+          <AppTextField
+            v-model="filters.searchQueryAddress"
+            :label="$t('search_address')"
+            density="compact"
+            @keydown.enter="searchWithdrawals"
+          />
+        </div>
+      </template>
 
-              <VCardText>
-                <VRow>
-                  <!-- 👉 Select Role -->
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="3"
-                  >
-                    <AppSelect
-                      v-model="filters.selectedType"
-                      :label="$t('type')"
-                      :items="itemTypes"
-                      item-title="name"
-                      item-value="value"
-                      multiple
-                      clearable
-                      clear-icon="tabler-x"
-                      :prepend-inner-icon="filters.selectedType.length === itemTypes.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                      @click:prependInner="switchSelection(itemTypes, 'selectedType', 'value')"
-                    />
-                  </VCol>
-                  <!-- 👉 Select Plan -->
-                  <VCol
-                    v-if="authStore.is_support()"
-                    cols="12"
-                    sm="4"
-                    md="3"
-                  >
-                    <AppSelect
-                      v-model="filters.selectedTarget"
-                      :label="$t('from_user')"
-                      :items="withdrawalTargets"
-                      item-title="name"
-                      item-value="name"
-                      multiple
-                      clearable
-                      clear-icon="tabler-x"
-                      :prepend-inner-icon="filters.selectedTarget.length === withdrawalTargets.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                      @click:prepend-inner="switchSelection(withdrawalTargets, 'selectedTarget', 'name')"
-                    />
-                  </VCol>
-                  <!-- 👉 Select Status -->
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="2"
-                  >
-                    <AppTextField
-                      v-model="filters.minAmount"
-                      :label="$t('min_amount_usdt')"
-                      type="number"
-                      clearable
-                      clear-icon="tabler-x"
-                    />
-                  </VCol>
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="2"
-                  >
-                    <AppTextField
-                      v-model="filters.maxAmount"
-                      :label="$t('max_amount_usdt')"
-                      type="number"
-                      clearable
-                      clear-icon="tabler-x"
-                    />
-                  </VCol>
-                  <VCol
-                    cols="12"
-                    sm="4"
-                    md="2"
-                  >
-                    <AppSelect
-                      v-model="filters.ordering"
-                      :label="$t('ordering')"
-                      :items="orderingTypes"
-                      item-title="name"
-                      item-value="value"
-                      clear-icon="tabler-x"
-                    />
-                  </VCol>
-                </VRow>
-              </VCardText>
+      <template #filters>
+        <UiFilterSection :title="$t('filter_section_status')">
+          <VRow dense>
+            <VCol cols="12" sm="6" md="4">
+              <AppSelect
+                v-model="filters.selectedType"
+                :label="$t('type')"
+                :items="itemTypes"
+                item-title="name"
+                item-value="value"
+                multiple
+                clearable
+                clear-icon="lucide:x"
+                :prepend-inner-icon="filters.selectedType.length === itemTypes.length ? 'lucide:square-check': 'lucide:square'"
+                @click:prepend-inner="switchSelection(itemTypes, 'selectedType', 'value')"
+              />
+            </VCol>
+            <VCol v-if="authStore.is_support()" cols="12" sm="6" md="4">
+              <AppSelect
+                v-model="filters.selectedTarget"
+                :label="$t('from_user')"
+                :items="withdrawalTargets"
+                item-title="name"
+                item-value="name"
+                multiple
+                clearable
+                clear-icon="lucide:x"
+                :prepend-inner-icon="filters.selectedTarget.length === withdrawalTargets.length ? 'lucide:square-check': 'lucide:square'"
+                @click:prepend-inner="switchSelection(withdrawalTargets, 'selectedTarget', 'name')"
+              />
+            </VCol>
+            <VCol cols="12" sm="6" md="4">
+              <AppSelect
+                v-model="filters.ordering"
+                :label="$t('ordering')"
+                :items="orderingTypes"
+                item-title="name"
+                item-value="value"
+                clear-icon="lucide:x"
+              />
+            </VCol>
+          </VRow>
+        </UiFilterSection>
 
-              <VDivider />
+        <UiFilterSection :title="$t('filter_section_amounts')">
+          <VRow dense>
+            <VCol cols="12" sm="6" md="4">
+              <AppDateTimePicker
+                v-model="filters.dateRange"
+                :label="$t('creation_date_range')"
+                :config="{ mode: 'range' }"
+                clearable
+                clear-icon="lucide:x"
+              />
+            </VCol>
+            <VCol cols="12" sm="6" md="4">
+              <AppTextField
+                v-model="filters.minAmount"
+                :label="$t('min_amount_usdt')"
+                type="number"
+                clearable
+                clear-icon="lucide:x"
+              />
+            </VCol>
+            <VCol cols="12" sm="6" md="4">
+              <AppTextField
+                v-model="filters.maxAmount"
+                :label="$t('max_amount_usdt')"
+                type="number"
+                clearable
+                clear-icon="lucide:x"
+              />
+            </VCol>
+          </VRow>
+        </UiFilterSection>
+      </template>
 
-              <VCardText class="d-flex flex-wrap py-4 gap-4">
-                <VSpacer />
-                <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
-                  <div style="inline-size: 15rem;">
-                    <AppDateTimePicker
-                      v-model="filters.dateRange"
-                      :placeholder="$t('creation_date_range')"
-                      :config="{ mode: 'range' }"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryId"
-                      :placeholder="$t('id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryComment"
-                      :placeholder="$t('search_comment')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryAddress"
-                      :placeholder="$t('search_address')"
-                      density="compact"
-                    />
-                  </div>
-                  <VBtn
-                    variant="tonal"
-                    color="secondary"
-                    prepend-icon="tabler-screen-share"
-                  >
-                    {{ $t('export') }}
-                  </VBtn>
-                  <VBtn
-                    color="primary"
-                    prepend-icon="tabler-search"
-                    @click="getWithdrawals"
-                  >
-                    {{ $t('search') }}
-                  </VBtn>
-                </div>
-              </VCardText>
-
-
-              <VDivider />
-              <!-- SECTION Table -->
-              <VTable class="text-no-wrap invoice-list-table">
+      <template #table>
+        <VTable class="text-no-wrap invoice-list-table">
                 <!-- 👉 Table head -->
                 <thead>
                   <tr>
@@ -484,7 +518,7 @@ const rejectWithdrawal = item => {
                               size="xs"
                               class="ms-2"
                               color="success"
-                              icon="tabler-circle-check"
+                              icon="lucide:circle-check"
                               @click="approveWithdrawal (item)"
                             />
                           </template>
@@ -501,7 +535,7 @@ const rejectWithdrawal = item => {
                               size="xs"
                               class="ms-2"
                               color="error"
-                              icon="tabler-circle-x"
+                              icon="lucide:circle-x"
                               @click="rejectWithdrawal (item)"
                             />
                           </template>
@@ -606,12 +640,12 @@ const rejectWithdrawal = item => {
                       <VIcon
                         v-else-if="loadMessage.status === 1"
                         color="success"
-                        icon="tabler-tick"
+                        icon="lucide:check"
                       />
                       <VIcon
                         v-else
                         color="error"
-                        icon="tabler-x"
+                        icon="lucide:x"
                       />
                     </td>
 
@@ -622,31 +656,9 @@ const rejectWithdrawal = item => {
                   </tr>
                 </tfoot>
               </VTable>
-              <!-- !SECTION -->
+      </template>
+    </AccountListLayout>
 
-              <VDivider />
-
-              <!-- SECTION Pagination -->
-              <VCardText class="d-flex align-center flex-wrap justify-space-between gap-4 py-4">
-                <!-- 👉  Pagination meta -->
-                <span class="text-sm text-disabled">{{ paginationData }}</span>
-
-                <!-- 👉 Pagination -->
-                <VPagination
-                  v-model="currentPage"
-                  size="small"
-                  :total-visible="5"
-                  :length="totalPage"
-                  @next="selectedRows = []"
-                  @prev="selectedRows = []"
-                />
-              </VCardText>
-              <!-- !SECTION -->
-            </VCard>
-          </VCol>
-        </VCard>
-      </VCol>
-    </VRow>
     <WithdrawalRejectDialog
       v-model:is-dialog-visible="isRejectWithdrawalDialogOpen"
       :withdrawal-data="withdrawalItem"

@@ -835,6 +835,30 @@
   background: var(--ui-primary-soft) !important;
 }
 
+.ui-account-list {
+  .ui-orders-filter-zone {
+    margin: 0 0 12px;
+  }
+
+  &__toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+  }
+
+  &__toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__footer {
+    border-top: 1px solid var(--ui-border);
+    margin-top: 0;
+  }
+}
+
+
 .v-theme--dark {
   .ui-workspace,
   .ui-workspace__header,

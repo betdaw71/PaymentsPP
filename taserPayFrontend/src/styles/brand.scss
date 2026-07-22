@@ -93,6 +93,14 @@ body,
 }
 
 // ——— Header chips (balance, profile) ———
+.ap-navbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  min-block-size: var(--ap-navbar-height, 56px);
+}
+
 .ap-header-balance {
   align-items: center;
   gap: 0.5rem;
@@ -149,6 +157,8 @@ body,
   border-radius: var(--ap-radius-chip);
   background: rgba(var(--v-theme-on-surface), 0.03);
   cursor: pointer;
+  font: inherit;
+  color: inherit;
   transition: border-color 150ms ease, background-color 150ms ease;
 
   &:hover {

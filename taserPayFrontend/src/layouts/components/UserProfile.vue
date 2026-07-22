@@ -20,14 +20,26 @@ const logout = () => {
     bordered
     color="success"
   >
-    <VBtn
-      rounded
-      class="cursor-pointer text-lowercase"
-      color="primary"
-      variant="tonal"
-      append-icon="lucide:user"
+    <button
+      type="button"
+      class="ap-profile-trigger"
     >
-      {{ authStore.userData.email }}
+      <VAvatar
+        color="primary"
+        variant="tonal"
+        size="28"
+      >
+        <VIcon
+          icon="lucide:user"
+          size="16"
+        />
+      </VAvatar>
+      <span class="ap-profile-trigger__email d-none d-lg-inline">{{ authStore.userData.email }}</span>
+      <VIcon
+        icon="lucide:chevron-down"
+        size="14"
+        class="d-none d-lg-inline text-medium-emphasis"
+      />
 
       <!-- SECTION Menu -->
       <VMenu
@@ -125,6 +137,6 @@ const logout = () => {
         </VList>
       </VMenu>
       <!-- !SECTION -->
-    </VBtn>
+    </button>
   </VBadge>
 </template>

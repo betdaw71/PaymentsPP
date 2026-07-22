@@ -1,23 +1,18 @@
 <script setup>
 import { useAuthStore } from "@/stores/useAuthStore"
 
-const authStore = useAuthStore ()
+const authStore = useAuthStore()
 </script>
 
 <template>
-  <VBtn
-    rounded
-    class="d-none d-md-block cursor-pointer me-4"
-    color="primary"
-    variant="tonal"
-  >
-    <span
-      class="font-weight-bold"
-      style="color: rgba(var(--v-theme-on-background), var(--v-high-emphasis-opacity))"
-    >{{ $t('balance') }}: {{ authStore.userData.current_balance }}&nbsp;USD | {{ $t('hold') }}: {{ authStore.userData.hold }}&nbsp;USD</span>
-  </VBtn>
+  <div class="ap-header-balance d-none d-md-flex">
+    <div class="ap-surface-chip ap-surface-chip--primary">
+      <span class="ap-surface-chip__label">{{ $t('balance') }}</span>
+      <span class="ap-surface-chip__value">{{ authStore.userData.current_balance }} USD</span>
+    </div>
+    <div class="ap-surface-chip ap-surface-chip--frozen">
+      <span class="ap-surface-chip__label">{{ $t('hold') }}</span>
+      <span class="ap-surface-chip__value">{{ authStore.userData.hold }} USD</span>
+    </div>
+  </div>
 </template>
-
-<style scoped lang="scss">
-
-</style>

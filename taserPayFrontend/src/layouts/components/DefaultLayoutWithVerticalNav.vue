@@ -33,16 +33,16 @@ watchEffect(
   <VerticalNavLayout :nav-items="navItemsFiltered">
     <!-- 👉 navbar -->
     <template #navbar="{ toggleVerticalOverlayNavActive }">
-      <div class="d-flex h-100 align-center">
+      <div class="ap-navbar-inner">
         <IconBtn
           v-if="isLessThanOverlayNavBreakpoint(windowWidth)"
           id="vertical-nav-toggle-btn"
-          class="ms-n3"
+          class="ms-n1"
           @click="toggleVerticalOverlayNavActive(true)"
         >
           <VIcon
-            size="26"
-            icon="lucide-menu"
+            size="22"
+            icon="lucide:menu"
           />
         </IconBtn>
 
@@ -60,7 +60,7 @@ watchEffect(
         <template v-else-if="!authStore.userData.role">
           <VBtn
             rounded="lg"
-            class="mr-4"
+            class="me-2"
             color="primary"
             :to="{ name: 'auth-login' }"
           >
@@ -68,7 +68,7 @@ watchEffect(
           </VBtn>
         </template>
         <template v-else>
-          <NavBarNotifications class="me-2" />
+          <NavBarNotifications class="me-1" />
           <UserProfile />
         </template>
       </div>
