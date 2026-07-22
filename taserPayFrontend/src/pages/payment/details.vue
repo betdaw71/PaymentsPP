@@ -329,6 +329,41 @@ const changeStatus = (item, status) => {
     }
   })
 }
+
+const filterPanelExpanded = ref(true)
+
+const activeFilterCount = computed(() => {
+  const f = filters.value
+  let n = 0
+  if (f.searchQueryId) n++
+  if (f.searchOwner) n++
+  if (f.selectedStatus?.length) n++
+  if (f.selectedPaymentSystems?.length) n++
+  if (f.selectedCurrencies?.length) n++
+  if (f.selectedTrafficTypes?.length) n++
+  if (f.selectedTraders?.length) n++
+  if (f.selectedTeams?.length) n++
+  if (f.ordering && f.ordering !== '-total_volume') n++
+  return n
+})
+
+const resetFilters = () => {
+  const { rowsPerPage, apply_filters } = filters.value
+  filters.value = {
+    searchOwner: '',
+    rowsPerPage,
+    selectedStatus: [],
+    selectedPaymentSystems: [],
+    selectedCurrencies: [],
+    selectedTrafficTypes: [],
+    selectedTraders: [],
+    selectedTeams: [],
+    searchQueryId: '',
+    ordering: '-total_volume',
+    apply_filters,
+  }
+  getPaymentDetails()
+}
 </script>
 
 
@@ -381,22 +416,28 @@ const changeStatus = (item, status) => {
                     color="primary"
                   />
                 </VCol>
-                <VBtn
-                  icon="tabler-refresh"
+                <UiButton
+                  variant="ghost"
                   size="small"
+                  icon
                   @click="getPaymentDetails"
-                />
+                >
+                  <VIcon
+                    icon="tabler-refresh"
+                    size="18"
+                  />
+                </UiButton>
               </VCardText>
 
-              <VExpansionPanels class="px-5 pb-5">
-                <VExpansionPanel>
-                  <VExpansionPanelTitle>
-                    <div class="text-h6">
-                      {{ $t ('filters') }}
-                    </div>
-                  </VExpansionPanelTitle>
-                  <VExpansionPanelText>
-                    <VCardText>
+              <UiFilterPanel
+                v-model:expanded="filterPanelExpanded"
+                :active-count="activeFilterCount"
+                :title="$t('filters')"
+                class="mx-5 mb-2"
+                @apply="getPaymentDetails"
+                @reset="resetFilters"
+              >
+                    <VCardText class="pa-0">
                       <VRow>
                         <!-- 👉 Select Role -->
                         <VCol
@@ -541,28 +582,37 @@ const changeStatus = (item, status) => {
                         </VRow>
                       </VCardText>
                     </template>
-                  </VExpansionPanelText>
-                </VExpansionPanel>
-              </VExpansionPanels>
-
+              </UiFilterPanel>
 
               <VDivider />
               <VCardText class="d-flex flex-wrap py-4 gap-4">
-                <VBtn
+                <UiButton
                   v-if="authStore.is_trader()"
-                  color="primary"
-                  prepend-icon="tabler-plus"
+                  variant="primary"
+                  size="small"
                   @click="createPaymentDetails"
                 >
+                  <VIcon
+                    icon="tabler-plus"
+                    size="16"
+                    start
+                  />
                   {{ $t('create') }}
-                </VBtn>
+                </UiButton>
                 <VSpacer />
-                <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
-                  <!-- 👉 Search  -->
+                <UiFilterBar
+                  class="flex-grow-1"
+                  :active-count="activeFilterCount"
+                  @apply="getPaymentDetails"
+                  @reset="resetFilters"
+                >
                   <div style="inline-size: 10rem;">
                     <VSwitch
                       v-model="filters.apply_filters"
                       :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
+                      color="primary"
+                      hide-details
+                      density="compact"
                       @change="getPaymentDetails"
                     />
                   </div>
@@ -571,6 +621,7 @@ const changeStatus = (item, status) => {
                       v-model="filters.searchQueryId"
                       placeholder="ID"
                       density="compact"
+                      class="ui-field--mono"
                     />
                   </div>
                   <div style="inline-size: 10rem;">
@@ -580,21 +631,7 @@ const changeStatus = (item, status) => {
                       density="compact"
                     />
                   </div>
-                  <VBtn
-                    variant="tonal"
-                    color="secondary"
-                    prepend-icon="tabler-screen-share"
-                  >
-                    {{ $t ('export') }}
-                  </VBtn>
-                  <VBtn
-                    color="primary"
-                    prepend-icon="tabler-search"
-                    @click="getPaymentDetails"
-                  >
-                    {{ $t ('search') }}
-                  </VBtn>
-                </div>
+                </UiFilterBar>
               </VCardText>
 
               <VDivider />

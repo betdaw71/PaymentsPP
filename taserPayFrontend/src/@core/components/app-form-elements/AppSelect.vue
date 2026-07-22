@@ -16,7 +16,7 @@ const label = computed (() => useAttrs ().label)
 
 <template>
   <div
-    class="app-select flex-grow-1"
+    class="app-select ui-field flex-grow-1"
     :class="$attrs.class"
   >
     <VLabel

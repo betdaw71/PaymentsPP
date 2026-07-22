@@ -408,6 +408,69 @@ onBeforeUnmount (
 
 const exportLoading = ref(false)
 
+const filterPanelExpanded = ref(true)
+
+const activeFilterCount = computed(() => {
+  const f = filters.value
+  let n = 0
+  if (f.searchQueryId) n++
+  if (f.searchMerchantOrderId) n++
+  if (f.searchCustomerId) n++
+  if (f.searchPaymentDetailsGroupId) n++
+  if (f.searchPaymentDetailsGroupOwner) n++
+  if (f.searchPaymentDetailsId) n++
+  if (f.searchTransactionId) n++
+  if (f.selectedStatus?.length) n++
+  if (f.selectedPaymentSystems?.length) n++
+  if (f.selectedMerchants?.length) n++
+  if (f.selectedCurrencies?.length) n++
+  if (f.selectedTrafficTypes?.length) n++
+  if (f.selectedTraders?.length) n++
+  if (f.selectedTeams?.length) n++
+  if (f.dateRange) n++
+  if (f.minAmount) n++
+  if (f.maxAmount) n++
+  if (f.minUSDAmount) n++
+  if (f.maxUSDAmount) n++
+  if (f.ordering && f.ordering !== '-creation_date') n++
+  return n
+})
+
+const resetFilters = () => {
+  const { rowsPerPage, autoUpdateMode, apply_filters } = filters.value
+  filters.value = {
+    searchQueryId: '',
+    rowsPerPage,
+    searchPaymentDetailsGroupId: '',
+    searchPaymentDetailsGroupOwner: '',
+    searchCustomerId: '',
+    selectedStatus: [],
+    selectedPaymentSystems: [],
+    selectedMerchants: [],
+    selectedCurrencies: [],
+    selectedTrafficTypes: [],
+    selectedTraders: [],
+    selectedTeams: [],
+    searchMerchantOrderId: '',
+    searchPaymentDetailsId: '',
+    searchTransactionId: '',
+    minAmount: 0,
+    maxAmount: 0,
+    minUSDAmount: 0,
+    maxUSDAmount: 0,
+    dateRange: '',
+    ordering: '-creation_date',
+    autoUpdateMode,
+    apply_filters,
+  }
+  const resolvedStatuses = resolveOrderInStatus(currentType.value)
+  if (resolvedStatuses !== null) {
+    filters.value.selectedStatus = resolvedStatuses
+    filters.value.apply_filters = currentType.value !== 'all'
+  }
+  getOrders(true)
+}
+
 const exportOrders = async () => {
   exportLoading.value = true
   tradeStore.exportTradeOrderIn ({}).then (
@@ -510,23 +573,29 @@ const exportOrders = async () => {
                 >
                   {{ autoUpdateProgressSeconds }}s
                 </VProgressCircular>
-                <VBtn
+                <UiButton
                   v-else
-                  icon="tabler-refresh"
+                  variant="ghost"
                   size="small"
+                  icon
                   @click="getOrders(true)"
-                />
+                >
+                  <VIcon
+                    icon="tabler-refresh"
+                    size="18"
+                  />
+                </UiButton>
               </VCardText>
 
-              <VExpansionPanels class="px-5 pb-5">
-                <VExpansionPanel>
-                  <VExpansionPanelTitle>
-                    <div class="text-h6">
-                      {{ $t ('filters') }}
-                    </div>
-                  </VExpansionPanelTitle>
-                  <VExpansionPanelText>
-                    <VCardText>
+              <UiFilterPanel
+                v-model:expanded="filterPanelExpanded"
+                :active-count="activeFilterCount"
+                :title="$t('filters')"
+                class="mx-5 mb-2"
+                @apply="getOrders(true)"
+                @reset="resetFilters"
+              >
+                    <VCardText class="pa-0">
                       <VRow>
                         <!-- 👉 Select Role -->
                         <VCol
@@ -1064,9 +1133,7 @@ const exportOrders = async () => {
                         </VRow>
                       </template>
                     </VCardText>
-                  </VExpansionPanelText>
-                </VExpansionPanel>
-              </VExpansionPanels>
+              </UiFilterPanel>
 
               <VDivider />
               <VCardText class="d-flex flex-wrap py-4 gap-4">
@@ -1126,12 +1193,19 @@ const exportOrders = async () => {
                   </span>
                 </VTooltip>
                 <VSpacer />
-                <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
-                  <!-- 👉 Search  -->
+                <UiFilterBar
+                  class="flex-grow-1"
+                  :active-count="activeFilterCount"
+                  @apply="getOrders(true)"
+                  @reset="resetFilters"
+                >
                   <div style="inline-size: 10rem;">
                     <VSwitch
                       v-model="filters.apply_filters"
                       :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
+                      color="primary"
+                      hide-details
+                      density="compact"
                       @change="getOrders"
                     />
                   </div>
@@ -1150,6 +1224,7 @@ const exportOrders = async () => {
                       v-model="filters.searchQueryId"
                       placeholder="ID"
                       density="compact"
+                      class="ui-field--mono"
                     />
                   </div>
                   <div
@@ -1182,23 +1257,20 @@ const exportOrders = async () => {
                       density="compact"
                     />
                   </div>
-                  <VBtn
+                  <UiButton
+                    variant="default"
+                    size="small"
                     :loading="exportLoading"
-                    variant="tonal"
-                    color="secondary"
-                    prepend-icon="tabler-screen-share"
                     @click="exportOrders"
                   >
+                    <VIcon
+                      icon="tabler-screen-share"
+                      size="16"
+                      start
+                    />
                     {{ $t ('export') }}
-                  </VBtn>
-                  <VBtn
-                    color="primary"
-                    prepend-icon="tabler-search"
-                    @click="getOrders(true)"
-                  >
-                    {{ $t ('search') }}
-                  </VBtn>
-                </div>
+                  </UiButton>
+                </UiFilterBar>
               </VCardText>
 
               <VDivider />

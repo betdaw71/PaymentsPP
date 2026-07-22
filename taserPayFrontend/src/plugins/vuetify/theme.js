@@ -1,7 +1,7 @@
 import { resolveVuetifyTheme } from '@core/utils/vuetify'
 import { themeConfig } from '@themeConfig'
 
-export const staticPrimaryColor = '#2563eb'
+export const staticPrimaryColor = '#3390ec'
 
 const theme = {
   defaultTheme: resolveVuetifyTheme(),
@@ -14,14 +14,14 @@ const theme = {
         'secondary': '#A8AAAE',
         'on-secondary': '#fff',
         'alternative': '#7367F0',
-        'success': '#28C76F',
+        'success': '#008060',
         'on-success': '#fff',
         'info': '#00CFE8',
         'on-info': '#fff',
         'warning': '#3B82F6',
         'on-warning': '#fff',
         'error': '#EA5455',
-        'background': '#F8F7FA',
+        'background': '#f4f5f7',
         'on-background': '#2F2B3D',
         'on-surface': '#2F2B3D',
         'grey-50': '#FAFAFA',
@@ -71,7 +71,7 @@ const theme = {
         'secondary': '#A8AAAE',
         'on-secondary': '#fff',
         'alternative': '#7367F0',
-        'success': '#28C76F',
+        'success': '#008060',
         'on-success': '#fff',
         'info': '#00CFE8',
         'on-info': '#fff',
@@ -129,14 +129,14 @@ const theme = {
         'secondary': '#A8AAAE',
         'on-secondary': '#fff',
         'alternative': '#7367F0',
-        'success': '#28C76F',
+        'success': '#008060',
         'on-success': '#fff',
         'info': '#00CFE8',
         'on-info': '#fff',
         'warning': '#3B82F6',
         'on-warning': '#fff',
         'error': '#EA5455',
-        'background': '#F8F7FA',
+        'background': '#f4f5f7',
         'on-background': '#000000',
         'on-surface': '#000000',
         'grey-50': '#FAFAFA',

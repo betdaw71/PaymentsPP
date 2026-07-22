@@ -114,7 +114,7 @@ const elementId = computed(() => {
 </script>
 
 <template>
-  <div class="app-picker-field">
+  <div class="app-picker-field ui-field">
     <!-- v-input -->
     <VLabel
       v-if="label"

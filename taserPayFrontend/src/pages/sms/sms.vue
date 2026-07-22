@@ -317,6 +317,45 @@ const changeStatus = (item, status) => {
     }
   })
 }
+
+const filterPanelExpanded = ref(true)
+
+const activeFilterCount = computed(() => {
+  const f = filters.value
+  let n = 0
+  if (f.searchId) n++
+  if (f.searchDevice) n++
+  if (f.searchText) n++
+  if (f.searchDeviceOwner) n++
+  if (f.searchInOrder) n++
+  if (f.searchOutOrder) n++
+  if (f.dateRange) n++
+  if (f.selectedStatus?.length) n++
+  if (f.selectedTraders?.length) n++
+  if (f.selectedTeams?.length) n++
+  if (f.ordering && f.ordering !== '-date') n++
+  return n
+})
+
+const resetFilters = () => {
+  const { rowsPerPage, apply_filters } = filters.value
+  filters.value = {
+    searchId: '',
+    searchText: '',
+    rowsPerPage,
+    searchDevice: '',
+    searchDeviceOwner: '',
+    searchInOrder: '',
+    searchOutOrder: '',
+    selectedStatus: [],
+    selectedTraders: [],
+    selectedTeams: [],
+    dateRange: '',
+    ordering: '-date',
+    apply_filters,
+  }
+  getSms()
+}
 </script>
 
 
@@ -369,22 +408,28 @@ const changeStatus = (item, status) => {
                     color="primary"
                   />
                 </VCol>
-                <VBtn
-                  icon="tabler-refresh"
+                <UiButton
+                  variant="ghost"
                   size="small"
+                  icon
                   @click="getSms"
-                />
+                >
+                  <VIcon
+                    icon="tabler-refresh"
+                    size="18"
+                  />
+                </UiButton>
               </VCardText>
 
-              <VExpansionPanels class="px-5 pb-5">
-                <VExpansionPanel>
-                  <VExpansionPanelTitle>
-                    <div class="text-h6">
-                      {{ $t ('filters') }}
-                    </div>
-                  </VExpansionPanelTitle>
-                  <VExpansionPanelText>
-                    <VCardText>
+              <UiFilterPanel
+                v-model:expanded="filterPanelExpanded"
+                :active-count="activeFilterCount"
+                :title="$t('filters')"
+                class="mx-5 mb-2"
+                @apply="getSms"
+                @reset="resetFilters"
+              >
+                    <VCardText class="pa-0">
                       <VRow>
                         <!-- 👉 Select Role -->
                         <VCol
@@ -470,20 +515,24 @@ const changeStatus = (item, status) => {
                         </VRow>
                       </VCardText>
                     </template>
-                  </VExpansionPanelText>
-                </VExpansionPanel>
-              </VExpansionPanels>
-
+              </UiFilterPanel>
 
               <VDivider />
               <VCardText class="d-flex flex-wrap py-4 gap-4">
                 <VSpacer />
-                <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
-                  <!-- 👉 Search  -->
+                <UiFilterBar
+                  class="flex-grow-1"
+                  :active-count="activeFilterCount"
+                  @apply="getSms"
+                  @reset="resetFilters"
+                >
                   <div style="inline-size: 10rem;">
                     <VSwitch
                       v-model="filters.apply_filters"
                       :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
+                      color="primary"
+                      hide-details
+                      density="compact"
                       @change="getSms"
                     />
                   </div>
@@ -499,6 +548,7 @@ const changeStatus = (item, status) => {
                       v-model="filters.searchId"
                       :placeholder="$t('id')"
                       density="compact"
+                      class="ui-field--mono"
                     />
                   </div>
                   <div style="inline-size: 10rem;">
@@ -536,21 +586,7 @@ const changeStatus = (item, status) => {
                       density="compact"
                     />
                   </div>
-                  <VBtn
-                    variant="tonal"
-                    color="secondary"
-                    prepend-icon="tabler-screen-share"
-                  >
-                    {{ $t ('export') }}
-                  </VBtn>
-                  <VBtn
-                    color="primary"
-                    prepend-icon="tabler-search"
-                    @click="getSms"
-                  >
-                    {{ $t ('search') }}
-                  </VBtn>
-                </div>
+                </UiFilterBar>
               </VCardText>
 
               <VDivider />
