@@ -726,53 +726,6 @@ const exportOrders = async () => {
                 @clear-all="resetFilters"
               />
 
-              <!-- Summary metrics -->
-              <div class="ui-orders-metrics">
-                <VTooltip location="right">
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="px-3 font-weight-bold"
-                      color="primary"
-                      text-color="white"
-                      size="default"
-                    >
-                      $ {{ totalUSDAmount }}
-                    </VChip>
-                  </template>
-                  <span>{{ $t('total_usd_amount') }}</span>
-                </VTooltip>
-                <VTooltip location="right">
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="px-3 font-weight-bold"
-                      color="primary"
-                      text-color="white"
-                      size="default"
-                    >
-                      $ {{ totalComission }}
-                    </VChip>
-                  </template>
-                  <span>{{ $t('total_commission') }}</span>
-                </VTooltip>
-                <VTooltip location="right">
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="px-3 font-weight-bold"
-                      color="info"
-                      text-color="white"
-                      size="default"
-                      prepend-icon="tabler-snowflake"
-                    >
-                      {{ holdAmount }}
-                    </VChip>
-                  </template>
-                  <span>{{ $t('hold') }}</span>
-                </VTooltip>
-              </div>
-
               <!-- Advanced filters (collapsed by default) -->
               <UiFilterPanel
                 v-model:expanded="filterPanelExpanded"
@@ -1360,6 +1313,53 @@ const exportOrders = async () => {
                       </template>
                     </VCardText>
               </UiFilterPanel>
+
+              <!-- Summary for current result set (above table) -->
+              <div class="ui-orders-metrics ui-orders-metrics--above-table">
+                <VTooltip location="right">
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="px-3 font-weight-bold"
+                      color="primary"
+                      text-color="white"
+                      size="default"
+                    >
+                      $ {{ totalUSDAmount }}
+                    </VChip>
+                  </template>
+                  <span>{{ $t('total_usd_amount') }}</span>
+                </VTooltip>
+                <VTooltip location="right">
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="px-3 font-weight-bold"
+                      color="primary"
+                      text-color="white"
+                      size="default"
+                    >
+                      $ {{ totalComission }}
+                    </VChip>
+                  </template>
+                  <span>{{ $t('total_commission') }}</span>
+                </VTooltip>
+                <VTooltip location="right">
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="px-3 font-weight-bold"
+                      color="info"
+                      text-color="white"
+                      size="default"
+                      prepend-icon="tabler-snowflake"
+                    >
+                      {{ holdAmount }}
+                    </VChip>
+                  </template>
+                  <span>{{ $t('hold') }}</span>
+                </VTooltip>
+              </div>
 
               <VDivider />
               <!-- SECTION Table -->
