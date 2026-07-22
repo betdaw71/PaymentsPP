@@ -882,10 +882,13 @@
 
   .nav-header .nav-toggle {
     flex-shrink: 0;
-    padding: 6px;
+    padding: 8px;
     color: var(--ui-text-muted);
     border-radius: var(--ui-radius-sm);
     transition: background-color var(--ui-transition), color var(--ui-transition);
+    cursor: pointer;
+    position: relative;
+    z-index: 3;
 
     &:hover {
       background: var(--ui-surface-hover);
@@ -901,17 +904,9 @@
 }
 
 .layout-wrapper.layout-vertical-nav-collapsed .layout-vertical-nav {
-  .nav-header {
+  .nav-header--collapsed {
     justify-content: center;
     padding-inline: 8px;
-
-    .app-title-wrapper {
-      display: none;
-    }
-
-    .nav-toggle {
-      margin-inline: 0;
-    }
   }
 }
 

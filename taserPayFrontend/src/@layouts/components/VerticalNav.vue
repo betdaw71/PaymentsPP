@@ -91,9 +91,13 @@ const handleNavScroll = evt => {
     ]"
   >
     <!-- 👉 Header -->
-    <div class="nav-header">
+    <div
+      class="nav-header"
+      :class="{ 'nav-header--collapsed': isCollapsed && !isLessThanOverlayNavBreakpoint(windowWidth) }"
+    >
       <slot name="nav-header">
         <RouterLink
+          v-if="!isCollapsed || isLessThanOverlayNavBreakpoint(windowWidth)"
           to="/"
           class="app-logo d-flex align-center gap-x-3 app-title-wrapper"
         >
@@ -113,17 +117,9 @@ const handleNavScroll = evt => {
         <template v-if="!isLessThanOverlayNavBreakpoint(windowWidth)">
           <Component
             :is="config.app.iconRenderer || 'div'"
-            v-show="isCollapsed"
             class="header-action nav-toggle"
-            v-bind="config.icons.verticalNavUnPinned"
-            @click="isCollapsed = false"
-          />
-          <Component
-            :is="config.app.iconRenderer || 'div'"
-            v-show="!isCollapsed"
-            class="header-action nav-toggle"
-            v-bind="config.icons.verticalNavPinned"
-            @click="isCollapsed = true"
+            v-bind="isCollapsed ? config.icons.verticalNavUnPinned : config.icons.verticalNavPinned"
+            @click.stop="isCollapsed = !isCollapsed"
           />
         </template>
         <template v-else>
@@ -195,14 +191,28 @@ const handleNavScroll = evt => {
   .nav-header {
     display: flex;
     align-items: center;
+    gap: 8px;
+    position: relative;
+    z-index: 2;
 
     .header-action {
       cursor: pointer;
+    }
+
+    &--collapsed {
+      justify-content: center;
     }
   }
 
   .app-title-wrapper {
     margin-inline-end: auto;
+    min-width: 0;
+  }
+
+  .nav-toggle {
+    position: relative;
+    z-index: 3;
+    flex-shrink: 0;
   }
 
   .nav-items-shell {
