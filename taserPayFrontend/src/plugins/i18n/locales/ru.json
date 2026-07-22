@@ -52,6 +52,8 @@
   "apply_filters": "Фильтры",
   "advanced_filters": "Расширенные фильтры",
   "clear_all_filters": "Сбросить все",
+  "filter_apply": "Применить",
+  "filter_reset": "Сбросить",
   "filter_section_identifiers": "Идентификаторы",
   "filter_section_status": "Статус и направление",
   "filter_section_amounts": "Суммы и дата",

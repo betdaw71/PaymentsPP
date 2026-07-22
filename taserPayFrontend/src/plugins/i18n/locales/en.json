@@ -52,6 +52,8 @@
   "apply_filters": "Filters",
   "advanced_filters": "Advanced filters",
   "clear_all_filters": "Clear all",
+  "filter_apply": "Apply",
+  "filter_reset": "Reset",
   "filter_section_identifiers": "Identifiers",
   "filter_section_status": "Status & routing",
   "filter_section_amounts": "Amounts & date",

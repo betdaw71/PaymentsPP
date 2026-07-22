@@ -1,7 +1,9 @@
 <script setup>
 defineOptions({ name: 'UiFilterBar' })
 
-defineProps({
+const { t } = useI18n()
+
+const props = defineProps({
   activeCount: {
     type: Number,
     default: 0,
@@ -9,15 +11,18 @@ defineProps({
   loading: Boolean,
   applyLabel: {
     type: String,
-    default: 'Применить',
+    default: undefined,
   },
   resetLabel: {
     type: String,
-    default: 'Сбросить',
+    default: undefined,
   },
 })
 
 const emit = defineEmits(['apply', 'reset'])
+
+const resolvedApplyLabel = computed(() => props.applyLabel ?? t('filter_apply'))
+const resolvedResetLabel = computed(() => props.resetLabel ?? t('filter_reset'))
 </script>
 
 <template>
@@ -46,7 +51,7 @@ const emit = defineEmits(['apply', 'reset'])
       :disabled="loading"
       @click="emit('reset')"
     >
-      {{ resetLabel }}
+      {{ resolvedResetLabel }}
     </UiButton>
     <UiButton
       variant="primary"
@@ -54,7 +59,7 @@ const emit = defineEmits(['apply', 'reset'])
       :loading="loading"
       @click="emit('apply')"
     >
-      {{ applyLabel }}
+      {{ resolvedApplyLabel }}
     </UiButton>
   </div>
 </template>

@@ -1,10 +1,12 @@
 <script setup>
 defineOptions({ name: 'UiFilterPanel' })
 
+const { t } = useI18n()
+
 const props = defineProps({
   title: {
     type: String,
-    default: 'Фильтры',
+    default: undefined,
   },
   activeCount: {
     type: Number,
@@ -21,15 +23,19 @@ const props = defineProps({
   },
   applyLabel: {
     type: String,
-    default: 'Применить',
+    default: undefined,
   },
   resetLabel: {
     type: String,
-    default: 'Сбросить',
+    default: undefined,
   },
 })
 
 const emit = defineEmits(['apply', 'reset', 'update:expanded'])
+
+const resolvedTitle = computed(() => props.title ?? t('advanced_filters'))
+const resolvedApplyLabel = computed(() => props.applyLabel ?? t('filter_apply'))
+const resolvedResetLabel = computed(() => props.resetLabel ?? t('filter_reset'))
 
 const isOpen = computed({
   get: () => props.expanded,
@@ -59,7 +65,7 @@ const toggle = () => {
           size="16"
           color="var(--ui-text-muted)"
         />
-        <span>{{ title }}</span>
+        <span>{{ resolvedTitle }}</span>
         <span
           v-if="activeCount > 0"
           class="ui-filter-panel__badge"
@@ -90,7 +96,7 @@ const toggle = () => {
             :disabled="loading"
             @click="emit('reset')"
           >
-            {{ resetLabel }}
+            {{ resolvedResetLabel }}
           </UiButton>
           <UiButton
             variant="primary"
@@ -98,7 +104,7 @@ const toggle = () => {
             :loading="loading"
             @click="emit('apply')"
           >
-            {{ applyLabel }}
+            {{ resolvedApplyLabel }}
           </UiButton>
         </footer>
       </div>
