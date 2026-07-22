@@ -110,7 +110,7 @@ const activeTabIndex = computed({
   set (idx) {
     profileSettings.value.user_info_tab = idx
     const tab = profileTabs.value[idx]
-    if (tab && route.query.tab !== tab.key)
+    if (tab && route.name === 'user' && route.query.tab !== tab.key)
       router.replace({ name: 'user', query: { tab: tab.key } })
   },
 })
@@ -118,8 +118,11 @@ const activeTabIndex = computed({
 const currentTab = computed(() => profileTabs.value[activeTabIndex.value])
 
 watch(
-  () => route.query.tab,
-  tabKey => {
+  () => [route.name, route.query.tab],
+  ([routeName, tabKey]) => {
+    if (routeName !== 'user')
+      return
+
     if (!profileTabs.value.length)
       return
 
