@@ -26,6 +26,8 @@ const tradeStore = useTradeStore ()
 const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
 
+const router = useRouter()
+
 const snackbar = ref ({
   enabled: false,
   type: 'error',
@@ -216,60 +218,50 @@ const getOrders = async (resetInterval = false) => {
   // Base Filters
   if (filters.value.ordering)
     params.ordering = filters.value.ordering
-  if (filters.value.apply_filters) {
-    if (filters.value.searchQueryId)
-      params.id = filters.value.searchQueryId
-    if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
-      params.status__name__in = filters.value.selectedStatus.join (",")
-    if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)
-      params.payment_system__name__in = filters.value.selectedPaymentSystems.join (",")
-    if (filters.value.minAmount)
-      params.amount__gte = filters.value.minAmount
-    if (filters.value.maxAmount)
-      params.amount__lte = filters.value.maxAmount
-    if (filters.value.minUSDAmount)
-      params.usd_amount__gte = filters.value.minUSDAmount
-    if (filters.value.maxUSDAmount)
-      params.usd_amount__lte = filters.value.maxUSDAmount
-    if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-      params.creation_date__range = filters.value.dateRange.replace (" to ", ",").replaceAll (" ", "T")
+  // Filters always apply (Variant A — no apply_filters toggle)
+  if (filters.value.searchQueryId)
+    params.id = filters.value.searchQueryId
+  if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
+    params.status__name__in = filters.value.selectedStatus.join (",")
+  if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)
+    params.payment_system__name__in = filters.value.selectedPaymentSystems.join (",")
+  if (filters.value.minAmount)
+    params.amount__gte = filters.value.minAmount
+  if (filters.value.maxAmount)
+    params.amount__lte = filters.value.maxAmount
+  if (filters.value.minUSDAmount)
+    params.usd_amount__gte = filters.value.minUSDAmount
+  if (filters.value.maxUSDAmount)
+    params.usd_amount__lte = filters.value.maxUSDAmount
+  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
+    params.creation_date__range = filters.value.dateRange.replace (" to ", ",").replaceAll (" ", "T")
 
+  if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
+    params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
+  if (filters.value.searchMerchantOrderId)
+    params.merchant_order_id = filters.value.searchMerchantOrderId
 
-    // Merchant Filters
-    if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
-      params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
-    if (filters.value.searchMerchantOrderId)
-      params.merchant_order_id = filters.value.searchMerchantOrderId
+  if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
+    params.traffic_type__name__in = filters.value.selectedTrafficTypes.join (",")
+  if (filters.value.searchPaymentDetailsId)
+    params.payment_details__id = filters.value.searchPaymentDetailsId
+  if (filters.value.searchTransactionId)
+    params.transaction_id = filters.value.searchTransactionId
+  if (filters.value.searchPaymentDetailsGroupId)
+    params.payment_details__group__id = filters.value.searchPaymentDetailsGroupId
+  if (filters.value.searchPaymentDetailsGroupOwner)
+    params.payment_details__group__owner__icontains = filters.value.searchPaymentDetailsGroupOwner
+  if (filters.value.searchCustomerId)
+    params.customer_id = filters.value.searchCustomerId
 
-    // Trader Filters
+  if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
+    params.trader__user__username__in = filters.value.selectedTraders.join (",")
 
-    if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
-      params.traffic_type__name__in = filters.value.selectedTrafficTypes.join (",")
-    if (filters.value.searchPaymentDetailsId)
-      params.payment_details__id = filters.value.searchPaymentDetailsId
-    if (filters.value.searchTransactionId)
-      params.transaction_id = filters.value.searchTransactionId
-    if (filters.value.searchPaymentDetailsGroupId)
-      params.payment_details__group__id = filters.value.searchPaymentDetailsGroupId
-    if (filters.value.searchPaymentDetailsGroupOwner)
-      params.payment_details__group__owner__icontains = filters.value.searchPaymentDetailsGroupOwner
-    if (filters.value.searchCustomerId)
-      params.customer_id = filters.value.searchCustomerId
+  if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
+    params.trader__team__name__in = filters.value.selectedTeams.join (",")
 
-    // Trader Boss Filters (Only)
-    if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
-      params.trader__user__username__in = filters.value.selectedTraders.join (",")
-
-    // Support Filters
-    if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
-      params.trader__team__name__in = filters.value.selectedTeams.join (",")
-
-    // Head Support Filters (Only)
-    if (filters.value.selectedMerchants && filters.value.selectedMerchants.length > 0)
-      params.merchant__user__username__in = filters.value.selectedMerchants.join (",")
-
-    // END Filters
-  }
+  if (filters.value.selectedMerchants && filters.value.selectedMerchants.length > 0)
+    params.merchant__user__username__in = filters.value.selectedMerchants.join (",")
 
   tradeStore.getTradeOrderIn (params).then (response => {
     if (response.error) {
@@ -306,7 +298,6 @@ watch(
     console.log ({ resolvedStatuses, type: currentType.value })
     if (resolvedStatuses !== null) {
       filters.value.selectedStatus = resolvedStatuses
-      filters.value.apply_filters = currentType.value !== 'all'
     }
     getOrders ()
   },
@@ -408,19 +399,16 @@ onBeforeUnmount (
 
 const exportLoading = ref(false)
 
-const filterPanelExpanded = ref(true)
+const filterPanelExpanded = ref(false)
 
-const activeFilterCount = computed(() => {
-  const f = filters.value
+const countAdvancedFilters = f => {
   let n = 0
-  if (f.searchQueryId) n++
-  if (f.searchMerchantOrderId) n++
   if (f.searchCustomerId) n++
   if (f.searchPaymentDetailsGroupId) n++
   if (f.searchPaymentDetailsGroupOwner) n++
   if (f.searchPaymentDetailsId) n++
   if (f.searchTransactionId) n++
-  if (f.selectedStatus?.length) n++
+  if (currentType.value === 'all' && f.selectedStatus?.length) n++
   if (f.selectedPaymentSystems?.length) n++
   if (f.selectedMerchants?.length) n++
   if (f.selectedCurrencies?.length) n++
@@ -434,10 +422,137 @@ const activeFilterCount = computed(() => {
   if (f.maxUSDAmount) n++
   if (f.ordering && f.ordering !== '-creation_date') n++
   return n
+}
+
+const advancedFilterCount = computed(() => countAdvancedFilters(filters.value))
+
+const activeFilterChips = computed(() => {
+  const chips = []
+  const f = filters.value
+
+  if (currentType.value !== 'all') {
+    chips.push({
+      key: 'navStatus',
+      label: `${t('status')}: ${t(`order_status.${currentType.value.toLowerCase()}`)}`,
+    })
+  }
+
+  if (f.searchQueryId)
+    chips.push({ key: 'searchQueryId', label: `ID: ${f.searchQueryId}` })
+  if (f.searchMerchantOrderId)
+    chips.push({ key: 'searchMerchantOrderId', label: `${t('merchant_order_id')}: ${f.searchMerchantOrderId}` })
+  if (f.searchCustomerId)
+    chips.push({ key: 'searchCustomerId', label: `${t('customer_id')}: ${f.searchCustomerId}` })
+  if (f.searchPaymentDetailsGroupId)
+    chips.push({ key: 'searchPaymentDetailsGroupId', label: `${t('payment_details_group_id')}: ${f.searchPaymentDetailsGroupId}` })
+  if (f.searchPaymentDetailsGroupOwner)
+    chips.push({ key: 'searchPaymentDetailsGroupOwner', label: `${t('payment_details_group_owner')}: ${f.searchPaymentDetailsGroupOwner}` })
+  if (f.searchPaymentDetailsId)
+    chips.push({ key: 'searchPaymentDetailsId', label: `${t('payment_details_id')}: ${f.searchPaymentDetailsId}` })
+  if (f.searchTransactionId)
+    chips.push({ key: 'searchTransactionId', label: `${t('transaction_id')}: ${f.searchTransactionId}` })
+
+  if (currentType.value === 'all') {
+    f.selectedStatus?.forEach(status => {
+      chips.push({
+        key: `status:${status}`,
+        label: `${t('status')}: ${t(`order_status.${status.toLowerCase()}`)}`,
+      })
+    })
+  }
+
+  f.selectedPaymentSystems?.forEach(ps => {
+    chips.push({ key: `ps:${ps}`, label: `${t('payment_system')}: ${ps}` })
+  })
+  f.selectedCurrencies?.forEach(c => {
+    chips.push({ key: `currency:${c}`, label: `${t('currencies')}: ${c}` })
+  })
+  f.selectedTrafficTypes?.forEach(tt => {
+    chips.push({ key: `traffic:${tt}`, label: `${t('traffic_types')}: ${tt}` })
+  })
+  f.selectedTraders?.forEach(tr => {
+    chips.push({ key: `trader:${tr}`, label: `${t('traders')}: ${tr}` })
+  })
+  f.selectedTeams?.forEach(team => {
+    chips.push({ key: `team:${team}`, label: `${t('teams')}: ${team}` })
+  })
+  f.selectedMerchants?.forEach(m => {
+    chips.push({ key: `merchant:${m}`, label: `${t('merchants')}: ${m}` })
+  })
+
+  if (f.dateRange)
+    chips.push({ key: 'dateRange', label: `${t('creation_date_range')}: ${f.dateRange}` })
+  if (f.minAmount)
+    chips.push({ key: 'minAmount', label: `${t('min_amount_fiat')}: ${f.minAmount}` })
+  if (f.maxAmount)
+    chips.push({ key: 'maxAmount', label: `${t('max_amount_fiat')}: ${f.maxAmount}` })
+  if (f.minUSDAmount)
+    chips.push({ key: 'minUSDAmount', label: `${t('min_amount_usdt')}: ${f.minUSDAmount}` })
+  if (f.maxUSDAmount)
+    chips.push({ key: 'maxUSDAmount', label: `${t('max_amount_usdt')}: ${f.maxUSDAmount}` })
+  if (f.ordering && f.ordering !== '-creation_date') {
+    const orderingLabel = orderingTypes.find(o => o.value === f.ordering)?.name ?? f.ordering
+    chips.push({ key: 'ordering', label: `${t('ordering')}: ${orderingLabel}` })
+  }
+
+  return chips
 })
 
+const removeFilterChip = key => {
+  if (key === 'navStatus') {
+    router.push('/orders/in/all')
+    return
+  }
+
+  const f = filters.value
+  const scalarKeys = {
+    searchQueryId: '',
+    searchMerchantOrderId: '',
+    searchCustomerId: '',
+    searchPaymentDetailsGroupId: '',
+    searchPaymentDetailsGroupOwner: '',
+    searchPaymentDetailsId: '',
+    searchTransactionId: '',
+    dateRange: '',
+    minAmount: 0,
+    maxAmount: 0,
+    minUSDAmount: 0,
+    maxUSDAmount: 0,
+    ordering: '-creation_date',
+  }
+
+  if (key in scalarKeys) {
+    f[key] = scalarKeys[key]
+  } else if (key.startsWith('status:')) {
+    const status = key.slice(7)
+    f.selectedStatus = f.selectedStatus.filter(s => s !== status)
+  } else if (key.startsWith('ps:')) {
+    f.selectedPaymentSystems = f.selectedPaymentSystems.filter(s => s !== key.slice(3))
+  } else if (key.startsWith('currency:')) {
+    f.selectedCurrencies = f.selectedCurrencies.filter(s => s !== key.slice(9))
+  } else if (key.startsWith('traffic:')) {
+    f.selectedTrafficTypes = f.selectedTrafficTypes.filter(s => s !== key.slice(8))
+  } else if (key.startsWith('trader:')) {
+    f.selectedTraders = f.selectedTraders.filter(s => s !== key.slice(7))
+  } else if (key.startsWith('team:')) {
+    f.selectedTeams = f.selectedTeams.filter(s => s !== key.slice(5))
+  } else if (key.startsWith('merchant:')) {
+    f.selectedMerchants = f.selectedMerchants.filter(s => s !== key.slice(9))
+  }
+
+  getOrders(true)
+}
+
+const toggleFilterPanel = () => {
+  filterPanelExpanded.value = !filterPanelExpanded.value
+}
+
+const searchOrders = () => {
+  getOrders(true)
+}
+
 const resetFilters = () => {
-  const { rowsPerPage, autoUpdateMode, apply_filters } = filters.value
+  const { rowsPerPage, autoUpdateMode } = filters.value
   filters.value = {
     searchQueryId: '',
     rowsPerPage,
@@ -461,13 +576,10 @@ const resetFilters = () => {
     dateRange: '',
     ordering: '-creation_date',
     autoUpdateMode,
-    apply_filters,
   }
   const resolvedStatuses = resolveOrderInStatus(currentType.value)
-  if (resolvedStatuses !== null) {
+  if (resolvedStatuses !== null)
     filters.value.selectedStatus = resolvedStatuses
-    filters.value.apply_filters = currentType.value !== 'all'
-  }
   getOrders(true)
 }
 
@@ -521,84 +633,198 @@ const exportOrders = async () => {
           </VCardTitle>
           <VCol cols="12">
             <VCard>
-              <VCardText class="d-flex align-center flex-wrap gap-3">
-                <VCardText
-                  class="text-h5 mb-0"
-                  style="padding: 0.5rem;"
-                >
-                  {{ t ('tabs.orders_in') }}
-                </VCardText>
-
-                <VSpacer />
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.rowsPerPage"
-                    :items="rowsPerPageOptions"
-                    :label="$t('rows')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
-                  />
-                </VCol>
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.autoUpdateMode"
+              <!-- Toolbar: title + export + refresh -->
+              <div class="ui-orders-toolbar">
+                <h2 class="ui-orders-toolbar__title">
+                  {{ t('tabs.orders_in') }}
+                </h2>
+                <div class="ui-orders-toolbar__actions">
+                  <UiButton
+                    variant="default"
+                    size="small"
+                    :loading="exportLoading"
+                    @click="exportOrders"
+                  >
+                    <VIcon
+                      icon="tabler-screen-share"
+                      size="16"
+                      start
+                    />
+                    {{ $t('export') }}
+                  </UiButton>
+                  <UiRefreshControl
+                    :interval="filters.autoUpdateMode"
+                    :progress="autoUpdateProgress"
+                    :progress-seconds="autoUpdateProgressSeconds"
                     :items="autoUpdateModes"
-                    :label="$t('auto_refresh')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
+                    @refresh="getOrders(true)"
+                    @update:interval="filters.autoUpdateMode = $event"
                   />
-                </VCol>
-                <VProgressCircular
-                  v-if="filters.autoUpdateMode"
-                  v-model="autoUpdateProgress"
-                  class="cursor-pointer"
-                  :size="40"
-                  :width="2"
-                  color="primary"
-                  @click="getOrders(true)"
+                </div>
+              </div>
+
+              <!-- Primary search -->
+              <div class="ui-orders-search">
+                <div class="ui-orders-search__field">
+                  <AppTextField
+                    v-model="filters.searchQueryId"
+                    :label="$t('id')"
+                    placeholder="22652802379"
+                    density="compact"
+                    class="ui-field--mono"
+                    @keydown.enter="searchOrders"
+                  />
+                </div>
+                <div
+                  v-if="(authStore.is_merchant() && !authStore.is_team_lead()) || authStore.is_support() || authStore.is_head_of_support()"
+                  class="ui-orders-search__field"
                 >
-                  {{ autoUpdateProgressSeconds }}s
-                </VProgressCircular>
+                  <AppTextField
+                    v-model="filters.searchMerchantOrderId"
+                    :label="$t('merchant_order_id')"
+                    density="compact"
+                    @keydown.enter="searchOrders"
+                  />
+                </div>
                 <UiButton
-                  v-else
-                  variant="ghost"
+                  variant="default"
                   size="small"
-                  icon
-                  @click="getOrders(true)"
+                  @click="toggleFilterPanel"
                 >
                   <VIcon
-                    icon="tabler-refresh"
-                    size="18"
+                    icon="tabler-filter"
+                    size="16"
+                    start
                   />
+                  {{ $t('filters') }}
+                  <span
+                    v-if="advancedFilterCount > 0"
+                    class="ui-filter-panel__badge ms-1"
+                  >
+                    {{ advancedFilterCount }}
+                  </span>
                 </UiButton>
-              </VCardText>
+                <UiButton
+                  variant="primary"
+                  size="small"
+                  @click="searchOrders"
+                >
+                  <VIcon
+                    icon="tabler-search"
+                    size="16"
+                    start
+                  />
+                  {{ $t('search') }}
+                </UiButton>
+              </div>
 
+              <!-- Active filter chips -->
+              <UiFilterChips
+                :chips="activeFilterChips"
+                :clear-label="$t('clear_all_filters')"
+                @remove="removeFilterChip"
+                @clear-all="resetFilters"
+              />
+
+              <!-- Summary metrics -->
+              <div class="ui-orders-metrics">
+                <VTooltip location="right">
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="px-3 font-weight-bold"
+                      color="primary"
+                      text-color="white"
+                      size="default"
+                    >
+                      $ {{ totalUSDAmount }}
+                    </VChip>
+                  </template>
+                  <span>{{ $t('total_usd_amount') }}</span>
+                </VTooltip>
+                <VTooltip location="right">
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="px-3 font-weight-bold"
+                      color="primary"
+                      text-color="white"
+                      size="default"
+                    >
+                      $ {{ totalComission }}
+                    </VChip>
+                  </template>
+                  <span>{{ $t('total_commission') }}</span>
+                </VTooltip>
+                <VTooltip location="right">
+                  <template #activator="{ props }">
+                    <VChip
+                      v-bind="props"
+                      class="px-3 font-weight-bold"
+                      color="info"
+                      text-color="white"
+                      size="default"
+                      prepend-icon="tabler-snowflake"
+                    >
+                      {{ holdAmount }}
+                    </VChip>
+                  </template>
+                  <span>{{ $t('hold') }}</span>
+                </VTooltip>
+              </div>
+
+              <!-- Advanced filters (collapsed by default) -->
               <UiFilterPanel
                 v-model:expanded="filterPanelExpanded"
-                :active-count="activeFilterCount"
-                :title="$t('filters')"
-                class="mx-5 mb-2"
-                @apply="getOrders(true)"
+                :active-count="advancedFilterCount"
+                :title="$t('advanced_filters')"
+                class="mx-4 mb-2"
+                @apply="searchOrders"
                 @reset="resetFilters"
               >
-                    <VCardText class="pa-0">
-                      <VRow>
+                <VCardText class="pa-0">
+                  <VRow class="mb-2">
+                    <VCol
+                      v-if="!authStore.is_trader() && !authStore.is_team_lead()"
+                      cols="12"
+                      sm="4"
+                      md="3"
+                    >
+                      <AppTextField
+                        v-model="filters.searchCustomerId"
+                        :label="$t('customer_id')"
+                        density="compact"
+                      />
+                    </VCol>
+                    <VCol
+                      v-if="!authStore.is_merchant()"
+                      cols="12"
+                      sm="4"
+                      md="3"
+                    >
+                      <AppTextField
+                        v-model="filters.searchPaymentDetailsGroupId"
+                        :label="$t('payment_details_group_id')"
+                        density="compact"
+                      />
+                    </VCol>
+                    <VCol
+                      v-if="!authStore.is_merchant()"
+                      cols="12"
+                      sm="4"
+                      md="3"
+                    >
+                      <AppTextField
+                        v-model="filters.searchPaymentDetailsGroupOwner"
+                        :label="$t('payment_details_group_owner')"
+                        density="compact"
+                      />
+                    </VCol>
+                  </VRow>
+                  <VRow>
                         <!-- 👉 Select Role -->
                         <VCol
+                          v-if="currentType === 'all'"
                           cols="12"
                           sm="5"
                         >
@@ -1136,144 +1362,6 @@ const exportOrders = async () => {
               </UiFilterPanel>
 
               <VDivider />
-              <VCardText class="d-flex flex-wrap py-4 gap-4">
-                <VTooltip
-                  location="right"
-                >
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="ms-1 px-3 font-weight-bold"
-                      color="primary"
-                      text-color="white"
-                      size="lg"
-                    >
-                      $ {{ totalUSDAmount }}
-                    </VChip>
-                  </template>
-                  <span>
-                    {{ $t ('total_usd_amount') }}
-                  </span>
-                </VTooltip>
-                <VTooltip
-                  location="right"
-                >
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="ms-1 px-3 font-weight-bold"
-                      color="primary"
-                      text-color="white"
-                      size="lg"
-                    >
-                      $ {{ totalComission }}
-                    </VChip>
-                  </template>
-                  <span>
-                    {{ $t ('total_commission') }}
-                  </span>
-                </VTooltip>
-                <VTooltip
-                  location="right"
-                >
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="ms-1 px-3 font-weight-bold"
-                      color="info"
-                      text-color="white"
-                      size="lg"
-                      prepend-icon="tabler-snowflake"
-                    >
-                      {{ holdAmount }}
-                    </VChip>
-                  </template>
-                  <span>
-                    {{ $t ('hold') }}
-                  </span>
-                </VTooltip>
-                <VSpacer />
-                <UiFilterBar
-                  class="flex-grow-1"
-                  :active-count="activeFilterCount"
-                  @apply="getOrders(true)"
-                  @reset="resetFilters"
-                >
-                  <div style="inline-size: 10rem;">
-                    <VSwitch
-                      v-model="filters.apply_filters"
-                      :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
-                      color="primary"
-                      hide-details
-                      density="compact"
-                      @change="getOrders"
-                    />
-                  </div>
-                  <div
-                    v-if="authStore.is_merchant() && !authStore.is_team_lead() || authStore.is_support()"
-                    style="inline-size: 12rem;"
-                  >
-                    <AppTextField
-                      v-model="filters.searchMerchantOrderId"
-                      :placeholder="$t ('merchant_order_id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryId"
-                      placeholder="ID"
-                      density="compact"
-                      class="ui-field--mono"
-                    />
-                  </div>
-                  <div
-                    v-if="!authStore.is_trader() && !authStore.is_team_lead()"
-                    style="inline-size: 10rem;"
-                  >
-                    <AppTextField
-                      v-model="filters.searchCustomerId"
-                      :placeholder="$t ('customer_id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div
-                    v-if="!authStore.is_merchant()"
-                    style="inline-size: 10rem;"
-                  >
-                    <AppTextField
-                      v-model="filters.searchPaymentDetailsGroupId"
-                      :placeholder="$t ('payment_details_group_id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div
-                    v-if="!authStore.is_merchant()"
-                    style="inline-size: 10rem;"
-                  >
-                    <AppTextField
-                      v-model="filters.searchPaymentDetailsGroupOwner"
-                      :placeholder="$t ('payment_details_group_owner')"
-                      density="compact"
-                    />
-                  </div>
-                  <UiButton
-                    variant="default"
-                    size="small"
-                    :loading="exportLoading"
-                    @click="exportOrders"
-                  >
-                    <VIcon
-                      icon="tabler-screen-share"
-                      size="16"
-                      start
-                    />
-                    {{ $t ('export') }}
-                  </UiButton>
-                </UiFilterBar>
-              </VCardText>
-
-              <VDivider />
               <!-- SECTION Table -->
               <VTable
                 class="text-no-wrap invoice-list-table text-body-2"
@@ -1568,20 +1656,32 @@ const exportOrders = async () => {
               <VDivider />
 
               <!-- SECTION Pagination -->
-              <VCardText class="d-flex align-center flex-wrap justify-space-between gap-4 py-4">
-                <!-- 👉  Pagination meta -->
+              <div class="ui-orders-footer">
                 <span class="text-sm text-disabled">{{ paginationData }}</span>
-
-                <!-- 👉 Pagination -->
-                <VPagination
-                  v-model="currentPage"
-                  size="small"
-                  :total-visible="5"
-                  :length="totalPage"
-                  @next="selectedRows = []"
-                  @prev="selectedRows = []"
-                />
-              </VCardText>
+                <div class="d-flex align-center gap-4">
+                  <div class="ui-orders-footer__rows">
+                    <VSelect
+                      v-model="filters.rowsPerPage"
+                      :items="rowsPerPageOptions"
+                      :label="$t('rows')"
+                      item-title="name"
+                      item-value="value"
+                      density="compact"
+                      hide-details
+                      scroll-strategy="close"
+                      color="primary"
+                    />
+                  </div>
+                  <VPagination
+                    v-model="currentPage"
+                    size="small"
+                    :total-visible="5"
+                    :length="totalPage"
+                    @next="selectedRows = []"
+                    @prev="selectedRows = []"
+                  />
+                </div>
+              </div>
               <!-- !SECTION -->
             </VCard>
           </VCol>
