@@ -17,7 +17,7 @@ body,
 // ——— Layout shell ———
 .layout-wrapper.layout-nav-type-vertical {
   min-block-size: 100vh;
-  --ap-navbar-height: 64px;
+  --ap-navbar-height: 56px;
   --layout-nav-effective-width: var(--ui-nav-width);
 
   &.layout-vertical-nav-collapsed:not(.layout-overlay-nav) {

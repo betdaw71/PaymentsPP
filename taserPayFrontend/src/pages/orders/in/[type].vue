@@ -1442,7 +1442,10 @@ const exportOrders = async () => {
                     v-for="(item, index) in items"
                     :key="item.id"
                     class="cursor-pointer"
-                    :class="(item.id === orderItemId && isOrderInDrawerOpen) ? 'bg-light-primary' : index % 2 === 0 ? 'bg-light-secondary': ''"
+                    :class="{
+                      'ui-table-row--selected': item.id === orderItemId && isOrderInDrawerOpen,
+                      'ui-table-row--alt': index % 2 === 0,
+                    }"
                     @click="openOrderDetails (item)"
                   >
                     <td>

@@ -63,3 +63,31 @@
 
   --ui-transition: 140ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+// Dark theme — Telegram/Grafana ops surfaces
+.v-theme--dark {
+  --ui-bg: #14161a;
+  --ui-surface: #1c1f24;
+  --ui-surface-sunken: #16191d;
+  --ui-surface-header: #1c1f24;
+  --ui-surface-hover: #262b32;
+
+  --ui-border: #2e343c;
+  --ui-border-strong: #3d4550;
+
+  --ui-primary-soft: rgba(51, 144, 236, 0.16);
+  --ui-primary-muted: rgba(51, 144, 236, 0.2);
+
+  --ui-accent-soft: rgba(240, 90, 0, 0.14);
+  --ui-success-soft: rgba(0, 128, 96, 0.16);
+  --ui-danger-soft: rgba(215, 44, 13, 0.14);
+
+  --ui-text: #e8eaed;
+  --ui-text-muted: #9aa3ad;
+  --ui-text-subtle: #6b7280;
+
+  --ui-shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.2);
+  --ui-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ui-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --ui-focus-ring: 0 0 0 2px #1c1f24, 0 0 0 4px rgba(51, 144, 236, 0.5);
+}

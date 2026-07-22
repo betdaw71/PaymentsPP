@@ -137,35 +137,23 @@ const getPaymentDetails = async () => {
   // Base Filters
   if (filters.value.ordering)
     params.ordering = filters.value.ordering
-  if (filters.value.apply_filters) {
-    if (filters.value.searchQueryId)
-      params.id = filters.value.searchQueryId
-    if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
-      params.status__in = filters.value.selectedStatus.join (",")
-    if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)
-      params.payment_system__name__in = filters.value.selectedPaymentSystems.join (",")
-
-    if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
-      params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
-
-    // Trader Filters
-
-    if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
-      params.excluded_traffic__name__in = filters.value.selectedTrafficTypes.join (",")
-
-    // Trader Boss Filters (Only)
-    if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
-      params.trader__user__username__in = filters.value.selectedTraders.join (",")
-
-    // Support Filters
-    if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
-      params.trader__team__name__in = filters.value.selectedTeams.join (",")
-
-    if (filters.value.searchOwner)
-      params.owner = filters.value.searchOwner
-  }
-
-  // END Filters
+  // Filters always apply (Variant A — no apply_filters toggle)
+  if (filters.value.searchQueryId)
+    params.id = filters.value.searchQueryId
+  if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
+    params.status__in = filters.value.selectedStatus.join (",")
+  if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)
+    params.payment_system__name__in = filters.value.selectedPaymentSystems.join (",")
+  if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
+    params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
+  if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
+    params.excluded_traffic__name__in = filters.value.selectedTrafficTypes.join (",")
+  if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
+    params.trader__user__username__in = filters.value.selectedTraders.join (",")
+  if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
+    params.trader__team__name__in = filters.value.selectedTeams.join (",")
+  if (filters.value.searchOwner)
+    params.owner = filters.value.searchOwner
 
 
   baseStore.getPaymentDetails (params).then (response => {
@@ -330,13 +318,10 @@ const changeStatus = (item, status) => {
   })
 }
 
-const filterPanelExpanded = ref(true)
+const filterPanelExpanded = ref(false)
 
-const activeFilterCount = computed(() => {
-  const f = filters.value
+const countAdvancedFilters = f => {
   let n = 0
-  if (f.searchQueryId) n++
-  if (f.searchOwner) n++
   if (f.selectedStatus?.length) n++
   if (f.selectedPaymentSystems?.length) n++
   if (f.selectedCurrencies?.length) n++
@@ -345,10 +330,88 @@ const activeFilterCount = computed(() => {
   if (f.selectedTeams?.length) n++
   if (f.ordering && f.ordering !== '-total_volume') n++
   return n
+}
+
+const advancedFilterCount = computed(() => countAdvancedFilters(filters.value))
+
+const activeFilterChips = computed(() => {
+  const chips = []
+  const f = filters.value
+
+  if (f.searchQueryId)
+    chips.push({ key: 'searchQueryId', label: `ID: ${f.searchQueryId}` })
+  if (f.searchOwner)
+    chips.push({ key: 'searchOwner', label: `${t('owner')}: ${f.searchOwner}` })
+
+  f.selectedStatus?.forEach(status => {
+    chips.push({
+      key: `status:${status}`,
+      label: `${t('status')}: ${t(`details_status.${status.toLowerCase()}`)}`,
+    })
+  })
+  f.selectedPaymentSystems?.forEach(ps => {
+    chips.push({ key: `ps:${ps}`, label: `${t('payment_systems')}: ${ps}` })
+  })
+  f.selectedCurrencies?.forEach(c => {
+    chips.push({ key: `currency:${c}`, label: `${t('currencies')}: ${c}` })
+  })
+  f.selectedTrafficTypes?.forEach(tt => {
+    chips.push({ key: `traffic:${tt}`, label: `${t('traffic_types')}: ${tt}` })
+  })
+  f.selectedTraders?.forEach(tr => {
+    chips.push({ key: `trader:${tr}`, label: `${t('traders')}: ${tr}` })
+  })
+  f.selectedTeams?.forEach(team => {
+    chips.push({ key: `team:${team}`, label: `${t('teams')}: ${team}` })
+  })
+
+  if (f.ordering && f.ordering !== '-total_volume') {
+    const orderingLabel = orderingTypes.find(o => o.value === f.ordering)?.name ?? f.ordering
+    chips.push({ key: 'ordering', label: `${t('ordering')}: ${orderingLabel}` })
+  }
+
+  return chips
 })
 
+const removeFilterChip = key => {
+  const f = filters.value
+  const scalarKeys = {
+    searchQueryId: '',
+    searchOwner: '',
+    ordering: '-total_volume',
+  }
+
+  if (key in scalarKeys) {
+    f[key] = scalarKeys[key]
+  } else if (key.startsWith('status:')) {
+    const status = key.slice(7)
+    f.selectedStatus = f.selectedStatus.filter(s => s !== status)
+  } else if (key.startsWith('ps:')) {
+    f.selectedPaymentSystems = f.selectedPaymentSystems.filter(s => s !== key.slice(3))
+  } else if (key.startsWith('currency:')) {
+    f.selectedCurrencies = f.selectedCurrencies.filter(s => s !== key.slice(9))
+  } else if (key.startsWith('traffic:')) {
+    f.selectedTrafficTypes = f.selectedTrafficTypes.filter(s => s !== key.slice(8))
+  } else if (key.startsWith('trader:')) {
+    f.selectedTraders = f.selectedTraders.filter(s => s !== key.slice(7))
+  } else if (key.startsWith('team:')) {
+    f.selectedTeams = f.selectedTeams.filter(s => s !== key.slice(5))
+  }
+
+  searchPaymentDetails()
+}
+
+const toggleFilterPanel = () => {
+  filterPanelExpanded.value = !filterPanelExpanded.value
+}
+
+const searchPaymentDetails = () => {
+  currentPage.value = 1
+  getPaymentDetails()
+}
+
 const resetFilters = () => {
-  const { rowsPerPage, apply_filters } = filters.value
+  const { rowsPerPage } = filters.value
   filters.value = {
     searchOwner: '',
     rowsPerPage,
@@ -360,15 +423,14 @@ const resetFilters = () => {
     selectedTeams: [],
     searchQueryId: '',
     ordering: '-total_volume',
-    apply_filters,
   }
-  getPaymentDetails()
+  searchPaymentDetails()
 }
 </script>
 
 
 <template>
-  <VCol>
+  <div>
     <VSnackbar
       v-model="snackbar.enabled"
       :color="snackbar.type"
@@ -377,268 +439,255 @@ const resetFilters = () => {
     >
       {{ snackbar.message }}
     </VSnackbar>
-    <VRow v-if="authStore.is_authenticated()">
-      <VCol cols="12">
-        <VCard>
-          <VCardTitle class="mt-2 ms-2">
-            <VAvatar
-              size="50"
-              variant="text"
-              color="primary"
-              icon="tabler-credit-card"
+    <UiWorkspace v-if="authStore.is_authenticated()">
+      <template #header>
+        <div class="ui-workspace__title-row">
+          <VAvatar
+            size="40"
+            variant="text"
+            color="primary"
+            icon="lucide:credit-card"
+          />
+          <h1 class="ui-workspace__title">
+            {{ t('tabs.payment_details') }}
+          </h1>
+        </div>
+      </template>
+      <template #actions>
+        <UiButton
+          v-if="authStore.is_trader()"
+          variant="primary"
+          size="small"
+          @click="createPaymentDetails"
+        >
+          <VIcon
+            icon="lucide:plus"
+            size="16"
+            start
+          />
+          {{ $t('create') }}
+        </UiButton>
+        <UiButton
+          variant="ghost"
+          size="small"
+          icon
+          @click="getPaymentDetails"
+        >
+          <VIcon
+            icon="lucide:refresh-cw"
+            size="16"
+          />
+        </UiButton>
+      </template>
+
+      <div class="ui-orders-filter-zone">
+        <div class="ui-orders-search">
+          <div class="ui-orders-search__field">
+            <AppTextField
+              v-model="filters.searchQueryId"
+              :label="$t('id')"
+              density="compact"
+              class="ui-field--mono"
+              @keydown.enter="searchPaymentDetails"
             />
-            {{ t ('tabs.payment_details') }}
-          </VCardTitle>
-          <VCol cols="12">
-            <VCard>
-              <VCardText class="d-flex align-center flex-wrap gap-3">
-                <VCardText
-                  class="text-h5 mb-0"
-                  style="padding: 0.5rem;"
-                >
-                  {{ t ('tabs.payment_details') }}
-                </VCardText>
+          </div>
+          <div class="ui-orders-search__field">
+            <AppTextField
+              v-model="filters.searchOwner"
+              :label="$t('owner')"
+              density="compact"
+              @keydown.enter="searchPaymentDetails"
+            />
+          </div>
+          <UiButton
+            variant="default"
+            size="small"
+            @click="toggleFilterPanel"
+          >
+            <VIcon
+              icon="lucide:filter"
+              size="16"
+              start
+            />
+            {{ $t('filters') }}
+            <span
+              v-if="advancedFilterCount > 0"
+              class="ui-filter-panel__badge ms-1"
+            >
+              {{ advancedFilterCount }}
+            </span>
+          </UiButton>
+          <UiButton
+            variant="primary"
+            size="small"
+            @click="searchPaymentDetails"
+          >
+            <VIcon
+              icon="lucide:search"
+              size="16"
+              start
+            />
+            {{ $t('search') }}
+          </UiButton>
+        </div>
 
-                <VSpacer />
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.rowsPerPage"
-                    :items="rowsPerPageOptions"
-                    :label="$t('rows')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
-                  />
-                </VCol>
-                <UiButton
-                  variant="ghost"
-                  size="small"
-                  icon
-                  @click="getPaymentDetails"
-                >
-                  <VIcon
-                    icon="tabler-refresh"
-                    size="18"
-                  />
-                </UiButton>
-              </VCardText>
+        <UiFilterChips
+          :chips="activeFilterChips"
+          :clear-label="$t('clear_all_filters')"
+          @remove="removeFilterChip"
+          @clear-all="resetFilters"
+        />
 
-              <UiFilterPanel
-                v-model:expanded="filterPanelExpanded"
-                :active-count="activeFilterCount"
-                :title="$t('filters')"
-                class="mx-5 mb-2"
-                @apply="getPaymentDetails"
-                @reset="resetFilters"
+        <UiFilterPanel
+          v-model:expanded="filterPanelExpanded"
+          :active-count="advancedFilterCount"
+          :title="$t('advanced_filters')"
+          embedded
+          @apply="searchPaymentDetails"
+          @reset="resetFilters"
+        >
+          <UiFilterSection :title="$t('filter_section_status')">
+            <VRow dense>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
               >
-                    <VCardText class="pa-0">
-                      <VRow>
-                        <!-- 👉 Select Role -->
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                          lg="2"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedStatus"
-                            :label="$t('status')"
-                            :items="filterOptions.status"
-                            :item-title="option => $t (`details_status.${option.name.toLowerCase()}`)"
-                            item-value="value"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prepend-inner="switchSelection(filterOptions.status, 'selectedStatus', 'value')"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                          lg="2"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedPaymentSystems"
-                            :label="$t('payment_systems')"
-                            :items="filterOptions.payment_system"
-                            item-title="name"
-                            item-value="name"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedPaymentSystems.length === filterOptions.payment_system.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prepend-inner="switchSelection(filterOptions.payment_system, 'selectedPaymentSystems', 'name')"
-                          />
-                        </VCol>
-                        <!-- 👉 Select Status -->
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                          lg="2"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedTrafficTypes"
-                            :label="$t('traffic_types')"
-                            :items="filterOptions.traffic_type"
-                            item-title="name"
-                            item-value="name"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="4"
-                        >
-                          <AppSelect
-                            v-model="filters.ordering"
-                            :label="$t ('ordering')"
-                            :items="orderingTypes"
-                            :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
-                            item-value="value"
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                      </VRow>
-                    </VCardText>
-                    <template
-                      v-if="authStore.is_support() || authStore.is_senior_trader()"
-                    >
-                      <VDivider />
-                      <VCardText class="d-flex flex-wrap py-4 gap-4">
-                        <VRow>
-                          <VCol
-                            v-if="authStore.is_support()"
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedCurrencies"
-                              :label="$t('currencies')"
-                              :items="filterOptions.currencies"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTraders"
-                              :label="$t('traders')"
-                              :items="filterOptions.traders"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            v-if="authStore.is_support()"
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTeams"
-                              :label="$t('teams')"
-                              :items="filterOptions.teams"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
-                            />
-                          </VCol>
-                        </VRow>
-                      </VCardText>
-                    </template>
-              </UiFilterPanel>
-
-              <VDivider />
-              <VCardText class="d-flex flex-wrap py-4 gap-4">
-                <UiButton
-                  v-if="authStore.is_trader()"
-                  variant="primary"
-                  size="small"
-                  @click="createPaymentDetails"
-                >
-                  <VIcon
-                    icon="tabler-plus"
-                    size="16"
-                    start
-                  />
-                  {{ $t('create') }}
-                </UiButton>
-                <VSpacer />
-                <UiFilterBar
-                  class="flex-grow-1"
-                  :active-count="activeFilterCount"
-                  @apply="getPaymentDetails"
-                  @reset="resetFilters"
-                >
-                  <div style="inline-size: 10rem;">
-                    <VSwitch
-                      v-model="filters.apply_filters"
-                      :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
-                      color="primary"
-                      hide-details
-                      density="compact"
-                      @change="getPaymentDetails"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryId"
-                      placeholder="ID"
-                      density="compact"
-                      class="ui-field--mono"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchOwner"
-                      placeholder="Owner"
-                      density="compact"
-                    />
-                  </div>
-                </UiFilterBar>
-              </VCardText>
-
-              <VDivider />
-              <!-- SECTION Table -->
-              <VTable
-                class="text-no-wrap invoice-list-table text-body-2"
+                <AppSelect
+                  v-model="filters.selectedStatus"
+                  :label="$t('status')"
+                  :items="filterOptions.status"
+                  :item-title="option => $t(`details_status.${option.name.toLowerCase()}`)"
+                  item-value="value"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.status, 'selectedStatus', 'value')"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
               >
+                <AppSelect
+                  v-model="filters.selectedPaymentSystems"
+                  :label="$t('payment_systems')"
+                  :items="filterOptions.payment_system"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedPaymentSystems.length === filterOptions.payment_system.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.payment_system, 'selectedPaymentSystems', 'name')"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedTrafficTypes"
+                  :label="$t('traffic_types')"
+                  :items="filterOptions.traffic_type"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.ordering"
+                  :label="$t('ordering')"
+                  :items="orderingTypes"
+                  :item-title="option => $t(`orderings.${option.value.toLowerCase()}`)"
+                  item-value="value"
+                  clear-icon="lucide:x"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
+
+          <UiFilterSection
+            v-if="authStore.is_support() || authStore.is_senior_trader()"
+            :title="$t('filter_section_people')"
+          >
+            <VRow dense>
+              <VCol
+                v-if="authStore.is_support()"
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedCurrencies"
+                  :label="$t('currencies')"
+                  :items="filterOptions.currencies"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedTraders"
+                  :label="$t('traders')"
+                  :items="filterOptions.traders"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
+                />
+              </VCol>
+              <VCol
+                v-if="authStore.is_support()"
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedTeams"
+                  :label="$t('teams')"
+                  :items="filterOptions.teams"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
+        </UiFilterPanel>
+      </div>
+
+      <VTable
+        class="text-no-wrap invoice-list-table text-body-2"
+      >
                 <!-- 👉 Table head -->
                 <thead>
                   <tr class="text-wrap">
@@ -700,7 +749,10 @@ const resetFilters = () => {
                     v-for="(item, index) in items"
                     :key="item.id"
                     class="cursor-pointer"
-                    :class="(item.id === itemId && isViewDrawerOpen) ? 'bg-light-primary' : index % 2 === 0 ? 'bg-light-secondary': ''"
+                    :class="{
+                      'ui-table-row--selected': item.id === itemId && isViewDrawerOpen,
+                      'ui-table-row--alt': index % 2 === 0,
+                    }"
                     @click="openItemDetails (item)"
                   >
                     <td>
@@ -723,7 +775,7 @@ const resetFilters = () => {
                             size="xs"
                             class="ms-2"
                             :color="item.out_active ? 'success': 'error'"
-                            icon="tabler-circle-arrow-up-right"
+                            icon="lucide:arrow-up-right"
                             :disabled="!authStore.is_trader()"
                             @click.stop="changeStatus(item, 'out')"
                           />
@@ -741,7 +793,7 @@ const resetFilters = () => {
                             size="xs"
                             class="ms-2"
                             :color="item.in_active ? 'success': 'error'"
-                            icon="tabler-circle-arrow-down-left"
+                            icon="lucide:arrow-down-left"
                             :disabled="!authStore.is_trader()"
                             @click.stop="changeStatus(item, 'in')"
                           />
@@ -818,12 +870,12 @@ const resetFilters = () => {
                       <VIcon
                         v-else-if="loadMessage.status === 1"
                         color="success"
-                        icon="tabler-tick"
+                        icon="lucide:check"
                       />
                       <VIcon
                         v-else
                         color="error"
-                        icon="tabler-x"
+                        icon="lucide:x"
                       />
                     </td>
 
@@ -833,49 +885,48 @@ const resetFilters = () => {
                     />
                   </tr>
                 </tfoot>
-              </VTable>
-              <!-- !SECTION -->
+      </VTable>
 
-              <VDivider />
+      <template #footer>
+        <div class="ui-orders-footer">
+          <span class="text-sm text-disabled">{{ paginationData }}</span>
+          <div class="d-flex align-center gap-4">
+            <div class="ui-orders-footer__rows">
+              <VSelect
+                v-model="filters.rowsPerPage"
+                :items="rowsPerPageOptions"
+                :label="$t('rows')"
+                item-title="name"
+                item-value="value"
+                density="compact"
+                hide-details
+                scroll-strategy="close"
+                color="primary"
+              />
+            </div>
+            <VPagination
+              v-model="currentPage"
+              size="small"
+              :total-visible="5"
+              :length="totalPage"
+              @next="selectedRows = []"
+              @prev="selectedRows = []"
+            />
+          </div>
+        </div>
+      </template>
+    </UiWorkspace>
 
-              <!-- SECTION Pagination -->
-              <VCardText class="d-flex align-center flex-wrap justify-space-between gap-4 py-4">
-                <!-- 👉  Pagination meta -->
-                <span class="text-sm text-disabled">{{ paginationData }}</span>
-
-                <!-- 👉 Pagination -->
-                <VPagination
-                  v-model="currentPage"
-                  size="small"
-                  :total-visible="5"
-                  :length="totalPage"
-                  @next="selectedRows = []"
-                  @prev="selectedRows = []"
-                />
-              </VCardText>
-              <!-- !SECTION -->
-            </VCard>
-          </VCol>
-        </VCard>
-        <ViewPaymentDetailsDrawer
-          v-model:isDrawerOpen="isViewDrawerOpen"
-          v-model:itemId="itemId"
-          v-model:time="nowTime"
-        />
-        <AddPaymentDetailsDrawer
-          v-if="authStore.is_trader()"
-          v-model:isDrawerOpen="isAddDrawerOpen"
-          v-model:time="nowTime"
-          @update:items="getPaymentDetails"
-        />
-      </VCol>
-    </VRow>
-  </vcol>
+    <ViewPaymentDetailsDrawer
+      v-model:isDrawerOpen="isViewDrawerOpen"
+      v-model:itemId="itemId"
+      v-model:time="nowTime"
+    />
+    <AddPaymentDetailsDrawer
+      v-if="authStore.is_trader()"
+      v-model:isDrawerOpen="isAddDrawerOpen"
+      v-model:time="nowTime"
+      @update:items="getPaymentDetails"
+    />
+  </div>
 </template>
-
-<!-- <style> -->
-<!-- /*.v-table&#45;&#45;density-default > .v-table__wrapper > table > tbody > tr > th, .v-table&#45;&#45;density-default > .v-table__wrapper > table > thead > tr > th, .v-table&#45;&#45;density-default > .v-table__wrapper > table > tfoot > tr > th,td{*/ -->
-
-<!-- /*  width: 50px !important;*/ -->
-<!-- //} -->
-<!-- </style> -->

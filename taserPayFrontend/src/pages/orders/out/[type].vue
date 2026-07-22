@@ -5,7 +5,7 @@ import {
   capitalize,
   formatUUID,
   resolveOrderOutStatusVariantAndIcon,
-  formatTimeDelta, formatTimeDeltaSeconds, formatDeltaTimeVariantAndIcon, resolveOrderInStatus, resolveOrderOutStatus,
+  formatTimeDelta, formatTimeDeltaSeconds, formatDeltaTimeVariantAndIcon, resolveOrderOutStatus,
 } from "@core/utils/formatters"
 import { useBaseStore } from "@/stores/useBaseStore"
 import OrderOutDrawer from "@/views/user/OrderOutDrawer.vue"
@@ -22,6 +22,7 @@ const { t } = useI18n ()
 const tradeStore = useTradeStore ()
 const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
+const router = useRouter()
 
 const snackbar = ref ({
   enabled: false,
@@ -209,57 +210,56 @@ const getOrders = async (resetInterval = false) => {
   // Base Filters
   if (filters.value.ordering)
     params.ordering = filters.value.ordering
-  if (filters.value.apply_filters) {
-    if (filters.value.searchQueryId)
-      params.id = filters.value.searchQueryId
-    if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
-      params.status__name__in = filters.value.selectedStatus.join (",")
-    if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)
-      params.payment_system__name__in = filters.value.selectedPaymentSystems.join (",")
-    if (filters.value.minAmount)
-      params.amount__gte = filters.value.minAmount
-    if (filters.value.maxAmount)
-      params.amount__lte = filters.value.maxAmount
-    if (filters.value.minUSDAmount)
-      params.usd_amount__gte = filters.value.minUSDAmount
-    if (filters.value.maxUSDAmount)
-      params.usd_amount__lte = filters.value.maxUSDAmount
-    if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-      params.creation_date__range = filters.value.dateRange.replace (" to ", ",").replaceAll(" ", "T")
+  // Filters always apply (Variant A — no apply_filters toggle)
+  if (filters.value.searchQueryId)
+    params.id = filters.value.searchQueryId
+  if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
+    params.status__name__in = filters.value.selectedStatus.join (",")
+  if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)
+    params.payment_system__name__in = filters.value.selectedPaymentSystems.join (",")
+  if (filters.value.minAmount)
+    params.amount__gte = filters.value.minAmount
+  if (filters.value.maxAmount)
+    params.amount__lte = filters.value.maxAmount
+  if (filters.value.minUSDAmount)
+    params.usd_amount__gte = filters.value.minUSDAmount
+  if (filters.value.maxUSDAmount)
+    params.usd_amount__lte = filters.value.maxUSDAmount
+  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
+    params.creation_date__range = filters.value.dateRange.replace (" to ", ",").replaceAll(" ", "T")
 
-    // Merchant Filters
-    if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
-      params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
-    if (filters.value.searchMerchantOrderId)
-      params.merchant_order_id = filters.value.searchMerchantOrderId
+  // Merchant Filters
+  if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
+    params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
+  if (filters.value.searchMerchantOrderId)
+    params.merchant_order_id = filters.value.searchMerchantOrderId
 
-    // Trader Filters
+  // Trader Filters
 
-    if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
-      params.traffic_type__name__in = filters.value.selectedTrafficTypes.join (",")
-    if (filters.value.searchPaymentDetailsId)
-      params.payment_details__id = filters.value.searchPaymentDetailsId
-    if (filters.value.searchTransactionId)
-      params.transaction_id = filters.value.searchTransactionId
-    if (filters.value.searchPaymentDetailsGroupId)
-      params.payment_details__group__id = filters.value.searchPaymentDetailsGroupId
-    if (filters.value.searchPaymentDetailsGroupOwner)
-      params.payment_details__group__owner__icontains = filters.value.searchPaymentDetailsGroupOwner
-    if (filters.value.searchCustomerId)
-      params.customer_id = filters.value.searchCustomerId
+  if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
+    params.traffic_type__name__in = filters.value.selectedTrafficTypes.join (",")
+  if (filters.value.searchPaymentDetailsId)
+    params.payment_details__id = filters.value.searchPaymentDetailsId
+  if (filters.value.searchTransactionId)
+    params.transaction_id = filters.value.searchTransactionId
+  if (filters.value.searchPaymentDetailsGroupId)
+    params.payment_details__group__id = filters.value.searchPaymentDetailsGroupId
+  if (filters.value.searchPaymentDetailsGroupOwner)
+    params.payment_details__group__owner__icontains = filters.value.searchPaymentDetailsGroupOwner
+  if (filters.value.searchCustomerId)
+    params.customer_id = filters.value.searchCustomerId
 
-    // Trader Boss Filters (Only)
-    if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
-      params.trader__user__username__in = filters.value.selectedTraders.join (",")
+  // Trader Boss Filters (Only)
+  if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
+    params.trader__user__username__in = filters.value.selectedTraders.join (",")
 
-    // Support Filters
-    if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
-      params.trader__team__name__in = filters.value.selectedTeams.join (",")
+  // Support Filters
+  if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
+    params.trader__team__name__in = filters.value.selectedTeams.join (",")
 
-    // Head Support Filters (Only)
-    if (filters.value.selectedMerchants && filters.value.selectedMerchants.length > 0)
-      params.merchant__user__username__in = filters.value.selectedMerchants.join (",")
-  }
+  // Head Support Filters (Only)
+  if (filters.value.selectedMerchants && filters.value.selectedMerchants.length > 0)
+    params.merchant__user__username__in = filters.value.selectedMerchants.join (",")
 
   // END Filters
 
@@ -300,7 +300,6 @@ watch(
     console.log(props.type, resolvedStatuses)
     if (resolvedStatuses !== null){
       filters.value.selectedStatus = resolvedStatuses
-      filters.value.apply_filters = currentType.value !== 'all'
     }
     getOrders ()
   },
@@ -404,19 +403,16 @@ onBeforeUnmount (
 
 const exportLoading = ref(false)
 
-const filterPanelExpanded = ref(true)
+const filterPanelExpanded = ref(false)
 
-const activeFilterCount = computed(() => {
-  const f = filters.value
+const countAdvancedFilters = f => {
   let n = 0
-  if (f.searchQueryId) n++
-  if (f.searchMerchantOrderId) n++
   if (f.searchCustomerId) n++
   if (f.searchPaymentDetailsGroupId) n++
   if (f.searchPaymentDetailsGroupOwner) n++
   if (f.searchPaymentDetailsId) n++
   if (f.searchTransactionId) n++
-  if (f.selectedStatus?.length) n++
+  if (currentType.value === 'all' && f.selectedStatus?.length) n++
   if (f.selectedPaymentSystems?.length) n++
   if (f.selectedMerchants?.length) n++
   if (f.selectedCurrencies?.length) n++
@@ -430,10 +426,137 @@ const activeFilterCount = computed(() => {
   if (f.maxUSDAmount) n++
   if (f.ordering && f.ordering !== '-creation_date') n++
   return n
+}
+
+const advancedFilterCount = computed(() => countAdvancedFilters(filters.value))
+
+const activeFilterChips = computed(() => {
+  const chips = []
+  const f = filters.value
+
+  if (currentType.value !== 'all') {
+    chips.push({
+      key: 'navStatus',
+      label: `${t('status')}: ${t(`order_status.${currentType.value.toLowerCase()}`)}`,
+    })
+  }
+
+  if (f.searchQueryId)
+    chips.push({ key: 'searchQueryId', label: `ID: ${f.searchQueryId}` })
+  if (f.searchMerchantOrderId)
+    chips.push({ key: 'searchMerchantOrderId', label: `${t('merchant_order_id')}: ${f.searchMerchantOrderId}` })
+  if (f.searchCustomerId)
+    chips.push({ key: 'searchCustomerId', label: `${t('customer_id')}: ${f.searchCustomerId}` })
+  if (f.searchPaymentDetailsGroupId)
+    chips.push({ key: 'searchPaymentDetailsGroupId', label: `${t('payment_details_group_id')}: ${f.searchPaymentDetailsGroupId}` })
+  if (f.searchPaymentDetailsGroupOwner)
+    chips.push({ key: 'searchPaymentDetailsGroupOwner', label: `${t('payment_details_group_owner')}: ${f.searchPaymentDetailsGroupOwner}` })
+  if (f.searchPaymentDetailsId)
+    chips.push({ key: 'searchPaymentDetailsId', label: `${t('payment_details_id')}: ${f.searchPaymentDetailsId}` })
+  if (f.searchTransactionId)
+    chips.push({ key: 'searchTransactionId', label: `${t('transaction_id')}: ${f.searchTransactionId}` })
+
+  if (currentType.value === 'all') {
+    f.selectedStatus?.forEach(status => {
+      chips.push({
+        key: `status:${status}`,
+        label: `${t('status')}: ${t(`order_status.${status.toLowerCase()}`)}`,
+      })
+    })
+  }
+
+  f.selectedPaymentSystems?.forEach(ps => {
+    chips.push({ key: `ps:${ps}`, label: `${t('payment_system')}: ${ps}` })
+  })
+  f.selectedCurrencies?.forEach(c => {
+    chips.push({ key: `currency:${c}`, label: `${t('currencies')}: ${c}` })
+  })
+  f.selectedTrafficTypes?.forEach(tt => {
+    chips.push({ key: `traffic:${tt}`, label: `${t('traffic_types')}: ${tt}` })
+  })
+  f.selectedTraders?.forEach(tr => {
+    chips.push({ key: `trader:${tr}`, label: `${t('traders')}: ${tr}` })
+  })
+  f.selectedTeams?.forEach(team => {
+    chips.push({ key: `team:${team}`, label: `${t('teams')}: ${team}` })
+  })
+  f.selectedMerchants?.forEach(m => {
+    chips.push({ key: `merchant:${m}`, label: `${t('merchants')}: ${m}` })
+  })
+
+  if (f.dateRange)
+    chips.push({ key: 'dateRange', label: `${t('creation_date_range')}: ${f.dateRange}` })
+  if (f.minAmount)
+    chips.push({ key: 'minAmount', label: `${t('min_amount_fiat')}: ${f.minAmount}` })
+  if (f.maxAmount)
+    chips.push({ key: 'maxAmount', label: `${t('max_amount_fiat')}: ${f.maxAmount}` })
+  if (f.minUSDAmount)
+    chips.push({ key: 'minUSDAmount', label: `${t('min_amount_usdt')}: ${f.minUSDAmount}` })
+  if (f.maxUSDAmount)
+    chips.push({ key: 'maxUSDAmount', label: `${t('max_amount_usdt')}: ${f.maxUSDAmount}` })
+  if (f.ordering && f.ordering !== '-creation_date') {
+    const orderingLabel = orderingTypes.find(o => o.value === f.ordering)?.name ?? f.ordering
+    chips.push({ key: 'ordering', label: `${t('ordering')}: ${orderingLabel}` })
+  }
+
+  return chips
 })
 
+const removeFilterChip = key => {
+  if (key === 'navStatus') {
+    router.push('/orders/out/all')
+    return
+  }
+
+  const f = filters.value
+  const scalarKeys = {
+    searchQueryId: '',
+    searchMerchantOrderId: '',
+    searchCustomerId: '',
+    searchPaymentDetailsGroupId: '',
+    searchPaymentDetailsGroupOwner: '',
+    searchPaymentDetailsId: '',
+    searchTransactionId: '',
+    dateRange: '',
+    minAmount: 0,
+    maxAmount: 0,
+    minUSDAmount: 0,
+    maxUSDAmount: 0,
+    ordering: '-creation_date',
+  }
+
+  if (key in scalarKeys) {
+    f[key] = scalarKeys[key]
+  } else if (key.startsWith('status:')) {
+    const status = key.slice(7)
+    f.selectedStatus = f.selectedStatus.filter(s => s !== status)
+  } else if (key.startsWith('ps:')) {
+    f.selectedPaymentSystems = f.selectedPaymentSystems.filter(s => s !== key.slice(3))
+  } else if (key.startsWith('currency:')) {
+    f.selectedCurrencies = f.selectedCurrencies.filter(s => s !== key.slice(9))
+  } else if (key.startsWith('traffic:')) {
+    f.selectedTrafficTypes = f.selectedTrafficTypes.filter(s => s !== key.slice(8))
+  } else if (key.startsWith('trader:')) {
+    f.selectedTraders = f.selectedTraders.filter(s => s !== key.slice(7))
+  } else if (key.startsWith('team:')) {
+    f.selectedTeams = f.selectedTeams.filter(s => s !== key.slice(5))
+  } else if (key.startsWith('merchant:')) {
+    f.selectedMerchants = f.selectedMerchants.filter(s => s !== key.slice(9))
+  }
+
+  getOrders(true)
+}
+
+const toggleFilterPanel = () => {
+  filterPanelExpanded.value = !filterPanelExpanded.value
+}
+
+const searchOrders = () => {
+  getOrders(true)
+}
+
 const resetFilters = () => {
-  const { rowsPerPage, autoUpdateMode, apply_filters } = filters.value
+  const { rowsPerPage, autoUpdateMode } = filters.value
   filters.value = {
     searchQueryId: '',
     rowsPerPage,
@@ -457,13 +580,10 @@ const resetFilters = () => {
     dateRange: '',
     ordering: '-creation_date',
     autoUpdateMode,
-    apply_filters,
   }
   const resolvedStatuses = resolveOrderOutStatus(currentType.value)
-  if (resolvedStatuses !== null) {
+  if (resolvedStatuses !== null)
     filters.value.selectedStatus = resolvedStatuses
-    filters.value.apply_filters = currentType.value !== 'all'
-  }
   getOrders(true)
 }
 
@@ -503,1095 +623,1078 @@ const exportOrders = async () => {
     >
       {{ snackbar.message }}
     </VSnackbar>
-    <VRow v-if="authStore.is_authenticated()">
-      <VCol cols="12">
-        <VCard>
-          <VCardTitle class="mt-2 ms-2">
-            <VAvatar
-              size="50"
-              variant="text"
-              color="primary"
-              icon="tabler-arrow-up-right"
-            />
-            {{ t ('tabs.orders_out') }}
-          </VCardTitle>
-          <VCol cols="12">
-            <VCard>
-              <VCardText class="d-flex align-center flex-wrap gap-3">
-                <VCardText
-                  class="text-h5 mb-0"
-                  style="padding: 0.5rem;"
-                >
-                  {{ t ('tabs.orders_out') }}
-                </VCardText>
-                <VSpacer />
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.rowsPerPage"
-                    :items="rowsPerPageOptions"
-                    :label="$t('rows')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
-                  />
-                </VCol>
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.autoUpdateMode"
-                    :items="autoUpdateModes"
-                    :label="$t ('auto_refresh')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
-                  />
-                </VCol>
-                <VProgressCircular
-                  v-if="filters.autoUpdateMode"
-                  v-model="autoUpdateProgress"
-                  class="cursor-pointer"
-                  :size="40"
-                  :width="2"
-                  color="primary"
-                  @click="getOrders(true)"
-                >
-                  {{ autoUpdateProgressSeconds }}s
-                </VProgressCircular>
-                <UiButton
-                  v-else
-                  variant="ghost"
-                  size="small"
-                  icon
-                  @click="getOrders(true)"
-                >
-                  <VIcon
-                    icon="tabler-refresh"
-                    size="18"
-                  />
-                </UiButton>
-              </VCardText>
-
-              <UiFilterPanel
-                v-model:expanded="filterPanelExpanded"
-                :active-count="activeFilterCount"
-                :title="$t('filters')"
-                class="mx-5 mb-2"
-                @apply="getOrders(true)"
-                @reset="resetFilters"
-              >
-                    <VCardText class="pa-0">
-                      <VRow>
-                        <!-- 👉 Select Role -->
-                        <VCol
-                          cols="12"
-                          sm="5"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedStatus"
-                            :label="$t ('status')"
-                            :items="filterOptions.status"
-                            :item-title="option => $t (`order_status.${option.name.toLowerCase()}`)"
-                            item-value="name"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedStatus?.length === filterOptions.status?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prependInner="switchSelection(filterOptions.status, 'selectedStatus', 'name')"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                          lg="2"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedPaymentSystems"
-                            :label="$t ('payment_systems')"
-                            :items="filterOptions.payment_system"
-                            item-title="name"
-                            item-value="name"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedPaymentSystems?.length === filterOptions.payment_system?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prependInner="switchSelection(filterOptions.payment_system, 'selectedPaymentSystems', 'name')"
-                          />
-                        </VCol>
-                        <!-- 👉 Select Plan -->
-                        <VCol
-                          cols="12"
-                          sm="6"
-                        >
-                          <AppDateTimePicker
-                            v-model="filters.dateRange"
-                            :label="$t ('creation_date_range')"
-                            :config="{ mode: 'range', enableTime: true, dateFormat: 'Y-m-d H:i'}"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <!-- 👉 Select Status -->
-                        <VCol
-                          cols="12"
-                          sm="3"
-                        >
-                          <AppTextField
-                            v-model="filters.minAmount"
-                            :label="$t ('min_amount_fiat')"
-                            type="number"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="3"
-                        >
-                          <AppTextField
-                            v-model="filters.maxAmount"
-                            :label="$t ('max_amount_fiat')"
-                            type="number"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="3"
-                        >
-                          <AppTextField
-                            v-model="filters.minUSDAmount"
-                            :label="$t ('min_amount_usdt')"
-                            type="number"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="3"
-                        >
-                          <AppTextField
-                            v-model="filters.maxUSDAmount"
-                            :label="$t ('max_amount_usdt')"
-                            type="number"
-                            clearable
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                        <VSpacer />
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="4"
-                        >
-                          <AppSelect
-                            v-model="filters.ordering"
-                            :label="$t ('ordering')"
-                            :items="orderingTypes"
-                            :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
-                            item-value="value"
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                      </VRow>
-                    </VCardText>
-
-                    <VDivider />
-                    <VCardText class="d-flex flex-wrap py-4 gap-4">
-                      <template
-                        v-if="authStore.is_merchant()"
-                      >
-                        <VRow>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedCurrencies"
-                              :label="$t ('currencies')"
-                              :items="filterOptions.currencies"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedCurrencies?.length === filterOptions.currencies?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            v-if="authStore.is_team_lead()"
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTraders"
-                              :label="$t('traders')"
-                              :items="filterOptions.traders"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            v-if="authStore.is_team_lead()"
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTeams"
-                              :label="$t('teams')"
-                              :items="filterOptions.teams"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchTransactionId"
-                              :label="$t ('transaction_id')"
-                            />
-                          </VCol>
-                        </VRow>
-                      </template>
-                      <template
-                        v-else-if="authStore.is_head_of_support()"
-                      >
-                        <VRow>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedCurrencies"
-                              :label="$t ('currencies')"
-                              :items="filterOptions.currencies"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedCurrencies?.length === filterOptions.currencies?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTrafficTypes"
-                              :label="$t ('traffic_types')"
-                              :items="filterOptions.traffic_type"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTrafficTypes?.length === filterOptions.traffic_type?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchPaymentDetailsId"
-                              :label="$t ('payment_details_id')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchTransactionId"
-                              :label="$t ('transaction_id')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTraders"
-                              :label="$t ('traders')"
-                              :items="filterOptions.traders"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders?.length === filterOptions.traders?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTeams"
-                              :label="$t ('teams')"
-                              :items="filterOptions.teams"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams?.length === filterOptions.teams?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedMerchants"
-                              :label="$t ('merchants')"
-                              :items="filterOptions.merchants"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedMerchants?.length === filterOptions.merchants?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.merchants, 'selectedMerchants', 'name')"
-                            />
-                          </VCol>
-                        </VRow>
-                      </template>
-                      <template
-                        v-else-if="authStore.is_support()"
-                      >
-                        <VRow>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedCurrencies"
-                              :label="$t ('currencies')"
-                              :items="filterOptions.currencies"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedCurrencies?.length === filterOptions.currencies?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTrafficTypes"
-                              :label="$t ('traffic_types')"
-                              :items="filterOptions.traffic_type"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTrafficTypes?.length === filterOptions.traffic_type?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchPaymentDetailsId"
-                              :label="$t ('payment_details_id')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchTransactionId"
-                              :label="$t ('transaction_id')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTraders"
-                              :label="$t ('traders')"
-                              :items="filterOptions.traders"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders?.length === filterOptions.traders?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTeams"
-                              :label="$t ('teams')"
-                              :items="filterOptions.teams"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams?.length === filterOptions.teams?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
-                            />
-                          </VCol>
-                        </VRow>
-                      </template>
-                      <template
-                        v-else-if="authStore.is_senior_trader()"
-                      >
-                        <VRow>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTrafficTypes"
-                              :label="$t ('traffic_types')"
-                              :items="filterOptions.traffic_type"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTrafficTypes?.length === filterOptions.traffic_type?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchPaymentDetailsId"
-                              :label="$t ('payment_details_id')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchTransactionId"
-                              :label="$t ('transaction_id')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTraders"
-                              :label="$t ('traders')"
-                              :items="filterOptions.traders"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders?.length === filterOptions.traders?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
-                            />
-                          </VCol>
-                        </VRow>
-                      </template>
-                      <template
-                        v-else-if="authStore.is_trader()"
-                      >
-                        <VRow>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTrafficTypes"
-                              :label="$t ('traffic_types')"
-                              :items="filterOptions.traffic_type"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTrafficTypes?.length === filterOptions.traffic_type?.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchPaymentDetailsId"
-                              :label="$t ('payment_details_id')"
-                            />
-                          </VCol>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppTextField
-                              v-model="filters.searchTransactionId"
-                              :label="$t ('transaction_id')"
-                            />
-                          </VCol>
-                        </VRow>
-                      </template>
-                    </VCardText>
-              </UiFilterPanel>
-
-              <VDivider />
-              <VCardText class="d-flex flex-wrap py-4 gap-4">
-                <VTooltip
-                  location="right"
-                >
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="ms-1 px-3 font-weight-bold"
-                      color="primary"
-                      text-color="white"
-                      size="lg"
-                    >
-                      $ {{ totalUSDAmount }}
-                    </VChip>
-                  </template>
-                  <span>
-                    {{ $t ('total_usd_amount') }}
-                  </span>
-                </VTooltip>
-                <VTooltip
-                  location="right"
-                >
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="ms-1 px-3 font-weight-bold"
-                      color="primary"
-                      text-color="white"
-                      size="lg"
-                    >
-                      $ {{ totalComission }}
-                    </VChip>
-                  </template>
-                  <span>
-                    {{ $t ('total_commission') }}
-                  </span>
-                </VTooltip>
-                <VTooltip
-                  location="right"
-                >
-                  <template #activator="{ props }">
-                    <VChip
-                      v-bind="props"
-                      class="ms-1 px-3 font-weight-bold"
-                      color="info"
-                      text-color="white"
-                      size="lg"
-                      prepend-icon="tabler-snowflake"
-                    >
-                      {{ holdAmount }}
-                    </VChip>
-                  </template>
-                  <span>
-                    {{ $t ('hold') }}
-                  </span>
-                </VTooltip>
-                <VSpacer />
-                <UiFilterBar
-                  class="flex-grow-1"
-                  :active-count="activeFilterCount"
-                  @apply="getOrders(true)"
-                  @reset="resetFilters"
-                >
-                  <div style="inline-size: 10rem;">
-                    <VSwitch
-                      v-model="filters.apply_filters"
-                      :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
-                      color="primary"
-                      hide-details
-                      density="compact"
-                      @change="getOrders"
-                    />
-                  </div>
-                  <div
-                    v-if="authStore.is_merchant() && !authStore.is_team_lead() || authStore.is_support()"
-                    style="inline-size: 12rem;"
-                  >
-                    <AppTextField
-                      v-model="filters.searchMerchantOrderId"
-                      :placeholder="$t ('merchant_order_id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchQueryId"
-                      placeholder="ID"
-                      density="compact"
-                      class="ui-field--mono"
-                    />
-                  </div>
-                  <div
-                    v-if="!authStore.is_trader() && !authStore.is_team_lead()"
-                    style="inline-size: 10rem;"
-                  >
-                    <AppTextField
-                      v-model="filters.searchCustomerId"
-                      :placeholder="$t ('customer_id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div
-                    v-if="!authStore.is_merchant()"
-                    style="inline-size: 10rem;"
-                  >
-                    <AppTextField
-                      v-model="filters.searchPaymentDetailsGroupId"
-                      :placeholder="$t ('payment_details_group_id')"
-                      density="compact"
-                    />
-                  </div>
-                  <div
-                    v-if="!authStore.is_merchant()"
-                    style="inline-size: 10rem;"
-                  >
-                    <AppTextField
-                      v-model="filters.searchPaymentDetailsGroupOwner"
-                      :placeholder="$t ('payment_details_group_owner')"
-                      density="compact"
-                    />
-                  </div>
-                  <UiButton
-                    variant="default"
-                    size="small"
-                    :loading="exportLoading"
-                    @click="exportOrders"
-                  >
-                    <VIcon
-                      icon="tabler-screen-share"
-                      size="16"
-                      start
-                    />
-                    {{ $t ('export') }}
-                  </UiButton>
-                </UiFilterBar>
-              </VCardText>
-
-              <VDivider />
-              <!-- SECTION Table -->
-
-              <VTable
-                class="text-no-wrap invoice-list-table text-body-2"
-              >
-                <!-- 👉 Table head -->
-                <thead>
-                  <tr class="text-wrap">
-                    <th scope="col">
-                      {{ $t ('status').toUpperCase () }} / {{ $t ('completion_time').toUpperCase () }}
-                    </th>
-                    <th scope="col">
-                      {{ $t ('expires').toUpperCase () }}
-                    </th>
-                    <th scope="col">
-                      {{ $t ('amount').toUpperCase () }}
-                    </th>
-                    <th scope="col">
-                      {{ $t ('usd_amount').toUpperCase () }}
-                    </th>
-                    <th scope="col">
-                      {{ $t ('payment_system').toUpperCase () }}
-                    </th>
-                    <th
-                      v-if="authStore.is_support() || authStore.is_trader()"
-                      scope="col"
-                    >
-                      {{ $t ('payment_details').toUpperCase () }}
-                    </th>
-                    <th scope="col">
-                      {{ $t ('id').toUpperCase () }}
-                    </th>
-                    <th
-                      v-if="!authStore.is_team_lead()"
-                      scope="col"
-                    >
-                      {{ $t ('destination_details').toUpperCase () }}
-                    </th>
-                    <!--                    <th -->
-                    <!--                      v-if="authStore.is_support() || authStore.is_trader()" -->
-                    <!--                      scope="col" -->
-                    <!--                    > -->
-                    <!--                      {{ $t ('traffic_type').toUpperCase () }} -->
-                    <!--                    </th> -->
-                    <th
-                      v-if="authStore.is_support() || authStore.is_senior_trader()"
-                      scope="col"
-                    >
-                      {{ $t ('trader').toUpperCase () }}
-                    </th>
-                    <th
-                      v-if="authStore.is_head_of_support()"
-                      scope="col"
-                    >
-                      {{ $t ('merchant').toUpperCase () }}
-                    </th>
-                    <th
-                      v-if="(authStore.is_head_of_support() || authStore.is_merchant()) && !authStore.is_team_lead()"
-                      scope="col"
-                    >
-                      {{ $t ('merchant_order_id').toUpperCase () }}
-                    </th>
-                    <!--                    <th -->
-                    <!--                      scope="col" -->
-                    <!--                    > -->
-                    <!--                      {{ $t ('transaction_id').toUpperCase () }} -->
-                    <!--                    </th> -->
-                    <!--                    <th -->
-                    <!--                      v-if="authStore.is_support()" -->
-                    <!--                      scope="col" -->
-                    <!--                    > -->
-                    <!--                      {{ $t ('client_ip').toUpperCase () }} -->
-                    <!--                    </th> -->
-                    <th scope="col">
-                      {{ $t ('date').toUpperCase () }}
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  <tr
-                    v-for="(item, index) in items"
-                    :key="item.id"
-                    class="cursor-pointer"
-                    :class="(item.id === orderItemId && isOrderInDrawerOpen) ? 'bg-light-primary' : index % 2 === 0 ? 'bg-light-secondary': ''"
-                    @click="openOrderDetails (item)"
-                  >
-                    <td>
-                      <VChip
-                        size="small"
-                        :color="resolveOrderOutStatusVariantAndIcon(item.status).variant"
-                        variant="tonal"
-                        :prepend-icon="resolveOrderOutStatusVariantAndIcon(item.status).icon"
-                      >
-                        {{ resolveOrderOutStatusVariantAndIcon (item.status).text }}
-                      </VChip> / {{ item.completion_date ? formatTimeDeltaSeconds(parseInt(item.creation_date) * 1000, parseInt(item.completion_date) * 1000): $t('not_completed') }}
-                      <VTooltip
-                        v-if="!authStore.is_merchant() && item.auto_closed"
-                        location="right"
-                      >
-                        <template #activator="{ props }">
-                          <VIcon
-                            v-bind="props"
-                            color="error"
-                            icon="tabler-robot-face"
-                          />
-                        </template>
-                        <span>
-                          {{ $t ('auto_closed') }}
-                        </span>
-                      </VTooltip>
-                    </td>
-                    <td v-if="['New'].includes(item.status)">
-                      <VChip
-                        size="small"
-                        :color="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).variant"
-                        variant="tonal"
-                        :prepend-icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
-                      >
-                        {{ formatDeltaTimeVariantAndIcon (parseInt (item.expires_at) * 1000 - nowTime).text }}
-                      </VChip>
-                    </td>
-                    <td v-else>
-                      {{ $t('no_data') }}
-                    </td>
-                    <td>
-                      {{ item.currency }}&nbsp;{{ item.amount }}
-                    </td>
-                    <td>
-                      USD&nbsp;{{ item.usd_amount }}
-                    </td>
-                    <td>
-                      {{ item.payment_system }}
-                    </td>
-                    <td
-                      v-if="authStore.is_support() || authStore.is_trader()"
-                    >
-                      <span
-                        v-for="(detail, name) in item.payment_details"
-                        :key="name"
-                      >
-                        {{ $t(`fields.${name}`) }} : <span class="font-weight-bold">{{ detail }}</span> <br>
-                      </span>
-                    </td>
-                    <td>
-                      <VTooltip
-                        location="top"
-                      >
-                        <template #activator="{ props }">
-                          <VBtn
-                            size="small"
-                            variant="text"
-                            class="text-lowercase"
-                            v-bind="props"
-                            @click.stop="copyToClipboard (item.id, 'Order ID copied!', 'success')"
-                          >
-                            {{ formatUUID (item.id) }}
-                          </VBtn>
-                        </template>
-                        <span>
-                          {{ item.id }}
-                        </span>
-                      </VTooltip>
-                    </td>
-                    <td
-                      v-if="!authStore.is_team_lead()"
-                    >
-                      <span
-                        v-for="(detail, name) in item.destination_details"
-                        :key="name"
-                      >
-                        {{ $t(`fields.${name}`) }} : <span class="font-weight-bold">{{ detail }}</span> <br>
-                      </span>
-                    </td>
-                    <!--                    <td -->
-                    <!--                      v-if="authStore.is_support() || authStore.is_trader()" -->
-                    <!--                    > -->
-                    <!--                      {{ item.traffic_type }} -->
-                    <!--                    </td> -->
-                    <td
-                      v-if="authStore.is_support() || authStore.is_senior_trader()"
-                    >
-                      <VChip
-                        color="alternative"
-                        text-color="white"
-                        small
-                      >
-                        @{{ item.trader }}
-                      </VChip>
-                    </td>
-                    <td
-                      v-if="authStore.is_head_of_support()"
-                    >
-                      <VChip
-                        color="alternative"
-                        text-color="white"
-                        small
-                      >
-                        @{{ item.merchant }}
-                      </VChip>
-                    </td>
-                    <td
-                      v-if="(authStore.is_head_of_support() || authStore.is_merchant()) && !authStore.is_team_lead()"
-                    >
-                      <VTooltip
-                        location="top"
-                      >
-                        <template #activator="{ props }">
-                          <VBtn
-                            size="small"
-                            variant="text"
-                            class="text-lowercase"
-                            v-bind="props"
-                            @click.stop="copyToClipboard (item.merchant_order_id, 'Merchant Order ID copied!', 'success')"
-                          >
-                            {{ item.merchant_order_id }}
-                          </VBtn>
-                        </template>
-                        <span>
-                          {{ item.merchant_order_id }}
-                        </span>
-                      </VTooltip>
-                    </td>
-                    <!--                    <td> -->
-                    <!--                      <VTooltip -->
-                    <!--                        v-if="item.transaction_id" -->
-                    <!--                        location="top" -->
-                    <!--                      > -->
-                    <!--                        <template #activator="{ props }"> -->
-                    <!--                          <VBtn -->
-                    <!--                            size="small" -->
-                    <!--                            variant="text" -->
-                    <!--                            class="text-lowercase" -->
-                    <!--                            v-bind="props" -->
-                    <!--                            @click.stop="copyToClipboard (item.transaction_id, 'Transaction ID copied!', 'success')" -->
-                    <!--                          > -->
-                    <!--                            {{ item.transaction_id }} -->
-                    <!--                          </VBtn> -->
-                    <!--                        </template> -->
-                    <!--                        <span> -->
-                    <!--                          {{ item.transaction_id }} -->
-                    <!--                        </span> -->
-                    <!--                      </VTooltip> -->
-                    <!--                    </td> -->
-                    <!--                    <td -->
-                    <!--                      v-if="authStore.is_support()" -->
-                    <!--                    > -->
-                    <!--                      {{ item.client_ip }} -->
-                    <!--                    </td> -->
-                    <td class="font-weight-bold">
-                      {{ (new Date (parseInt (item.creation_date) * 1000)).toUTCString () }}
-                      <VTooltip activator="parent">
-                        <p class="mb-0">
-                          {{ $t ('created_at') }}: {{ (new Date (parseInt (item.creation_date) * 1000)).toUTCString () }}
-                        </p>
-                      </VTooltip>
-                    </td>
-                  </tr>
-                </tbody>
-
-                <!-- 👉 table footer  -->
-
-                <tfoot v-show="!items || !items.length">
-                  <tr>
-                    <td
-                      colspan="12"
-                      class="text-center text-body-1 justify-center align-center"
-                    >
-                      {{ loadMessage.message }}
-                      <VProgressCircular
-                        v-if="loadMessage.status === 0"
-                        :width="3"
-                        color="primary"
-                        indeterminate
-                      />
-                      <VIcon
-                        v-else-if="loadMessage.status === 1"
-                        color="success"
-                        icon="tabler-tick"
-                      />
-                      <VIcon
-                        v-else
-                        color="error"
-                        icon="tabler-x"
-                      />
-                    </td>
-
-                    <td
-                      colspan="12"
-                      class="text-center text-body-1 justify-center align-center"
-                    />
-                  </tr>
-                </tfoot>
-              </VTable>
-              <!-- !SECTION -->
-
-              <VDivider />
-
-              <!-- SECTION Pagination -->
-              <VCardText class="d-flex align-center flex-wrap justify-space-between gap-4 py-4">
-                <!-- 👉  Pagination meta -->
-                <span class="text-sm text-disabled">{{ paginationData }}</span>
-
-                <!-- 👉 Pagination -->
-                <VPagination
-                  v-model="currentPage"
-                  size="small"
-                  :total-visible="5"
-                  :length="totalPage"
-                  @next="selectedRows = []"
-                  @prev="selectedRows = []"
-                />
-              </VCardText>
-              <!-- !SECTION -->
-            </VCard>
-          </VCol>
-        </VCard>
-        <OrderOutDrawer
-          v-model:isDrawerOpen="isOrderInDrawerOpen"
-          v-model:order-id="orderItemId"
-          v-model:time="nowTime"
+    <UiWorkspace v-if="authStore.is_authenticated()">
+      <template #header>
+        <div class="ui-workspace__title-row">
+          <VAvatar
+            size="40"
+            variant="text"
+            color="primary"
+            icon="lucide:arrow-up-right"
+          />
+          <h1 class="ui-workspace__title">
+            {{ t('tabs.orders_out') }}
+          </h1>
+        </div>
+      </template>
+      <template #actions>
+        <UiButton
+          variant="default"
+          size="small"
+          :loading="exportLoading"
+          @click="exportOrders"
+        >
+          <VIcon
+            icon="lucide:share"
+            size="16"
+            start
+          />
+          {{ $t('export') }}
+        </UiButton>
+        <UiRefreshControl
+          :interval="filters.autoUpdateMode"
+          :progress="autoUpdateProgress"
+          :progress-seconds="autoUpdateProgressSeconds"
+          :items="autoUpdateModes"
+          @refresh="getOrders(true)"
+          @update:interval="filters.autoUpdateMode = $event"
         />
-      </VCol>
-    </VRow>
+      </template>
+
+      <!-- Search + filters zone (single wrapper) -->
+      <div class="ui-orders-filter-zone">
+        <div class="ui-orders-search">
+          <div class="ui-orders-search__field">
+            <AppTextField
+              v-model="filters.searchQueryId"
+              :label="$t('id')"
+              placeholder="22652802379"
+              density="compact"
+              class="ui-field--mono"
+              @keydown.enter="searchOrders"
+            />
+          </div>
+          <div
+            v-if="(authStore.is_merchant() && !authStore.is_team_lead()) || authStore.is_support()"
+            class="ui-orders-search__field"
+          >
+            <AppTextField
+              v-model="filters.searchMerchantOrderId"
+              :label="$t('merchant_order_id')"
+              density="compact"
+              @keydown.enter="searchOrders"
+            />
+          </div>
+          <UiButton
+            variant="default"
+            size="small"
+            @click="toggleFilterPanel"
+          >
+            <VIcon
+              icon="lucide:filter"
+              size="16"
+              start
+            />
+            {{ $t('filters') }}
+            <span
+              v-if="advancedFilterCount > 0"
+              class="ui-filter-panel__badge ms-1"
+            >
+              {{ advancedFilterCount }}
+            </span>
+          </UiButton>
+          <UiButton
+            variant="primary"
+            size="small"
+            @click="searchOrders"
+          >
+            <VIcon
+              icon="lucide:search"
+              size="16"
+              start
+            />
+            {{ $t('search') }}
+          </UiButton>
+        </div>
+
+        <UiFilterChips
+          :chips="activeFilterChips"
+          :clear-label="$t('clear_all_filters')"
+          @remove="removeFilterChip"
+          @clear-all="resetFilters"
+        />
+
+        <UiFilterPanel
+          v-model:expanded="filterPanelExpanded"
+          :active-count="advancedFilterCount"
+          :title="$t('advanced_filters')"
+          embedded
+          @apply="searchOrders"
+          @reset="resetFilters"
+        >
+          <UiFilterSection :title="$t('filter_section_identifiers')">
+            <VRow dense>
+              <VCol
+                v-if="!authStore.is_trader() && !authStore.is_team_lead()"
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppTextField
+                  v-model="filters.searchCustomerId"
+                  :label="$t('customer_id')"
+                  density="compact"
+                />
+              </VCol>
+              <VCol
+                v-if="!authStore.is_merchant()"
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppTextField
+                  v-model="filters.searchPaymentDetailsGroupId"
+                  :label="$t('payment_details_group_id')"
+                  density="compact"
+                />
+              </VCol>
+              <VCol
+                v-if="!authStore.is_merchant()"
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppTextField
+                  v-model="filters.searchPaymentDetailsGroupOwner"
+                  :label="$t('payment_details_group_owner')"
+                  density="compact"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
+
+          <UiFilterSection :title="$t('filter_section_status')">
+            <VRow dense>
+              <VCol
+                v-if="currentType === 'all'"
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedStatus"
+                  :label="$t('status')"
+                  :items="filterOptions.status"
+                  :item-title="option => $t (`order_status.${option.name.toLowerCase()}`)"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prependInner="switchSelection(filterOptions.status, 'selectedStatus', 'name')"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedPaymentSystems"
+                  :label="$t('payment_systems')"
+                  :items="filterOptions.payment_system"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedPaymentSystems.length === filterOptions.payment_system.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prependInner="switchSelection(filterOptions.payment_system, 'selectedPaymentSystems', 'name')"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
+
+          <UiFilterSection :title="$t('filter_section_amounts')">
+            <VRow dense>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppDateTimePicker
+                  v-model="filters.dateRange"
+                  :label="$t('creation_date_range')"
+                  :config="{ mode: 'range', enableTime: true, dateFormat: 'Y-m-d H:i'}"
+                  clearable
+                  clear-icon="lucide:x"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="2"
+              >
+                <AppTextField
+                  v-model="filters.minAmount"
+                  :label="$t('min_amount_fiat')"
+                  type="number"
+                  clearable
+                  clear-icon="lucide:x"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="2"
+              >
+                <AppTextField
+                  v-model="filters.maxAmount"
+                  :label="$t('max_amount_fiat')"
+                  type="number"
+                  clearable
+                  clear-icon="lucide:x"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="2"
+              >
+                <AppTextField
+                  v-model="filters.minUSDAmount"
+                  :label="$t('min_amount_usdt')"
+                  type="number"
+                  clearable
+                  clear-icon="lucide:x"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="2"
+              >
+                <AppTextField
+                  v-model="filters.maxUSDAmount"
+                  :label="$t('max_amount_usdt')"
+                  type="number"
+                  clearable
+                  clear-icon="lucide:x"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.ordering"
+                  :label="$t('ordering')"
+                  :items="orderingTypes"
+                  :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
+                  item-value="value"
+                  clear-icon="lucide:x"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
+
+          <UiFilterSection
+            v-if="authStore.is_merchant() || authStore.is_head_of_support() || authStore.is_support() || authStore.is_senior_trader() || authStore.is_trader()"
+            :title="$t('filter_section_people')"
+          >
+            <template v-if="authStore.is_merchant()">
+              <VRow dense>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedCurrencies"
+                    :label="$t('currencies')"
+                    :items="filterOptions.currencies"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  v-if="authStore.is_team_lead()"
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTraders"
+                    :label="$t('traders')"
+                    :items="filterOptions.traders"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  v-if="authStore.is_team_lead()"
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTeams"
+                    :label="$t('teams')"
+                    :items="filterOptions.teams"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchTransactionId"
+                    :label="$t('transaction_id')"
+                  />
+                </VCol>
+              </VRow>
+            </template>
+            <template v-else-if="authStore.is_head_of_support()">
+              <VRow dense>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedCurrencies"
+                    :label="$t('currencies')"
+                    :items="filterOptions.currencies"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTrafficTypes"
+                    :label="$t('traffic_types')"
+                    :items="filterOptions.traffic_type"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchPaymentDetailsId"
+                    :label="$t('payment_details_id')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchTransactionId"
+                    :label="$t('transaction_id')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTraders"
+                    :label="$t('traders')"
+                    :items="filterOptions.traders"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTeams"
+                    :label="$t('teams')"
+                    :items="filterOptions.teams"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedMerchants"
+                    :label="$t('merchants')"
+                    :items="filterOptions.merchants"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedMerchants.length === filterOptions.merchants.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.merchants, 'selectedMerchants', 'name')"
+                  />
+                </VCol>
+              </VRow>
+            </template>
+            <template v-else-if="authStore.is_support()">
+              <VRow dense>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedCurrencies"
+                    :label="$t('currencies')"
+                    :items="filterOptions.currencies"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedCurrencies.length === filterOptions.currencies.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.currencies, 'selectedCurrencies', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTrafficTypes"
+                    :label="$t('traffic_types')"
+                    :items="filterOptions.traffic_type"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchPaymentDetailsId"
+                    :label="$t('payment_details_id')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchTransactionId"
+                    :label="$t('transaction_id')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTraders"
+                    :label="$t('traders')"
+                    :items="filterOptions.traders"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTeams"
+                    :label="$t('teams')"
+                    :items="filterOptions.teams"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
+                  />
+                </VCol>
+              </VRow>
+            </template>
+            <template v-else-if="authStore.is_senior_trader()">
+              <VRow dense>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTrafficTypes"
+                    :label="$t('traffic_types')"
+                    :items="filterOptions.traffic_type"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchPaymentDetailsId"
+                    :label="$t('payment_details_id')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchTransactionId"
+                    :label="$t('transaction_id')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTraders"
+                    :label="$t('traders')"
+                    :items="filterOptions.traders"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
+                  />
+                </VCol>
+              </VRow>
+            </template>
+            <template v-else-if="authStore.is_trader()">
+              <VRow dense>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppSelect
+                    v-model="filters.selectedTrafficTypes"
+                    :label="$t('traffic_types')"
+                    :items="filterOptions.traffic_type"
+                    item-title="name"
+                    item-value="name"
+                    multiple
+                    clearable
+                    clear-icon="lucide:x"
+                    :prepend-inner-icon="filters.selectedTrafficTypes.length === filterOptions.traffic_type.length ? 'lucide:square-check': 'lucide:square'"
+                    @click:prepend-inner="switchSelection(filterOptions.traffic_type, 'selectedTrafficTypes', 'name')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchPaymentDetailsId"
+                    :label="$t('payment_details_id')"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="4"
+                  md="3"
+                  lg="2"
+                >
+                  <AppTextField
+                    v-model="filters.searchTransactionId"
+                    :label="$t('transaction_id')"
+                  />
+                </VCol>
+              </VRow>
+            </template>
+          </UiFilterSection>
+        </UiFilterPanel>
+      </div>
+
+      <!-- Summary for current result set (above table) -->
+      <div class="ui-orders-metrics ui-orders-metrics--above-table">
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="primary"
+              text-color="white"
+              size="default"
+            >
+              $ {{ totalUSDAmount }}
+            </VChip>
+          </template>
+          <span>{{ $t('total_usd_amount') }}</span>
+        </VTooltip>
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="primary"
+              text-color="white"
+              size="default"
+            >
+              $ {{ totalComission }}
+            </VChip>
+          </template>
+          <span>{{ $t('total_commission') }}</span>
+        </VTooltip>
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="info"
+              text-color="white"
+              size="default"
+              prepend-icon="lucide:snowflake"
+            >
+              {{ holdAmount }}
+            </VChip>
+          </template>
+          <span>{{ $t('hold') }}</span>
+        </VTooltip>
+      </div>
+
+      <VDivider />
+      <!-- SECTION Table -->
+
+      <VTable
+        class="text-no-wrap invoice-list-table text-body-2"
+      >
+        <!-- 👉 Table head -->
+        <thead>
+          <tr class="text-wrap">
+            <th scope="col">
+              {{ $t ('status').toUpperCase () }} / {{ $t ('completion_time').toUpperCase () }}
+            </th>
+            <th scope="col">
+              {{ $t ('expires').toUpperCase () }}
+            </th>
+            <th scope="col">
+              {{ $t ('amount').toUpperCase () }}
+            </th>
+            <th scope="col">
+              {{ $t ('usd_amount').toUpperCase () }}
+            </th>
+            <th scope="col">
+              {{ $t ('payment_system').toUpperCase () }}
+            </th>
+            <th
+              v-if="authStore.is_support() || authStore.is_trader()"
+              scope="col"
+            >
+              {{ $t ('payment_details').toUpperCase () }}
+            </th>
+            <th scope="col">
+              {{ $t ('id').toUpperCase () }}
+            </th>
+            <th
+              v-if="!authStore.is_team_lead()"
+              scope="col"
+            >
+              {{ $t ('destination_details').toUpperCase () }}
+            </th>
+            <!--                    <th -->
+            <!--                      v-if="authStore.is_support() || authStore.is_trader()" -->
+            <!--                      scope="col" -->
+            <!--                    > -->
+            <!--                      {{ $t ('traffic_type').toUpperCase () }} -->
+            <!--                    </th> -->
+            <th
+              v-if="authStore.is_support() || authStore.is_senior_trader()"
+              scope="col"
+            >
+              {{ $t ('trader').toUpperCase () }}
+            </th>
+            <th
+              v-if="authStore.is_head_of_support()"
+              scope="col"
+            >
+              {{ $t ('merchant').toUpperCase () }}
+            </th>
+            <th
+              v-if="(authStore.is_head_of_support() || authStore.is_merchant()) && !authStore.is_team_lead()"
+              scope="col"
+            >
+              {{ $t ('merchant_order_id').toUpperCase () }}
+            </th>
+            <!--                    <th -->
+            <!--                      scope="col" -->
+            <!--                    > -->
+            <!--                      {{ $t ('transaction_id').toUpperCase () }} -->
+            <!--                    </th> -->
+            <!--                    <th -->
+            <!--                      v-if="authStore.is_support()" -->
+            <!--                      scope="col" -->
+            <!--                    > -->
+            <!--                      {{ $t ('client_ip').toUpperCase () }} -->
+            <!--                    </th> -->
+            <th scope="col">
+              {{ $t ('date').toUpperCase () }}
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr
+            v-for="(item, index) in items"
+            :key="item.id"
+            class="cursor-pointer"
+            :class="{
+              'ui-table-row--selected': item.id === orderItemId && isOrderInDrawerOpen,
+              'ui-table-row--alt': index % 2 === 0,
+            }"
+            @click="openOrderDetails (item)"
+          >
+            <td>
+              <VChip
+                size="small"
+                :color="resolveOrderOutStatusVariantAndIcon(item.status).variant"
+                variant="tonal"
+                :prepend-icon="resolveOrderOutStatusVariantAndIcon(item.status).icon"
+              >
+                {{ resolveOrderOutStatusVariantAndIcon (item.status).text }}
+              </VChip> / {{ item.completion_date ? formatTimeDeltaSeconds(parseInt(item.creation_date) * 1000, parseInt(item.completion_date) * 1000): $t('not_completed') }}
+              <VTooltip
+                v-if="!authStore.is_merchant() && item.auto_closed"
+                location="right"
+              >
+                <template #activator="{ props }">
+                  <VIcon
+                    v-bind="props"
+                    color="error"
+                    icon="tabler-robot-face"
+                  />
+                </template>
+                <span>
+                  {{ $t ('auto_closed') }}
+                </span>
+              </VTooltip>
+            </td>
+            <td v-if="['New'].includes(item.status)">
+              <VChip
+                size="small"
+                :color="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).variant"
+                variant="tonal"
+                :prepend-icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
+              >
+                {{ formatDeltaTimeVariantAndIcon (parseInt (item.expires_at) * 1000 - nowTime).text }}
+              </VChip>
+            </td>
+            <td v-else>
+              {{ $t('no_data') }}
+            </td>
+            <td>
+              {{ item.currency }}&nbsp;{{ item.amount }}
+            </td>
+            <td>
+              USD&nbsp;{{ item.usd_amount }}
+            </td>
+            <td>
+              {{ item.payment_system }}
+            </td>
+            <td
+              v-if="authStore.is_support() || authStore.is_trader()"
+            >
+              <span
+                v-for="(detail, name) in item.payment_details"
+                :key="name"
+              >
+                {{ $t(`fields.${name}`) }} : <span class="font-weight-bold">{{ detail }}</span> <br>
+              </span>
+            </td>
+            <td>
+              <VTooltip
+                location="top"
+              >
+                <template #activator="{ props }">
+                  <VBtn
+                    size="small"
+                    variant="text"
+                    class="text-lowercase"
+                    v-bind="props"
+                    @click.stop="copyToClipboard (item.id, 'Order ID copied!', 'success')"
+                  >
+                    {{ formatUUID (item.id) }}
+                  </VBtn>
+                </template>
+                <span>
+                  {{ item.id }}
+                </span>
+              </VTooltip>
+            </td>
+            <td
+              v-if="!authStore.is_team_lead()"
+            >
+              <span
+                v-for="(detail, name) in item.destination_details"
+                :key="name"
+              >
+                {{ $t(`fields.${name}`) }} : <span class="font-weight-bold">{{ detail }}</span> <br>
+              </span>
+            </td>
+            <!--                    <td -->
+            <!--                      v-if="authStore.is_support() || authStore.is_trader()" -->
+            <!--                    > -->
+            <!--                      {{ item.traffic_type }} -->
+            <!--                    </td> -->
+            <td
+              v-if="authStore.is_support() || authStore.is_senior_trader()"
+            >
+              <VChip
+                color="alternative"
+                text-color="white"
+                small
+              >
+                @{{ item.trader }}
+              </VChip>
+            </td>
+            <td
+              v-if="authStore.is_head_of_support()"
+            >
+              <VChip
+                color="alternative"
+                text-color="white"
+                small
+              >
+                @{{ item.merchant }}
+              </VChip>
+            </td>
+            <td
+              v-if="(authStore.is_head_of_support() || authStore.is_merchant()) && !authStore.is_team_lead()"
+            >
+              <VTooltip
+                location="top"
+              >
+                <template #activator="{ props }">
+                  <VBtn
+                    size="small"
+                    variant="text"
+                    class="text-lowercase"
+                    v-bind="props"
+                    @click.stop="copyToClipboard (item.merchant_order_id, 'Merchant Order ID copied!', 'success')"
+                  >
+                    {{ item.merchant_order_id }}
+                  </VBtn>
+                </template>
+                <span>
+                  {{ item.merchant_order_id }}
+                </span>
+              </VTooltip>
+            </td>
+            <!--                    <td> -->
+            <!--                      <VTooltip -->
+            <!--                        v-if="item.transaction_id" -->
+            <!--                        location="top" -->
+            <!--                      > -->
+            <!--                        <template #activator="{ props }"> -->
+            <!--                          <VBtn -->
+            <!--                            size="small" -->
+            <!--                            variant="text" -->
+            <!--                            class="text-lowercase" -->
+            <!--                            v-bind="props" -->
+            <!--                            @click.stop="copyToClipboard (item.transaction_id, 'Transaction ID copied!', 'success')" -->
+            <!--                          > -->
+            <!--                            {{ item.transaction_id }} -->
+            <!--                          </VBtn> -->
+            <!--                        </template> -->
+            <!--                        <span> -->
+            <!--                          {{ item.transaction_id }} -->
+            <!--                        </span> -->
+            <!--                      </VTooltip> -->
+            <!--                    </td> -->
+            <!--                    <td -->
+            <!--                      v-if="authStore.is_support()" -->
+            <!--                    > -->
+            <!--                      {{ item.client_ip }} -->
+            <!--                    </td> -->
+            <td class="font-weight-bold">
+              {{ (new Date (parseInt (item.creation_date) * 1000)).toUTCString () }}
+              <VTooltip activator="parent">
+                <p class="mb-0">
+                  {{ $t ('created_at') }}: {{ (new Date (parseInt (item.creation_date) * 1000)).toUTCString () }}
+                </p>
+              </VTooltip>
+            </td>
+          </tr>
+        </tbody>
+
+        <!-- 👉 table footer  -->
+
+        <tfoot v-show="!items || !items.length">
+          <tr>
+            <td
+              colspan="12"
+              class="text-center text-body-1 justify-center align-center"
+            >
+              {{ loadMessage.message }}
+              <VProgressCircular
+                v-if="loadMessage.status === 0"
+                :width="3"
+                color="primary"
+                indeterminate
+              />
+              <VIcon
+                v-else-if="loadMessage.status === 1"
+                color="success"
+                icon="tabler-tick"
+              />
+              <VIcon
+                v-else
+                color="error"
+                icon="tabler-x"
+              />
+            </td>
+
+            <td
+              colspan="12"
+              class="text-center text-body-1 justify-center align-center"
+            />
+          </tr>
+        </tfoot>
+      </VTable>
+      <!-- !SECTION -->
+
+      <template #footer>
+        <div class="ui-orders-footer">
+          <span class="text-sm text-disabled">{{ paginationData }}</span>
+          <div class="d-flex align-center gap-4">
+            <div class="ui-orders-footer__rows">
+              <VSelect
+                v-model="filters.rowsPerPage"
+                :items="rowsPerPageOptions"
+                :label="$t('rows')"
+                item-title="name"
+                item-value="value"
+                density="compact"
+                hide-details
+                scroll-strategy="close"
+                color="primary"
+              />
+            </div>
+            <VPagination
+              v-model="currentPage"
+              size="small"
+              :total-visible="5"
+              :length="totalPage"
+              @next="selectedRows = []"
+              @prev="selectedRows = []"
+            />
+          </div>
+        </div>
+      </template>
+    </UiWorkspace>
+
+    <OrderOutDrawer
+      v-if="authStore.is_authenticated()"
+      v-model:isDrawerOpen="isOrderInDrawerOpen"
+      v-model:order-id="orderItemId"
+      v-model:time="nowTime"
+    />
   </div>
 </template>

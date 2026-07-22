@@ -125,35 +125,27 @@ const getSms = async () => {
   // Base Filters
   if (filters.value.ordering)
     params.ordering = filters.value.ordering
-  if (filters.value.apply_filters) {
-    if (filters.value.searchId)
-      params.id = filters.value.searchId
-    if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
-      params.status__in = filters.value.selectedStatus.join (",")
-
-    // Trader Boss Filters (Only)
-    if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
-      params.device__trader__user__username__in = filters.value.selectedTraders.join (",")
-
-    // Support Filters
-    if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
-      params.device__trader__team__name__in = filters.value.selectedTeams.join (",")
-
-    if (filters.value.searchDevice)
-      params.device = filters.value.searchDevice
-    if (filters.value.searchText)
-      params.text__icontains = filters.value.searchText
-    if (filters.value.searchDeviceOwner)
-      params.device__owner = filters.value.searchDeviceOwner
-    if (filters.value.searchInOrder)
-      params.inorder = filters.value.searchInOrder
-    if (filters.value.searchOutOrder)
-      params.outorder = filters.value.searchOutOrder
-    if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-      params.date__range = filters.value.dateRange.replace (" to ", ",")
-  }
-
-  // END Filters
+  // Filters always apply (Variant A — no apply_filters toggle)
+  if (filters.value.searchId)
+    params.id = filters.value.searchId
+  if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
+    params.status__in = filters.value.selectedStatus.join (",")
+  if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
+    params.device__trader__user__username__in = filters.value.selectedTraders.join (",")
+  if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
+    params.device__trader__team__name__in = filters.value.selectedTeams.join (",")
+  if (filters.value.searchDevice)
+    params.device = filters.value.searchDevice
+  if (filters.value.searchText)
+    params.text__icontains = filters.value.searchText
+  if (filters.value.searchDeviceOwner)
+    params.device__owner = filters.value.searchDeviceOwner
+  if (filters.value.searchInOrder)
+    params.inorder = filters.value.searchInOrder
+  if (filters.value.searchOutOrder)
+    params.outorder = filters.value.searchOutOrder
+  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
+    params.date__range = filters.value.dateRange.replace (" to ", ",")
 
 
   smsStore.getSms (params).then (response => {
@@ -318,14 +310,11 @@ const changeStatus = (item, status) => {
   })
 }
 
-const filterPanelExpanded = ref(true)
+const filterPanelExpanded = ref(false)
 
-const activeFilterCount = computed(() => {
-  const f = filters.value
+const countAdvancedFilters = f => {
   let n = 0
-  if (f.searchId) n++
   if (f.searchDevice) n++
-  if (f.searchText) n++
   if (f.searchDeviceOwner) n++
   if (f.searchInOrder) n++
   if (f.searchOutOrder) n++
@@ -335,10 +324,88 @@ const activeFilterCount = computed(() => {
   if (f.selectedTeams?.length) n++
   if (f.ordering && f.ordering !== '-date') n++
   return n
+}
+
+const advancedFilterCount = computed(() => countAdvancedFilters(filters.value))
+
+const activeFilterChips = computed(() => {
+  const chips = []
+  const f = filters.value
+
+  if (f.searchId)
+    chips.push({ key: 'searchId', label: `ID: ${f.searchId}` })
+  if (f.searchText)
+    chips.push({ key: 'searchText', label: `${t('text')}: ${f.searchText}` })
+  if (f.searchDevice)
+    chips.push({ key: 'searchDevice', label: `${t('device')}: ${f.searchDevice}` })
+  if (f.searchDeviceOwner)
+    chips.push({ key: 'searchDeviceOwner', label: `${t('device_owner')}: ${f.searchDeviceOwner}` })
+  if (f.searchInOrder)
+    chips.push({ key: 'searchInOrder', label: `${t('search_in_order')}: ${f.searchInOrder}` })
+  if (f.searchOutOrder)
+    chips.push({ key: 'searchOutOrder', label: `${t('search_out_order')}: ${f.searchOutOrder}` })
+  if (f.dateRange)
+    chips.push({ key: 'dateRange', label: `${t('creation_date_range')}: ${f.dateRange}` })
+
+  f.selectedStatus?.forEach(status => {
+    chips.push({
+      key: `status:${status}`,
+      label: `${t('status')}: ${t(`sms_status.${status.toLowerCase()}`)}`,
+    })
+  })
+  f.selectedTraders?.forEach(tr => {
+    chips.push({ key: `trader:${tr}`, label: `${t('traders')}: ${tr}` })
+  })
+  f.selectedTeams?.forEach(team => {
+    chips.push({ key: `team:${team}`, label: `${t('teams')}: ${team}` })
+  })
+
+  if (f.ordering && f.ordering !== '-date') {
+    const orderingLabel = orderingTypes.find(o => o.value === f.ordering)?.name ?? f.ordering
+    chips.push({ key: 'ordering', label: `${t('ordering')}: ${orderingLabel}` })
+  }
+
+  return chips
 })
 
+const removeFilterChip = key => {
+  const f = filters.value
+  const scalarKeys = {
+    searchId: '',
+    searchText: '',
+    searchDevice: '',
+    searchDeviceOwner: '',
+    searchInOrder: '',
+    searchOutOrder: '',
+    dateRange: '',
+    ordering: '-date',
+  }
+
+  if (key in scalarKeys) {
+    f[key] = scalarKeys[key]
+  } else if (key.startsWith('status:')) {
+    const status = key.slice(7)
+    f.selectedStatus = f.selectedStatus.filter(s => s !== status)
+  } else if (key.startsWith('trader:')) {
+    f.selectedTraders = f.selectedTraders.filter(s => s !== key.slice(7))
+  } else if (key.startsWith('team:')) {
+    f.selectedTeams = f.selectedTeams.filter(s => s !== key.slice(5))
+  }
+
+  searchSms()
+}
+
+const toggleFilterPanel = () => {
+  filterPanelExpanded.value = !filterPanelExpanded.value
+}
+
+const searchSms = () => {
+  currentPage.value = 1
+  getSms()
+}
+
 const resetFilters = () => {
-  const { rowsPerPage, apply_filters } = filters.value
+  const { rowsPerPage } = filters.value
   filters.value = {
     searchId: '',
     searchText: '',
@@ -352,15 +419,14 @@ const resetFilters = () => {
     selectedTeams: [],
     dateRange: '',
     ordering: '-date',
-    apply_filters,
   }
-  getSms()
+  searchSms()
 }
 </script>
 
 
 <template>
-  <VCol>
+  <div>
     <VSnackbar
       v-model="snackbar.enabled"
       :color="snackbar.type"
@@ -369,227 +435,250 @@ const resetFilters = () => {
     >
       {{ snackbar.message }}
     </VSnackbar>
-    <VRow v-if="authStore.is_authenticated()">
-      <VCol cols="12">
-        <VCard>
-          <VCardTitle class="mt-2 ms-2">
-            <VAvatar
-              size="50"
-              variant="text"
-              color="primary"
-              icon="tabler-device-mobile-message"
+    <UiWorkspace v-if="authStore.is_authenticated()">
+      <template #header>
+        <div class="ui-workspace__title-row">
+          <VAvatar
+            size="40"
+            variant="text"
+            color="primary"
+            icon="lucide:smartphone"
+          />
+          <h1 class="ui-workspace__title">
+            {{ t('sms') }}
+          </h1>
+        </div>
+      </template>
+      <template #actions>
+        <UiButton
+          variant="ghost"
+          size="small"
+          icon
+          @click="getSms"
+        >
+          <VIcon
+            icon="lucide:refresh-cw"
+            size="16"
+          />
+        </UiButton>
+      </template>
+
+      <div class="ui-orders-filter-zone">
+        <div class="ui-orders-search">
+          <div class="ui-orders-search__field">
+            <AppTextField
+              v-model="filters.searchId"
+              :label="$t('id')"
+              density="compact"
+              class="ui-field--mono"
+              @keydown.enter="searchSms"
             />
-            {{ t ('sms') }}
-          </VCardTitle>
-          <VCol cols="12">
-            <VCard>
-              <VCardText class="d-flex align-center flex-wrap gap-3">
-                <VCardText
-                  class="text-h5 mb-0"
-                  style="padding: 0.5rem;"
-                >
-                  {{ t ('sms') }}
-                </VCardText>
+          </div>
+          <div class="ui-orders-search__field">
+            <AppTextField
+              v-model="filters.searchText"
+              :label="$t('text')"
+              density="compact"
+              @keydown.enter="searchSms"
+            />
+          </div>
+          <UiButton
+            variant="default"
+            size="small"
+            @click="toggleFilterPanel"
+          >
+            <VIcon
+              icon="lucide:filter"
+              size="16"
+              start
+            />
+            {{ $t('filters') }}
+            <span
+              v-if="advancedFilterCount > 0"
+              class="ui-filter-panel__badge ms-1"
+            >
+              {{ advancedFilterCount }}
+            </span>
+          </UiButton>
+          <UiButton
+            variant="primary"
+            size="small"
+            @click="searchSms"
+          >
+            <VIcon
+              icon="lucide:search"
+              size="16"
+              start
+            />
+            {{ $t('search') }}
+          </UiButton>
+        </div>
 
-                <VSpacer />
-                <VCol
-                  cols="4"
-                  sm="3"
-                  md="2"
-                  lg="1"
-                >
-                  <VSelect
-                    v-model="filters.rowsPerPage"
-                    :items="rowsPerPageOptions"
-                    :label="$t('rows')"
-                    item-title="name"
-                    item-value="value"
-                    scroll-strategy="close"
-                    color="primary"
-                  />
-                </VCol>
-                <UiButton
-                  variant="ghost"
-                  size="small"
-                  icon
-                  @click="getSms"
-                >
-                  <VIcon
-                    icon="tabler-refresh"
-                    size="18"
-                  />
-                </UiButton>
-              </VCardText>
+        <UiFilterChips
+          :chips="activeFilterChips"
+          :clear-label="$t('clear_all_filters')"
+          @remove="removeFilterChip"
+          @clear-all="resetFilters"
+        />
 
-              <UiFilterPanel
-                v-model:expanded="filterPanelExpanded"
-                :active-count="activeFilterCount"
-                :title="$t('filters')"
-                class="mx-5 mb-2"
-                @apply="getSms"
-                @reset="resetFilters"
+        <UiFilterPanel
+          v-model:expanded="filterPanelExpanded"
+          :active-count="advancedFilterCount"
+          :title="$t('advanced_filters')"
+          embedded
+          @apply="searchSms"
+          @reset="resetFilters"
+        >
+          <UiFilterSection :title="$t('filter_section_identifiers')">
+            <VRow dense>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
               >
-                    <VCardText class="pa-0">
-                      <VRow>
-                        <!-- 👉 Select Role -->
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="3"
-                          lg="2"
-                        >
-                          <AppSelect
-                            v-model="filters.selectedStatus"
-                            :label="$t('status')"
-                            :items="filterOptions.status"
-                            :item-title="option => $t (`sms_status.${option.value.toLowerCase()}`)"
-                            item-value="value"
-                            multiple
-                            clearable
-                            clear-icon="tabler-x"
-                            :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                            @click:prepend-inner="switchSelection(filterOptions.status, 'selectedStatus', 'value')"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          sm="4"
-                          md="4"
-                        >
-                          <AppSelect
-                            v-model="filters.ordering"
-                            :label="$t ('ordering')"
-                            :items="orderingTypes"
-                            :item-title="option => $t (`orderings.${option.value.toLowerCase()}`)"
-                            item-value="value"
-                            clear-icon="tabler-x"
-                          />
-                        </VCol>
-                      </VRow>
-                    </VCardText>
-                    <template
-                      v-if="authStore.is_support() || authStore.is_senior_trader()"
-                    >
-                      <VDivider />
-                      <VCardText class="d-flex flex-wrap py-4 gap-4">
-                        <VRow>
-                          <VCol
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTraders"
-                              :label="$t('traders')"
-                              :items="filterOptions.traders"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
-                            />
-                          </VCol>
-                          <VCol
-                            v-if="authStore.is_support()"
-                            cols="12"
-                            sm="4"
-                            md="3"
-                            lg="2"
-                          >
-                            <AppSelect
-                              v-model="filters.selectedTeams"
-                              :label="$t('teams')"
-                              :items="filterOptions.teams"
-                              item-title="name"
-                              item-value="name"
-                              multiple
-                              clearable
-                              clear-icon="tabler-x"
-                              :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'tabler-square-check-filled': 'tabler-square-check'"
-                              @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
-                            />
-                          </VCol>
-                        </VRow>
-                      </VCardText>
-                    </template>
-              </UiFilterPanel>
+                <AppTextField
+                  v-model="filters.searchDevice"
+                  :label="$t('device')"
+                  density="compact"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppTextField
+                  v-model="filters.searchDeviceOwner"
+                  :label="$t('device_owner')"
+                  density="compact"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppTextField
+                  v-model="filters.searchInOrder"
+                  :label="$t('search_in_order')"
+                  density="compact"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppTextField
+                  v-model="filters.searchOutOrder"
+                  :label="$t('search_out_order')"
+                  density="compact"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
 
-              <VDivider />
-              <VCardText class="d-flex flex-wrap py-4 gap-4">
-                <VSpacer />
-                <UiFilterBar
-                  class="flex-grow-1"
-                  :active-count="activeFilterCount"
-                  @apply="getSms"
-                  @reset="resetFilters"
-                >
-                  <div style="inline-size: 10rem;">
-                    <VSwitch
-                      v-model="filters.apply_filters"
-                      :label="filters.apply_filters ? $t('apply_filters') : $t('not_apply_filters')"
-                      color="primary"
-                      hide-details
-                      density="compact"
-                      @change="getSms"
-                    />
-                  </div>
-                  <div style="inline-size: 15rem;">
-                    <AppDateTimePicker
-                      v-model="filters.dateRange"
-                      :placeholder="$t('creation_date_range')"
-                      :config="{ mode: 'range' }"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchId"
-                      :placeholder="$t('id')"
-                      density="compact"
-                      class="ui-field--mono"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchDevice"
-                      :placeholder="$t('device')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchText"
-                      :placeholder="$t('text')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchDeviceOwner"
-                      :placeholder="$t('device_owner')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchInOrder"
-                      :placeholder="$t('search_in_order')"
-                      density="compact"
-                    />
-                  </div>
-                  <div style="inline-size: 10rem;">
-                    <AppTextField
-                      v-model="filters.searchOutOrder"
-                      :placeholder="$t('search_out_order')"
-                      density="compact"
-                    />
-                  </div>
-                </UiFilterBar>
-              </VCardText>
+          <UiFilterSection :title="$t('filter_section_status')">
+            <VRow dense>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedStatus"
+                  :label="$t('status')"
+                  :items="filterOptions.status"
+                  :item-title="option => $t(`sms_status.${option.value.toLowerCase()}`)"
+                  item-value="value"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedStatus.length === filterOptions.status.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.status, 'selectedStatus', 'value')"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.ordering"
+                  :label="$t('ordering')"
+                  :items="orderingTypes"
+                  :item-title="option => $t(`orderings.${option.value.toLowerCase()}`)"
+                  item-value="value"
+                  clear-icon="lucide:x"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
 
-              <VDivider />
+          <UiFilterSection :title="$t('filter_section_amounts')">
+            <VRow dense>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppDateTimePicker
+                  v-model="filters.dateRange"
+                  :placeholder="$t('creation_date_range')"
+                  :config="{ mode: 'range' }"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
+
+          <UiFilterSection
+            v-if="authStore.is_support() || authStore.is_senior_trader()"
+            :title="$t('filter_section_people')"
+          >
+            <VRow dense>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedTraders"
+                  :label="$t('traders')"
+                  :items="filterOptions.traders"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedTraders.length === filterOptions.traders.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.traders, 'selectedTraders', 'name')"
+                />
+              </VCol>
+              <VCol
+                v-if="authStore.is_support()"
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <AppSelect
+                  v-model="filters.selectedTeams"
+                  :label="$t('teams')"
+                  :items="filterOptions.teams"
+                  item-title="name"
+                  item-value="name"
+                  multiple
+                  clearable
+                  clear-icon="lucide:x"
+                  :prepend-inner-icon="filters.selectedTeams.length === filterOptions.teams.length ? 'lucide:square-check': 'lucide:square'"
+                  @click:prepend-inner="switchSelection(filterOptions.teams, 'selectedTeams', 'name')"
+                />
+              </VCol>
+            </VRow>
+          </UiFilterSection>
+        </UiFilterPanel>
+      </div>
+
+      <VDivider />
               <!-- SECTION Table -->
               <VTable
                 class="text-no-wrap invoice-list-table text-body-2"
@@ -640,7 +729,7 @@ const resetFilters = () => {
                     v-for="(item, index) in items"
                     :key="item.id"
                     class="cursor-pointer"
-                    :class="index % 2 === 0 ? 'bg-light-secondary': ''"
+                    :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
                       <VChip
@@ -744,30 +833,35 @@ const resetFilters = () => {
                   </tr>
                 </tfoot>
               </VTable>
-              <!-- !SECTION -->
 
-              <VDivider />
-
-              <!-- SECTION Pagination -->
-              <VCardText class="d-flex align-center flex-wrap justify-space-between gap-4 py-4">
-                <!-- 👉  Pagination meta -->
-                <span class="text-sm text-disabled">{{ paginationData }}</span>
-
-                <!-- 👉 Pagination -->
-                <VPagination
-                  v-model="currentPage"
-                  size="small"
-                  :total-visible="5"
-                  :length="totalPage"
-                  @next="selectedRows = []"
-                  @prev="selectedRows = []"
-                />
-              </VCardText>
-              <!-- !SECTION -->
-            </VCard>
-          </VCol>
-        </VCard>
-      </VCol>
-    </VRow>
-  </vcol>
+      <template #footer>
+        <div class="ui-orders-footer">
+          <span class="text-sm text-disabled">{{ paginationData }}</span>
+          <div class="d-flex align-center gap-4">
+            <div class="ui-orders-footer__rows">
+              <VSelect
+                v-model="filters.rowsPerPage"
+                :items="rowsPerPageOptions"
+                :label="$t('rows')"
+                item-title="name"
+                item-value="value"
+                density="compact"
+                hide-details
+                scroll-strategy="close"
+                color="primary"
+              />
+            </div>
+            <VPagination
+              v-model="currentPage"
+              size="small"
+              :total-visible="5"
+              :length="totalPage"
+              @next="selectedRows = []"
+              @prev="selectedRows = []"
+            />
+          </div>
+        </div>
+      </template>
+    </UiWorkspace>
+  </div>
 </template>
