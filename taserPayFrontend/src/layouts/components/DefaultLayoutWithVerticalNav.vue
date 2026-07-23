@@ -53,24 +53,26 @@ watchEffect(
         <MerchantData
           v-if="authStore.is_merchant()"
         />
-        <NavBarI18n />
-        <template
-          v-if="isNavLinkActive({to: 'auth-login'}, $router) || isNavLinkActive({to: 'auth-register'}, $router)"
-        />
-        <template v-else-if="!authStore.userData.role">
-          <VBtn
-            rounded="lg"
-            class="mr-4"
-            color="primary"
-            :to="{ name: 'auth-login' }"
-          >
-            Войти
-          </VBtn>
-        </template>
-        <template v-else>
-          <NavBarNotifications class="me-2" />
-          <UserProfile />
-        </template>
+        <div class="ap-header-actions">
+          <NavBarI18n />
+          <template
+            v-if="isNavLinkActive({to: 'auth-login'}, $router) || isNavLinkActive({to: 'auth-register'}, $router)"
+          />
+          <template v-else-if="!authStore.userData.role">
+            <VBtn
+              rounded="lg"
+              class="ms-2"
+              color="primary"
+              :to="{ name: 'auth-login' }"
+            >
+              Войти
+            </VBtn>
+          </template>
+          <template v-else>
+            <NavBarNotifications class="me-1" />
+            <UserProfile />
+          </template>
+        </div>
       </div>
     </template>
 

@@ -3,8 +3,7 @@ import { useAuthStore } from "@/stores/useAuthStore"
 import { resolveRole } from '@/@core/utils/formatters'
 import EventBus from "@/services/EventBus"
 
-const authStore = useAuthStore ()
-const router = useRouter ()
+const authStore = useAuthStore()
 
 const logout = () => {
   EventBus.dispatch("logout")
@@ -12,119 +11,115 @@ const logout = () => {
 </script>
 
 <template>
-  <VBadge
-    dot
-    location="bottom right"
-    offset-x="3"
-    offset-y="3"
-    bordered
-    color="success"
+  <VMenu
+    location="bottom end"
+    offset="10px"
+    width="280"
+    style="z-index: 2002 !important;"
   >
-    <VBtn
-      rounded
-      class="cursor-pointer text-lowercase"
-      color="primary"
-      variant="tonal"
-      append-icon="lucide:user"
-    >
-      {{ authStore.userData.email }}
-
-      <!-- SECTION Menu -->
-      <VMenu
-        open-on-hover
-        activator="parent"
-        width="300"
-        location="bottom end"
-        offset="14px"
-        style="z-index: 2002 !important;"
+    <template #activator="{ props: menuProps }">
+      <button
+        v-bind="menuProps"
+        type="button"
+        class="ap-profile-trigger"
+        :aria-label="authStore.userData.email || $t('user.profile.title')"
       >
-        <VList>
-          <!-- 👉 User Avatar & Name -->
-          <VListItem>
-            <template #prepend>
-              <VListItemAction start>
-                <VBadge
-                  dot
-                  location="bottom right"
-                  offset-x="3"
-                  offset-y="3"
-                  color="success"
-                  bordered
-                >
-                  <VAvatar
-                    color="primary"
-                    variant="tonal"
-                  >
-                    <VIcon
-                      icon="lucide:user"
-                    />
-                  </VAvatar>
-                </VBadge>
-              </VListItemAction>
-            </template>
-
-            <VListItemTitle class="font-weight-semibold text-wrap">
-              {{ authStore.userData.email }}
-            </VListItemTitle>
-            <VListItemSubtitle>
-              <VChip
-                label
-                v-bind="resolveRole(authStore.userData.role).chip"
-                size="small"
-              >
-                {{ resolveRole (authStore.userData.role).status }}
-              </VChip>
-            </VListItemSubtitle>
-          </VListItem>
-
-          <VDivider class="my-2" />
-
-          <!-- Profile shortcut removed — account tabs live in the sidebar -->
-          <VListItem
-            v-if="authStore.is_head_of_support()"
-            :to="{ name: 'user-add'}"
+        <VBadge
+          dot
+          location="bottom end"
+          offset-x="2"
+          offset-y="2"
+          bordered
+          color="success"
+        >
+          <VAvatar
+            color="primary"
+            variant="tonal"
+            size="32"
           >
-            <template #prepend>
-              <VIcon
-                class="me-2"
-                icon="lucide:shapes"
-                size="22"
-              />
-            </template>
+            <VIcon
+              icon="lucide:user"
+              size="16"
+            />
+          </VAvatar>
+        </VBadge>
+        <VIcon
+          icon="lucide:chevron-down"
+          size="14"
+          class="text-medium-emphasis"
+        />
+      </button>
+    </template>
 
-            <VListItemTitle>{{ $t('creation_studio') }}</VListItemTitle>
-          </VListItem>
-          <VListItem
-            v-if="authStore.is_head_of_support()"
-            :to="{ name: 'user-manage'}"
+    <VList density="compact">
+      <VListItem class="py-3">
+        <template #prepend>
+          <VAvatar
+            color="primary"
+            variant="tonal"
+            size="36"
           >
-            <template #prepend>
-              <VIcon
-                class="me-2"
-                icon="lucide:list-todo"
-                size="22"
-              />
-            </template>
-
-            <VListItemTitle>{{ $t('management') }}</VListItemTitle>
-          </VListItem>
-          <VListItem
-            link
-            @click="logout"
+            <VIcon
+              icon="lucide:user"
+              size="18"
+            />
+          </VAvatar>
+        </template>
+        <VListItemTitle class="text-body-2 font-weight-medium text-truncate">
+          {{ authStore.userData.email }}
+        </VListItemTitle>
+        <VListItemSubtitle class="mt-1">
+          <VChip
+            label
+            v-bind="resolveRole(authStore.userData.role).chip"
+            size="x-small"
           >
-            <template #prepend>
-              <VIcon
-                class="me-2"
-                icon="lucide:log-out"
-                size="22"
-              />
-            </template>
+            {{ resolveRole(authStore.userData.role).status }}
+          </VChip>
+        </VListItemSubtitle>
+      </VListItem>
 
-            <VListItemTitle>{{ $t('user.logout.title') }}</VListItemTitle>
-          </VListItem>
-        </VList>
-      </VMenu>
-      <!-- !SECTION -->
-    </VBtn>
-  </VBadge>
+      <VDivider class="my-1" />
+
+      <VListItem
+        v-if="authStore.is_head_of_support()"
+        :to="{ name: 'user-add'}"
+      >
+        <template #prepend>
+          <VIcon
+            class="me-2"
+            icon="lucide:shapes"
+            size="20"
+          />
+        </template>
+        <VListItemTitle>{{ $t('creation_studio') }}</VListItemTitle>
+      </VListItem>
+      <VListItem
+        v-if="authStore.is_head_of_support()"
+        :to="{ name: 'user-manage'}"
+      >
+        <template #prepend>
+          <VIcon
+            class="me-2"
+            icon="lucide:list-todo"
+            size="20"
+          />
+        </template>
+        <VListItemTitle>{{ $t('management') }}</VListItemTitle>
+      </VListItem>
+      <VListItem
+        link
+        @click="logout"
+      >
+        <template #prepend>
+          <VIcon
+            class="me-2"
+            icon="lucide:log-out"
+            size="20"
+          />
+        </template>
+        <VListItemTitle>{{ $t('user.logout.title') }}</VListItemTitle>
+      </VListItem>
+    </VList>
+  </VMenu>
 </template>

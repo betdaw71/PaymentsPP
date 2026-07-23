@@ -2,14 +2,18 @@
 import { useAuthStore } from '@/stores/useAuthStore'
 
 const props = defineProps({
+  showIncome: {
+    type: Boolean,
+    default: false,
+  },
   to: {
     type: Object,
     default: null,
   },
 })
 
-const authStore = useAuthStore ()
-const router = useRouter ()
+const authStore = useAuthStore()
+const router = useRouter()
 
 const fmt = value => {
   const num = Number(value ?? 0)
@@ -21,6 +25,7 @@ const fmt = value => {
 }
 
 const available = computed(() => authStore.userData.current_balance ?? 0)
+const income = computed(() => authStore.userData.income ?? 0)
 const frozen = computed(() => authStore.userData.hold ?? 0)
 
 const navigate = () => {
@@ -40,13 +45,15 @@ const navigate = () => {
       <span class="ap-surface-chip__label">{{ $t('balance') }}</span>
       <span class="ap-surface-chip__value">${{ fmt(available) }}</span>
     </div>
+    <div
+      v-if="showIncome"
+      class="ap-surface-chip ap-surface-chip--income"
+    >
+      <span class="ap-surface-chip__label">{{ $t('income') }}</span>
+      <span class="ap-surface-chip__value">${{ fmt(income) }}</span>
+    </div>
     <div class="ap-surface-chip ap-surface-chip--frozen">
-      <VIcon
-        icon="tabler-snowflake"
-        size="14"
-        class="me-1"
-      />
-      <span class="ap-surface-chip__label">{{ $t('frozen_balance') }}</span>
+      <span class="ap-surface-chip__label">{{ $t('hold') }}</span>
       <span class="ap-surface-chip__value">${{ fmt(frozen) }}</span>
     </div>
   </div>
