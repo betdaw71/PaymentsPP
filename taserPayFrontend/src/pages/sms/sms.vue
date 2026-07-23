@@ -678,8 +678,7 @@ const resetFilters = () => {
         </UiFilterPanel>
       </div>
 
-      <VDivider />
-              <!-- SECTION Table -->
+
               <UiDataTable>
                 <!-- 👉 Table head -->
                 <thead>
@@ -688,37 +687,37 @@ const resetFilters = () => {
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('status').toUpperCase () }}
+                      {{ $t('status') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('device').toUpperCase () }}
+                      {{ $t('device') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('date').toUpperCase () }}
+                      {{ $t('date') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('text').toUpperCase () }}
+                      {{ $t('text') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('order_in').toUpperCase () }}
+                      {{ $t('order_in') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('order_out').toUpperCase () }}
+                      {{ $t('order_out') }}
                     </th>
                   </tr>
                 </thead>

@@ -461,30 +461,31 @@ const resetFilters = () => {
                 <thead>
                   <tr>
                     <th scope="col">
-                      {{ $t ('id').toUpperCase () }}
+                      {{ $t('id') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('status').toUpperCase () }}
+                      {{ $t('status') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('amount').toUpperCase () }}
+                      {{ $t('amount') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('address_to').toUpperCase () }}
+                      {{ $t('address_to') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('comment').toUpperCase () }}
+                      {{ $t('comment') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('date').toUpperCase () }}
+                      {{ $t('date') }}
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
                   <tr
-                    v-for="item in items"
+                    v-for="(item, index) in items"
                     :key="item.id"
+                    :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
                       <VTooltip

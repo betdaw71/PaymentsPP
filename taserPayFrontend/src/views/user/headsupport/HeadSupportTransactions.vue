@@ -493,39 +493,40 @@ const resetFilters = () => {
                 <thead>
                   <tr>
                     <th scope="col">
-                      {{ $t ('id').toUpperCase () }}
+                      {{ $t('id') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('type').toUpperCase () }}
+                      {{ $t('type') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('total').toUpperCase () }}
+                      {{ $t('total') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('transactions.from').toUpperCase () }}
+                      {{ $t('transactions.from') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('transactions.to').toUpperCase () }}
+                      {{ $t('transactions.to') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('comment').toUpperCase () }}
+                      {{ $t('comment') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('linked_out_order').toUpperCase () }}
+                      {{ $t('linked_out_order') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('linked_in_order').toUpperCase () }}
+                      {{ $t('linked_in_order') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('date').toUpperCase () }}
+                      {{ $t('date') }}
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
                   <tr
-                    v-for="item in items"
+                    v-for="(item, index) in items"
                     :key="item.id"
+                    :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
                       <VTooltip

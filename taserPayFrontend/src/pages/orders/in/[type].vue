@@ -1367,7 +1367,7 @@ const exportOrders = async () => {
                     <!--                      v-if="authStore.is_support() || authStore.is_trader()" -->
                     <!--                      scope="col" -->
                     <!--                    > -->
-                    <!--                      {{ $t ('traffic_type').toUpperCase () }} -->
+                    <!--                      {{ $t('traffic_type') }} -->
                     <!--                    </th> -->
                     <th
                       v-if="authStore.is_support() || authStore.is_senior_trader()"
@@ -1463,7 +1463,7 @@ const exportOrders = async () => {
                       <span class="ui-cell-amount">{{ item.usd_amount }}</span>
                       <span class="ui-cell-currency">USD</span>
                     </td>
-                    <td>
+                    <td class="ui-cell-primary">
                       {{ item.payment_system }}
                     </td>
                     <td

@@ -475,36 +475,37 @@ const rejectWithdrawal = item => {
                 <thead>
                   <tr>
                     <th scope="col">
-                      {{ $t ('withdrawals.actions').toUpperCase () }}
+                      {{ $t('withdrawals.actions') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.status').toUpperCase () }}
+                      {{ $t('withdrawals.status') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.from_user').toUpperCase () }}
+                      {{ $t('withdrawals.from_user') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.amount').toUpperCase () }}
+                      {{ $t('withdrawals.amount') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.address_to').toUpperCase () }}
+                      {{ $t('withdrawals.address_to') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.comment').toUpperCase () }}
+                      {{ $t('withdrawals.comment') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.date').toUpperCase () }}
+                      {{ $t('withdrawals.date') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('id').toUpperCase () }}
+                      {{ $t('id') }}
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
                   <tr
-                    v-for="item in items"
+                    v-for="(item, index) in items"
                     :key="item.id"
+                    :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
                       <template

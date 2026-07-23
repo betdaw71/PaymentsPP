@@ -693,52 +693,52 @@ const resetFilters = () => {
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('status').toUpperCase () }}
+                      {{ $t('status') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('directions').toUpperCase () }}
+                      {{ $t('directions') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('owner').toUpperCase () }}
+                      {{ $t('owner') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('payment_system').toUpperCase () }}
+                      {{ $t('payment_system') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('balance').toUpperCase () }}
+                      {{ $t('balance') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('volume').toUpperCase () }}
+                      {{ $t('volume') }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t ('total_volume').toUpperCase () }}
+                      {{ $t('total_volume') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('id').toUpperCase () }}
+                      {{ $t('id') }}
                     </th>
                     <th
                       v-if="authStore.is_senior_trader() || authStore.is_support()"
                       scope="col"
                     >
-                      {{ $t ('trader').toUpperCase () }}
+                      {{ $t('trader') }}
                     </th>
                   </tr>
                 </thead>

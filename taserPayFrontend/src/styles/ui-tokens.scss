@@ -37,8 +37,22 @@
   --ui-border-focus: #3390ec;
 
   --ui-text: #1a1d21;
-  --ui-text-muted: #616a75;
-  --ui-text-subtle: #8c9196;
+  --ui-text-muted: #4f5761;
+  --ui-text-subtle: #6b7280;
+
+  /* Table hero — primary data surface */
+  --ui-table-surface: #ffffff;
+  --ui-table-header-bg: #f3f4f6;
+  --ui-table-header-text: #4b5563;
+  --ui-table-body-text: #111827;
+  --ui-table-body-size: 0.875rem;
+  --ui-table-body-weight: 500;
+  --ui-table-meta-text: #5b6470;
+  --ui-table-row-border: #e5e7eb;
+  --ui-table-row-alt: #f9fafb;
+  --ui-table-row-hover: #f3f4f6;
+  --ui-table-frame-border: #d1d5db;
+  --ui-table-shadow: 0 1px 3px rgba(17, 24, 39, 0.08), 0 0 0 1px rgba(17, 24, 39, 0.02);
 
   --ui-radius-sm: 6px;
   --ui-radius-md: 8px;
@@ -82,9 +96,22 @@
   --ui-success-soft: rgba(0, 128, 96, 0.16);
   --ui-danger-soft: rgba(215, 44, 13, 0.14);
 
-  --ui-text: #eef1f4;
-  --ui-text-muted: #b4bcc6;
-  --ui-text-subtle: #8b95a1;
+  --ui-text: #f3f4f6;
+  --ui-text-muted: #c8d0da;
+  --ui-text-subtle: #9aa3af;
+
+  --ui-table-surface: #1f2329;
+  --ui-table-header-bg: #262b33;
+  --ui-table-header-text: #b8c2ce;
+  --ui-table-body-text: #f3f4f6;
+  --ui-table-body-size: 0.875rem;
+  --ui-table-body-weight: 500;
+  --ui-table-meta-text: #a8b2bf;
+  --ui-table-row-border: #343b45;
+  --ui-table-row-alt: #1a1f26;
+  --ui-table-row-hover: #2a3039;
+  --ui-table-frame-border: #3d4550;
+  --ui-table-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04);
 
   --ui-surface-sunken: #1a1e24;
   --ui-surface-header: #22262d;
