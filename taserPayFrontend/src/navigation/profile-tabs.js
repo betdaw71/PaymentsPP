@@ -56,12 +56,7 @@ export function getProfileNavItems (authStore) {
     .filter(tab => SIDEBAR_TAB_KEYS.has(tab.key))
     .map(profileTabToNavItem)
 
-  items.push({
-    title: 'user.profile.title',
-    icon: { icon: UI_ICONS.profile },
-    to: { name: 'user', query: { tab: 'main_info' } },
-    navSection: 'footer',
-  })
+  // Profile entry lives in header menu — avoid duplicate user icon in sidebar.
 
   if (authStore.is_head_of_support()) {
     items.push(

@@ -5,6 +5,21 @@ import EventBus from "@/services/EventBus"
 
 const authStore = useAuthStore()
 
+const displayEmail = computed(() => (authStore.userData.email || '').trim())
+const displayUsername = computed(() => (authStore.userData.username || '').trim())
+const showUsername = computed(() => {
+  const username = displayUsername.value
+  if (!username)
+    return false
+
+  const email = displayEmail.value
+  if (!email)
+    return true
+
+  return username.toLowerCase() !== email.toLowerCase()
+    && !email.toLowerCase().startsWith(`${username.toLowerCase()}@`)
+})
+
 const logout = () => {
   EventBus.dispatch("logout")
 }
@@ -22,7 +37,7 @@ const logout = () => {
         v-bind="menuProps"
         type="button"
         class="ap-profile-trigger"
-        :aria-label="authStore.userData.email || $t('user.profile.title')"
+        :aria-label="displayEmail || displayUsername || $t('user.profile.title')"
       >
         <VBadge
           dot
@@ -43,10 +58,25 @@ const logout = () => {
             />
           </VAvatar>
         </VBadge>
+
+        <span
+          v-if="displayEmail || showUsername"
+          class="ap-profile-trigger__text d-none d-md-flex"
+        >
+          <span
+            v-if="displayEmail"
+            class="ap-profile-trigger__email"
+          >{{ displayEmail }}</span>
+          <span
+            v-if="showUsername"
+            class="ap-profile-trigger__username"
+          >{{ displayUsername }}</span>
+        </span>
+
         <VIcon
           icon="lucide:chevron-down"
           size="14"
-          class="text-medium-emphasis"
+          class="text-medium-emphasis flex-shrink-0"
         />
       </button>
     </template>
@@ -66,8 +96,14 @@ const logout = () => {
           </VAvatar>
         </template>
         <VListItemTitle class="text-body-2 font-weight-medium text-truncate">
-          {{ authStore.userData.email }}
+          {{ displayEmail || displayUsername }}
         </VListItemTitle>
+        <VListItemSubtitle
+          v-if="showUsername && displayEmail"
+          class="text-truncate"
+        >
+          {{ displayUsername }}
+        </VListItemSubtitle>
         <VListItemSubtitle class="mt-1">
           <VChip
             label
@@ -80,6 +116,17 @@ const logout = () => {
       </VListItem>
 
       <VDivider class="my-1" />
+
+      <VListItem :to="{ name: 'user', query: { tab: 'main_info' } }">
+        <template #prepend>
+          <VIcon
+            class="me-2"
+            icon="lucide:id-card"
+            size="20"
+          />
+        </template>
+        <VListItemTitle>{{ $t('user.profile.title') }}</VListItemTitle>
+      </VListItem>
 
       <VListItem
         v-if="authStore.is_head_of_support()"
@@ -107,6 +154,9 @@ const logout = () => {
         </template>
         <VListItemTitle>{{ $t('management') }}</VListItemTitle>
       </VListItem>
+
+      <VDivider class="my-1" />
+
       <VListItem
         link
         @click="logout"
