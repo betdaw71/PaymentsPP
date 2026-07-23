@@ -607,7 +607,7 @@ onMounted (fetchDashboard)
                   />
                 </VCardText>
 
-                <VTable class="text-no-wrap invoice-list-table">
+                <UiDataTable>
                   <thead>
                     <tr>
                       <th scope="col">{{ t('payment_system').toUpperCase() }}</th>
@@ -647,7 +647,7 @@ onMounted (fetchDashboard)
                       </td>
                     </tr>
                   </tbody>
-                </VTable>
+                </UiDataTable>
 
                 <VDivider />
 
@@ -670,7 +670,7 @@ onMounted (fetchDashboard)
                   />
                 </VCardText>
 
-                <VTable class="text-no-wrap invoice-list-table">
+                <UiDataTable>
                   <thead>
                     <tr>
                       <th scope="col">{{ t('currency').toUpperCase() }}</th>
@@ -708,7 +708,7 @@ onMounted (fetchDashboard)
                       </td>
                     </tr>
                   </tbody>
-                </VTable>
+                </UiDataTable>
 
                 <VDivider />
 
@@ -718,7 +718,7 @@ onMounted (fetchDashboard)
                   </div>
                 </VCardText>
 
-                <VTable class="text-no-wrap invoice-list-table">
+                <UiDataTable>
                   <thead>
                     <tr>
                       <th scope="col">{{ t('payment_system').toUpperCase() }}</th>
@@ -773,7 +773,7 @@ onMounted (fetchDashboard)
                       </td>
                     </tr>
                   </tbody>
-                </VTable>
+                </UiDataTable>
               </template>
             </VCard>
           </VCol>

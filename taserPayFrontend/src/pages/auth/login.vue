@@ -5,6 +5,7 @@ import {
 import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
 import { themeConfig } from '@themeConfig'
 import { useAuthStore } from "@/stores/useAuthStore"
+import NavBarI18n from '@/layouts/components/NavBarI18n.vue'
 
 const snackbar = ref ({
   enabled: false,
@@ -98,6 +99,10 @@ const login = async () => {
 
 <template>
   <div class="auth-page">
+    <header class="auth-page__toolbar">
+      <NavBarI18n />
+    </header>
+
     <VSnackbar
       v-model="snackbar.enabled"
       location="bottom end"

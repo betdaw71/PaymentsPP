@@ -475,7 +475,7 @@ const resetFilters = () => {
       </template>
 
       <template #table>
-        <VTable class="text-no-wrap invoice-list-table">
+        <UiDataTable>
                 <!-- 👉 Table head -->
                 <thead>
                   <tr>
@@ -663,7 +663,7 @@ const resetFilters = () => {
                     />
                   </tr>
                 </tfoot>
-              </VTable>
+              </UiDataTable>
       </template>
     </AccountListLayout>
 

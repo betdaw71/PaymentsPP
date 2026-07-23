@@ -1363,9 +1363,7 @@ const exportOrders = async () => {
       <VDivider />
       <!-- SECTION Table -->
 
-      <VTable
-        class="text-no-wrap invoice-list-table text-body-2"
-      >
+      <UiDataTable>
         <!-- 👉 Table head -->
         <thead>
           <tr class="text-wrap">
@@ -1657,7 +1655,7 @@ const exportOrders = async () => {
             />
           </tr>
         </tfoot>
-      </VTable>
+      </UiDataTable>
       <!-- !SECTION -->
 
       <template #footer>

@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'url'
 import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
 import vue from '@vitejs/plugin-vue'
@@ -15,8 +16,19 @@ import obfuscator from 'rollup-plugin-obfuscator'
 
 
 // https://vitejs.dev/config/
+function resolveBuildCommit () {
+  if (process.env.BUILD_COMMIT)
+    return process.env.BUILD_COMMIT
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+  } catch {
+    return ''
+  }
+}
+
 export default ({ mode }) => {
   process.env = { ...process.env, ...loadEnv (mode, process.cwd ()) }
+  const buildCommit = resolveBuildCommit()
 
   return defineConfig ({
     plugins: [
@@ -81,6 +93,7 @@ export default ({ mode }) => {
     },
     define: {
       'import.meta.env.PACKAGE_VERSION': JSON.stringify(process.env.npm_package_version),
+      'import.meta.env.BUILD_COMMIT': JSON.stringify(buildCommit),
       'process.env': {},
     },
     resolve: {

@@ -470,7 +470,7 @@ const rejectWithdrawal = item => {
       </template>
 
       <template #table>
-        <VTable class="text-no-wrap invoice-list-table">
+        <UiDataTable>
                 <!-- 👉 Table head -->
                 <thead>
                   <tr>
@@ -656,7 +656,7 @@ const rejectWithdrawal = item => {
                     />
                   </tr>
                 </tfoot>
-              </VTable>
+              </UiDataTable>
       </template>
     </AccountListLayout>
 

@@ -814,27 +814,6 @@
   border-radius: var(--ui-radius-lg) !important;
 }
 
-.v-table > .v-table__wrapper > table > thead > tr > th {
-  background: var(--ui-surface-header);
-  color: var(--ui-text-muted) !important;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  border-bottom: 1px solid var(--ui-border) !important;
-}
-
-.v-table > .v-table__wrapper > table > tbody > tr:hover > td {
-  background: var(--ui-surface-hover);
-}
-
-.ui-table-row--alt > td {
-  background: var(--ui-surface-sunken);
-}
-
-.ui-table-row--selected > td {
-  background: var(--ui-primary-soft) !important;
-}
-
 .ui-account-list {
   .ui-orders-filter-zone {
     margin: 0 0 12px;

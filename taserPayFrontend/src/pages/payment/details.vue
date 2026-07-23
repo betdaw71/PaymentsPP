@@ -685,9 +685,7 @@ const resetFilters = () => {
         </UiFilterPanel>
       </div>
 
-      <VTable
-        class="text-no-wrap invoice-list-table text-body-2"
-      >
+      <UiDataTable>
                 <!-- 👉 Table head -->
                 <thead>
                   <tr class="text-wrap">
@@ -885,7 +883,7 @@ const resetFilters = () => {
                     />
                   </tr>
                 </tfoot>
-      </VTable>
+      </UiDataTable>
 
       <template #footer>
         <div class="ui-orders-footer">
