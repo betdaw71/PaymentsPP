@@ -685,38 +685,60 @@ const resetFilters = () => {
         </UiFilterPanel>
       </div>
 
-      <UiDataTable :loading="loadMessage.status === 0">
+      <UiDataTable>
+                <!-- 👉 Table head -->
                 <thead>
-                  <tr>
-                    <th scope="col">
-                      {{ $t('status') }}
+                  <tr class="text-wrap">
+                    <th
+                      class="text-wrap"
+                      scope="col"
+                    >
+                      {{ $t ('status').toUpperCase () }}
+                    </th>
+                    <th
+                      class="text-wrap"
+                      scope="col"
+                    >
+                      {{ $t ('directions').toUpperCase () }}
+                    </th>
+                    <th
+                      class="text-wrap"
+                      scope="col"
+                    >
+                      {{ $t ('owner').toUpperCase () }}
+                    </th>
+                    <th
+                      class="text-wrap"
+                      scope="col"
+                    >
+                      {{ $t ('payment_system').toUpperCase () }}
+                    </th>
+                    <th
+                      class="text-wrap"
+                      scope="col"
+                    >
+                      {{ $t ('balance').toUpperCase () }}
+                    </th>
+                    <th
+                      class="text-wrap"
+                      scope="col"
+                    >
+                      {{ $t ('volume').toUpperCase () }}
+                    </th>
+                    <th
+                      class="text-wrap"
+                      scope="col"
+                    >
+                      {{ $t ('total_volume').toUpperCase () }}
                     </th>
                     <th scope="col">
-                      {{ $t('directions') }}
-                    </th>
-                    <th scope="col">
-                      {{ $t('owner') }}
-                    </th>
-                    <th scope="col">
-                      {{ $t('payment_system') }}
-                    </th>
-                    <th scope="col" class="text-end">
-                      {{ $t('balance') }}
-                    </th>
-                    <th scope="col" class="text-end">
-                      {{ $t('volume') }}
-                    </th>
-                    <th scope="col" class="text-end">
-                      {{ $t('total_volume') }}
-                    </th>
-                    <th scope="col">
-                      {{ $t('id') }}
+                      {{ $t ('id').toUpperCase () }}
                     </th>
                     <th
                       v-if="authStore.is_senior_trader() || authStore.is_support()"
                       scope="col"
                     >
-                      {{ $t('trader') }}
+                      {{ $t ('trader').toUpperCase () }}
                     </th>
                   </tr>
                 </thead>
@@ -731,74 +753,87 @@ const resetFilters = () => {
                     }"
                     @click="openItemDetails (item)"
                   >
-                    <td class="ui-data-table__cell--status">
-                      <UiStatusBadge
+                    <td>
+                      <VChip
+                        size="small"
                         :color="resolvePaymentDetailsStatusVariantAndIcon(item.status).variant"
-                        :icon="resolvePaymentDetailsStatusVariantAndIcon(item.status).icon"
-                        :label="resolvePaymentDetailsStatusVariantAndIcon(item.status).text"
-                      />
+                        variant="tonal"
+                        :prepend-icon="resolvePaymentDetailsStatusVariantAndIcon(item.status).icon"
+                      >
+                        {{ resolvePaymentDetailsStatusVariantAndIcon (item.status).text }}
+                      </VChip>
                     </td>
                     <td>
-                      <div class="d-flex align-center gap-1">
-                        <VTooltip location="top">
-                          <template #activator="{ props }">
-                            <VBtn
-                              v-bind="props"
-                              size="x-small"
-                              :color="item.out_active ? 'success': 'error'"
-                              icon="lucide:arrow-up-right"
-                              variant="flat"
-                              :disabled="!authStore.is_trader()"
-                              @click.stop="changeStatus(item, 'out')"
-                            />
-                          </template>
-                          <span>{{ item.out_active ? $t ('out_active') : $t ('out_not_active') }}</span>
-                        </VTooltip>
-                        <VTooltip location="top">
-                          <template #activator="{ props }">
-                            <VBtn
-                              v-bind="props"
-                              size="x-small"
-                              :color="item.in_active ? 'success': 'error'"
-                              icon="lucide:arrow-down-left"
-                              variant="flat"
-                              :disabled="!authStore.is_trader()"
-                              @click.stop="changeStatus(item, 'in')"
-                            />
-                          </template>
-                          <span>{{ item.in_active ? $t ('in_active') : $t ('in_not_active') }}</span>
-                        </VTooltip>
-                      </div>
+                      <VTooltip
+                        location="top"
+                      >
+                        <template #activator="{ props }">
+                          <VBtn
+                            v-bind="props"
+                            size="xs"
+                            class="ms-2"
+                            :color="item.out_active ? 'success': 'error'"
+                            icon="lucide:arrow-up-right"
+                            :disabled="!authStore.is_trader()"
+                            @click.stop="changeStatus(item, 'out')"
+                          />
+                        </template>
+                        <span>
+                          {{ item.out_active ? $t ('out_active') : $t ('out_not_active') }}
+                        </span>
+                      </VTooltip>
+                      <VTooltip
+                        location="top"
+                      >
+                        <template #activator="{ props }">
+                          <VBtn
+                            v-bind="props"
+                            size="xs"
+                            class="ms-2"
+                            :color="item.in_active ? 'success': 'error'"
+                            icon="lucide:arrow-down-left"
+                            :disabled="!authStore.is_trader()"
+                            @click.stop="changeStatus(item, 'in')"
+                          />
+                        </template>
+                        <span>
+                          {{ item.in_active ? $t ('in_active') : $t ('in_not_active') }}
+                        </span>
+                      </VTooltip>
                     </td>
-                    <td class="ui-cell-primary">
+                    <td>
                       {{ item.owner }}
                     </td>
-                    <td class="ui-cell-primary">
+                    <td>
                       {{ item.payment_system }}
                     </td>
-                    <td class="ui-data-table__cell--num">
-                      <span class="ui-cell-amount">{{ item.amount }}</span>
-                      <span class="ui-cell-currency">{{ item.currency }}</span>
-                    </td>
-                    <td class="ui-data-table__cell--num ui-cell-meta">
-                      {{ item.current_volume }} / {{ item.limit_per_period }}
-                    </td>
-                    <td class="ui-data-table__cell--num">
-                      <span class="ui-cell-amount">{{ item.total_volume }}</span>
+                    <td>
+                      {{ item.amount }}&nbsp;{{ item.currency }}
                     </td>
                     <td>
-                      <VTooltip location="top">
+                      {{ item.current_volume }} / {{ item.limit_per_period }}
+                    </td>
+                    <td>
+                      {{ item.total_volume }}
+                    </td>
+                    <td>
+                      <VTooltip
+                        location="top"
+                      >
                         <template #activator="{ props }">
-                          <button
-                            type="button"
-                            class="ui-copy-id"
+                          <VBtn
+                            size="small"
+                            variant="text"
+                            class="text-lowercase"
                             v-bind="props"
                             @click.stop="copyToClipboard (item.id, 'Details ID copied!', 'success')"
                           >
                             {{ formatUUID (item.id) }}
-                          </button>
+                          </VBtn>
                         </template>
-                        <span>{{ item.id }}</span>
+                        <span>
+                          {{ item.id }}
+                        </span>
                       </VTooltip>
                     </td>
                     <td
@@ -807,7 +842,7 @@ const resetFilters = () => {
                       <VChip
                         color="alternative"
                         text-color="white"
-                        size="small"
+                        small
                       >
                         @{{ item.trader }}
                       </VChip>
@@ -815,35 +850,37 @@ const resetFilters = () => {
                   </tr>
                 </tbody>
 
+                <!-- 👉 table footer  -->
+
                 <tfoot v-show="!items || !items.length">
                   <tr>
                     <td
                       colspan="12"
-                      class="text-center"
+                      class="text-center text-body-1 justify-center align-center"
                     >
-                      <div class="ui-data-table-empty">
-                        <span>{{ loadMessage.message }}</span>
-                        <VProgressCircular
-                          v-if="loadMessage.status === 0"
-                          :width="3"
-                          size="20"
-                          color="primary"
-                          indeterminate
-                        />
-                        <VIcon
-                          v-else-if="loadMessage.status === 1"
-                          color="success"
-                          icon="lucide:check"
-                          size="20"
-                        />
-                        <VIcon
-                          v-else
-                          color="error"
-                          icon="lucide:x"
-                          size="20"
-                        />
-                      </div>
+                      {{ loadMessage.message }}
+                      <VProgressCircular
+                        v-if="loadMessage.status === 0"
+                        :width="3"
+                        color="primary"
+                        indeterminate
+                      />
+                      <VIcon
+                        v-else-if="loadMessage.status === 1"
+                        color="success"
+                        icon="lucide:check"
+                      />
+                      <VIcon
+                        v-else
+                        color="error"
+                        icon="lucide:x"
+                      />
                     </td>
+
+                    <td
+                      colspan="12"
+                      class="text-center text-body-1 justify-center align-center"
+                    />
                   </tr>
                 </tfoot>
       </UiDataTable>

@@ -272,12 +272,12 @@
 
 // ——— Unified filter zone (search + chips + panel) ———
 .ui-orders-filter-zone {
-  margin: 6px 12px 8px;
+  margin: 12px 16px;
   border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface-sunken);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
   overflow: hidden;
-  box-shadow: none;
+  box-shadow: var(--ui-shadow-xs);
 
   .ui-orders-search {
     border-bottom: none;
@@ -401,16 +401,15 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 4px 16px 8px;
-  border: none;
-  background: transparent;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface);
 
   &--above-table {
-    margin-top: -2px;
-    padding-block: 2px 10px;
-    border: none;
-    background: transparent;
+    border-bottom: none;
+    border-top: 1px solid var(--ui-border);
+    background: var(--ui-surface-sunken);
   }
 }
 

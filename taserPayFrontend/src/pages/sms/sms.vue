@@ -678,7 +678,8 @@ const resetFilters = () => {
         </UiFilterPanel>
       </div>
 
-
+      <VDivider />
+              <!-- SECTION Table -->
               <UiDataTable>
                 <!-- 👉 Table head -->
                 <thead>
@@ -687,37 +688,37 @@ const resetFilters = () => {
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t('status') }}
+                      {{ $t ('status').toUpperCase () }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t('device') }}
+                      {{ $t ('device').toUpperCase () }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t('date') }}
+                      {{ $t ('date').toUpperCase () }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t('text') }}
+                      {{ $t ('text').toUpperCase () }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t('order_in') }}
+                      {{ $t ('order_in').toUpperCase () }}
                     </th>
                     <th
                       class="text-wrap"
                       scope="col"
                     >
-                      {{ $t('order_out') }}
+                      {{ $t ('order_out').toUpperCase () }}
                     </th>
                   </tr>
                 </thead>
@@ -729,16 +730,19 @@ const resetFilters = () => {
                     :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
-                      <UiStatusBadge
+                      <VChip
+                        size="small"
                         :color="resolveSmsStatusVariantAndIcon(item.status).variant"
-                        :icon="resolveSmsStatusVariantAndIcon(item.status).icon"
-                        :label="resolveSmsStatusVariantAndIcon(item.status).text"
-                      />
+                        variant="tonal"
+                        :prepend-icon="resolveSmsStatusVariantAndIcon(item.status).icon"
+                      >
+                        {{ resolveSmsStatusVariantAndIcon (item.status).text }}
+                      </VChip>
                     </td>
-                    <td class="ui-cell-primary">
+                    <td>
                       {{ item.device }}
                     </td>
-                    <td class="ui-data-table__cell--date">
+                    <td>
                       {{ (new Date (parseInt (item.date) * 1000)).toUTCString () }}
                       <VTooltip activator="parent">
                         <p class="mb-0">
@@ -754,14 +758,15 @@ const resetFilters = () => {
                         location="top"
                       >
                         <template #activator="{ props }">
-                          <button
-                            type="button"
-                            class="ui-copy-id"
+                          <VBtn
+                            size="small"
+                            variant="text"
+                            class="text-lowercase"
                             v-bind="props"
                             @click.stop="copyToClipboard (item.order_in, 'In Order ID copied!', 'success')"
                           >
                             {{ formatUUID (item.order_in) }}
-                          </button>
+                          </VBtn>
                         </template>
                         <span>
                           {{ item.order_in }}
@@ -774,14 +779,15 @@ const resetFilters = () => {
                         location="top"
                       >
                         <template #activator="{ props }">
-                          <button
-                            type="button"
-                            class="ui-copy-id"
+                          <VBtn
+                            size="small"
+                            variant="text"
+                            class="text-lowercase"
                             v-bind="props"
                             @click.stop="copyToClipboard (item.order_out, 'Out Order ID copied!', 'success')"
                           >
                             {{ formatUUID (item.order_out) }}
-                          </button>
+                          </VBtn>
                         </template>
                         <span>
                           {{ item.order_out }}

@@ -1315,76 +1315,125 @@ const exportOrders = async () => {
 
       <!-- Summary for current result set (above table) -->
       <div class="ui-orders-metrics ui-orders-metrics--above-table">
-        <div class="ui-metric-inline">
-          <div class="ui-metric-inline__item ui-metric-inline__item--accent">
-            <span class="ui-metric-inline__label">{{ $t('total_usd_amount') }}</span>
-            <span class="ui-metric-inline__value">${{ totalUSDAmount }}</span>
-          </div>
-          <div class="ui-metric-inline__item ui-metric-inline__item--accent">
-            <span class="ui-metric-inline__label">{{ $t('total_commission') }}</span>
-            <span class="ui-metric-inline__value">${{ totalComission }}</span>
-          </div>
-          <div class="ui-metric-inline__item ui-metric-inline__item--info">
-            <span class="ui-metric-inline__label">{{ $t('hold') }}</span>
-            <span class="ui-metric-inline__value">{{ holdAmount }}</span>
-          </div>
-        </div>
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="primary"
+              text-color="white"
+              size="default"
+            >
+              $ {{ totalUSDAmount }}
+            </VChip>
+          </template>
+          <span>{{ $t('total_usd_amount') }}</span>
+        </VTooltip>
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="primary"
+              text-color="white"
+              size="default"
+            >
+              $ {{ totalComission }}
+            </VChip>
+          </template>
+          <span>{{ $t('total_commission') }}</span>
+        </VTooltip>
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="info"
+              text-color="white"
+              size="default"
+              prepend-icon="lucide:snowflake"
+            >
+              {{ holdAmount }}
+            </VChip>
+          </template>
+          <span>{{ $t('hold') }}</span>
+        </VTooltip>
       </div>
 
-      <UiDataTable :loading="loadMessage.status === 0">
+      <VDivider />
+      <!-- SECTION Table -->
+
+      <UiDataTable>
         <!-- 👉 Table head -->
         <thead>
-          <tr>
+          <tr class="text-wrap">
             <th scope="col">
-              {{ $t('status') }} / {{ $t('completion_time') }}
-            </th>
-            <th scope="col">
-              {{ $t('expires') }}
-            </th>
-            <th scope="col" class="text-end">
-              {{ $t('amount') }}
-            </th>
-            <th scope="col" class="text-end">
-              {{ $t('usd_amount') }}
+              {{ $t ('status').toUpperCase () }} / {{ $t ('completion_time').toUpperCase () }}
             </th>
             <th scope="col">
-              {{ $t('payment_system') }}
+              {{ $t ('expires').toUpperCase () }}
+            </th>
+            <th scope="col">
+              {{ $t ('amount').toUpperCase () }}
+            </th>
+            <th scope="col">
+              {{ $t ('usd_amount').toUpperCase () }}
+            </th>
+            <th scope="col">
+              {{ $t ('payment_system').toUpperCase () }}
             </th>
             <th
               v-if="authStore.is_support() || authStore.is_trader()"
               scope="col"
             >
-              {{ $t('payment_details') }}
+              {{ $t ('payment_details').toUpperCase () }}
             </th>
             <th scope="col">
-              {{ $t('id') }}
+              {{ $t ('id').toUpperCase () }}
             </th>
             <th
               v-if="!authStore.is_team_lead()"
               scope="col"
             >
-              {{ $t('destination_details') }}
+              {{ $t ('destination_details').toUpperCase () }}
             </th>
+            <!--                    <th -->
+            <!--                      v-if="authStore.is_support() || authStore.is_trader()" -->
+            <!--                      scope="col" -->
+            <!--                    > -->
+            <!--                      {{ $t ('traffic_type').toUpperCase () }} -->
+            <!--                    </th> -->
             <th
               v-if="authStore.is_support() || authStore.is_senior_trader()"
               scope="col"
             >
-              {{ $t('trader') }}
+              {{ $t ('trader').toUpperCase () }}
             </th>
             <th
               v-if="authStore.is_head_of_support()"
               scope="col"
             >
-              {{ $t('merchant') }}
+              {{ $t ('merchant').toUpperCase () }}
             </th>
             <th
               v-if="(authStore.is_head_of_support() || authStore.is_merchant()) && !authStore.is_team_lead()"
               scope="col"
             >
-              {{ $t('merchant_order_id') }}
+              {{ $t ('merchant_order_id').toUpperCase () }}
             </th>
+            <!--                    <th -->
+            <!--                      scope="col" -->
+            <!--                    > -->
+            <!--                      {{ $t ('transaction_id').toUpperCase () }} -->
+            <!--                    </th> -->
+            <!--                    <th -->
+            <!--                      v-if="authStore.is_support()" -->
+            <!--                      scope="col" -->
+            <!--                    > -->
+            <!--                      {{ $t ('client_ip').toUpperCase () }} -->
+            <!--                    </th> -->
             <th scope="col">
-              {{ $t('date') }}
+              {{ $t ('date').toUpperCase () }}
             </th>
           </tr>
         </thead>
@@ -1400,53 +1449,51 @@ const exportOrders = async () => {
             }"
             @click="openOrderDetails (item)"
           >
-            <td class="ui-data-table__cell--status">
-              <div class="ui-cell-stack">
-                <div class="d-flex align-center gap-1">
-                  <UiStatusBadge
-                    :color="resolveOrderOutStatusVariantAndIcon(item.status).variant"
-                    :icon="resolveOrderOutStatusVariantAndIcon(item.status).icon"
-                    :label="resolveOrderOutStatusVariantAndIcon(item.status).text"
+            <td>
+              <VChip
+                size="small"
+                :color="resolveOrderOutStatusVariantAndIcon(item.status).variant"
+                variant="tonal"
+                :prepend-icon="resolveOrderOutStatusVariantAndIcon(item.status).icon"
+              >
+                {{ resolveOrderOutStatusVariantAndIcon (item.status).text }}
+              </VChip> / {{ item.completion_date ? formatTimeDeltaSeconds(parseInt(item.creation_date) * 1000, parseInt(item.completion_date) * 1000): $t('not_completed') }}
+              <VTooltip
+                v-if="!authStore.is_merchant() && item.auto_closed"
+                location="right"
+              >
+                <template #activator="{ props }">
+                  <VIcon
+                    v-bind="props"
+                    color="error"
+                    icon="tabler-robot-face"
                   />
-                  <VTooltip
-                    v-if="!authStore.is_merchant() && item.auto_closed"
-                    location="right"
-                  >
-                    <template #activator="{ props }">
-                      <VIcon
-                        v-bind="props"
-                        color="error"
-                        icon="lucide:bot"
-                        size="16"
-                      />
-                    </template>
-                    <span>{{ $t ('auto_closed') }}</span>
-                  </VTooltip>
-                </div>
-                <span class="ui-cell-meta">
-                  {{ item.completion_date ? formatTimeDeltaSeconds(parseInt(item.creation_date) * 1000, parseInt(item.completion_date) * 1000) : $t('not_completed') }}
+                </template>
+                <span>
+                  {{ $t ('auto_closed') }}
                 </span>
-              </div>
+              </VTooltip>
             </td>
             <td v-if="['New'].includes(item.status)">
-              <UiStatusBadge
+              <VChip
+                size="small"
                 :color="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).variant"
-                :icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
-                :label="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).text"
-              />
+                variant="tonal"
+                :prepend-icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
+              >
+                {{ formatDeltaTimeVariantAndIcon (parseInt (item.expires_at) * 1000 - nowTime).text }}
+              </VChip>
             </td>
             <td v-else>
-              <span class="ui-cell-meta">{{ $t ('no_data') }}</span>
+              {{ $t('no_data') }}
             </td>
-            <td class="ui-data-table__cell--num">
-              <span class="ui-cell-amount">{{ item.amount }}</span>
-              <span class="ui-cell-currency">{{ item.currency }}</span>
+            <td>
+              {{ item.currency }}&nbsp;{{ item.amount }}
             </td>
-            <td class="ui-data-table__cell--num">
-              <span class="ui-cell-amount">{{ item.usd_amount }}</span>
-              <span class="ui-cell-currency">USD</span>
+            <td>
+              USD&nbsp;{{ item.usd_amount }}
             </td>
-            <td class="ui-cell-primary">
+            <td>
               {{ item.payment_system }}
             </td>
             <td
@@ -1460,18 +1507,23 @@ const exportOrders = async () => {
               </span>
             </td>
             <td>
-              <VTooltip location="top">
+              <VTooltip
+                location="top"
+              >
                 <template #activator="{ props }">
-                  <button
-                    type="button"
-                    class="ui-copy-id"
+                  <VBtn
+                    size="small"
+                    variant="text"
+                    class="text-lowercase"
                     v-bind="props"
                     @click.stop="copyToClipboard (item.id, 'Order ID copied!', 'success')"
                   >
                     {{ formatUUID (item.id) }}
-                  </button>
+                  </VBtn>
                 </template>
-                <span>{{ item.id }}</span>
+                <span>
+                  {{ item.id }}
+                </span>
               </VTooltip>
             </td>
             <td
@@ -1514,18 +1566,23 @@ const exportOrders = async () => {
             <td
               v-if="(authStore.is_head_of_support() || authStore.is_merchant()) && !authStore.is_team_lead()"
             >
-              <VTooltip location="top">
+              <VTooltip
+                location="top"
+              >
                 <template #activator="{ props }">
-                  <button
-                    type="button"
-                    class="ui-copy-id"
+                  <VBtn
+                    size="small"
+                    variant="text"
+                    class="text-lowercase"
                     v-bind="props"
                     @click.stop="copyToClipboard (item.merchant_order_id, 'Merchant Order ID copied!', 'success')"
                   >
                     {{ item.merchant_order_id }}
-                  </button>
+                  </VBtn>
                 </template>
-                <span>{{ item.merchant_order_id }}</span>
+                <span>
+                  {{ item.merchant_order_id }}
+                </span>
               </VTooltip>
             </td>
             <!--                    <td> -->
@@ -1554,7 +1611,7 @@ const exportOrders = async () => {
             <!--                    > -->
             <!--                      {{ item.client_ip }} -->
             <!--                    </td> -->
-            <td class="ui-data-table__cell--date">
+            <td class="font-weight-bold">
               {{ (new Date (parseInt (item.creation_date) * 1000)).toUTCString () }}
               <VTooltip activator="parent">
                 <p class="mb-0">
@@ -1571,31 +1628,31 @@ const exportOrders = async () => {
           <tr>
             <td
               colspan="12"
-              class="text-center"
+              class="text-center text-body-1 justify-center align-center"
             >
-              <div class="ui-data-table-empty">
-                <span>{{ loadMessage.message }}</span>
-                <VProgressCircular
-                  v-if="loadMessage.status === 0"
-                  :width="3"
-                  size="20"
-                  color="primary"
-                  indeterminate
-                />
-                <VIcon
-                  v-else-if="loadMessage.status === 1"
-                  color="success"
-                  icon="lucide:check"
-                  size="20"
-                />
-                <VIcon
-                  v-else
-                  color="error"
-                  icon="lucide:x"
-                  size="20"
-                />
-              </div>
+              {{ loadMessage.message }}
+              <VProgressCircular
+                v-if="loadMessage.status === 0"
+                :width="3"
+                color="primary"
+                indeterminate
+              />
+              <VIcon
+                v-else-if="loadMessage.status === 1"
+                color="success"
+                icon="tabler-tick"
+              />
+              <VIcon
+                v-else
+                color="error"
+                icon="tabler-x"
+              />
             </td>
+
+            <td
+              colspan="12"
+              class="text-center text-body-1 justify-center align-center"
+            />
           </tr>
         </tfoot>
       </UiDataTable>
