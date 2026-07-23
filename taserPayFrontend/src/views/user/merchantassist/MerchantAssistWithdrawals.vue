@@ -457,16 +457,12 @@ const resetFilters = () => {
 
       <template #table>
         <UiDataTable>
-                <!-- 👉 Table head -->
                 <thead>
                   <tr>
                     <th scope="col">
-                      {{ $t('id') }}
-                    </th>
-                    <th scope="col">
                       {{ $t('status') }}
                     </th>
-                    <th scope="col">
+                    <th scope="col" class="text-end">
                       {{ $t('amount') }}
                     </th>
                     <th scope="col">
@@ -478,6 +474,9 @@ const resetFilters = () => {
                     <th scope="col">
                       {{ $t('date') }}
                     </th>
+                    <th scope="col">
+                      {{ $t('id') }}
+                    </th>
                   </tr>
                 </thead>
 
@@ -488,55 +487,27 @@ const resetFilters = () => {
                     :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
-                      <VTooltip
-                        location="end"
-                      >
-                        <template #activator="{ props }">
-                          <VBtn
-                            variant="text"
-                            v-bind="props"
-                            @click="copyToClipboard (item.id, 'Request ID copied!', 'success')"
-                          >
-                            {{ formatUUID (item.id) }}
-                          </VBtn>
-                        </template>
-                        <span>
-                          {{ item.id }}
-                        </span>
-                      </VTooltip>
+                      <UiStatusBadge
+                        :color="resolveWithdrawalStatusVariantAndIcon(item.status).variant"
+                        :icon="resolveWithdrawalStatusVariantAndIcon(item.status).icon"
+                        :label="resolveWithdrawalStatusVariantAndIcon(item.status).text"
+                      />
                     </td>
 
-                    <td>
-                      <VTooltip>
-                        <template #activator="{ props }">
-                          <VAvatar
-                            :size="30"
-                            v-bind="props"
-                            :color="resolveWithdrawalStatusVariantAndIcon(item.status).variant"
-                            variant="tonal"
-                          >
-                            <VIcon
-                              :size="20"
-                              :icon="resolveWithdrawalStatusVariantAndIcon(item.status).icon"
-                            />
-                          </VAvatar>
-                        </template>
-                        <p class="mb-0">
-                          {{ resolveWithdrawalStatusVariantAndIcon (item.status).text }}
-                        </p>
-                      </vtooltip>
+                    <td class="ui-data-table__cell--num">
+                      <span class="ui-cell-amount">{{ item.amount }}</span>
+                      <span class="ui-cell-currency">USD</span>
                     </td>
 
-                    <td>
-                      USD&nbsp;{{ item.amount }}
-                    </td>
-                    <td>
+                    <td class="ui-cell-meta">
                       {{ item.address_to }}
                     </td>
-                    <td>
-                      {{ item.comment }}
+
+                    <td class="ui-cell-meta">
+                      {{ item.comment || '—' }}
                     </td>
-                    <td>
+
+                    <td class="ui-data-table__cell--date">
                       {{ (new Date (parseInt(item.date) * 1000)).toUTCString () }}
                       <VTooltip activator="parent">
                         <p class="mb-0">
@@ -544,40 +515,54 @@ const resetFilters = () => {
                         </p>
                       </VTooltip>
                     </td>
+
+                    <td>
+                      <VTooltip location="end">
+                        <template #activator="{ props }">
+                          <button
+                            type="button"
+                            class="ui-copy-id"
+                            v-bind="props"
+                            @click="copyToClipboard (item.id, 'Request ID copied!', 'success')"
+                          >
+                            {{ formatUUID (item.id) }}
+                          </button>
+                        </template>
+                        <span>{{ item.id }}</span>
+                      </VTooltip>
+                    </td>
                   </tr>
                 </tbody>
-
-                <!-- 👉 table footer  -->
 
                 <tfoot v-show="!items || !items.length">
                   <tr>
                     <td
                       colspan="8"
-                      class="text-center text-body-1 justify-center align-center"
+                      class="text-center"
                     >
-                      {{ loadMessage.message }}
-                      <VProgressCircular
-                        v-if="loadMessage.status === 0"
-                        :width="3"
-                        color="primary"
-                        indeterminate
-                      />
-                      <VIcon
-                        v-else-if="loadMessage.status === 1"
-                        color="success"
-                        icon="lucide:check"
-                      />
-                      <VIcon
-                        v-else
-                        color="error"
-                        icon="lucide:x"
-                      />
+                      <div class="ui-data-table-empty">
+                        <span>{{ loadMessage.message }}</span>
+                        <VProgressCircular
+                          v-if="loadMessage.status === 0"
+                          :width="3"
+                          size="20"
+                          color="primary"
+                          indeterminate
+                        />
+                        <VIcon
+                          v-else-if="loadMessage.status === 1"
+                          color="success"
+                          icon="lucide:check"
+                          size="20"
+                        />
+                        <VIcon
+                          v-else
+                          color="error"
+                          icon="lucide:x"
+                          size="20"
+                        />
+                      </div>
                     </td>
-
-                    <td
-                      colspan="8"
-                      class="text-center text-body-1 justify-center align-center"
-                    />
                   </tr>
                 </tfoot>
               </UiDataTable>

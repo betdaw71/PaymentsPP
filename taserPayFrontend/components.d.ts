@@ -58,6 +58,7 @@ declare module '@vue/runtime-core' {
     UiFilterSection: typeof import('./src/components/ui/UiFilterSection.vue')['default']
     UiRefreshControl: typeof import('./src/components/ui/UiRefreshControl.vue')['default']
     UiSelect: typeof import('./src/components/ui/UiSelect.vue')['default']
+    UiStatusBadge: typeof import('./src/components/ui/UiStatusBadge.vue')['default']
     UiTextField: typeof import('./src/components/ui/UiTextField.vue')['default']
     UiWorkspace: typeof import('./src/components/ui/UiWorkspace.vue')['default']
     UserInfoEditDialog: typeof import('./src/@core/components/UserInfoEditDialog.vue')['default']
