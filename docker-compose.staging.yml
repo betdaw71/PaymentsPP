@@ -1,17 +1,14 @@
 # Staging stack — runs alongside production on the same server.
 # Traefik from docker-compose.yml routes staging subdomains; do NOT start a second Traefik.
 #
+# db/redis live on staging_internal only (avoids DNS clash with prod "db" on project_network).
+#
 # First time:
 #   cp .env.staging.example .env.staging
 #   nano .env.staging
 #   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
 #   docker compose -f docker-compose.staging.yml --env-file .env.staging exec app python manage.py migrate
 #   docker compose -f docker-compose.staging.yml --env-file .env.staging exec app python manage.py createsuperuser
-#
-# Update after git pull (branch develop):
-#   docker compose -f docker-compose.staging.yml --env-file .env.staging build app frontend
-#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d app frontend
-#   docker compose -f docker-compose.staging.yml --env-file .env.staging exec app python manage.py migrate
 
 name: paymentspp-staging
 
@@ -33,7 +30,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - project_network
+      - staging_internal
 
   redis:
     image: redis:alpine
@@ -42,7 +39,7 @@ services:
     volumes:
       - redis_data_staging:/data
     networks:
-      - project_network
+      - staging_internal
 
   app:
     build: ./titanpay
@@ -61,6 +58,7 @@ services:
       redis:
         condition: service_started
     networks:
+      - staging_internal
       - project_network
     labels:
       - "traefik.enable=true"
@@ -123,7 +121,7 @@ services:
       db:
         condition: service_healthy
     networks:
-      - project_network
+      - staging_internal
     ports:
       - "9082:8082"
 
@@ -134,6 +132,9 @@ volumes:
   media_files_staging:
 
 networks:
+  staging_internal:
+    name: staging_internal
+    driver: bridge
   project_network:
     external: true
     name: project_network
