@@ -51,6 +51,7 @@ declare module '@vue/runtime-core' {
     TheCustomizer: typeof import('./src/@core/components/TheCustomizer.vue')['default']
     ThemeSwitcher: typeof import('./src/@core/components/ThemeSwitcher.vue')['default']
     UiButton: typeof import('./src/components/ui/UiButton.vue')['default']
+    UiDataTable: typeof import('./src/components/ui/UiDataTable.vue')['default']
     UiFilterBar: typeof import('./src/components/ui/UiFilterBar.vue')['default']
     UiFilterChips: typeof import('./src/components/ui/UiFilterChips.vue')['default']
     UiFilterPanel: typeof import('./src/components/ui/UiFilterPanel.vue')['default']
