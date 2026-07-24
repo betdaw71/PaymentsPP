@@ -1367,7 +1367,7 @@ const exportOrders = async () => {
                     <!--                      v-if="authStore.is_support() || authStore.is_trader()" -->
                     <!--                      scope="col" -->
                     <!--                    > -->
-                    <!--                      {{ $t ('traffic_type').toUpperCase () }} -->
+                    <!--                      {{ $t('traffic_type') }} -->
                     <!--                    </th> -->
                     <th
                       v-if="authStore.is_support() || authStore.is_senior_trader()"
@@ -1407,14 +1407,11 @@ const exportOrders = async () => {
                     <td class="ui-data-table__cell--status">
                       <div class="ui-cell-stack">
                         <div class="d-flex align-center gap-1">
-                          <VChip
-                            size="small"
+                          <UiStatusBadge
                             :color="resolveOrderInStatusVariantAndIcon(item.status).variant"
-                            variant="tonal"
-                            :prepend-icon="resolveOrderInStatusVariantAndIcon(item.status).icon"
-                          >
-                            {{ resolveOrderInStatusVariantAndIcon (item.status).text }}
-                          </VChip>
+                            :icon="resolveOrderInStatusVariantAndIcon(item.status).icon"
+                            :label="resolveOrderInStatusVariantAndIcon(item.status).text"
+                          />
                           <VTooltip
                             v-if="!authStore.is_merchant() && item.auto_closed"
                             location="right"
@@ -1443,14 +1440,11 @@ const exportOrders = async () => {
                       </div>
                     </td>
                     <td v-if="['Money sent by user'].includes(item.status)">
-                      <VChip
-                        size="small"
+                      <UiStatusBadge
                         :color="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).variant"
-                        variant="tonal"
-                        :prepend-icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
-                      >
-                        {{ formatDeltaTimeVariantAndIcon (parseInt (item.expires_at) * 1000 - nowTime).text }}
-                      </VChip>
+                        :icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
+                        :label="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).text"
+                      />
                     </td>
                     <td v-else>
                       <span class="ui-cell-meta">{{ $t ('no_data') }}</span>
@@ -1463,7 +1457,7 @@ const exportOrders = async () => {
                       <span class="ui-cell-amount">{{ item.usd_amount }}</span>
                       <span class="ui-cell-currency">USD</span>
                     </td>
-                    <td>
+                    <td class="ui-cell-primary">
                       {{ item.payment_system }}
                     </td>
                     <td

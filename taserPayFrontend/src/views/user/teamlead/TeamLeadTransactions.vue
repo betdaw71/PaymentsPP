@@ -457,139 +457,104 @@ const resetFilters = () => {
 
       <template #table>
         <UiDataTable>
-                <!-- 👉 Table head -->
                 <thead>
                   <tr>
                     <th scope="col">
-                      {{ $t ('id').toUpperCase () }}
+                      {{ $t('type') }}
+                    </th>
+                    <th scope="col" class="text-end">
+                      {{ $t('total') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('type').toUpperCase () }}
+                      {{ $t('comment') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('total').toUpperCase () }}
+                      {{ $t('linked_out_order') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('comment').toUpperCase () }}
+                      {{ $t('linked_in_order') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('linked_out_order').toUpperCase () }}
+                      {{ $t('date') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('linked_in_order').toUpperCase () }}
-                    </th>
-                    <th scope="col">
-                      {{ $t ('date').toUpperCase () }}
+                      {{ $t('id') }}
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
                   <tr
-                    v-for="item in items"
+                    v-for="(item, index) in items"
                     :key="item.id"
+                    :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
-                      <VTooltip
-                        location="end"
-                      >
-                        <template #activator="{ props }">
-                          <VBtn
-                            variant="text"
-                            v-bind="props"
-                            @click="copyToClipboard (item.id, 'Transaction ID copied!', 'success')"
-                          >
-                            {{ formatUUID (item.id) }}
-                          </VBtn>
-                        </template>
-                        <span>
-                          {{ item.id }}
-                        </span>
-                      </VTooltip>
+                      <UiStatusBadge
+                        :color="resolveTransactionTypeVariantAndIcon(item.transaction_type).variant"
+                        :icon="resolveTransactionTypeVariantAndIcon(item.transaction_type).icon"
+                        :label="resolveTransactionTypeVariantAndIcon(item.transaction_type).text"
+                      />
                     </td>
 
-                    <td>
-                      <VTooltip>
-                        <template #activator="{ props }">
-                          <VAvatar
-                            :size="30"
-                            v-bind="props"
-                            :color="resolveTransactionTypeVariantAndIcon(item.transaction_type).variant"
-                            variant="tonal"
-                          >
-                            <VIcon
-                              :size="20"
-                              :icon="resolveTransactionTypeVariantAndIcon(item.transaction_type).icon"
-                            />
-                          </VAvatar>
-                        </template>
-                        <p class="mb-0">
-                          {{ resolveTransactionTypeVariantAndIcon (item.transaction_type).text }}
-                        </p>
-                      </vtooltip>
+                    <td class="ui-data-table__cell--num">
+                      <div class="ui-cell-stack ui-cell-stack--end">
+                        <span class="ui-cell-amount">{{ item.value }}</span>
+                        <span class="ui-cell-currency">USD · {{ item.is_incoming ? 'In' : 'Out' }}</span>
+                      </div>
                     </td>
 
-                    <td>
-                      <VTooltip>
-                        <template #activator="{ props }">
-                          <VChip
-                            v-bind="props"
-                            :color="item.is_incoming ? 'success' : 'error'"
-                            text-color="white"
-                            small
-                            class=""
-                            :prepend-icon="item.is_incoming ? 'lucide:arrow-up' : 'lucide:arrow-down'"
-                          >
-                            USD&nbsp;{{ item.value }}
-                          </VChip>
-                        </template>
-                        <p class="mb-0">
-                          {{ item.is_incoming ? 'In': 'Out' }}
-                        </p>
-                      </vtooltip>
+                    <td class="ui-cell-meta">
+                      {{ item.comment || '—' }}
                     </td>
-                    <td>
-                      {{ item.comment }}
-                    </td>
+
                     <td>
                       <VTooltip
                         v-if="item.linked_out_order"
                         location="end"
                       >
                         <template #activator="{ props }">
-                          <VBtn
-                            variant="text"
+                          <button
+                            type="button"
+                            class="ui-copy-id"
                             v-bind="props"
                             @click="copyToClipboard (item.linked_out_order, 'Transaction Linked Out Order copied!', 'success')"
                           >
                             {{ formatUUID (item.linked_out_order) }}
-                          </VBtn>
+                          </button>
                         </template>
-                        <span>
-                          {{ item.linked_out_order }}
-                        </span>
+                        <span>{{ item.linked_out_order }}</span>
                       </VTooltip>
+                      <span
+                        v-else
+                        class="ui-cell-meta"
+                      >—</span>
                     </td>
+
                     <td>
                       <VTooltip
                         v-if="item.linked_in_order"
                         location="end"
                       >
                         <template #activator="{ props }">
-                          <VBtn
-                            variant="text"
+                          <button
+                            type="button"
+                            class="ui-copy-id"
                             v-bind="props"
                             @click="copyToClipboard (item.linked_in_order, 'Transaction Linked In Order copied!', 'success')"
                           >
                             {{ formatUUID (item.linked_in_order) }}
-                          </VBtn>
+                          </button>
                         </template>
-                        <span>
-                          {{ item.linked_in_order }}
-                        </span>
+                        <span>{{ item.linked_in_order }}</span>
                       </VTooltip>
+                      <span
+                        v-else
+                        class="ui-cell-meta"
+                      >—</span>
                     </td>
-                    <td>
+
+                    <td class="ui-data-table__cell--date">
                       {{ (new Date (parseInt(item.creation_date) * 1000)).toUTCString () }}
                       <VTooltip activator="parent">
                         <p class="mb-0">
@@ -597,40 +562,54 @@ const resetFilters = () => {
                         </p>
                       </VTooltip>
                     </td>
+
+                    <td>
+                      <VTooltip location="end">
+                        <template #activator="{ props }">
+                          <button
+                            type="button"
+                            class="ui-copy-id"
+                            v-bind="props"
+                            @click="copyToClipboard (item.id, 'Transaction ID copied!', 'success')"
+                          >
+                            {{ formatUUID (item.id) }}
+                          </button>
+                        </template>
+                        <span>{{ item.id }}</span>
+                      </VTooltip>
+                    </td>
                   </tr>
                 </tbody>
-
-                <!-- 👉 table footer  -->
 
                 <tfoot v-show="!items || !items.length">
                   <tr>
                     <td
                       colspan="8"
-                      class="text-center text-body-1 justify-center align-center"
+                      class="text-center"
                     >
-                      {{ loadMessage.message }}
-                      <VProgressCircular
-                        v-if="loadMessage.status === 0"
-                        :width="3"
-                        color="primary"
-                        indeterminate
-                      />
-                      <VIcon
-                        v-else-if="loadMessage.status === 1"
-                        color="success"
-                        icon="lucide:check"
-                      />
-                      <VIcon
-                        v-else
-                        color="error"
-                        icon="lucide:x"
-                      />
+                      <div class="ui-data-table-empty">
+                        <span>{{ loadMessage.message }}</span>
+                        <VProgressCircular
+                          v-if="loadMessage.status === 0"
+                          :width="3"
+                          size="20"
+                          color="primary"
+                          indeterminate
+                        />
+                        <VIcon
+                          v-else-if="loadMessage.status === 1"
+                          color="success"
+                          icon="lucide:check"
+                          size="20"
+                        />
+                        <VIcon
+                          v-else
+                          color="error"
+                          icon="lucide:x"
+                          size="20"
+                        />
+                      </div>
                     </td>
-
-                    <td
-                      colspan="8"
-                      class="text-center text-body-1 justify-center align-center"
-                    />
                   </tr>
                 </tfoot>
               </UiDataTable>

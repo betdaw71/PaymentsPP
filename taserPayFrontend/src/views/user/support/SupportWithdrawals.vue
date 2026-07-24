@@ -471,129 +471,98 @@ const rejectWithdrawal = item => {
 
       <template #table>
         <UiDataTable>
-                <!-- 👉 Table head -->
                 <thead>
                   <tr>
                     <th scope="col">
-                      {{ $t ('withdrawals.actions').toUpperCase () }}
+                      {{ $t('withdrawals.actions') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.status').toUpperCase () }}
+                      {{ $t('withdrawals.status') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.from_user').toUpperCase () }}
+                      {{ $t('withdrawals.from_user') }}
+                    </th>
+                    <th scope="col" class="text-end">
+                      {{ $t('withdrawals.amount') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.amount').toUpperCase () }}
+                      {{ $t('withdrawals.address_to') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.address_to').toUpperCase () }}
+                      {{ $t('withdrawals.comment') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.comment').toUpperCase () }}
+                      {{ $t('withdrawals.date') }}
                     </th>
                     <th scope="col">
-                      {{ $t ('withdrawals.date').toUpperCase () }}
-                    </th>
-                    <th scope="col">
-                      {{ $t ('id').toUpperCase () }}
+                      {{ $t('id') }}
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
                   <tr
-                    v-for="item in items"
+                    v-for="(item, index) in items"
                     :key="item.id"
+                    :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
-                      <template
-                        v-if="item.status === 0"
-                      >
-                        <VTooltip
-                          location="end"
-                        >
-                          <template #activator="{ props }">
-                            <VBtn
-                              v-bind="props"
-                              size="xs"
-                              class="ms-2"
-                              color="success"
-                              icon="lucide:circle-check"
-                              @click="approveWithdrawal (item)"
-                            />
-                          </template>
-                          <span>
-                            {{ $t('approve') }}
-                          </span>
-                        </VTooltip>
-                        <VTooltip
-                          location="end"
-                        >
-                          <template #activator="{ props }">
-                            <VBtn
-                              v-bind="props"
-                              size="xs"
-                              class="ms-2"
-                              color="error"
-                              icon="lucide:circle-x"
-                              @click="rejectWithdrawal (item)"
-                            />
-                          </template>
-                          <span>
-                            {{ $t('reject') }}
-                          </span>
-                        </VTooltip>
-                      </template>
-                      <template
-                        v-else
-                      >
-                        <VChip
-                          size="small"
-                          color="secondary"
-                          class=""
-                        >
-                          {{ $t('no_actions') }}
-                        </VChip>
-                      </template>
-                    </td>
-                    <td>
-                      <VTooltip>
-                        <template #activator="{ props }">
-                          <VChip
-                            size="small"
-                            v-bind="props"
-                            :color="resolveWithdrawalStatusVariantAndIcon(item.status).variant"
-                            variant="tonal"
-                          >
-                            {{ resolveWithdrawalStatusVariantAndIcon (item.status).text }}
-                          </VChip>
+                      <div class="d-flex align-center gap-1">
+                        <template v-if="item.status === 0">
+                          <VTooltip location="end">
+                            <template #activator="{ props }">
+                              <VBtn
+                                v-bind="props"
+                                size="x-small"
+                                color="success"
+                                variant="flat"
+                                icon="lucide:circle-check"
+                                @click="approveWithdrawal (item)"
+                              />
+                            </template>
+                            <span>{{ $t('approve') }}</span>
+                          </VTooltip>
+                          <VTooltip location="end">
+                            <template #activator="{ props }">
+                              <VBtn
+                                v-bind="props"
+                                size="x-small"
+                                color="error"
+                                variant="flat"
+                                icon="lucide:circle-x"
+                                @click="rejectWithdrawal (item)"
+                              />
+                            </template>
+                            <span>{{ $t('reject') }}</span>
+                          </VTooltip>
                         </template>
-                        <p class="mb-0">
-                          {{ resolveWithdrawalStatusVariantAndIcon (item.status).text }}
-                        </p>
-                      </vtooltip>
+                        <span
+                          v-else
+                          class="ui-cell-meta"
+                        >{{ $t('no_actions') }}</span>
+                      </div>
                     </td>
                     <td>
-                      <VChip
-                        color="alternative"
-                        text-color="white"
-                        small
-                        class=""
-                      >
-                        @{{ item.from_user }}
-                      </VChip>
+                      <UiStatusBadge
+                        :color="resolveWithdrawalStatusVariantAndIcon(item.status).variant"
+                        :icon="resolveWithdrawalStatusVariantAndIcon(item.status).icon"
+                        :label="resolveWithdrawalStatusVariantAndIcon(item.status).text"
+                      />
                     </td>
-                    <td>
-                      USD&nbsp;{{ item.amount }}
+                    <td class="ui-cell-meta">
+                      @{{ item.from_user }}
                     </td>
-                    <td>
+                    <td class="ui-data-table__cell--num">
+                      <span class="ui-cell-amount">{{ item.amount }}</span>
+                      <span class="ui-cell-currency">USD</span>
+                    </td>
+                    <td class="ui-cell-meta">
                       {{ item.address_to }}
                     </td>
-                    <td>
-                      {{ item.comment }}
+                    <td class="ui-cell-meta">
+                      {{ item.comment || '—' }}
                     </td>
-                    <td>
+                    <td class="ui-data-table__cell--date">
                       {{ (new Date (parseInt (item.date) * 1000)).toUTCString () }}
                       <VTooltip activator="parent">
                         <p class="mb-0">
@@ -601,59 +570,53 @@ const rejectWithdrawal = item => {
                         </p>
                       </VTooltip>
                     </td>
-
                     <td>
-                      <VTooltip
-                        location="end"
-                      >
+                      <VTooltip location="end">
                         <template #activator="{ props }">
-                          <VBtn
-                            variant="text"
+                          <button
+                            type="button"
+                            class="ui-copy-id"
                             v-bind="props"
                             @click="copyToClipboard (item.id, 'Request ID copied!', 'success')"
                           >
                             {{ formatUUID (item.id) }}
-                          </VBtn>
+                          </button>
                         </template>
-                        <span>
-                          {{ item.id }}
-                        </span>
+                        <span>{{ item.id }}</span>
                       </VTooltip>
                     </td>
                   </tr>
                 </tbody>
 
-                <!-- 👉 table footer  -->
-
                 <tfoot v-show="!items || !items.length">
                   <tr>
                     <td
                       colspan="8"
-                      class="text-center text-body-1 justify-center align-center"
+                      class="text-center"
                     >
-                      {{ loadMessage.message }}
-                      <VProgressCircular
-                        v-if="loadMessage.status === 0"
-                        :width="3"
-                        color="primary"
-                        indeterminate
-                      />
-                      <VIcon
-                        v-else-if="loadMessage.status === 1"
-                        color="success"
-                        icon="lucide:check"
-                      />
-                      <VIcon
-                        v-else
-                        color="error"
-                        icon="lucide:x"
-                      />
+                      <div class="ui-data-table-empty">
+                        <span>{{ loadMessage.message }}</span>
+                        <VProgressCircular
+                          v-if="loadMessage.status === 0"
+                          :width="3"
+                          size="20"
+                          color="primary"
+                          indeterminate
+                        />
+                        <VIcon
+                          v-else-if="loadMessage.status === 1"
+                          color="success"
+                          icon="lucide:check"
+                          size="20"
+                        />
+                        <VIcon
+                          v-else
+                          color="error"
+                          icon="lucide:x"
+                          size="20"
+                        />
+                      </div>
                     </td>
-
-                    <td
-                      colspan="8"
-                      class="text-center text-body-1 justify-center align-center"
-                    />
                   </tr>
                 </tfoot>
               </UiDataTable>
