@@ -1456,7 +1456,7 @@ const exportOrders = async () => {
                             variant="tonal"
                             :prepend-icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
                           >
-                            { formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).text }
+                            {{ formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).text }}
                           </VChip>
                     </td>
                     <td v-else>
