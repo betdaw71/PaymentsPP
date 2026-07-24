@@ -44,10 +44,54 @@ def is_psp_trader(trader) -> bool:
     )
 
 
+def _psp_freeze_tx_active(order) -> bool:
+    """Есть ли неразмороженная Freeze-транзакция по InOrder."""
+    from trade.models import Transaction
+
+    freeze_tx = (
+        Transaction.objects.filter(
+            linked_in_order=order,
+            transaction_type__name="Freeze",
+        )
+        .order_by("-creation_date")
+        .first()
+    )
+    if freeze_tx is None:
+        return False
+    return not Transaction.objects.filter(
+        linked_in_order=order,
+        transaction_type__name="Deposit",
+        from_balance=freeze_tx.to_balance,
+        to_balance=freeze_tx.from_balance,
+        creation_date__gte=freeze_tx.creation_date,
+    ).exists()
+
+
+def _relocate_psp_freeze_to_routed_trader(order, trader, need: Decimal) -> None:
+    """
+    После PSP fallback freeze может остаться на первом трейдере роутинга.
+    Размораживаем у старого и замораживаем у текущего payment_details.trader.
+    """
+    from basics.models import Balance
+
+    if _psp_freeze_tx_active(order):
+        order.unfreeze("PSP complete — relocate freeze to routed trader")
+
+    frozen_bal = Balance.objects.select_for_update().get(pk=trader.frozen_balance_usdt_id)
+    if frozen_bal.amount >= need:
+        return
+
+    available_bal = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
+    if available_bal.amount < need:
+        return
+
+    order.freeze("PSP complete — ensure frozen for routed trader")
+
+
 def ensure_psp_frozen_for_complete(order) -> None:
     """
     PSP pay-in: сумма должна быть заморожена при InOrder.create.
-    Перед complete только проверяем frozen_balance_usdt (без автодолива).
+    Перед complete проверяем frozen_balance_usdt; при fallback swap чиним перенос freeze.
     """
     if not getattr(order, "payment_details_id", None):
         return
@@ -57,8 +101,12 @@ def ensure_psp_frozen_for_complete(order) -> None:
 
     from basics.models import Balance
 
-    frozen_bal = Balance.objects.select_for_update().get(pk=trader.frozen_balance_usdt_id)
     need = Decimal(str(order.usd_amount))
+    frozen_bal = Balance.objects.select_for_update().get(pk=trader.frozen_balance_usdt_id)
+    if frozen_bal.amount < need:
+        _relocate_psp_freeze_to_routed_trader(order, trader, need)
+        frozen_bal = Balance.objects.select_for_update().get(pk=trader.frozen_balance_usdt_id)
+
     if frozen_bal.amount < need:
         available_bal = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
         raise ValidationError(
@@ -206,11 +254,21 @@ def _swap_inorder_payment_details(pay_in: Any, new_detail, amount: Decimal) -> N
     order = pay_in.order
     if order is None or new_detail is None:
         return
-    old_detail = order.payment_details
     with transaction.atomic():
         od = InOrder.objects.select_for_update().get(pk=order.pk)
+        old_detail = od.payment_details
+        if (
+            old_detail
+            and old_detail.group.trader_id != new_detail.group.trader_id
+        ):
+            od.unfreeze("PSP fallback swap")
         od.payment_details = new_detail
         od.save(update_fields=["payment_details"])
+        if (
+            old_detail
+            and old_detail.group.trader_id != new_detail.group.trader_id
+        ):
+            od.freeze("PSP fallback swap")
         if old_detail and old_detail.group_id != new_detail.group_id:
             PaymentDetailsGroup.objects.filter(pk=old_detail.group_id).update(
                 current_volume=F("current_volume") - amount,
@@ -372,16 +430,37 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
 
 
 def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
-    """Фактически оплаченная сумма из callback PSP (Protocol: amount / result.amount)."""
+    """Фактически оплаченная сумма из callback PSP."""
     if not isinstance(body, dict):
         return None
+    if body.get("orderId") is not None and body.get("state") is not None:
+        from payments.protocol_client import parse_protocol_webhook_paid_amount
+
+        protocol_paid = parse_protocol_webhook_paid_amount(body)
+        if protocol_paid is not None:
+            return protocol_paid
+
     candidates: list[Any] = []
-    for key in ("amount", "paidAmount", "paid_amount", "transferredAmount", "requestedAmount"):
+    for key in (
+        "paidAmount",
+        "paid_amount",
+        "transferredAmount",
+        "amount",
+        "requestedAmount",
+        "init_amount",
+    ):
         if body.get(key) is not None:
             candidates.append(body.get(key))
     result = body.get("result")
     if isinstance(result, dict):
-        for key in ("amount", "paidAmount", "paid_amount", "transferredAmount", "requestedAmount"):
+        for key in (
+            "paidAmount",
+            "paid_amount",
+            "transferredAmount",
+            "amount",
+            "requestedAmount",
+            "init_amount",
+        ):
             if result.get(key) is not None:
                 candidates.append(result.get(key))
     for raw in candidates:
@@ -394,12 +473,42 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
     return None
 
 
-def complete_inorder_from_psp_webhook(order, webhook_body: dict | None) -> None:
+def apply_psp_amount_update_from_webhook(order, webhook_body: dict | None) -> bool:
+    """Применить перерасчёт суммы из PSP webhook без завершения заявки."""
+    from trade.models import InOrder
+
+    if not isinstance(order, InOrder):
+        return False
+    paid_amount = parse_psp_webhook_paid_amount(webhook_body)
+    if paid_amount is None:
+        return False
+    return order.sync_psp_paid_amount_update(paid_amount)
+
+
+def apply_psp_completed_amount_recalc_from_webhook(order, webhook_body: dict | None) -> bool:
+    """Перерасчёт после Completed (повторный finished от Protocol)."""
+    from trade.models import InOrder
+
+    if not isinstance(order, InOrder):
+        return False
+    paid_amount = parse_psp_webhook_paid_amount(webhook_body)
+    if paid_amount is None:
+        return False
+    return order.sync_psp_paid_amount_after_complete(paid_amount)
+
+
+def complete_inorder_from_psp_webhook(
+    order,
+    webhook_body: dict | None,
+    *,
+    paid_amount: Decimal | None = None,
+) -> None:
     from trade.models import InOrder
 
     if not isinstance(order, InOrder):
         raise ValidationError({"error": "no_inorder"})
-    paid_amount = parse_psp_webhook_paid_amount(webhook_body)
+    if paid_amount is None:
+        paid_amount = parse_psp_webhook_paid_amount(webhook_body)
     order.complete_from_psp_success(paid_amount)
 
 

@@ -284,6 +284,60 @@ class InOrder(models.Model):
         pay_in.save(update_fields=["amount", "recalculated", "updated_at"])
         return True
 
+    def sync_psp_paid_amount_update(self, paid_amount: Decimal) -> bool:
+        """Перерасчёт суммы по PSP webhook без завершения заявки (колбек мерчанту)."""
+        paid_amount = Decimal(str(paid_amount)).quantize(Decimal("0.01"))
+        if paid_amount <= 0 or paid_amount == self.amount:
+            return False
+        if self.status.name not in ("New", "Money sent by user", "Arbitrage"):
+            return False
+
+        new_usd = paid_amount / self.solution.payment_system.get_rate()
+        team_rate = TraderTeamRates.objects.get(
+            team=self.payment_details.group.trader.team,
+            payment_system=self.solution.payment_system,
+        )
+
+        if self.creation_date.timestamp() // SYSTEM_INTERVAL_VALUE == int(
+            timezone.now().timestamp()
+        ) // SYSTEM_INTERVAL_VALUE:
+            group = self.payment_details.group
+            group.current_volume += paid_amount - self.amount
+            group.updated_at = timezone.now()
+            group.save()
+
+        self.unfreeze("PSP amount recalculation")
+
+        self.amount = paid_amount
+        self.usd_amount = new_usd
+        self.merchant_fee = self.solution.mdr_in * new_usd / Decimal(100)
+        self.trader_fee = team_rate.mdr_in * new_usd / Decimal(100)
+        self.recalculated = True
+        self.recalculated_amount = paid_amount
+        self.save()
+
+        self.freeze("PSP amount recalculation")
+
+        pay_in = self.pay_in.get()
+        pay_in.amount = paid_amount
+        pay_in.recalculated = True
+        pay_in.save(update_fields=["amount", "recalculated", "updated_at"])
+        pay_in.recalculate(paid_amount)
+        return True
+
+    def sync_psp_paid_amount_after_complete(self, paid_amount: Decimal) -> bool:
+        """Поздний перерасчёт Protocol после Completed — суммы + callback мерчанту."""
+        if self.status.name != "Completed":
+            return False
+        if not self.apply_psp_paid_amount_recalc(paid_amount):
+            return False
+        pay_in = self.pay_in.get()
+        if pay_in.status and pay_in.status.name == "Success":
+            pay_in.send_callback({"status": "Success"})
+        else:
+            pay_in.recalculate(paid_amount)
+        return True
+
     def complete_from_psp_success(self, paid_amount: Decimal | None = None) -> None:
         """Завершение pay-in по success webhook PSP (в т.ч. Expired + перерасчёт)."""
         state = self.status.name if self.status else None
@@ -310,6 +364,10 @@ class InOrder(models.Model):
                 self.recalculate(paid_amount)
             else:
                 self.complete_after_arbitrage()
+        elif state == "Recalculation":
+            if needs_recalc:
+                self.apply_psp_paid_amount_recalc(paid_amount)
+            self.complete_after_recalc()
         else:
             raise ValidationError({"error": f"Cannot complete from PSP in state {state}"})
 
@@ -477,11 +535,15 @@ class InOrder(models.Model):
 
     def recalculate(self, new_amount: Decimal):
         new_usd_amount = new_amount / self.solution.payment_system.get_rate()
+        team_rate = TraderTeamRates.objects.get(
+            team=self.payment_details.group.trader.team,
+            payment_system=self.solution.payment_system,
+        )
         new_merchant_fee = self.solution.mdr_in * new_usd_amount / Decimal(100)
-        new_trader_fee = self.payment_details.group.trader.team.rate_in * new_usd_amount / Decimal(100)
+        new_trader_fee = team_rate.mdr_in * new_usd_amount / Decimal(100)
 
         if self.creation_date.timestamp() // SYSTEM_INTERVAL_VALUE == int(timezone.now().timestamp()) // SYSTEM_INTERVAL_VALUE:
-            self.payment_details.group.current_volume -= self.amount + new_amount
+            self.payment_details.group.current_volume += new_amount - self.amount
             self.payment_details.group.updated_at = timezone.now()
             self.payment_details.group.save()
 

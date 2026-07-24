@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import requests
@@ -175,8 +175,46 @@ def _norm_state(raw: str | None) -> str:
     return (raw or "").strip().lower()
 
 
+def _parse_amount_field(raw: Any) -> Decimal | None:
+    if raw is None:
+        return None
+    try:
+        val = Decimal(str(raw).strip())
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if val > 0:
+        return val
+    return None
+
+
+def parse_protocol_webhook_paid_amount(body: dict | None) -> Decimal | None:
+    """
+    Фактически оплаченная сумма из Protocol webhook.
+    При перерасчёте amount — итог, init_amount — сумма при создании.
+    """
+    if not isinstance(body, dict):
+        return None
+
+    init_amount = _parse_amount_field(body.get("init_amount"))
+    amount = _parse_amount_field(body.get("amount"))
+    if amount is not None and init_amount is not None and amount != init_amount:
+        return amount
+    if amount is not None:
+        return amount
+    if init_amount is not None:
+        return init_amount
+
+    result = body.get("result")
+    if isinstance(result, dict):
+        for key in ("paidAmount", "paid_amount", "transferredAmount", "amount"):
+            parsed = _parse_amount_field(result.get(key))
+            if parsed is not None:
+                return parsed
+    return None
+
+
 def protocol_webhook_outcome(body: dict) -> str | None:
-    """success | fail | None (ignore intermediate)."""
+    """success | fail | None (ignore intermediate / amount-only updates)."""
     state = _norm_state(body.get("state"))
     if state == "finished":
         return "success"

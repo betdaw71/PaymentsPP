@@ -13,8 +13,16 @@ from rest_framework.views import APIView
 
 from payments.models import PayIn, ProtocolPayInSession
 from payments.payin_trace import Direction, trace_log
-from payments.protocol_client import protocol_webhook_outcome, verify_webhook_signature
-from payments.psp_payin import complete_inorder_from_psp_webhook
+from payments.protocol_client import (
+    parse_protocol_webhook_paid_amount,
+    protocol_webhook_outcome,
+    verify_webhook_signature,
+)
+from payments.psp_payin import (
+    apply_psp_amount_update_from_webhook,
+    apply_psp_completed_amount_recalc_from_webhook,
+    complete_inorder_from_psp_webhook,
+)
 from trade.models import InOrder
 
 logger = logging.getLogger(__name__)
@@ -77,6 +85,18 @@ class ProtocolWebhookView(APIView):
         session.last_notified_state = _norm_status(body.get("state")) or session.last_notified_state
         session.save()
 
+        pay_in = session.pay_in
+
+        if outcome is None and pay_in and pay_in.order_id:
+            try:
+                with transaction.atomic():
+                    locked = InOrder.objects.select_for_update().get(pk=pay_in.order_id)
+                    if locked.status and locked.status.name != "Completed":
+                        if apply_psp_amount_update_from_webhook(locked, body):
+                            return Response({"ok": True, "amount_updated": True})
+            except InOrder.DoesNotExist:
+                pass
+
         if outcome == "success":
             return self._handle_success(session, body)
         if outcome == "fail":
@@ -97,8 +117,12 @@ class ProtocolWebhookView(APIView):
             with transaction.atomic():
                 locked = InOrder.objects.select_for_update().get(pk=pay_in.order_id)
                 if locked.status and locked.status.name == "Completed":
+                    paid_amount = parse_protocol_webhook_paid_amount(body)
+                    if paid_amount and apply_psp_completed_amount_recalc_from_webhook(locked, body):
+                        return Response({"ok": True, "amount_updated_after_complete": True})
                     return Response({"ok": True, "idempotent": True})
-                complete_inorder_from_psp_webhook(locked, body)
+                paid_amount = parse_protocol_webhook_paid_amount(body)
+                complete_inorder_from_psp_webhook(locked, body, paid_amount=paid_amount)
         except ValidationError as exc:
             state = pay_in.order.status.name if pay_in.order and pay_in.order.status else None
             logger.warning(

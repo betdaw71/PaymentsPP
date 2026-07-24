@@ -519,8 +519,34 @@ class TestHeadSupOrders(TestCase):
         print(tr.balance_usdt.amount)
 
 
+class TestProtocolWebhookPaidAmount(TestCase):
+    def test_recalc_uses_amount_over_init(self):
+        from payments.protocol_client import parse_protocol_webhook_paid_amount
 
+        body = {
+            "state": "pending",
+            "amount": "3050.00",
+            "init_amount": "3000.00",
+            "orderId": "uuid",
+        }
+        self.assertEqual(parse_protocol_webhook_paid_amount(body), Decimal("3050.00"))
 
+    def test_same_amounts(self):
+        from payments.protocol_client import parse_protocol_webhook_paid_amount
+
+        body = {"amount": "3000.00", "init_amount": "3000.00"}
+        self.assertEqual(parse_protocol_webhook_paid_amount(body), Decimal("3000.00"))
+
+    def test_psp_parser_detects_protocol_body(self):
+        from payments.psp_payin import parse_psp_webhook_paid_amount
+
+        body = {
+            "state": "finished",
+            "amount": "3100",
+            "init_amount": "3000",
+            "orderId": "pay-in-id",
+        }
+        self.assertEqual(parse_psp_webhook_paid_amount(body), Decimal("3100"))
 
 
 
