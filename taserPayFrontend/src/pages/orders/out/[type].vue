@@ -1315,20 +1315,49 @@ const exportOrders = async () => {
 
       <!-- Summary for current result set (above table) -->
       <div class="ui-orders-metrics ui-orders-metrics--above-table">
-        <div class="ui-metric-inline">
-          <div class="ui-metric-inline__item ui-metric-inline__item--accent">
-            <span class="ui-metric-inline__label">{{ $t('total_usd_amount') }}</span>
-            <span class="ui-metric-inline__value">${{ totalUSDAmount }}</span>
-          </div>
-          <div class="ui-metric-inline__item ui-metric-inline__item--accent">
-            <span class="ui-metric-inline__label">{{ $t('total_commission') }}</span>
-            <span class="ui-metric-inline__value">${{ totalComission }}</span>
-          </div>
-          <div class="ui-metric-inline__item ui-metric-inline__item--info">
-            <span class="ui-metric-inline__label">{{ $t('hold') }}</span>
-            <span class="ui-metric-inline__value">{{ holdAmount }}</span>
-          </div>
-        </div>
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="primary"
+              text-color="white"
+              size="default"
+            >
+              $ {{ totalUSDAmount }}
+            </VChip>
+          </template>
+          <span>{{ $t('total_usd_amount') }}</span>
+        </VTooltip>
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="primary"
+              text-color="white"
+              size="default"
+            >
+              $ {{ totalComission }}
+            </VChip>
+          </template>
+          <span>{{ $t('total_commission') }}</span>
+        </VTooltip>
+        <VTooltip location="right">
+          <template #activator="{ props }">
+            <VChip
+              v-bind="props"
+              class="px-3 font-weight-bold"
+              color="info"
+              text-color="white"
+              size="default"
+              prepend-icon="lucide:snowflake"
+            >
+              {{ holdAmount }}
+            </VChip>
+          </template>
+          <span>{{ $t('hold') }}</span>
+        </VTooltip>
       </div>
 
       <UiDataTable :loading="loadMessage.status === 0">
@@ -1403,11 +1432,14 @@ const exportOrders = async () => {
             <td class="ui-data-table__cell--status">
               <div class="ui-cell-stack">
                 <div class="d-flex align-center gap-1">
-                  <UiStatusBadge
-                    :color="resolveOrderOutStatusVariantAndIcon(item.status).variant"
-                    :icon="resolveOrderOutStatusVariantAndIcon(item.status).icon"
-                    :label="resolveOrderOutStatusVariantAndIcon(item.status).text"
-                  />
+                  <VChip
+                            size="small"
+                            :color="resolveOrderOutStatusVariantAndIcon(item.status).variant"
+                            variant="tonal"
+                            :prepend-icon="resolveOrderOutStatusVariantAndIcon(item.status).icon"
+                          >
+                            {{ resolveOrderOutStatusVariantAndIcon(item.status).text }}
+                          </VChip>
                   <VTooltip
                     v-if="!authStore.is_merchant() && item.auto_closed"
                     location="right"
@@ -1429,11 +1461,14 @@ const exportOrders = async () => {
               </div>
             </td>
             <td v-if="['New'].includes(item.status)">
-              <UiStatusBadge
-                :color="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).variant"
-                :icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
-                :label="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).text"
-              />
+              <VChip
+                            size="small"
+                            :color="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).variant"
+                            variant="tonal"
+                            :prepend-icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
+                          >
+                            { formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).text }
+                          </VChip>
             </td>
             <td v-else>
               <span class="ui-cell-meta">{{ $t ('no_data') }}</span>

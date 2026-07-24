@@ -729,11 +729,14 @@ const resetFilters = () => {
                     :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
-                      <UiStatusBadge
-                        :color="resolveSmsStatusVariantAndIcon(item.status).variant"
-                        :icon="resolveSmsStatusVariantAndIcon(item.status).icon"
-                        :label="resolveSmsStatusVariantAndIcon(item.status).text"
-                      />
+                      <VChip
+                            size="small"
+                            :color="resolveSmsStatusVariantAndIcon(item.status).variant"
+                            variant="tonal"
+                            :prepend-icon="resolveSmsStatusVariantAndIcon(item.status).icon"
+                          >
+                            {{ resolveSmsStatusVariantAndIcon(item.status).text }}
+                          </VChip>
                     </td>
                     <td class="ui-cell-primary">
                       {{ item.device }}

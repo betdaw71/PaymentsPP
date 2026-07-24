@@ -487,11 +487,14 @@ const resetFilters = () => {
                     :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
-                      <UiStatusBadge
-                        :color="resolveWithdrawalStatusVariantAndIcon(item.status).variant"
-                        :icon="resolveWithdrawalStatusVariantAndIcon(item.status).icon"
-                        :label="resolveWithdrawalStatusVariantAndIcon(item.status).text"
-                      />
+                      <VChip
+                            size="small"
+                            :color="resolveWithdrawalStatusVariantAndIcon(item.status).variant"
+                            variant="tonal"
+                            :prepend-icon="resolveWithdrawalStatusVariantAndIcon(item.status).icon"
+                          >
+                            {{ resolveWithdrawalStatusVariantAndIcon(item.status).text }}
+                          </VChip>
                     </td>
 
                     <td class="ui-data-table__cell--num">

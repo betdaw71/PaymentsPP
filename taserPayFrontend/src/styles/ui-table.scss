@@ -101,6 +101,10 @@
   min-width: 0;
 }
 
+.ui-cell-stack--end {
+  align-items: flex-end;
+}
+
 .ui-cell-meta {
   font-size: 0.75rem;
   color: var(--ui-text-muted);
@@ -192,6 +196,12 @@
 
   &__item--info .ui-metric-inline__value {
     color: rgb(var(--v-theme-info));
+  }
+
+  &__value--with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
   }
 }
 

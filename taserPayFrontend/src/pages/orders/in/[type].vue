@@ -1330,7 +1330,14 @@ const exportOrders = async () => {
                   </div>
                   <div class="ui-metric-inline__item ui-metric-inline__item--info">
                     <span class="ui-metric-inline__label">{{ $t('hold') }}</span>
-                    <span class="ui-metric-inline__value">{{ holdAmount }}</span>
+                    <span class="ui-metric-inline__value ui-metric-inline__value--with-icon">
+                      <VIcon
+                        icon="lucide:snowflake"
+                        size="16"
+                        color="info"
+                      />
+                      {{ holdAmount }}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1407,11 +1414,14 @@ const exportOrders = async () => {
                     <td class="ui-data-table__cell--status">
                       <div class="ui-cell-stack">
                         <div class="d-flex align-center gap-1">
-                          <UiStatusBadge
+                          <VChip
+                            size="small"
                             :color="resolveOrderInStatusVariantAndIcon(item.status).variant"
-                            :icon="resolveOrderInStatusVariantAndIcon(item.status).icon"
-                            :label="resolveOrderInStatusVariantAndIcon(item.status).text"
-                          />
+                            variant="tonal"
+                            :prepend-icon="resolveOrderInStatusVariantAndIcon(item.status).icon"
+                          >
+                            {{ resolveOrderInStatusVariantAndIcon(item.status).text }}
+                          </VChip>
                           <VTooltip
                             v-if="!authStore.is_merchant() && item.auto_closed"
                             location="right"
@@ -1440,11 +1450,14 @@ const exportOrders = async () => {
                       </div>
                     </td>
                     <td v-if="['Money sent by user'].includes(item.status)">
-                      <UiStatusBadge
-                        :color="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).variant"
-                        :icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
-                        :label="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).text"
-                      />
+                      <VChip
+                            size="small"
+                            :color="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).variant"
+                            variant="tonal"
+                            :prepend-icon="formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).icon"
+                          >
+                            { formatDeltaTimeVariantAndIcon(parseInt(item.expires_at) * 1000 - nowTime).text }
+                          </VChip>
                     </td>
                     <td v-else>
                       <span class="ui-cell-meta">{{ $t ('no_data') }}</span>

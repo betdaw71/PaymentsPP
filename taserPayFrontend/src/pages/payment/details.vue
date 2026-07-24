@@ -732,11 +732,14 @@ const resetFilters = () => {
                     @click="openItemDetails (item)"
                   >
                     <td class="ui-data-table__cell--status">
-                      <UiStatusBadge
-                        :color="resolvePaymentDetailsStatusVariantAndIcon(item.status).variant"
-                        :icon="resolvePaymentDetailsStatusVariantAndIcon(item.status).icon"
-                        :label="resolvePaymentDetailsStatusVariantAndIcon(item.status).text"
-                      />
+                      <VChip
+                            size="small"
+                            :color="resolvePaymentDetailsStatusVariantAndIcon(item.status).variant"
+                            variant="tonal"
+                            :prepend-icon="resolvePaymentDetailsStatusVariantAndIcon(item.status).icon"
+                          >
+                            {{ resolvePaymentDetailsStatusVariantAndIcon(item.status).text }}
+                          </VChip>
                     </td>
                     <td>
                       <div class="d-flex align-center gap-1">

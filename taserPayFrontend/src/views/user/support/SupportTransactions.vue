@@ -515,11 +515,14 @@ const resetFilters = () => {
                     :class="{ 'ui-table-row--alt': index % 2 === 0 }"
                   >
                     <td>
-                      <UiStatusBadge
-                        :color="resolveTransactionTypeVariantAndIcon(item.transaction_type).variant"
-                        :icon="resolveTransactionTypeVariantAndIcon(item.transaction_type).icon"
-                        :label="resolveTransactionTypeVariantAndIcon(item.transaction_type).text"
-                      />
+                      <VChip
+                            size="small"
+                            :color="resolveTransactionTypeVariantAndIcon(item.transaction_type).variant"
+                            variant="tonal"
+                            :prepend-icon="resolveTransactionTypeVariantAndIcon(item.transaction_type).icon"
+                          >
+                            {{ resolveTransactionTypeVariantAndIcon(item.transaction_type).text }}
+                          </VChip>
                     </td>
 
                     <td class="ui-data-table__cell--num">
