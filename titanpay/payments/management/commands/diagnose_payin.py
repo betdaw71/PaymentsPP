@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 
-from payments.models import ExpayonePayInSession, FairpayPayInSession, PayIn, ProtocolPayInSession
+from payments.models import ConcoredPayInSession, ExpayonePayInSession, FairpayPayInSession, PayIn, ProtocolPayInSession
 from payments.psp_payin import psp_create_failure_reason_internal
 from trade.models import InOrder
 from trade.routing.base import route
@@ -80,6 +80,7 @@ class Command(BaseCommand):
             ("ExpayOne", ExpayonePayInSession),
             ("FairPay", FairpayPayInSession),
             ("Protocol", ProtocolPayInSession),
+            ("Concored", ConcoredPayInSession),
         ):
             try:
                 s = model.objects.get(pay_in=pay_in)
@@ -120,7 +121,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Полный HTTP trace: python manage.py payin_trace {pay_in.id}")
 
     def _has_psp_api_attempt(self, pay_in) -> bool:
-        for model in (ExpayonePayInSession, FairpayPayInSession, ProtocolPayInSession):
+        for model in (ExpayonePayInSession, FairpayPayInSession, ProtocolPayInSession, ConcoredPayInSession):
             if model.objects.filter(pay_in=pay_in).exists():
                 return True
         return False

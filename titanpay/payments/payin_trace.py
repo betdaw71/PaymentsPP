@@ -20,6 +20,9 @@ class Direction:
     PLAYMENTS_OUT_REQUEST = "playments_out_request"
     PLAYMENTS_OUT_RESPONSE = "playments_out_response"
     PLAYMENTS_WEBHOOK = "playments_webhook"
+    CONCORDED_OUT_REQUEST = "concored_out_request"
+    CONCORDED_OUT_RESPONSE = "concored_out_response"
+    CONCORDED_WEBHOOK = "concored_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 
