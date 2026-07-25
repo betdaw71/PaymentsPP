@@ -13,6 +13,8 @@ from titanpay.settings import (
     C2C_NAME,
     PROTOCOL_C2C_NAME,
     C2CTRY_NAME,
+    RTGS_NAME,
+    IMPS_NAME,
 )
 from trade.models import TransactionType, OutOrderStatus, InOrderStatus, InOrder, Transaction, WithdrawalRequest, \
     OutOrder, InOrderStatusChange
@@ -25,7 +27,7 @@ def payment_details_payload_for_order(payment_details, payment_system_name: str)
         return {}
     if payment_system_name in (SBER_NAME, UPI_INTENT_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
         return PaymentDetailsSberOrderSerializer(payment_details).data
-    if payment_system_name in (SBERDEP_NAME, C2CTRY_NAME):
+    if payment_system_name in (SBERDEP_NAME, C2CTRY_NAME, RTGS_NAME, IMPS_NAME):
         return PaymentDetailsSberDepOrderSerializer(payment_details).data
     if payment_system_name == SBERPAY_NAME:
         return PaymentDetailsSberPayOrderSerializer(payment_details).data

@@ -17,13 +17,23 @@ from payments.utils2 import (
 )
 from payments.utils import generate_link, translate_bank
 from trade.serializers import PaymentDetailsSberActionSerializer
-from titanpay.settings import SBER_NAME, SBERPAY_NAME, SBP_NAME, SBERDEP_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME
+from titanpay.settings import (
+    SBER_NAME,
+    SBERPAY_NAME,
+    SBP_NAME,
+    SBERDEP_NAME,
+    C2C_NAME,
+    PROTOCOL_C2C_NAME,
+    C2CTRY_NAME,
+    RTGS_NAME,
+    IMPS_NAME,
+)
 
 
 def get_in_ps_serializer(payment_system_name):
     if payment_system_name in (SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
         return PaymentDetailsCardSerializer
-    elif payment_system_name in (SBERDEP_NAME, C2CTRY_NAME):
+    elif payment_system_name in (SBERDEP_NAME, C2CTRY_NAME, RTGS_NAME, IMPS_NAME):
         return PaymentDetailsSberDepSerializer
     elif payment_system_name == SBERPAY_NAME:
         return PaymentDetailsSberPaySerializer
@@ -218,6 +228,11 @@ class PaymentDetailsSberDepSerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         representation['bic'] = instance.group.bic
         representation['owner'] = instance.group.owner
+        ps_name = instance.group.payment_system.name if instance.group.payment_system else ""
+        if ps_name in (RTGS_NAME, IMPS_NAME):
+            representation['account_number'] = representation.get('deposit_number')
+            representation['account_name'] = representation.get('owner')
+            representation['ifsc'] = representation.get('bic')
         return representation
 
 
