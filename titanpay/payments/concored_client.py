@@ -76,6 +76,19 @@ def payment_method_for_payment_system(ps_name: str) -> str | None:
     return code or None
 
 
+def _looks_like_jwt(value: str) -> bool:
+    v = (value or "").strip()
+    return v.count(".") == 2 and v.startswith("eyJ")
+
+
+def _response_is_html(payload: dict[str, Any]) -> bool:
+    raw = payload.get("raw")
+    if not isinstance(raw, str):
+        return False
+    head = raw.lstrip()[:64].lower()
+    return head.startswith("<!doctype") or head.startswith("<html")
+
+
 def _amount_minor(amount: Decimal) -> int:
     factor = getattr(settings, "CONCORDED_AMOUNT_MINOR_FACTOR", 1)
     try:
@@ -152,6 +165,21 @@ def _request(
         return False, {"error": str(resp_body)}
     if not r.ok:
         return False, resp_body
+    if _response_is_html(resp_body):
+        return False, {
+            "error": "non_json_response",
+            "message": (
+                "Concored returned HTML instead of JSON — check CONCORDED_API_BASE "
+                "(do not use the marketing site URL, e.g. https://concored.com)"
+            ),
+            "upstream": resp_body,
+        }
+    if path.rstrip("/").endswith("/payments") and r.ok and "paymentIntentId" not in resp_body:
+        return False, {
+            "error": "invalid_create_response",
+            "message": "Expected paymentIntentId in JSON body",
+            "upstream": resp_body,
+        }
     return True, resp_body
 
 
@@ -286,6 +314,14 @@ def try_attach_concored_session(pay_in: Any) -> bool | None:
         return False
     if not payment_method:
         logger.error("Concored: no paymentMethod mapping for payment_system=%s", ps_name)
+        return False
+    if _looks_like_jwt(payment_method):
+        logger.error(
+            "Concored: CONCORDED_PAYMENT_METHOD_MAP[%s] looks like a JWT; "
+            "put the merchant token in CONCORDED_KBZPAY_TOKEN / CONCORDED_WAVEPAY_TOKEN "
+            "and the payment method code from Concored in CONCORDED_PAYMENT_METHOD_MAP",
+            ps_name,
+        )
         return False
 
     currency_sym = (pay_in.currency.symbol or "MMK").strip().upper() if pay_in.currency else "MMK"
