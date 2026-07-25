@@ -94,7 +94,7 @@ def run():
         mmk = Currency.objects.create(symbol="MMK", name="Myanmar Kyat")
         print("  + Currency MMK")
     team, _ = TraderTeam.objects.get_or_create(
-        name=TEAM_NAME, defaults={"in_rate": Decimal("5"), "out_rate": Decimal("2")}
+        name=TEAM_NAME, defaults={"rate_in": Decimal("5"), "rate_out": Decimal("2")}
     )
     traffic, _ = TrafficType.objects.get_or_create(name=TRAFFIC_NAME, defaults={"risk_level": 0})
     for ps_name in PS_NAMES:
