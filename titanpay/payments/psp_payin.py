@@ -35,12 +35,14 @@ def is_psp_trader(trader) -> bool:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
 
     return (
         fc.is_fairpay_trader(trader)
         or ec.is_expayone_trader(trader)
         or pc.is_protocol_trader(trader)
         or plc.is_playments_trader(trader)
+        or cc.is_concored_trader(trader)
     )
 
 
@@ -88,12 +90,14 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
 
     names = {
         fc.fairpay_trader_username(),
         ec.expayone_trader_username(),
         pc.protocol_trader_username(),
         plc.playments_trader_username(),
+        cc.concored_trader_username(),
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -130,12 +134,14 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
 
     for getter in (
         fc.fairpay_requisite_for_payin,
         ec.expayone_requisite_for_payin,
         pc.protocol_requisite_for_payin,
         plc.playments_requisite_for_payin,
+        cc.concored_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -148,11 +154,13 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
     representation = pc.enrich_payin_payment_details(representation, pay_in)
-    return plc.enrich_payin_payment_details(representation, pay_in)
+    representation = plc.enrich_payin_payment_details(representation, pay_in)
+    return cc.enrich_payin_payment_details(representation, pay_in)
 
 
 def payin_routed_group(pay_in: Any):
@@ -185,6 +193,7 @@ def _psp_provider_for_trader(trader):
     from payments import fairpay_client as fc
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
@@ -194,6 +203,8 @@ def _psp_provider_for_trader(trader):
         return "fairpay", fc.try_attach_fairpay_session
     if plc.is_playments_trader(trader):
         return "playments", plc.try_attach_playments_session
+    if cc.is_concored_trader(trader):
+        return "concored", cc.try_attach_concored_session
     return None, None
 
 
@@ -364,11 +375,13 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
     pc.protocol_cancel_if_linked(pay_in)
     plc.playments_cancel_if_linked(pay_in)
+    cc.concored_cancel_if_linked(pay_in)
 
 
 def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
@@ -376,20 +389,45 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
     if not isinstance(body, dict):
         return None
     candidates: list[Any] = []
-    for key in ("amount", "paidAmount", "paid_amount", "transferredAmount", "requestedAmount"):
+    for key in (
+        "amount",
+        "paidAmount",
+        "paid_amount",
+        "transferredAmount",
+        "requestedAmount",
+        "quotedAmountMinor",
+        "requestedAmountMinor",
+    ):
         if body.get(key) is not None:
             candidates.append(body.get(key))
     result = body.get("result")
     if isinstance(result, dict):
-        for key in ("amount", "paidAmount", "paid_amount", "transferredAmount", "requestedAmount"):
+        for key in (
+            "amount",
+            "paidAmount",
+            "paid_amount",
+            "transferredAmount",
+            "requestedAmount",
+            "quotedAmountMinor",
+            "requestedAmountMinor",
+        ):
             if result.get(key) is not None:
                 candidates.append(result.get(key))
+    factor = 1
+    try:
+        from django.conf import settings
+
+        factor = int(getattr(settings, "CONCORDED_AMOUNT_MINOR_FACTOR", 1) or 1)
+    except (TypeError, ValueError):
+        factor = 1
     for raw in candidates:
         try:
             val = Decimal(str(raw).strip())
         except (InvalidOperation, ValueError, TypeError):
             continue
         if val > 0:
+            if factor > 1 and val == val.to_integral_value():
+                val = val / Decimal(factor)
             return val
     return None
 
@@ -505,6 +543,7 @@ MERCHANT_DECLINE_MESSAGES = {
 def classify_payin_decline(pay_in: Any) -> str:
     """Внутренняя классификация отказа (без PII upstream)."""
     from payments.models import (
+        ConcoredPayInSession,
         ExpayonePayInSession,
         FairpayPayInSession,
         PlaymentsPayInSession,
@@ -515,7 +554,13 @@ def classify_payin_decline(pay_in: Any) -> str:
     if order is not None and order.status and order.status.name == "Cannot process":
         return "routing_unavailable"
 
-    for model in (ExpayonePayInSession, FairpayPayInSession, ProtocolPayInSession, PlaymentsPayInSession):
+    for model in (
+        ExpayonePayInSession,
+        FairpayPayInSession,
+        ProtocolPayInSession,
+        PlaymentsPayInSession,
+        ConcoredPayInSession,
+    ):
         try:
             session = model.objects.get(pay_in=pay_in)
         except model.DoesNotExist:
@@ -536,13 +581,12 @@ def classify_payin_decline(pay_in: Any) -> str:
 def psp_create_failure_reason_internal(pay_in: Any) -> str:
     """Подробности для логов и manage.py diagnose_payin (не API мерчанта)."""
     from payments.models import (
+        ConcoredPayInSession,
         ExpayonePayInSession,
         FairpayPayInSession,
         PlaymentsPayInSession,
         ProtocolPayInSession,
     )
-
-    code = classify_payin_decline(pay_in)
     parts = [f"code={code}"]
 
     order = getattr(pay_in, "order", None)
@@ -554,6 +598,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (FairpayPayInSession, "fairpay"),
         (ProtocolPayInSession, "protocol"),
         (PlaymentsPayInSession, "playments"),
+        (ConcoredPayInSession, "concored"),
     ):
         try:
             session = model.objects.get(pay_in=pay_in)

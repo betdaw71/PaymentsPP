@@ -319,6 +319,18 @@ PROTOCOL_BINANCE_PAY_TYPE = os.getenv('PROTOCOL_BINANCE_PAY_TYPE', 'HalykBank')
 
 
 
+# Concored / ProcessorCore PSP (MMK KBZPay, WavePay; колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/concored/)
+CONCORDED_API_BASE = os.getenv('CONCORDED_API_BASE', '').rstrip('/')
+CONCORDED_TRADER_USERNAME = os.getenv('CONCORDED_TRADER_USERNAME', 'concored_mmk')
+CONCORDED_KBZPAY_TOKEN = os.getenv('CONCORDED_KBZPAY_TOKEN', '')
+CONCORDED_WAVEPAY_TOKEN = os.getenv('CONCORDED_WAVEPAY_TOKEN', '')
+# JSON override: {"KBZPay": "jwt...", "WavePay": "jwt..."}
+CONCORDED_TOKEN_MAP = os.getenv('CONCORDED_TOKEN_MAP', '')
+# JSON: {"KBZPay": "<paymentMethod code from Concored>", "WavePay": "..."} — MID-0000011 / MID-0000012
+CONCORDED_PAYMENT_METHOD_MAP = os.getenv('CONCORDED_PAYMENT_METHOD_MAP', '')
+# Множитель суммы в minor units (MMK обычно 1)
+CONCORDED_AMOUNT_MINOR_FACTOR = int(os.getenv('CONCORDED_AMOUNT_MINOR_FACTOR', '1'))
+
 # Playments PSP (TRY bank transfer H2H pay-in / pay-out)
 PLAYMENTS_API_BASE = os.getenv('PLAYMENTS_API_BASE', 'https://api.playments.world').rstrip('/')
 PLAYMENTS_MERCHANT_GROUP_ID = os.getenv('PLAYMENTS_MERCHANT_GROUP_ID', '')
