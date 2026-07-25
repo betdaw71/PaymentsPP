@@ -587,6 +587,8 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         PlaymentsPayInSession,
         ProtocolPayInSession,
     )
+
+    code = classify_payin_decline(pay_in)
     parts = [f"code={code}"]
 
     order = getattr(pay_in, "order", None)
