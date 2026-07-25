@@ -155,7 +155,10 @@ def run():
     print("  4) В Concored указать callbackUrl → /api/v1/webhooks/psp/concored/")
 
 
-if __name__ == "__main__":
+import sys
+
+# `manage.py shell < this_file.py` — __name__ не __main__, но argv содержит shell
+if __name__ == "__main__" or (len(sys.argv) >= 2 and sys.argv[1] == "shell"):
     run()
 else:
-    print("Run: run()")
+    print("Запустите: run()")
