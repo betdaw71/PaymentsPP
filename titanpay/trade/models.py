@@ -1,4 +1,5 @@
 import uuid
+import logging
 from basics.models import Language, Currency, PaymentSystem, Balance, TrafficType, Trader, PaymentDetails, \
     PaymentDetailsGroup, TraderTeamRates
 from django.contrib.auth.models import User
@@ -147,11 +148,24 @@ class InOrder(models.Model):
         ).exists()
         if already:
             return
+        from_balance = Balance.objects.select_for_update().get(pk=freeze_tx.to_balance_id)
+        value = freeze_tx.value
+        if from_balance.amount < value:
+            logging.getLogger(__name__).warning(
+                "InOrder %s unfreeze: frozen %.2f < freeze %.2f (%s); releasing available frozen",
+                self.id,
+                from_balance.amount,
+                value,
+                comment,
+            )
+            value = from_balance.amount
+        if value <= 0:
+            return
         transaction_type_2 = TransactionType.objects.get(name="Deposit")
         Transaction.create(
             _from=freeze_tx.to_balance,
             _to=freeze_tx.from_balance,
-            value=freeze_tx.value,
+            value=value,
             _transaction_type=transaction_type_2,
             _linked_in_order=self,
             _comment=comment,

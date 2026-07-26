@@ -21,5 +21,12 @@ echo "=== Killing old gunicorn processes ==="
 pkill -f gunicorn || true
 sleep 2
 
+echo "=== Starting cron (expire / rates / balances) ==="
+touch /var/log/cron.log
+printenv | grep -Ev 'BASHOPTS|BASH_VERSINFO|EUID|PPID|SHELLOPTS|UID|LANG|PWD|GPG_KEY|_=' >> /etc/environment || true
+python manage.py crontab remove 2>/dev/null || true
+python manage.py crontab add
+service cron start
+
 echo "=== Starting Gunicorn ==="
 exec gunicorn --bind 0.0.0.0:8080 --workers=2 --timeout 120 titanpay.wsgi:application

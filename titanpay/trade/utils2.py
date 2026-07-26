@@ -164,12 +164,22 @@ def expire():
         arbitrage_orders_in = InOrder.objects.filter(status__name="Arbitrage", amount__lte=ps.auto_close_amount, solution__payment_system=ps, updated_date__lte=arb_time_out)
 
         for order in expired_in_orders:
-            with transaction.atomic():
-                order.deal_time_expired()
+            try:
+                with transaction.atomic():
+                    order = InOrder.objects.select_for_update().get(pk=order.pk)
+                    if order.status and order.status.name == "New":
+                        order.deal_time_expired()
+            except Exception:
+                logging.exception("expire in-order %s failed", order.pk)
 
         for order in expired_out_orders:
-            with transaction.atomic():
-                order.deal_expired()
+            try:
+                with transaction.atomic():
+                    order = OutOrder.objects.select_for_update().get(pk=order.pk)
+                    if order.status and order.status.name == "New":
+                        order.deal_expired()
+            except Exception:
+                logging.exception("expire out-order %s failed", order.pk)
 
         for order in arbitrage_orders_in:
             with transaction.atomic():
