@@ -58,14 +58,29 @@ def update_balances():
         #     continue
 
 
-def update_pd():
+def _liveness_exempt_usernames() -> set[str]:
+    from django.conf import settings
+
+    raw = getattr(settings, "LIVENESS_EXEMPT_TRADER_USERNAMES", "") or ""
+    return {u.strip() for u in raw.split(",") if u.strip()}
+
+
+def _skip_liveness_for_group(trader) -> bool:
     from payments.psp_payin import is_psp_trader
 
+    if trader is None:
+        return False
+    if is_psp_trader(trader):
+        return True
+    return trader.user.username in _liveness_exempt_usernames()
+
+
+def update_pd():
     pd = PaymentDetailsGroup.objects.all()
     for p in pd:
         try:
-            if is_psp_trader(p.trader):
-                # Виртуальные PSP-группы (expayone1, protocol1): без SMS, liveness не применяем.
+            if _skip_liveness_for_group(p.trader):
+                # PSP / тестовые трейдеры: без SMS, liveness не применяем.
                 fields = []
                 if p.status == 5:
                     p.status = 1
@@ -79,14 +94,15 @@ def update_pd():
         except Exception:
             logging.info(f'Updating PD {p.id} failed')
 
-    active_pd = pd.filter(status=1).exclude(trader__user__username__in=_psp_trader_usernames())
+    skip_users = set(_psp_trader_usernames()) | _liveness_exempt_usernames()
+    active_pd = pd.filter(status=1).exclude(trader__user__username__in=skip_users)
     for p in active_pd:
         try:
             p.check_liveness()
         except Exception:
             logging.info(f'Updating PD {p.id} failed')
 
-    setup_pd = pd.filter(status=7).exclude(trader__user__username__in=_psp_trader_usernames())
+    setup_pd = pd.filter(status=7).exclude(trader__user__username__in=skip_users)
     for p in setup_pd:
         try:
             p.check_liveness()

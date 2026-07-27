@@ -348,6 +348,8 @@ PLAYMENTS_WITHDRAWAL_CALLBACK_URL = os.getenv('PLAYMENTS_WITHDRAWAL_CALLBACK_URL
 _playments_raw_secret = os.getenv('PLAYMENTS_USE_RAW_SECRET', '').strip().lower()
 PLAYMENTS_USE_RAW_SECRET = False
 C2CTRY_NAME = os.getenv('C2CTRY_NAME', 'C2CTRY')
+# Comma-separated trader usernames: skip auto liveness (status 5) in cron, like virtual PSP traders
+LIVENESS_EXEMPT_TRADER_USERNAMES = os.getenv('LIVENESS_EXEMPT_TRADER_USERNAMES', '')
 
 
 # CORS_ALLOW_ALL_ORIGINS = True
