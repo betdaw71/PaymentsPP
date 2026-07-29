@@ -126,6 +126,9 @@ def requisite_payload_has_fields(req: dict | None) -> bool:
         str(req.get("card_number") or "").strip()
         or str(req.get("phone") or "").strip()
         or str(req.get("deposit_number") or "").strip()
+        or str(req.get("deeplink") or "").strip()
+        or str(req.get("payment_form_url") or "").strip()
+        or str(req.get("qr_image_url") or "").strip()
     )
 
 

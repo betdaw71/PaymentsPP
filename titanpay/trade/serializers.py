@@ -13,6 +13,8 @@ from titanpay.settings import (
     C2C_NAME,
     PROTOCOL_C2C_NAME,
     C2CTRY_NAME,
+    CONCORDED_KBZPAY_PS_NAME,
+    CONCORDED_WAVEPAY_PS_NAME,
 )
 from trade.models import TransactionType, OutOrderStatus, InOrderStatus, InOrder, Transaction, WithdrawalRequest, \
     OutOrder, InOrderStatusChange
@@ -49,6 +51,11 @@ def payment_details_payload_for_in_order(in_order) -> dict:
         if requisite_payload_has_fields(req):
             return req
     ps_name = in_order.solution.payment_system.name if in_order.solution and in_order.solution.payment_system else ""
+    concored_ps = {CONCORDED_KBZPAY_PS_NAME, CONCORDED_WAVEPAY_PS_NAME}
+    if ps_name in concored_ps:
+        return {}
+    if in_order.payment_details is None:
+        return {}
     return payment_details_payload_for_order(in_order.payment_details, ps_name)
 
 
