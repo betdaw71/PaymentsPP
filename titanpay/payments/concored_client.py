@@ -117,6 +117,7 @@ def _request(
     json_payload: dict | None = None,
     timeout: int = 60,
     pay_in=None,
+    trace_note: str = "Concored API",
 ) -> tuple[bool, dict[str, Any] | str]:
     if not token:
         return False, "Concored merchant token is empty"
@@ -132,7 +133,7 @@ def _request(
         body=json_payload or {},
         http_method=method,
         url=url,
-        note="Concored API",
+        note=trace_note,
     )
     try:
         r = requests.request(method, url, json=json_payload, headers=_headers(token), timeout=timeout)
@@ -159,7 +160,7 @@ def _request(
         http_method=method,
         url=url,
         status_code=r.status_code,
-        note="Concored API",
+        note=trace_note,
     )
     if not isinstance(resp_body, dict):
         return False, {"error": str(resp_body)}
@@ -185,7 +186,7 @@ def _request(
     return True, resp_body
 
 
-def _create_payment_body(
+def _payment_core_fields(
     *,
     external_order_id: str,
     external_client_id: str,
@@ -194,14 +195,10 @@ def _create_payment_body(
     currency: str,
     callback_url: str | None,
     traffic_type: str | None,
+    id_style: str,
 ) -> dict[str, Any]:
-    """
-    CreatePaymentRequest — см. https://docs.concored.com/openapi/payments-public-api.openapi.yaml
-    Плоский JSON (без обёртки request): externalOrderId, externalClientId, amount в minor units.
-    """
+    """id_style: merchant (prod core.concored.com) | external (public OpenAPI docs)."""
     body: dict[str, Any] = {
-        "externalOrderId": external_order_id,
-        "externalClientId": external_client_id,
         "paymentMethod": payment_method,
         "amount": _amount_minor(amount),
         "currency": currency.upper(),
@@ -209,7 +206,69 @@ def _create_payment_body(
     }
     if traffic_type:
         body["trafficType"] = traffic_type
+    if id_style == "merchant":
+        body["merchantPaymentId"] = external_order_id
+        body["merchantClientId"] = external_client_id
+    else:
+        body["externalOrderId"] = external_order_id
+        body["externalClientId"] = external_client_id
     return body
+
+
+def _create_payment_payload_candidates(
+    *,
+    external_order_id: str,
+    external_client_id: str,
+    payment_method: str,
+    amount: Decimal,
+    currency: str,
+    callback_url: str | None,
+    traffic_type: str | None,
+) -> list[tuple[str, dict[str, Any]]]:
+    from django.conf import settings
+
+    merchant = _payment_core_fields(
+        external_order_id=external_order_id,
+        external_client_id=external_client_id,
+        payment_method=payment_method,
+        amount=amount,
+        currency=currency,
+        callback_url=callback_url,
+        traffic_type=traffic_type,
+        id_style="merchant",
+    )
+    external = _payment_core_fields(
+        external_order_id=external_order_id,
+        external_client_id=external_client_id,
+        payment_method=payment_method,
+        amount=amount,
+        currency=currency,
+        callback_url=callback_url,
+        traffic_type=traffic_type,
+        id_style="external",
+    )
+    all_candidates: list[tuple[str, dict[str, Any]]] = [
+        ("merchant_flat", merchant),
+        ("merchant_wrap_request", {"request": merchant}),
+        ("merchant_wrap_Request", {"Request": merchant}),
+        ("external_flat", external),
+    ]
+    style = (getattr(settings, "CONCORDED_CREATE_BODY_STYLE", None) or "").strip()
+    if style:
+        for label, payload in all_candidates:
+            if label == style:
+                return [(label, payload)]
+        logger.warning("Unknown CONCORDED_CREATE_BODY_STYLE=%s, using all candidates", style)
+    return all_candidates
+
+
+def _concored_validation_400(data: Any) -> bool:
+    if not isinstance(data, dict):
+        return False
+    if data.get("status") != 400:
+        return False
+    title = str(data.get("title") or "").lower()
+    return "validation" in title or bool(data.get("errors"))
 
 
 def concored_create_payment(
@@ -224,7 +283,7 @@ def concored_create_payment(
     traffic_type: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
-    payload = _create_payment_body(
+    candidates = _create_payment_payload_candidates(
         external_order_id=external_order_id,
         external_client_id=external_client_id,
         payment_method=payment_method,
@@ -233,7 +292,22 @@ def concored_create_payment(
         callback_url=callback_url,
         traffic_type=traffic_type,
     )
-    return _request("POST", "/api/v1/payments", token=token, json_payload=payload, pay_in=pay_in)
+    last: dict[str, Any] | str = "no candidates"
+    for label, payload in candidates:
+        ok, data = _request(
+            "POST",
+            "/api/v1/payments",
+            token=token,
+            json_payload=payload,
+            pay_in=pay_in,
+            trace_note=f"Concored API ({label})",
+        )
+        if ok:
+            return ok, data
+        last = data
+        if not _concored_validation_400(data):
+            break
+    return False, last
 
 
 def _unwrap_concored_payload(resp_body: dict[str, Any]) -> dict[str, Any]:
