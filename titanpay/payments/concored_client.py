@@ -174,13 +174,40 @@ def _request(
             ),
             "upstream": resp_body,
         }
-    if path.rstrip("/").endswith("/payments") and r.ok and "paymentIntentId" not in resp_body:
-        return False, {
-            "error": "invalid_create_response",
-            "message": "Expected paymentIntentId in JSON body",
-            "upstream": resp_body,
-        }
+    if path.rstrip("/").endswith("/payments") and r.ok:
+        core = _unwrap_concored_payload(resp_body)
+        if "paymentIntentId" not in core and "payment_intent_id" not in core:
+            return False, {
+                "error": "invalid_create_response",
+                "message": "Expected paymentIntentId in JSON body",
+                "upstream": resp_body,
+            }
     return True, resp_body
+
+
+def _create_payment_body(
+    *,
+    external_order_id: str,
+    external_client_id: str,
+    payment_method: str,
+    amount: Decimal,
+    currency: str,
+    callback_url: str | None,
+    traffic_type: str | None,
+) -> dict[str, Any]:
+    """ProcessorCore CreatePaymentRequest (camelCase). merchantPaymentId = наш PayIn id."""
+    inner: dict[str, Any] = {
+        "merchantPaymentId": external_order_id,
+        "merchantClientId": external_client_id,
+        "paymentMethod": payment_method,
+        "amount": _amount_minor(amount),
+        "currency": currency.upper(),
+        "callbackUrl": callback_url or concored_callback_url(),
+    }
+    if traffic_type:
+        inner["trafficType"] = traffic_type
+    # Public API ожидает обёртку request (иначе 400: missing merchantPaymentId / request required).
+    return {"request": inner}
 
 
 def concored_create_payment(
@@ -195,20 +222,34 @@ def concored_create_payment(
     traffic_type: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
-    payload: dict[str, Any] = {
-        "externalOrderId": external_order_id,
-        "externalClientId": external_client_id,
-        "paymentMethod": payment_method,
-        "amount": _amount_minor(amount),
-        "currency": currency.upper(),
-        "callbackUrl": callback_url or concored_callback_url(),
-    }
-    if traffic_type:
-        payload["trafficType"] = traffic_type
+    payload = _create_payment_body(
+        external_order_id=external_order_id,
+        external_client_id=external_client_id,
+        payment_method=payment_method,
+        amount=amount,
+        currency=currency,
+        callback_url=callback_url,
+        traffic_type=traffic_type,
+    )
     return _request("POST", "/api/v1/payments", token=token, json_payload=payload, pay_in=pay_in)
 
 
-def _norm_status(raw: str | None) -> str:
+def _unwrap_concored_payload(resp_body: dict[str, Any]) -> dict[str, Any]:
+    """Ответ create может быть плоским или вложенным (data / payment / response)."""
+    if not isinstance(resp_body, dict):
+        return {}
+    for key in ("payment", "data", "result", "response"):
+        nested = resp_body.get(key)
+        if isinstance(nested, dict) and (
+            nested.get("paymentIntentId")
+            or nested.get("payment_intent_id")
+            or nested.get("paymentDetails")
+            or nested.get("payment_details")
+        ):
+            return nested
+    return resp_body
+
+
     return (raw or "").strip().upper()
 
 
@@ -360,14 +401,15 @@ def try_attach_concored_session(pay_in: Any) -> bool | None:
         return False
 
     session.create_response = data if isinstance(data, dict) else {"payload": data}
+    core = _unwrap_concored_payload(session.create_response)
     session.provider_payment_id = str(
-        (session.create_response or {}).get("paymentIntentId")
-        or (session.create_response or {}).get("payment_intent_id")
+        core.get("paymentIntentId")
+        or core.get("payment_intent_id")
         or ""
     )
     session.save(update_fields=["create_response", "provider_payment_id", "updated_at"])
 
-    req = concored_map_requisite(session.create_response)
+    req = concored_map_requisite(core if core else session.create_response)
     has_h2h = requisite_payload_has_fields(req) or bool(
         req.get("deeplink") or req.get("payment_form_url") or req.get("qr_image_url")
     )
