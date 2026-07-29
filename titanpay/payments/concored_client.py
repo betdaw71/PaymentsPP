@@ -183,6 +183,13 @@ def _request(
                 "message": "Expected paymentIntentId in JSON body",
                 "upstream": resp_body,
             }
+        st = _norm_status(core.get("status") or core.get("Status"))
+        if st in ("FAILED", "CANCELED", "CANCELLED", "EXPIRED"):
+            return False, {
+                "error": "concored_create_terminal_status",
+                "message": f"Concored create returned status={st}",
+                "upstream": resp_body,
+            }
     return True, resp_body
 
 
@@ -326,6 +333,7 @@ def _unwrap_concored_payload(resp_body: dict[str, Any]) -> dict[str, Any]:
     return resp_body
 
 
+def _norm_status(raw: str | None) -> str:
     return (raw or "").strip().upper()
 
 
