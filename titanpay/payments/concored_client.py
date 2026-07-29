@@ -195,19 +195,21 @@ def _create_payment_body(
     callback_url: str | None,
     traffic_type: str | None,
 ) -> dict[str, Any]:
-    """ProcessorCore CreatePaymentRequest (camelCase). merchantPaymentId = наш PayIn id."""
-    inner: dict[str, Any] = {
-        "merchantPaymentId": external_order_id,
-        "merchantClientId": external_client_id,
+    """
+    CreatePaymentRequest — см. https://docs.concored.com/openapi/payments-public-api.openapi.yaml
+    Плоский JSON (без обёртки request): externalOrderId, externalClientId, amount в minor units.
+    """
+    body: dict[str, Any] = {
+        "externalOrderId": external_order_id,
+        "externalClientId": external_client_id,
         "paymentMethod": payment_method,
         "amount": _amount_minor(amount),
         "currency": currency.upper(),
         "callbackUrl": callback_url or concored_callback_url(),
     }
     if traffic_type:
-        inner["trafficType"] = traffic_type
-    # Public API ожидает обёртку request (иначе 400: missing merchantPaymentId / request required).
-    return {"request": inner}
+        body["trafficType"] = traffic_type
+    return body
 
 
 def concored_create_payment(
