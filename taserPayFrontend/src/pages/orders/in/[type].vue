@@ -10,6 +10,7 @@ import {
 } from "@core/utils/formatters"
 import { useBaseStore } from "@/stores/useBaseStore"
 import OrderInDrawer from "@/views/user/OrderInDrawer.vue"
+import TeamLeadOrderScopeToggle from "@/components/teamlead/TeamLeadOrderScopeToggle.vue"
 import { onUnmounted } from "vue"
 
 const props = defineProps ({
@@ -27,6 +28,7 @@ const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
 
 const router = useRouter()
+const route = useRoute()
 
 const snackbar = ref ({
   enabled: false,
@@ -68,6 +70,18 @@ console.log ({ nowTime: nowTime.value })
 
 const filters = ref (
   structuredClone (toRaw (baseStore.orders_in_filters)),
+)
+
+const isTeamleadMerchantScope = computed(
+  () => authStore.is_team_lead() && filters.value.teamleadScope === 'merchant',
+)
+
+watch(
+  () => filters.value.teamleadScope,
+  () => {
+    if (authStore.is_team_lead())
+      getOrders(true)
+  },
 )
 
 const copyToClipboard = (valueToCopy, alertMessage, alertType = "error") => {
@@ -263,6 +277,9 @@ const getOrders = async (resetInterval = false) => {
   if (filters.value.selectedMerchants && filters.value.selectedMerchants.length > 0)
     params.merchant__user__username__in = filters.value.selectedMerchants.join (",")
 
+  if (authStore.is_team_lead() && filters.value.teamleadScope === 'merchant')
+    params.scope = 'merchant'
+
   tradeStore.getTradeOrderIn (params).then (response => {
     if (response.error) {
       throw response.error
@@ -306,6 +323,11 @@ watch(
 
 onMounted (
   () => {
+    if (route.query.teamlead_scope === 'merchant') {
+      filters.value.teamleadScope = 'merchant'
+      baseStore.orders_in_filters.teamleadScope = 'merchant'
+      baseStore.orders_out_filters.teamleadScope = 'merchant'
+    }
     timeInterval.value = setInterval (() => {
       nowTime.value = Date.now ()
     }, 1000)
@@ -632,6 +654,7 @@ const exportOrders = async () => {
             {{ t('tabs.orders_in') }}
           </h1>
         </div>
+        <TeamLeadOrderScopeToggle class="mt-2" />
       </template>
       <template #actions>
         <UiButton
@@ -1332,11 +1355,12 @@ const exportOrders = async () => {
                     <span class="ui-metric-inline__label">{{ $t('hold') }}</span>
                     <span class="ui-metric-inline__value ui-metric-inline__value--with-icon">
                       <VIcon
+                        v-if="!isTeamleadMerchantScope"
                         icon="lucide:snowflake"
                         size="16"
                         color="info"
                       />
-                      {{ holdAmount }}
+                      {{ isTeamleadMerchantScope ? '—' : holdAmount }}
                     </span>
                   </div>
                 </div>
@@ -1360,6 +1384,25 @@ const exportOrders = async () => {
                     </th>
                     <th scope="col">
                       {{ $t('payment_system') }}
+                    </th>
+                    <th
+                      v-if="isTeamleadMerchantScope"
+                      scope="col"
+                    >
+                      {{ $t('merchant') }}
+                    </th>
+                    <th
+                      v-if="isTeamleadMerchantScope"
+                      scope="col"
+                      class="text-end"
+                    >
+                      {{ $t('merchant_agent.agent_fee') }}
+                    </th>
+                    <th
+                      v-if="isTeamleadMerchantScope"
+                      scope="col"
+                    >
+                      {{ $t('merchant_order_id') }}
                     </th>
                     <th
                       v-if="authStore.is_support() || authStore.is_trader()"
@@ -1472,6 +1515,18 @@ const exportOrders = async () => {
                     </td>
                     <td class="ui-cell-primary">
                       {{ item.payment_system }}
+                    </td>
+                    <td v-if="isTeamleadMerchantScope">
+                      @{{ item.merchant_username }}
+                    </td>
+                    <td
+                      v-if="isTeamleadMerchantScope"
+                      class="ui-data-table__cell--num"
+                    >
+                      {{ item.agent_fee }}
+                    </td>
+                    <td v-if="isTeamleadMerchantScope">
+                      {{ item.merchant_order_id }}
                     </td>
                     <td
                       v-if="authStore.is_support() || authStore.is_trader()"

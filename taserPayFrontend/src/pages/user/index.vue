@@ -25,6 +25,7 @@ import MainTeamLeadInfo from '@/views/user/teamlead/MainTeamLeadInfo.vue'
 import TeamLeadBalance from "@/views/user/teamlead/TeamLeadBalance.vue"
 import TeamLeadTransactions from "@/views/user/teamlead/TeamLeadTransactions.vue"
 import TeamLeadWithdrawals from "@/views/user/teamlead/TeamLeadWithdrawals.vue"
+import TeamLeadMerchants from "@/views/user/teamlead/TeamLeadMerchants.vue"
 
 import MainSupportInfo from "@/views/user/support/MainSupportInfo.vue"
 import SupportTeam from "@/views/user/support/SupportTeam.vue"
@@ -280,6 +281,9 @@ const getUser = (polling = true) => {
           </VWindowItem>
           <VWindowItem>
             <TeamLeadBalance />
+          </VWindowItem>
+          <VWindowItem v-if="authStore.userData.has_merchant_agent">
+            <TeamLeadMerchants />
           </VWindowItem>
           <VWindowItem>
             <TeamLeadTransactions />

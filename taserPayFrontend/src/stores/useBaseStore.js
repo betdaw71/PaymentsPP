@@ -65,6 +65,7 @@ export const useBaseStore = defineStore ({
       ordering: "-creation_date",
       autoUpdateMode: 30,
       apply_filters: true,
+      teamleadScope: 'team',
     }),
     orders_out_filters: useStorage ('orders_out_filters', {
       searchQueryId: "",
@@ -90,6 +91,7 @@ export const useBaseStore = defineStore ({
       ordering: "-creation_date",
       autoUpdateMode: 30,
       apply_filters: true,
+      teamleadScope: 'team',
     }),
     payment_details_filters: useStorage ('payment_details_filters', {
       searchOwner: "",

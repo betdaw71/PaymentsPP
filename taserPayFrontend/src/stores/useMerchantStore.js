@@ -102,5 +102,33 @@ export const useMerchantStore = defineStore ({
         error: response.data,
       }
     },
+    async getMerchantAgentAssignments (params) {
+      const response = await instance.get (`/merchant/merchant-agent/`, { params })
+      if (response.status === 200) {
+        return { data: response.data, error: null }
+      }
+      return { data: [], error: response.data }
+    },
+    async createMerchantAgentAssignment (params) {
+      const response = await instance.post (`/merchant/merchant-agent/`, params)
+      if (response.status === 201) {
+        return { data: response.data, error: null }
+      }
+      return { data: [], error: response.data }
+    },
+    async patchMerchantAgentAssignment (params, id) {
+      const response = await instance.patch (`/merchant/merchant-agent/${id}/`, params)
+      if (response.status === 200) {
+        return { data: response.data, error: null }
+      }
+      return { data: [], error: response.data }
+    },
+    async deleteMerchantAgentAssignment (id) {
+      const response = await instance.delete (`/merchant/merchant-agent/${id}/`)
+      if (response.status === 204) {
+        return { data: null, error: null }
+      }
+      return { data: null, error: response.data }
+    },
   },
 })

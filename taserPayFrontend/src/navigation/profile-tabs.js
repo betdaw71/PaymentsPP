@@ -20,8 +20,12 @@ export function getProfileTabs (authStore) {
   if (authStore.is_merchant_assist())
     return [mainInfo, balance, transactions]
 
-  if (authStore.is_team_lead())
-    return [mainInfo, balance, transactions, withdrawals]
+  if (authStore.is_team_lead()) {
+    const tabs = [mainInfo, balance, transactions, withdrawals]
+    if (authStore.userData?.has_merchant_agent)
+      tabs.splice(2, 0, { key: 'agent_merchants', title: 'tabs.agent_merchants', icon: UI_ICONS.merchantsBalance, section: 'account' })
+    return tabs
+  }
 
   if (authStore.is_merchant())
     return [mainInfo, balance, transactions, withdrawals, merchantsApi]

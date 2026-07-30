@@ -3,6 +3,7 @@ import { useBaseStore } from "@/stores/useBaseStore"
 import { useAuthStore } from "@/stores/useAuthStore"
 import ManageMerchants from "@/views/user/headsupport/manage/ManageMerchants.vue"
 import ManageSupports from "@/views/user/headsupport/manage/ManageSupports.vue"
+import ManageMerchantAgents from "@/views/user/headsupport/manage/ManageMerchantAgents.vue"
 
 const { t } = useI18n()
 const authStore = useAuthStore ()
@@ -22,6 +23,10 @@ const tabs = ref ([
   {
     icon: 'tabler-lifebuoy',
     title: t ('tabs.manage_supports'),
+  },
+  {
+    icon: 'tabler-users-group',
+    title: t ('tabs.manage_merchant_agents'),
   },
 ])
 
@@ -67,6 +72,9 @@ const userTab = ref (null)
       </VWindowItem>
       <VWindowItem>
         <ManageSupports />
+      </VWindowItem>
+      <VWindowItem>
+        <ManageMerchantAgents />
       </VWindowItem>
     </VWindow>
   </div>

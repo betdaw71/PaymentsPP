@@ -19,6 +19,7 @@ export const useAuthStore = defineStore ({
       role: 0,
       payment_systems: [],
       deposit: true,
+      has_merchant_agent: false,
     }),
     authData: useStorage ('authData', {
       'maintenance': false,
