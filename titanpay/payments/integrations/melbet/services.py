@@ -93,7 +93,12 @@ def _assert_no_duplicate_order(config: MelbetIntegrationConfig, order_id: str) -
         raise MelbetServiceError("Order with this order_id already exists", code=409)
 
 
-@transaction.atomic
+def _fail_melbet_deposit_allocation(pay_in: PayIn, *, send_callback: bool = False) -> None:
+    """API 400, но PayIn/InOrder уже в БД — для панели и payin_trace/diagnose."""
+    decline_payin(pay_in, send_callback=send_callback)
+    raise MelbetServiceError("Could not allocate payment requisites", code=400)
+
+
 def create_melbet_deposit(
     config: MelbetIntegrationConfig,
     payload: dict[str, Any],
@@ -136,51 +141,57 @@ def create_melbet_deposit(
     if check_pending(client, _in=True):
         raise MelbetServiceError("Client has a pending pay-in", code=409)
 
-    in_order = InOrder.create(
-        amount=amount,
-        solution=solution,
-        client_deposit_count=client.order_count,
-        merchant_order_id=order_id,
-    )
-    pay_in = PayIn.objects.create(
-        amount=amount,
-        currency=currency,
-        payment_system=payment_system,
-        merchant_order_id=order_id,
-        success_url=payload.get("success_url"),
-        failed_url=payload.get("fail_url"),
-        pending_url=payload.get("pending_url"),
-        callback_url=payload["callback_url"],
-        merchant=merchant,
-        order=in_order,
-        status=PayInStatus.objects.get(name="In Progress"),
-        client=client,
-    )
+    with transaction.atomic():
+        in_order = InOrder.create(
+            amount=amount,
+            solution=solution,
+            client_deposit_count=client.order_count,
+            merchant_order_id=order_id,
+        )
+        pay_in = PayIn.objects.create(
+            amount=amount,
+            currency=currency,
+            payment_system=payment_system,
+            merchant_order_id=order_id,
+            success_url=payload.get("success_url"),
+            failed_url=payload.get("fail_url"),
+            pending_url=payload.get("pending_url"),
+            callback_url=payload["callback_url"],
+            merchant=merchant,
+            order=in_order,
+            status=PayInStatus.objects.get(name="In Progress"),
+            client=client,
+        )
 
-    MelbetTransactionSession.objects.create(
-        config=config,
-        pay_in=pay_in,
-        order_id=order_id,
-        melbet_method=(payload.get("method") or "").strip(),
-    )
+        MelbetTransactionSession.objects.create(
+            config=config,
+            pay_in=pay_in,
+            order_id=order_id,
+            melbet_method=(payload.get("method") or "").strip(),
+        )
 
     from payments.payin_trace import trace_routing_result
 
+    in_order.refresh_from_db()
     trace_routing_result(pay_in, in_order)
+    in_order.refresh_from_db()
     if in_order.status.name == "Cannot process":
-        decline_payin(pay_in, send_callback=False)
-        raise MelbetServiceError("Could not allocate payment requisites", code=400)
+        _fail_melbet_deposit_allocation(pay_in, send_callback=False)
 
     try_attach_psp_sessions(pay_in)
     pay_in.refresh_from_db()
     if pay_in.status and pay_in.status.name == "Declined":
-        raise MelbetServiceError("Could not allocate payment requisites", code=400)
+        _fail_melbet_deposit_allocation(pay_in, send_callback=False)
 
     _ = client_ip
     return pay_in
 
 
-@transaction.atomic
+def _fail_melbet_withdrawal(pay_out: PayOut) -> None:
+    pay_out.declined()
+    raise MelbetServiceError("Could not process withdrawal", code=400)
+
+
 def create_melbet_withdrawal(
     config: MelbetIntegrationConfig,
     payload: dict[str, Any],
@@ -221,43 +232,44 @@ def create_melbet_withdrawal(
     if check_pending(client, _in=False):
         raise MelbetServiceError("Client has a pending pay-out", code=409)
 
-    try:
-        out_order = OutOrder.create(
+    with transaction.atomic():
+        try:
+            out_order = OutOrder.create(
+                amount=amount,
+                merchant_order_id=order_id,
+                details=details,
+                solution=solution,
+            )
+        except ValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, dict) and detail.get("details"):
+                raise MelbetServiceError(str(detail["details"]), code=400) from exc
+            raise MelbetServiceError(str(detail), code=400) from exc
+
+        pay_out = PayOut.objects.create(
             amount=amount,
+            currency=currency,
+            payment_system=payment_system,
             merchant_order_id=order_id,
+            callback_url=payload["callback_url"],
+            merchant=merchant,
+            order=out_order,
+            status=PayOutStatus.objects.get(name="New"),
             details=details,
-            solution=solution,
+            client=client,
         )
-    except ValidationError as exc:
-        detail = exc.detail
-        if isinstance(detail, dict) and detail.get("details"):
-            raise MelbetServiceError(str(detail["details"]), code=400) from exc
-        raise MelbetServiceError(str(detail), code=400) from exc
 
-    pay_out = PayOut.objects.create(
-        amount=amount,
-        currency=currency,
-        payment_system=payment_system,
-        merchant_order_id=order_id,
-        callback_url=payload["callback_url"],
-        merchant=merchant,
-        order=out_order,
-        status=PayOutStatus.objects.get(name="New"),
-        details=details,
-        client=client,
-    )
+        MelbetTransactionSession.objects.create(
+            config=config,
+            pay_out=pay_out,
+            order_id=order_id,
+            melbet_method=(payload.get("method") or "").strip(),
+            account_number=account_number,
+        )
 
-    MelbetTransactionSession.objects.create(
-        config=config,
-        pay_out=pay_out,
-        order_id=order_id,
-        melbet_method=(payload.get("method") or "").strip(),
-        account_number=account_number,
-    )
-
+    out_order.refresh_from_db()
     if out_order.status.name == "Cannot process":
-        pay_out.declined()
-        raise MelbetServiceError("Could not process withdrawal", code=400)
+        _fail_melbet_withdrawal(pay_out)
 
     from payments.playments_client import try_create_playments_payout
 
@@ -271,8 +283,7 @@ def create_melbet_withdrawal(
                 od.status = OutOrderStatus.objects.get(name="Cannot process")
                 od.updated_date = timezone.now()
                 od.save(update_fields=["status", "updated_date"])
-        pay_out.declined()
-        raise MelbetServiceError("Could not process withdrawal", code=400)
+        _fail_melbet_withdrawal(pay_out)
 
     pay_out.in_progress()
     return pay_out

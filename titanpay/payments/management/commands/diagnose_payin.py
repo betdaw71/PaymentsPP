@@ -4,9 +4,16 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 
-from payments.models import ConcoredPayInSession, ExpayonePayInSession, FairpayPayInSession, PayIn, ProtocolPayInSession
+from payments.models import (
+    ConcoredPayInSession,
+    ExpayonePayInSession,
+    FairpayPayInSession,
+    PayIn,
+    PayInTraceLog,
+    ProtocolPayInSession,
+)
 from payments.psp_payin import psp_create_failure_reason_internal
-from trade.models import InOrder
+from trade.models import InOrder, Transaction
 from trade.routing.base import route
 from trade.routing.routeutils import get_teams_for_ps
 from basics.models import PaymentDetailsGroup, PaymentDetails, TraderTeamRates
@@ -92,6 +99,7 @@ class Command(BaseCommand):
             self.stdout.write(json.dumps(cr, ensure_ascii=False, indent=2, default=str)[:4000])
 
         if order.status and order.status.name == "Cannot process":
+            self._explain_in_order_create_failure(pay_in, order)
             if self._has_psp_api_attempt(pay_in):
                 self.stdout.write(
                     self.style.WARNING(
@@ -119,6 +127,53 @@ class Command(BaseCommand):
         self.stdout.write(f"Поиск по InOrder id: {order.id}")
         self.stdout.write(f"Поиск по merchant_order_id: {pay_in.merchant_order_id}")
         self.stdout.write(f"Полный HTTP trace: python manage.py payin_trace {pay_in.id}")
+
+    def _explain_in_order_create_failure(self, pay_in, order):
+        """Различить отказ choose_trader_in и сбой freeze() до вызова Concored/других PSP."""
+        self.stdout.write(self.style.HTTP_INFO("\n=== InOrder.create (до PSP) ==="))
+        fees_set = (order.merchant_fee or 0) > 0 or (order.trader_fee or 0) > 0
+        freeze_tx = Transaction.objects.filter(
+            linked_in_order=order,
+            transaction_type__name="Freeze",
+        ).exists()
+        if fees_set and not freeze_tx:
+            self.stdout.write(
+                self.style.ERROR(
+                    "Причина: роутинг подобрал трейдера, но freeze() не прошёл "
+                    "(недостаточно balance_usdt у трейдера на момент создания). "
+                    "Concored/PSP API не вызывались."
+                )
+            )
+            self.stdout.write(
+                f"  usd_amount заявки: {order.usd_amount}  "
+                f"merchant_fee={order.merchant_fee} trader_fee={order.trader_fee}"
+            )
+        elif not fees_set:
+            self.stdout.write(
+                "Причина: choose_trader_in не нашёл свободную группу/карту при создании "
+                "(баланс, лимиты, traffic, in_active, команда без rates и т.д.). "
+                "Concored/PSP API не вызывались."
+            )
+        else:
+            self.stdout.write("Неожиданное состояние: есть Freeze-транзакция при Cannot process.")
+
+        trace = (
+            PayInTraceLog.objects.filter(pay_in=pay_in, direction="routing")
+            .order_by("created_at")
+            .first()
+        )
+        if trace and isinstance(trace.body, dict):
+            self.stdout.write(
+                f"PayInTraceLog routing: trader={trace.body.get('trader')} "
+                f"payment_details_id={trace.body.get('payment_details_id')}"
+            )
+        elif not PayInTraceLog.objects.filter(pay_in=pay_in).exists():
+            self.stdout.write(
+                self.style.WARNING(
+                    "PayInTraceLog пуст — заявка до deploy trace или без migrate 0011; "
+                    "повторите тест после деплоя."
+                )
+            )
 
     def _has_psp_api_attempt(self, pay_in) -> bool:
         for model in (ExpayonePayInSession, FairpayPayInSession, ProtocolPayInSession, ConcoredPayInSession):
