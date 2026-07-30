@@ -17,6 +17,8 @@ from payments.integrations.melbet.services import (
     status_response,
     withdrawal_response,
 )
+from payments.models import PayIn
+from payments.payin_trace import Direction, trace_log
 from trade.utils import get_client_ip
 
 
@@ -57,14 +59,50 @@ class MelbetDepositView(MelbetAPIView):
 
     def post(self, request):
         payload = self._parse_json_body()
+        config = self.melbet_config
+        order_id = str(payload.get("order_id") or "")
+        trace_log(
+            merchant=config.merchant,
+            merchant_order_id=order_id,
+            direction=Direction.MERCHANT_REQUEST,
+            body=payload,
+            http_method="POST",
+            url=request.path,
+            note="melbet deposit",
+        )
         try:
             pay_in = create_melbet_deposit(
-                self.melbet_config,
+                config,
                 payload,
                 client_ip=get_client_ip(request),
             )
         except MelbetServiceError as exc:
+            pay_in = (
+                PayIn.objects.filter(merchant=config.merchant, merchant_order_id=order_id)
+                .order_by("-created_at")
+                .first()
+            )
+            trace_log(
+                pay_in=pay_in,
+                merchant=config.merchant,
+                merchant_order_id=order_id,
+                direction=Direction.MERCHANT_RESPONSE,
+                body={"error": {"code": exc.code, "message": str(exc)}},
+                http_method="POST",
+                url=request.path,
+                status_code=exc.code,
+                note="melbet deposit error",
+            )
             return _error_response(str(exc), exc.code)
+        trace_log(
+            pay_in=pay_in,
+            direction=Direction.MERCHANT_RESPONSE,
+            body=deposit_response(pay_in),
+            http_method="POST",
+            url=request.path,
+            status_code=200,
+            note="melbet deposit ok",
+        )
         return Response(deposit_response(pay_in), status=status.HTTP_200_OK)
 
 
