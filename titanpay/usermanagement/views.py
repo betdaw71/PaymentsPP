@@ -183,6 +183,10 @@ def get_me(request, *args, **kwargs):
         data["deposit"] = True
         data["object_id"] = user.teamlead.id
         data["payment_systems"] = []
+        from merchant.models import MerchantAgentAssignment
+        data["has_merchant_agent"] = MerchantAgentAssignment.objects.filter(
+            agent=user.teamlead, is_active=True
+        ).exists()
 
     data["user_id"] = user.id
 

@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from basics.models import Balance, PaymentSystem, TrafficType, Language
+from basics.models import Balance, PaymentSystem, TrafficType, Language, TeamLead
 import uuid
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -42,6 +42,36 @@ class SubMerchant(models.Model):
     telegram = models.CharField(max_length=64, default=None, null=True)
     phone = models.CharField(max_length=64, default=None, null=True)
     merchant = models.ForeignKey(to=Merchant, on_delete=models.CASCADE)
+
+
+class MerchantAgentAssignment(models.Model):
+    """Один мерчант — один агент (TeamLead); % от оборота (usd_amount) in/out."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    merchant = models.OneToOneField(to=Merchant, on_delete=models.CASCADE, related_name="agent_assignment")
+    agent = models.ForeignKey(to=TeamLead, on_delete=models.CASCADE, related_name="merchant_assignments")
+    turnover_percent_in = models.DecimalField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        max_digits=5,
+        decimal_places=2,
+    )
+    turnover_percent_out = models.DecimalField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        max_digits=5,
+        decimal_places=2,
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["agent", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.merchant_id} → {self.agent_id}"
 
 
 

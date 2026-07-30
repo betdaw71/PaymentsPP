@@ -6,6 +6,7 @@ app_name = 'merchant'
 router = routers.DefaultRouter()
 router.register(r'merchant', viewsets.MerchantViewSet, basename="Merchant")
 router.register(r'merchant-fees', viewsets.MerchantSolutionViewset, basename="MerchantFees")
+router.register(r'merchant-agent', viewsets.MerchantAgentAssignmentViewSet, basename="MerchantAgent")
 
 urlpatterns = [
     path(r'get-fees/', views.get_solutions),

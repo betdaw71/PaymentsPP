@@ -324,6 +324,31 @@ class InOrderTeamLeadSerializer(serializers.ModelSerializer):
         return representation
 
 
+class InOrderAgentMerchantSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = InOrder
+        fields = [
+            'id',
+            'creation_date',
+            'status',
+            'amount',
+            'usd_amount',
+            'agent_fee',
+            'merchant_order_id',
+        ]
+        read_only_fields = ['amount', 'usd_amount', 'agent_fee']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['status'] = instance.status.name
+        representation['currency'] = instance.solution.payment_system.currency.symbol
+        representation['payment_system'] = instance.solution.payment_system.name
+        representation['traffic_type'] = instance.solution.traffic.name
+        representation['merchant_username'] = instance.solution.merchant.user.username
+        return representation
+
+
 class InOrderCreateSerializer(serializers.ModelSerializer):
     payment_system = serializers.PrimaryKeyRelatedField(queryset=PaymentSystem.objects.all())
     merchant = serializers.PrimaryKeyRelatedField(queryset=Merchant.objects.all())
@@ -529,7 +554,7 @@ class OutOrderMerchantSerializer(serializers.ModelSerializer):
 class OutOrderTeamLeadSerializer(serializers.ModelSerializer):
 
     class Meta:
-        model = InOrder
+        model = OutOrder
         fields = ['id', 'creation_date', 'status', 'amount', 'usd_amount', 'trader_fee']
         read_only_fields = ['amount', 'usd_amount']
 
@@ -539,6 +564,31 @@ class OutOrderTeamLeadSerializer(serializers.ModelSerializer):
         representation['currency'] = instance.solution.payment_system.currency.symbol
         representation['payment_system'] = instance.solution.payment_system.name
         representation['traffic_type'] = instance.solution.traffic.name
+        return representation
+
+
+class OutOrderAgentMerchantSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = OutOrder
+        fields = [
+            'id',
+            'creation_date',
+            'status',
+            'amount',
+            'usd_amount',
+            'agent_fee',
+            'merchant_order_id',
+        ]
+        read_only_fields = ['amount', 'usd_amount', 'agent_fee']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['status'] = instance.status.name
+        representation['currency'] = instance.solution.payment_system.currency.symbol
+        representation['payment_system'] = instance.solution.payment_system.name
+        representation['traffic_type'] = instance.solution.traffic.name
+        representation['merchant_username'] = instance.solution.merchant.user.username
         return representation
 
 

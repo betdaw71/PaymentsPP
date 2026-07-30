@@ -70,6 +70,7 @@ class InOrder(models.Model):
 
     merchant_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     trader_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    agent_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
 
     recalculated = models.BooleanField(default=False)
 
@@ -198,6 +199,10 @@ class InOrder(models.Model):
         if trader.team.teamlead is not None:
             teamlead_share = self.trader_fee * trader.team.teamlead_percentage / Decimal(100)
             from_trader_to_teamlead = Transaction.create(_from=trader.balance_usdt, _to=trader.team.teamlead.balance, value=teamlead_share, _transaction_type=transaction_type_1, _linked_in_order=self, _comment="Teamlead commission")
+
+        from trade.agent_commission import accrue_agent_commission_for_in_order
+
+        accrue_agent_commission_for_in_order(self)
 
         self.payment_details.group.total_volume += self.amount
         self.payment_details.group.save()
@@ -476,6 +481,10 @@ class InOrder(models.Model):
         return
 
     def recalculate(self, new_amount: Decimal):
+        from trade.agent_commission import prepare_in_order_recalc_agent
+
+        prepare_in_order_recalc_agent(self)
+
         new_usd_amount = new_amount / self.solution.payment_system.get_rate()
         new_merchant_fee = self.solution.mdr_in * new_usd_amount / Decimal(100)
         new_trader_fee = self.payment_details.group.trader.team.rate_in * new_usd_amount / Decimal(100)
@@ -585,6 +594,7 @@ class OutOrder(models.Model):
 
     merchant_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     trader_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    agent_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
 
     recalculated = models.BooleanField(default=False)
 
@@ -698,6 +708,9 @@ class OutOrder(models.Model):
 
         unfreeze = Transaction.create(_from=aggregator_balance, _to=trader.balance_usdt, value=for_trader, _transaction_type=transaction_type_2, _linked_out_order=self, _comment="Out-order completed")
 
+        from trade.agent_commission import accrue_agent_commission_for_out_order
+
+        accrue_agent_commission_for_out_order(self)
         self.save()
 
         if trader.team.teamlead is not None:
@@ -878,6 +891,10 @@ class OutOrder(models.Model):
                                                              value=teamlead_share, _transaction_type=transaction_type_1,
                                                              _linked_out_order=self, _comment="Order cancelled")
 
+            from trade.agent_commission import reverse_agent_commission_for_out_order
+
+            reverse_agent_commission_for_out_order(self)
+
             Transaction.create(_from=trader.balance_usdt, _to=aggregator_balance,
                                value=self.usd_amount + self.trader_fee, _transaction_type=transaction_type_1,
                                _linked_out_order=self, _comment="Order cancelled")
@@ -946,6 +963,10 @@ class OutOrder(models.Model):
         if self.status.name != "Recalculation":
             raise ValidationError({
                 'details': 'Cannot recalculate not completed order'})
+
+        from trade.agent_commission import prepare_out_order_recalc_agent
+
+        prepare_out_order_recalc_agent(self)
 
         new_usd_amount = new_amount / self.solution.payment_system.get_rate()
         new_merchant_fee = self.solution.mdr_out * new_usd_amount / Decimal(100)

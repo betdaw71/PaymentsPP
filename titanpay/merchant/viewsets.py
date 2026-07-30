@@ -3,11 +3,11 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 
 from basics.models import PaymentSystem
 from merchant.serializers import MerchantSerializer, MerchantCreateSerializer, MerchantSolutionSerializer, \
-    MerchantUpdSerializer, MerchantShortSerializer
-from merchant.models import Merchant, MerchantSolution
+    MerchantUpdSerializer, MerchantShortSerializer, MerchantAgentAssignmentSerializer
+from merchant.models import Merchant, MerchantSolution, MerchantAgentAssignment
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAdminUser
-from basics.permissions import HeadSupportPermission, DebugPermission, MerchantPermission
+from basics.permissions import HeadSupportPermission, DebugPermission, MerchantPermission, TeamLeadPermission
 from rest_framework.response import Response
 from django.db import transaction
 
@@ -102,3 +102,53 @@ class MerchantSolutionViewset(viewsets.ModelViewSet):
         instance.save()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MerchantAgentAssignmentViewSet(viewsets.ModelViewSet):
+    lookup_field = 'id'
+    serializer_class = MerchantAgentAssignmentSerializer
+    permission_classes = [HeadSupportPermission | TeamLeadPermission | DebugPermission]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['merchant', 'agent', 'is_active']
+    ordering = ['-created_at']
+    http_method_names = ['get', 'post', 'patch', 'delete']
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = MerchantAgentAssignment.objects.select_related('merchant__user', 'agent__user')
+        if hasattr(user, 'teamlead') and not user.is_superuser and not (
+            hasattr(user, 'supportmember') and user.supportmember.is_head
+        ):
+            return qs.filter(agent=user.teamlead)
+        return qs.all()
+
+    def _forbid_teamlead_write(self, request):
+        if hasattr(request.user, 'teamlead') and not request.user.is_superuser and not (
+            hasattr(request.user, 'supportmember') and request.user.supportmember.is_head
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'Forbidden'})
+        return None
+
+    def create(self, request, *args, **kwargs):
+        denied = self._forbid_teamlead_write(request)
+        if denied is not None:
+            return denied
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        denied = self._forbid_teamlead_write(request)
+        if denied is not None:
+            return denied
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        denied = self._forbid_teamlead_write(request)
+        if denied is not None:
+            return denied
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        denied = self._forbid_teamlead_write(request)
+        if denied is not None:
+            return denied
+        return super().destroy(request, *args, **kwargs)
