@@ -22,8 +22,7 @@ from trade.serializers import WithdrawalRequestSupportSerializer, WithdrawalRequ
     OutOrderTraderBossListSerializer, OutOrderTraderBossFullSerializer, OutOrderTraderListSerializer, \
     OutOrderTraderFullSerializer, TransactionSubMerchantSerializer, TransactionTeamLeadSerializer, \
     InOrderTeamLeadSerializer, OutOrderTeamLeadSerializer, InOrderMerchantListSerializer, InOrderSupportListSerializer, \
-    OutOrderMerchantListSerializer, OutOrderSupportListSerializer, OutOrderCheckSerializer, RecalculateTraderSerializer, \
-    InOrderAgentMerchantSerializer, OutOrderAgentMerchantSerializer
+    OutOrderMerchantListSerializer, OutOrderSupportListSerializer, OutOrderCheckSerializer, RecalculateTraderSerializer
 from merchant.models import Merchant
 from trade.models import WithdrawalRequest, Transaction, InOrder, OutOrder, Address, TransactionType
 from rest_framework import viewsets, status
@@ -412,14 +411,8 @@ class InOrderViewset(viewsets.ModelViewSet):
 
         if hasattr(self.request.user, 'teamlead'):
             from payments.psp_payin import filter_inorders_for_trader_lk
-            from trade.agent_commission import merchant_ids_for_agent
-            from trade.teamlead_scope import teamlead_order_scope
 
-            teamlead = self.request.user.teamlead
-            if teamlead_order_scope(self.request) == 'merchant':
-                merchant_ids = merchant_ids_for_agent(teamlead)
-                return InOrder.objects.filter(solution__merchant_id__in=merchant_ids)
-
+            teamlead: Merchant = self.request.user.teamlead
             teams = TraderTeam.objects.filter(teamlead=teamlead)
             orders = InOrder.objects.filter(payment_details__group__trader__team__in=teams)
             return filter_inorders_for_trader_lk(orders)
@@ -444,10 +437,6 @@ class InOrderViewset(viewsets.ModelViewSet):
             else:
                 return InOrderMerchantSerializer
         if hasattr(self.request.user, 'teamlead'):
-            from trade.teamlead_scope import teamlead_order_scope
-
-            if teamlead_order_scope(self.request) == 'merchant':
-                return InOrderAgentMerchantSerializer
             return InOrderTeamLeadSerializer
         if hasattr(self.request.user, 'supportmember'):
             if self.action == 'list':
@@ -477,16 +466,6 @@ class InOrderViewset(viewsets.ModelViewSet):
             total_commission_trader = completed.aggregate(sum_usd_amount=Sum('trader_fee'))['sum_usd_amount'] or 0
             total_commission = total_commission_merchant - total_commission_trader
             hold = Decimal(0)
-        elif hasattr(self.request.user, 'teamlead'):
-            from trade.teamlead_scope import teamlead_order_scope
-
-            if teamlead_order_scope(self.request) == 'merchant':
-                total_commission = completed.aggregate(sum_usd_amount=Sum('agent_fee'))['sum_usd_amount'] or 0
-                hold = Decimal(0)
-            else:
-                total_commission = completed.aggregate(sum_usd_amount=Sum('trader_fee'))['sum_usd_amount'] or 0
-                holded_orders = queryset.filter(status__name__in=['New', 'Arbitrage', 'Money sent by user'])
-                hold = holded_orders.aggregate(sum_usd_amount=Sum('usd_amount'))['sum_usd_amount'] or 0
         else:
             total_commission = completed.aggregate(sum_usd_amount=Sum('trader_fee'))['sum_usd_amount'] or 0
             holded_orders = queryset.filter(status__name__in=['New', 'Arbitrage', 'Money sent by user'])
@@ -808,14 +787,7 @@ class OutOrderViewset(viewsets.ModelViewSet):
             return orders
 
         if hasattr(self.request.user, 'teamlead'):
-            from trade.agent_commission import merchant_ids_for_agent
-            from trade.teamlead_scope import teamlead_order_scope
-
-            teamlead = self.request.user.teamlead
-            if teamlead_order_scope(self.request) == 'merchant':
-                merchant_ids = merchant_ids_for_agent(teamlead)
-                return OutOrder.objects.filter(solution__merchant_id__in=merchant_ids)
-
+            teamlead: Merchant = self.request.user.teamlead
             teams = TraderTeam.objects.filter(teamlead=teamlead)
             orders = OutOrder.objects.filter(payment_details__group__trader__team__in=teams)
             return orders
@@ -840,10 +812,6 @@ class OutOrderViewset(viewsets.ModelViewSet):
             else:
                 return OutOrderMerchantSerializer
         if hasattr(self.request.user, 'teamlead'):
-            from trade.teamlead_scope import teamlead_order_scope
-
-            if teamlead_order_scope(self.request) == 'merchant':
-                return OutOrderAgentMerchantSerializer
             return OutOrderTeamLeadSerializer
         if hasattr(self.request.user, 'supportmember'):
             if self.action == 'list':
@@ -868,15 +836,6 @@ class OutOrderViewset(viewsets.ModelViewSet):
             total_commission_trader = completed.aggregate(sum_usd_amount=Sum('trader_fee'))['sum_usd_amount'] or 0
             total_commission = total_commission_merchant - total_commission_trader
             hold = Decimal(0)
-        elif hasattr(self.request.user, 'teamlead'):
-            from trade.teamlead_scope import teamlead_order_scope
-
-            if teamlead_order_scope(self.request) == 'merchant':
-                total_commission = completed.aggregate(sum_usd_amount=Sum('agent_fee'))['sum_usd_amount'] or 0
-                hold = Decimal(0)
-            else:
-                total_commission = completed.aggregate(sum_usd_amount=Sum('trader_fee'))['sum_usd_amount'] or 0
-                hold = Decimal(0)
         else:
             total_commission = completed.aggregate(sum_usd_amount=Sum('trader_fee'))['sum_usd_amount'] or 0
             hold = Decimal(0)
