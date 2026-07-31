@@ -58,29 +58,14 @@ def update_balances():
         #     continue
 
 
-def _liveness_exempt_usernames() -> set[str]:
-    from django.conf import settings
-
-    raw = getattr(settings, "LIVENESS_EXEMPT_TRADER_USERNAMES", "") or ""
-    return {u.strip() for u in raw.split(",") if u.strip()}
-
-
-def _skip_liveness_for_group(trader) -> bool:
+def update_pd():
     from payments.psp_payin import is_psp_trader
 
-    if trader is None:
-        return False
-    if is_psp_trader(trader):
-        return True
-    return trader.user.username in _liveness_exempt_usernames()
-
-
-def update_pd():
     pd = PaymentDetailsGroup.objects.all()
     for p in pd:
         try:
-            if _skip_liveness_for_group(p.trader):
-                # PSP / тестовые трейдеры: без SMS, liveness не применяем.
+            if is_psp_trader(p.trader):
+                # Виртуальные PSP-группы (expayone1, protocol1): без SMS, liveness не применяем.
                 fields = []
                 if p.status == 5:
                     p.status = 1
@@ -94,15 +79,14 @@ def update_pd():
         except Exception:
             logging.info(f'Updating PD {p.id} failed')
 
-    skip_users = set(_psp_trader_usernames()) | _liveness_exempt_usernames()
-    active_pd = pd.filter(status=1).exclude(trader__user__username__in=skip_users)
+    active_pd = pd.filter(status=1).exclude(trader__user__username__in=_psp_trader_usernames())
     for p in active_pd:
         try:
             p.check_liveness()
         except Exception:
             logging.info(f'Updating PD {p.id} failed')
 
-    setup_pd = pd.filter(status=7).exclude(trader__user__username__in=skip_users)
+    setup_pd = pd.filter(status=7).exclude(trader__user__username__in=_psp_trader_usernames())
     for p in setup_pd:
         try:
             p.check_liveness()
@@ -180,22 +164,12 @@ def expire():
         arbitrage_orders_in = InOrder.objects.filter(status__name="Arbitrage", amount__lte=ps.auto_close_amount, solution__payment_system=ps, updated_date__lte=arb_time_out)
 
         for order in expired_in_orders:
-            try:
-                with transaction.atomic():
-                    order = InOrder.objects.select_for_update().get(pk=order.pk)
-                    if order.status and order.status.name == "New":
-                        order.deal_time_expired()
-            except Exception:
-                logging.exception("expire in-order %s failed", order.pk)
+            with transaction.atomic():
+                order.deal_time_expired()
 
         for order in expired_out_orders:
-            try:
-                with transaction.atomic():
-                    order = OutOrder.objects.select_for_update().get(pk=order.pk)
-                    if order.status and order.status.name == "New":
-                        order.deal_expired()
-            except Exception:
-                logging.exception("expire out-order %s failed", order.pk)
+            with transaction.atomic():
+                order.deal_expired()
 
         for order in arbitrage_orders_in:
             with transaction.atomic():
@@ -251,29 +225,56 @@ def send_to_fastapi(order: dict, file) -> dict:
     return response.json()
 
 
-def build_orders_excel_buffer(queryset):
-    data = list(queryset.values(
-        'id', 'pay_in__id', 'status__name', 'amount', 'usd_amount', 'trader_fee',
-        'payment_details__group__owner', 'solution__payment_system__name', 'creation_date',
-    ))
+def build_orders_excel_buffer(queryset, *, for_merchant: bool = False, payment_fk_id_field: str = 'pay_in__id'):
+    payment_column_key = 'payment_id'
+    value_fields = [
+        'id',
+        payment_fk_id_field,
+        'status__name',
+        'amount',
+        'usd_amount',
+        'merchant_fee',
+        'solution__payment_system__name',
+        'creation_date',
+        'merchant_order_id',
+    ]
+    if not for_merchant:
+        value_fields.extend([
+            'trader_fee',
+            'payment_details__group__owner',
+        ])
+
+    data = list(queryset.values(*value_fields))
 
     for item in data:
+        item[payment_column_key] = item.pop(payment_fk_id_field, None)
         if item['creation_date']:
             item['creation_date'] = item['creation_date'].astimezone(pytz.utc).replace(tzinfo=None)
+        if not for_merchant:
+            mf = Decimal(str(item.get('merchant_fee') or 0))
+            tf = Decimal(str(item.get('trader_fee') or 0))
+            item['platform_commission'] = mf - tf
 
     df = pd.DataFrame(data)
 
+    payment_label = 'PayOut ID' if payment_fk_id_field == 'pay_out__id' else 'PayIn ID'
     column_mapping = {
-        'id': 'ID (InOrder)',
-        'pay_in__id': 'PayIn ID',
+        'id': 'ID (Order)',
+        payment_column_key: payment_label,
         'status__name': 'Статус',
         'amount': 'Сумма (Фиат)',
         'usd_amount': 'Сумма (USDT)',
-        'trader_fee': 'Прибыль',
-        'payment_details__group__owner': 'ФИО',
+        'merchant_fee': 'Комиссия мерчанта (USDT)',
+        'merchant_order_id': 'Merchant order ID',
         'solution__payment_system__name': 'Платёжная система',
         'creation_date': 'Дата создания',
     }
+    if not for_merchant:
+        column_mapping.update({
+            'trader_fee': 'Комиссия трейдера (USDT)',
+            'platform_commission': 'Комиссия платформы (USDT)',
+            'payment_details__group__owner': 'ФИО',
+        })
 
     df.rename(columns=column_mapping, inplace=True)
 
@@ -284,8 +285,18 @@ def build_orders_excel_buffer(queryset):
     return buffer
 
 
-def orders_excel_http_response(queryset, *, filename_prefix: str = "orders"):
-    buffer = build_orders_excel_buffer(queryset)
+def orders_excel_http_response(
+    queryset,
+    *,
+    filename_prefix: str = "orders",
+    for_merchant: bool = False,
+    payment_fk_id_field: str = 'pay_in__id',
+):
+    buffer = build_orders_excel_buffer(
+        queryset,
+        for_merchant=for_merchant,
+        payment_fk_id_field=payment_fk_id_field,
+    )
     filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     response = HttpResponse(
         buffer.getvalue(),
