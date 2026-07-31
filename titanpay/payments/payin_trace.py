@@ -23,6 +23,9 @@ class Direction:
     CONCORDED_OUT_REQUEST = "concored_out_request"
     CONCORDED_OUT_RESPONSE = "concored_out_response"
     CONCORDED_WEBHOOK = "concored_webhook"
+    PAYMAP_OUT_REQUEST = "paymap_out_request"
+    PAYMAP_OUT_RESPONSE = "paymap_out_response"
+    PAYMAP_WEBHOOK = "paymap_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 

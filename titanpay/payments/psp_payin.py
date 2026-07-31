@@ -36,6 +36,7 @@ def is_psp_trader(trader) -> bool:
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
+    from payments import paymap_client as pmc
 
     return (
         fc.is_fairpay_trader(trader)
@@ -43,6 +44,7 @@ def is_psp_trader(trader) -> bool:
         or pc.is_protocol_trader(trader)
         or plc.is_playments_trader(trader)
         or cc.is_concored_trader(trader)
+        or pmc.is_paymap_trader(trader)
     )
 
 
@@ -91,6 +93,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
+    from payments import paymap_client as pmc
 
     names = {
         fc.fairpay_trader_username(),
@@ -98,6 +101,7 @@ def psp_trader_usernames() -> frozenset[str]:
         pc.protocol_trader_username(),
         plc.playments_trader_username(),
         cc.concored_trader_username(),
+        pmc.paymap_trader_username(),
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -138,6 +142,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
+    from payments import paymap_client as pmc
 
     for getter in (
         fc.fairpay_requisite_for_payin,
@@ -145,6 +150,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         pc.protocol_requisite_for_payin,
         plc.playments_requisite_for_payin,
         cc.concored_requisite_for_payin,
+        pmc.paymap_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -158,12 +164,14 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
+    from payments import paymap_client as pmc
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
     representation = pc.enrich_payin_payment_details(representation, pay_in)
     representation = plc.enrich_payin_payment_details(representation, pay_in)
-    return cc.enrich_payin_payment_details(representation, pay_in)
+    representation = cc.enrich_payin_payment_details(representation, pay_in)
+    return pmc.enrich_payin_payment_details(representation, pay_in)
 
 
 def payin_routed_group(pay_in: Any):
@@ -197,6 +205,7 @@ def _psp_provider_for_trader(trader):
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
+    from payments import paymap_client as pmc
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
@@ -208,6 +217,8 @@ def _psp_provider_for_trader(trader):
         return "playments", plc.try_attach_playments_session
     if cc.is_concored_trader(trader):
         return "concored", cc.try_attach_concored_session
+    if pmc.is_paymap_trader(trader):
+        return "paymap", pmc.try_attach_paymap_session
     return None, None
 
 
@@ -379,12 +390,14 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
+    from payments import paymap_client as pmc
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
     pc.protocol_cancel_if_linked(pay_in)
     plc.playments_cancel_if_linked(pay_in)
     cc.concored_cancel_if_linked(pay_in)
+    pmc.paymap_cancel_if_linked(pay_in)
 
 
 def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
@@ -398,8 +411,7 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
         "paid_amount",
         "transferredAmount",
         "requestedAmount",
-        "quotedAmountMinor",
-        "requestedAmountMinor",
+        "amount_num",
     ):
         if body.get(key) is not None:
             candidates.append(body.get(key))
@@ -549,6 +561,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         ConcoredPayInSession,
         ExpayonePayInSession,
         FairpayPayInSession,
+        PaymapPayInSession,
         PlaymentsPayInSession,
         ProtocolPayInSession,
     )
@@ -563,6 +576,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         ProtocolPayInSession,
         PlaymentsPayInSession,
         ConcoredPayInSession,
+        PaymapPayInSession,
     ):
         try:
             session = model.objects.get(pay_in=pay_in)
@@ -571,7 +585,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         cr = session.create_response or {}
         if not isinstance(cr, dict):
             continue
-        if cr.get("error") == "no_payment_detail_in_response":
+        if cr.get("error") in ("no_payment_detail_in_response", "no_credentials_in_response"):
             return "requisites_empty_response"
         if _extract_upstream_error(cr):
             return "requisites_unavailable"
@@ -587,6 +601,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         ConcoredPayInSession,
         ExpayonePayInSession,
         FairpayPayInSession,
+        PaymapPayInSession,
         PlaymentsPayInSession,
         ProtocolPayInSession,
     )
@@ -604,6 +619,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (ProtocolPayInSession, "protocol"),
         (PlaymentsPayInSession, "playments"),
         (ConcoredPayInSession, "concored"),
+        (PaymapPayInSession, "paymap"),
     ):
         try:
             session = model.objects.get(pay_in=pay_in)

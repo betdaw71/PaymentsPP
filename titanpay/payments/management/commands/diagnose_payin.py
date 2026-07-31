@@ -10,6 +10,7 @@ from payments.models import (
     FairpayPayInSession,
     PayIn,
     PayInTraceLog,
+    PaymapPayInSession,
     ProtocolPayInSession,
 )
 from payments.psp_payin import psp_create_failure_reason_internal
@@ -88,6 +89,7 @@ class Command(BaseCommand):
             ("FairPay", FairpayPayInSession),
             ("Protocol", ProtocolPayInSession),
             ("Concored", ConcoredPayInSession),
+            ("PayMap", PaymapPayInSession),
         ):
             try:
                 s = model.objects.get(pay_in=pay_in)
@@ -176,7 +178,13 @@ class Command(BaseCommand):
             )
 
     def _has_psp_api_attempt(self, pay_in) -> bool:
-        for model in (ExpayonePayInSession, FairpayPayInSession, ProtocolPayInSession, ConcoredPayInSession):
+        for model in (
+            ExpayonePayInSession,
+            FairpayPayInSession,
+            ProtocolPayInSession,
+            ConcoredPayInSession,
+            PaymapPayInSession,
+        ):
             if model.objects.filter(pay_in=pay_in).exists():
                 return True
         return False
