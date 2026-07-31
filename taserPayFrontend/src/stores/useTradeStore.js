@@ -21,44 +21,70 @@ function downloadExcelBlob (response, defaultName) {
 }
 
 async function exportOrdersExcel (path, params, defaultName) {
-  const response = await instance.get(path, { params, responseType: 'blob' })
-  if (response.status !== 200) {
-    return {
-      data: [],
-      error: response.data,
-    }
-  }
-
-  const contentType = response.headers['content-type'] || ''
-  if (contentType.includes('spreadsheetml') || contentType.includes('octet-stream')) {
-    downloadExcelBlob(response, defaultName)
-
-    return {
-      data: { downloaded: true },
-      error: null,
-    }
-  }
-
   try {
-    const text = await response.data.text()
-    const json = JSON.parse(text)
-    if (json.url) {
-      window.open(json.url, '_blank')
+    const response = await instance.get(path, { params, responseType: 'blob' })
+    if (response.status !== 200) {
+      return {
+        data: [],
+        error: response.data,
+      }
+    }
+
+    const contentType = response.headers['content-type'] || ''
+    if (contentType.includes('spreadsheetml') || contentType.includes('octet-stream')) {
+      downloadExcelBlob(response, defaultName)
 
       return {
-        data: json,
+        data: { downloaded: true },
         error: null,
+      }
+    }
+
+    try {
+      const text = await response.data.text()
+      const json = JSON.parse(text)
+      if (json.url) {
+        window.open(json.url, '_blank')
+
+        return {
+          data: json,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: json,
+      }
+    } catch {
+      return {
+        data: [],
+        error: 'Export failed',
+      }
+    }
+  } catch (error) {
+    const res = error.response
+    if (res?.data instanceof Blob) {
+      try {
+        const text = await res.data.text()
+        const json = JSON.parse(text)
+        const message = json.detail || json.error || json.message || text
+
+        return {
+          data: [],
+          error: typeof message === 'string' ? message : JSON.stringify(message),
+        }
+      } catch {
+        return {
+          data: [],
+          error: `Export failed (${res.status || 'network'})`,
+        }
       }
     }
 
     return {
       data: [],
-      error: json,
-    }
-  } catch {
-    return {
-      data: [],
-      error: 'Export failed',
+      error: error.message || 'Export failed',
     }
   }
 }

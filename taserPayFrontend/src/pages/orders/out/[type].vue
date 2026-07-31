@@ -198,33 +198,15 @@ const getFiltersOrder = async () => {
   )
 }
 
-const getOrders = async (resetInterval = false) => {
-  loadMessage.value = {
-    message: t ('data.loading'),
-    status: 0,
-  }
-  items.value = []
-  if (resetInterval) {
-    clearInterval (autoUpdateInterval.value)
-    if (filters.value.autoUpdateMode) {
-      autoUpdateInterval.value = setInterval (() => {
-        console.log('inside getOrders')
-        getOrders ()
-      }, filters.value.autoUpdateMode * 1000)
-    }
-  }
-  autoUpdateStartTimestamp.value = filters.value.autoUpdateMode ? Date.now () : null
-
-  const params = {
-    per_page: filters.value.rowsPerPage,
-    page: currentPage.value,
+const buildOrderOutListParams = (includePagination = true) => {
+  const params = {}
+  if (includePagination) {
+    params.per_page = filters.value.rowsPerPage
+    params.page = currentPage.value
   }
 
-
-  // Base Filters
   if (filters.value.ordering)
     params.ordering = filters.value.ordering
-  // Filters always apply (Variant A — no apply_filters toggle)
   if (filters.value.searchQueryId)
     params.id = filters.value.searchQueryId
   if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
@@ -242,13 +224,10 @@ const getOrders = async (resetInterval = false) => {
   if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
     params.creation_date__range = filters.value.dateRange.replace (" to ", ",").replaceAll(" ", "T")
 
-  // Merchant Filters
   if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
     params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
   if (filters.value.searchMerchantOrderId)
     params.merchant_order_id = filters.value.searchMerchantOrderId
-
-  // Trader Filters
 
   if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
     params.traffic_type__name__in = filters.value.selectedTrafficTypes.join (",")
@@ -263,23 +242,39 @@ const getOrders = async (resetInterval = false) => {
   if (filters.value.searchCustomerId)
     params.customer_id = filters.value.searchCustomerId
 
-  // Trader Boss Filters (Only)
   if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
     params.trader__user__username__in = filters.value.selectedTraders.join (",")
 
-  // Support Filters
   if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
     params.trader__team__name__in = filters.value.selectedTeams.join (",")
 
-  // Head Support Filters (Only)
   if (filters.value.selectedMerchants && filters.value.selectedMerchants.length > 0)
     params.merchant__user__username__in = filters.value.selectedMerchants.join (",")
 
   if (authStore.is_team_lead() && filters.value.teamleadScope === 'merchant')
     params.scope = 'merchant'
 
-  // END Filters
+  return params
+}
 
+const getOrders = async (resetInterval = false) => {
+  loadMessage.value = {
+    message: t ('data.loading'),
+    status: 0,
+  }
+  items.value = []
+  if (resetInterval) {
+    clearInterval (autoUpdateInterval.value)
+    if (filters.value.autoUpdateMode) {
+      autoUpdateInterval.value = setInterval (() => {
+        console.log('inside getOrders')
+        getOrders ()
+      }, filters.value.autoUpdateMode * 1000)
+    }
+  }
+  autoUpdateStartTimestamp.value = filters.value.autoUpdateMode ? Date.now () : null
+
+  const params = buildOrderOutListParams(true)
 
   tradeStore.getTradeOrderOut (params).then (response => {
     if (response.error) {
@@ -611,7 +606,7 @@ const resetFilters = () => {
 
 const exportOrders = async () => {
   exportLoading.value = true
-  tradeStore.exportTradeOrderOut ({}).then (
+  tradeStore.exportTradeOrderOut (buildOrderOutListParams(false)).then (
     response => {
       exportLoading.value = false
       if (response.error)

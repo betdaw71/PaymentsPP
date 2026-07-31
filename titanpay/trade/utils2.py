@@ -225,34 +225,56 @@ def send_to_fastapi(order: dict, file) -> dict:
     return response.json()
 
 
-def build_orders_excel_buffer(queryset):
-    data = list(queryset.values(
-        'id', 'pay_in__id', 'status__name', 'amount', 'usd_amount', 'merchant_fee', 'trader_fee',
-        'payment_details__group__owner', 'solution__payment_system__name', 'creation_date',
-    ))
+def build_orders_excel_buffer(queryset, *, for_merchant: bool = False, payment_fk_id_field: str = 'pay_in__id'):
+    payment_column_key = 'payment_id'
+    value_fields = [
+        'id',
+        payment_fk_id_field,
+        'status__name',
+        'amount',
+        'usd_amount',
+        'merchant_fee',
+        'solution__payment_system__name',
+        'creation_date',
+        'merchant_order_id',
+    ]
+    if not for_merchant:
+        value_fields.extend([
+            'trader_fee',
+            'payment_details__group__owner',
+        ])
+
+    data = list(queryset.values(*value_fields))
 
     for item in data:
+        item[payment_column_key] = item.pop(payment_fk_id_field, None)
         if item['creation_date']:
             item['creation_date'] = item['creation_date'].astimezone(pytz.utc).replace(tzinfo=None)
-        mf = Decimal(str(item.get('merchant_fee') or 0))
-        tf = Decimal(str(item.get('trader_fee') or 0))
-        item['platform_commission'] = mf - tf
+        if not for_merchant:
+            mf = Decimal(str(item.get('merchant_fee') or 0))
+            tf = Decimal(str(item.get('trader_fee') or 0))
+            item['platform_commission'] = mf - tf
 
     df = pd.DataFrame(data)
 
+    payment_label = 'PayOut ID' if payment_fk_id_field == 'pay_out__id' else 'PayIn ID'
     column_mapping = {
-        'id': 'ID (InOrder)',
-        'pay_in__id': 'PayIn ID',
+        'id': 'ID (Order)',
+        payment_column_key: payment_label,
         'status__name': 'Статус',
         'amount': 'Сумма (Фиат)',
         'usd_amount': 'Сумма (USDT)',
         'merchant_fee': 'Комиссия мерчанта (USDT)',
-        'trader_fee': 'Комиссия трейдера (USDT)',
-        'platform_commission': 'Комиссия платформы (USDT)',
-        'payment_details__group__owner': 'ФИО',
+        'merchant_order_id': 'Merchant order ID',
         'solution__payment_system__name': 'Платёжная система',
         'creation_date': 'Дата создания',
     }
+    if not for_merchant:
+        column_mapping.update({
+            'trader_fee': 'Комиссия трейдера (USDT)',
+            'platform_commission': 'Комиссия платформы (USDT)',
+            'payment_details__group__owner': 'ФИО',
+        })
 
     df.rename(columns=column_mapping, inplace=True)
 
@@ -263,8 +285,18 @@ def build_orders_excel_buffer(queryset):
     return buffer
 
 
-def orders_excel_http_response(queryset, *, filename_prefix: str = "orders"):
-    buffer = build_orders_excel_buffer(queryset)
+def orders_excel_http_response(
+    queryset,
+    *,
+    filename_prefix: str = "orders",
+    for_merchant: bool = False,
+    payment_fk_id_field: str = 'pay_in__id',
+):
+    buffer = build_orders_excel_buffer(
+        queryset,
+        for_merchant=for_merchant,
+        payment_fk_id_field=payment_fk_id_field,
+    )
     filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     response = HttpResponse(
         buffer.getvalue(),

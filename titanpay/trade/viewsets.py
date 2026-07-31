@@ -716,42 +716,16 @@ class InOrderViewset(viewsets.ModelViewSet):
 
         return Response(status=status.HTTP_200_OK, data={'error': f'Status code: {status_code}'})
 
-    @action(detail=False, methods=['GET'], permission_classes=[TraderPermission | SupportPermission], url_path='export')
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
     def export_orders(self, request):
-        if hasattr(request.user, 'trader'):
-            trader: Trader = request.user.trader
+        queryset = self.filter_queryset(self.get_queryset())
+        status_filter = (request.query_params.get('status__name__in') or '').strip()
+        status_names = [s.strip() for s in status_filter.split(',') if s.strip()]
+        if status_names and 'Cannot process' not in status_names:
+            queryset = queryset.exclude(status__name="Cannot process")
 
-            queryset = InOrder.objects.filter(payment_details__group__trader=trader)
-
-        elif hasattr(request.user, 'supportmember'):
-            support_member = request.user.supportmember
-
-            if support_member.is_head:
-                queryset = InOrder.objects.all()
-            else:
-                merchants = support_member.controlled_merchants.all()
-                teams = support_member.controlled_teams.all()
-
-                query = Q()
-                if teams.exists():
-                    query &= Q(payment_details__group__trader__team__in=teams)
-                if merchants.exists():
-                    query &= Q(solution__merchant__in=merchants)
-
-                queryset = InOrder.objects.filter(query) if query else OutOrder.objects.none()
-
-        else:
-
-            queryset = InOrder.objects.none()
-
-        now = timezone.now()
-
-        start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start_of_previous_day = start_of_today - timedelta(days=1)
-
-        # queryset = queryset.filter(creation_date__gte=start_of_previous_day, creation_date__lt=start_of_today)
-
-        return orders_excel_http_response(queryset, filename_prefix="orders_in")
+        for_merchant = hasattr(request.user, 'merchant') or hasattr(request.user, 'submerchant')
+        return orders_excel_http_response(queryset, filename_prefix="orders_in", for_merchant=for_merchant)
 
     @action(detail=False, methods=['GET'], permission_classes=[TraderPermission], url_path='reasons')
     def get_reasons(self, request):
@@ -1140,42 +1114,18 @@ class OutOrderViewset(viewsets.ModelViewSet):
         data = [{"name": reason[0]} for reason in OutOrder.REJECTION_CHOICES]
         return Response(status=status.HTTP_200_OK, data=data)
 
-    @action(detail=False, methods=['GET'], permission_classes=[TraderPermission | SupportPermission], url_path='export')
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
     def export_orders(self, request):
-        if hasattr(request.user, 'trader'):
-            trader: Trader = request.user.trader
+        queryset = self.filter_queryset(self.get_queryset())
+        queryset = queryset.exclude(status__name__in=["Cannot process", "Failed"])
 
-            queryset = OutOrder.objects.filter(payment_details__group__trader=trader)
-
-        elif hasattr(request.user, 'supportmember'):
-            support_member = request.user.supportmember
-
-            if support_member.is_head:
-                queryset = OutOrder.objects.all()
-            else:
-                merchants = support_member.controlled_merchants.all()
-                teams = support_member.controlled_teams.all()
-
-                query = Q()
-                if teams.exists():
-                    query &= Q(payment_details__group__trader__team__in=teams)
-                if merchants.exists():
-                    query &= Q(solution__merchant__in=merchants)
-
-                queryset = OutOrder.objects.filter(query) if query else OutOrder.objects.none()
-
-        else:
-
-            queryset = OutOrder.objects.none()
-
-        now = timezone.now()
-
-        start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start_of_previous_day = start_of_today - timedelta(days=1)
-
-        # queryset = queryset.filter(creation_date__gte=start_of_previous_day, creation_date__lt=start_of_today)
-
-        return orders_excel_http_response(queryset, filename_prefix="orders_out")
+        for_merchant = hasattr(request.user, 'merchant') or hasattr(request.user, 'submerchant')
+        return orders_excel_http_response(
+            queryset,
+            filename_prefix="orders_out",
+            for_merchant=for_merchant,
+            payment_fk_id_field='pay_out__id',
+        )
 
 
 class TraderTeamRatesViewset(viewsets.ModelViewSet):

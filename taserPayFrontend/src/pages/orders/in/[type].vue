@@ -204,35 +204,15 @@ const getFiltersOrder = async () => {
   )
 }
 
-const getOrders = async (resetInterval = false) => {
-  loadMessage.value = {
-    message: t ('data.loading'),
-    status: 0,
-  }
-  items.value = []
-  if (resetInterval) {
-    clearInterval (autoUpdateInterval.value)
-    if (filters.value.autoUpdateMode) {
-      autoUpdateInterval.value = setInterval (() => {
-        console.log ('inside getOrders')
-        getOrders ()
-      }, filters.value.autoUpdateMode * 1000)
-    }
-  }
-  autoUpdateStartTimestamp.value = filters.value.autoUpdateMode ? Date.now () : null
-
-  const params = {
-    per_page: filters.value.rowsPerPage,
-    page: currentPage.value,
+const buildOrderInListParams = (includePagination = true) => {
+  const params = {}
+  if (includePagination) {
+    params.per_page = filters.value.rowsPerPage
+    params.page = currentPage.value
   }
 
-  console.log ({ params })
-
-
-  // Base Filters
   if (filters.value.ordering)
     params.ordering = filters.value.ordering
-  // Filters always apply (Variant A — no apply_filters toggle)
   if (filters.value.searchQueryId)
     params.id = filters.value.searchQueryId
   if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
@@ -280,6 +260,32 @@ const getOrders = async (resetInterval = false) => {
   if (authStore.is_team_lead() && filters.value.teamleadScope === 'merchant')
     params.scope = 'merchant'
 
+  return params
+}
+
+const getOrders = async (resetInterval = false) => {
+  loadMessage.value = {
+    message: t ('data.loading'),
+    status: 0,
+  }
+  items.value = []
+  if (resetInterval) {
+    clearInterval (autoUpdateInterval.value)
+    if (filters.value.autoUpdateMode) {
+      autoUpdateInterval.value = setInterval (() => {
+        console.log ('inside getOrders')
+        getOrders ()
+      }, filters.value.autoUpdateMode * 1000)
+    }
+  }
+  autoUpdateStartTimestamp.value = filters.value.autoUpdateMode ? Date.now () : null
+
+  const params = buildOrderInListParams(true)
+
+  console.log ({ params })
+
+
+  // Base Filters
   tradeStore.getTradeOrderIn (params).then (response => {
     if (response.error) {
       throw response.error
@@ -607,7 +613,7 @@ const resetFilters = () => {
 
 const exportOrders = async () => {
   exportLoading.value = true
-  tradeStore.exportTradeOrderIn ({}).then (
+  tradeStore.exportTradeOrderIn (buildOrderInListParams(false)).then (
     response => {
       exportLoading.value = false
       if (response.error)
