@@ -71,6 +71,7 @@ class InOrder(models.Model):
 
     merchant_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     trader_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    agent_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
 
     recalculated = models.BooleanField(default=False)
 
@@ -89,7 +90,7 @@ class InOrder(models.Model):
             status = InOrderStatus.objects.get(name="Cannot process")
             order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
                             solution=solution, payment_details=None,
-                            merchant_order_id=merchant_order_id)
+                            merchant_order_id=merchant_order_id, agent_fee=Decimal(0))
             order_obj.save()
             return order_obj
 
@@ -99,7 +100,7 @@ class InOrder(models.Model):
         team_rate = TraderTeamRates.objects.get(team=chosen_detail.group.trader.team, payment_system=payment_system_obj)
         trader_fee = team_rate.mdr_in * usd_amount / Decimal(100)
 
-        order_obj = cls(status=status, amount=amount, usd_amount=usd_amount, solution=solution, payment_details=chosen_detail, merchant_order_id=merchant_order_id, merchant_fee=merchant_fee, trader_fee=trader_fee)
+        order_obj = cls(status=status, amount=amount, usd_amount=usd_amount, solution=solution, payment_details=chosen_detail, merchant_order_id=merchant_order_id, merchant_fee=merchant_fee, trader_fee=trader_fee, agent_fee=Decimal(0))
         order_obj.save()
 
         try:
@@ -599,6 +600,7 @@ class OutOrder(models.Model):
 
     merchant_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     trader_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    agent_fee = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
 
     recalculated = models.BooleanField(default=False)
 
@@ -628,7 +630,7 @@ class OutOrder(models.Model):
             order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
                             solution=solution,
                             payment_details=None, destination_details=details,
-                            merchant_order_id=merchant_order_id)
+                            merchant_order_id=merchant_order_id, agent_fee=Decimal(0))
             order_obj.save()
             return order_obj
 
@@ -643,14 +645,14 @@ class OutOrder(models.Model):
             order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
                             solution=solution,
                             payment_details=None, destination_details=details,
-                            merchant_order_id=merchant_order_id)
+                            merchant_order_id=merchant_order_id, agent_fee=Decimal(0))
             order_obj.save()
             return order_obj
 
         status = OutOrderStatus.objects.get(name="New")
         order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
                         payment_details=chosen_detail, solution=solution, destination_details=details,
-                        merchant_order_id=merchant_order_id, first_creation_date=time, merchant_fee=merchant_fee, trader_fee=trader_fee)
+                        merchant_order_id=merchant_order_id, first_creation_date=time, merchant_fee=merchant_fee, trader_fee=trader_fee, agent_fee=Decimal(0))
 
         order_obj.save()
 
