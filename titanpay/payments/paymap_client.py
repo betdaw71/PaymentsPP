@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlencode
@@ -80,18 +81,18 @@ def _target_bank_for_ps(ps_name: str) -> str | None:
 
 
 def _transgran_country_for_ps(ps_name: str) -> str | None:
-    val = _json_map_lookup(getattr(settings, "PAYMAP_TRANSGRAN_COUNTRY_MAP", None), ps_name)
+    val = _json_map_lookup(os.getenv("PAYMAP_TRANSGRAN_COUNTRY_MAP", ""), ps_name)
     if val:
         return val.upper()
-    default = (getattr(settings, "PAYMAP_TRANSGRAN_COUNTRY", None) or "").strip().upper()
+    default = (os.getenv("PAYMAP_TRANSGRAN_COUNTRY", "") or "").strip().upper()
     return default or None
 
 
 def _transgran_detail_type_for_ps(ps_name: str) -> str | None:
-    val = _json_map_lookup(getattr(settings, "PAYMAP_TRANSGRAN_DETAIL_TYPE_MAP", None), ps_name)
+    val = _json_map_lookup(os.getenv("PAYMAP_TRANSGRAN_DETAIL_TYPE_MAP", ""), ps_name)
     if val:
         return val.lower()
-    default = (getattr(settings, "PAYMAP_TRANSGRAN_DETAIL_TYPE", None) or "").strip().lower()
+    default = (os.getenv("PAYMAP_TRANSGRAN_DETAIL_TYPE", "") or "").strip().lower()
     return default or None
 
 
