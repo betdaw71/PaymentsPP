@@ -193,7 +193,8 @@ def paymap_create_fiat_invoice(
         params["targetBank"] = target_bank
     if inv_type == "TRANSGRAN":
         if transgran_country:
-            params["transgran_country"] = transgran_country.upper()
+            # API model binds transgranCountry (camelCase); snake_case is ignored on their side
+            params["transgranCountry"] = transgran_country.upper()
         if transgran_detail_type:
             params["transgranDetailType"] = transgran_detail_type.lower()
     lifetime = life_time_minutes or int(getattr(settings, "PAYMAP_INVOICE_LIFETIME_MINUTES", 15) or 15)
