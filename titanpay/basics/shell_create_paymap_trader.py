@@ -1,11 +1,11 @@
 """
 Django shell: команда + виртуальный трейдер PayMap PSP (KZT).
 
-Документация: http://docs.paymap.me (v2, базовый URL https://paymap.co)
+Документация: http://docs.paymap.me (v2, базовый URL https://europe.paymap.me)
 Колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/paymap/
 
 После run() в .env (ключ НЕ коммитить):
-  PAYMAP_API_BASE=https://paymap.co
+  PAYMAP_API_BASE=https://europe.paymap.me
   PAYMAP_API_KEY=pk_live_...
   PAYMAP_TRADER_USERNAME=paymap_kzt
   PAYMAP_DEFAULT_INVOICE_TYPE=CARD
@@ -99,12 +99,10 @@ def run(*, reset_password: bool = False):
     if kzt is None:
         kzt = Currency.objects.create(symbol="KZT", name="Kazakhstani Tenge")
         print("  + Currency KZT")
-
     team, _ = TraderTeam.objects.get_or_create(
-        name=TEAM_NAME, defaults={"in_rate": Decimal("5"), "out_rate": Decimal("2")}
+        name=TEAM_NAME, defaults={"rate_in": Decimal("5"), "rate_out": Decimal("2")}
     )
     traffic, _ = TrafficType.objects.get_or_create(name=TRAFFIC_NAME, defaults={"risk_level": 0})
-
     for ps_name in PS_NAMES:
         ps = PaymentSystem.objects.filter(name=ps_name, currency=kzt).first()
         if ps is None:
@@ -124,7 +122,6 @@ def run(*, reset_password: bool = False):
         TraderTeamRates.objects.get_or_create(
             team=team, payment_system=ps, defaults={"mdr_in": Decimal("7"), "mdr_out": Decimal("2.5")}
         )
-
     user, created = User.objects.get_or_create(
         username=TRADER_USERNAME,
         defaults={"email": TRADER_EMAIL, "first_name": "PayMap KZT"},
@@ -134,8 +131,7 @@ def run(*, reset_password: bool = False):
         user.save()
         print("  + User password set (see below)")
     else:
-        password = "(unchanged — use reset_password=True to rotate)"
-
+        password = '(unchanged - use reset_password=True to rotate)'
     trader = Trader.objects.filter(user=user).first()
     if trader is None:
         bal = Balance.objects.create(type=0, amount=Decimal("0"))
@@ -154,11 +150,9 @@ def run(*, reset_password: bool = False):
     elif trader.team_id != team.id:
         trader.team = team
         trader.save(update_fields=["team"])
-
     for ps_name in PS_NAMES:
         ps = PaymentSystem.objects.get(name=ps_name, currency=kzt)
         ensure_virtual_group(trader, kzt, ps, traffic, ps_name)
-
     print("")
     print("=== Trader cabinet login ===")
     print(f"  URL:      https://avapay.net/  (or your frontend host)")

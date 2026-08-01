@@ -29,7 +29,7 @@ def paymap_callback_url() -> str:
 
 
 def _api_base() -> str:
-    return (getattr(settings, "PAYMAP_API_BASE", "https://paymap.co") or "").rstrip("/")
+    return (getattr(settings, "PAYMAP_API_BASE", "https://europe.paymap.me") or "").rstrip("/")
 
 
 def _api_key() -> str:
