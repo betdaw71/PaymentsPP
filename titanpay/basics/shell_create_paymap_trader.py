@@ -8,8 +8,11 @@ Django shell: команда + виртуальный трейдер PayMap PSP 
   PAYMAP_API_BASE=https://europe.paymap.me
   PAYMAP_API_KEY=pk_live_...
   PAYMAP_TRADER_USERNAME=paymap_kzt
-  PAYMAP_DEFAULT_INVOICE_TYPE=CARD
-  PAYMAP_INVOICE_TYPE_MAP={"C2CKZT":"CARD"}
+  PAYMAP_DEFAULT_INVOICE_TYPE=TRANSGRAN
+  PAYMAP_INVOICE_TYPE_MAP={"C2CKZT":"TRANSGRAN"}
+  PAYMAP_TRANSGRAN_COUNTRY=KG
+  # или PAYMAP_TRANSGRAN_COUNTRY_MAP={"C2CKZT":"KG"}
+  # PAYMAP_TRANSGRAN_DETAIL_TYPE=card
 
 Запуск:
   docker compose exec app python manage.py shell < basics/shell_create_paymap_trader.py

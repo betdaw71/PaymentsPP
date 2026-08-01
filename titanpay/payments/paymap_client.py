@@ -58,8 +58,7 @@ def invoice_type_for_payment_system(ps_name: str) -> str:
     return mapping.get("__default__", "CARD")
 
 
-def _target_bank_for_ps(ps_name: str) -> str | None:
-    raw = getattr(settings, "PAYMAP_TARGET_BANK_MAP", None)
+def _json_map_lookup(raw, ps_name: str) -> str | None:
     if isinstance(raw, dict):
         val = raw.get(ps_name) or raw.get(ps_name.upper())
         if val:
@@ -74,6 +73,26 @@ def _target_bank_for_ps(ps_name: str) -> str | None:
         except json.JSONDecodeError:
             pass
     return None
+
+
+def _target_bank_for_ps(ps_name: str) -> str | None:
+    return _json_map_lookup(getattr(settings, "PAYMAP_TARGET_BANK_MAP", None), ps_name)
+
+
+def _transgran_country_for_ps(ps_name: str) -> str | None:
+    val = _json_map_lookup(getattr(settings, "PAYMAP_TRANSGRAN_COUNTRY_MAP", None), ps_name)
+    if val:
+        return val.upper()
+    default = (getattr(settings, "PAYMAP_TRANSGRAN_COUNTRY", None) or "").strip().upper()
+    return default or None
+
+
+def _transgran_detail_type_for_ps(ps_name: str) -> str | None:
+    val = _json_map_lookup(getattr(settings, "PAYMAP_TRANSGRAN_DETAIL_TYPE_MAP", None), ps_name)
+    if val:
+        return val.lower()
+    default = (getattr(settings, "PAYMAP_TRANSGRAN_DETAIL_TYPE", None) or "").strip().lower()
+    return default or None
 
 
 def _headers() -> dict[str, str]:
@@ -153,12 +172,15 @@ def paymap_create_fiat_invoice(
     callback_url: str | None = None,
     back_url: str | None = None,
     target_bank: str | None = None,
+    transgran_country: str | None = None,
+    transgran_detail_type: str | None = None,
     life_time_minutes: int | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
+    inv_type = invoice_type.upper()
     params: dict[str, Any] = {
         "amount": float(amount),
-        "invoiceType": invoice_type.upper(),
+        "invoiceType": inv_type,
         "currency": currency.upper(),
         "partnerInvoiceId": partner_invoice_id,
         "callbackUrl": callback_url or paymap_callback_url(),
@@ -168,6 +190,11 @@ def paymap_create_fiat_invoice(
         params["backUrl"] = back_url
     if target_bank:
         params["targetBank"] = target_bank
+    if inv_type == "TRANSGRAN":
+        if transgran_country:
+            params["transgran_country"] = transgran_country.upper()
+        if transgran_detail_type:
+            params["transgranDetailType"] = transgran_detail_type.lower()
     lifetime = life_time_minutes or int(getattr(settings, "PAYMAP_INVOICE_LIFETIME_MINUTES", 15) or 15)
     params["lifeTime"] = lifetime
     return _request_get("/api/v2/invoice/fiat/create", params=params, pay_in=pay_in)
@@ -230,6 +257,7 @@ def _invoice_id_from_webhook(body: dict) -> str:
         "deposit_request_sbp_uuid",
         "deposit_request_bank_account_uuid",
         "deposit_request_nspk_uuid",
+        "deposit_request_transgran_uuid",
         "invoice_id",
     ):
         val = body.get(key)
@@ -265,6 +293,8 @@ def try_attach_paymap_session(pay_in: Any) -> bool | None:
     currency_sym = (pay_in.currency.symbol or "KZT").strip().upper() if pay_in.currency else "KZT"
     partner_id = str(pay_in.id)
     target_bank = _target_bank_for_ps(ps_name)
+    transgran_country = _transgran_country_for_ps(ps_name)
+    transgran_detail_type = _transgran_detail_type_for_ps(ps_name)
 
     session, _ = PaymapPayInSession.objects.get_or_create(
         pay_in=pay_in,
@@ -280,6 +310,8 @@ def try_attach_paymap_session(pay_in: Any) -> bool | None:
         invoice_type=invoice_type,
         partner_invoice_id=partner_id,
         target_bank=target_bank,
+        transgran_country=transgran_country,
+        transgran_detail_type=transgran_detail_type,
         pay_in=pay_in,
     )
     if not ok:
