@@ -96,7 +96,12 @@ class InOrder(models.Model):
 
         status = InOrderStatus.objects.get(name="New")
 
-        merchant_fee = solution.mdr_in * usd_amount / Decimal(100)
+        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
+
+        if uses_melbet_kzt_settlement(solution.merchant, payment_system_obj):
+            merchant_fee = merchant_fee_in_kzt(amount, solution.mdr_in)
+        else:
+            merchant_fee = solution.mdr_in * usd_amount / Decimal(100)
         team_rate = TraderTeamRates.objects.get(team=chosen_detail.group.trader.team, payment_system=payment_system_obj)
         trader_fee = team_rate.mdr_in * usd_amount / Decimal(100)
 
@@ -195,13 +200,25 @@ class InOrder(models.Model):
         transaction_type_1 = TransactionType.objects.get(name="Charge")
         transaction_type_2 = TransactionType.objects.get(name="Deposit")
 
-        for_merchant, for_trader = self.usd_amount - self.merchant_fee, self.trader_fee
+        from merchant.kzt_settlement import (
+            in_order_credit_kzt,
+            merchant_available_balance,
+            uses_melbet_kzt_settlement,
+        )
+
+        for_trader = self.trader_fee
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            for_merchant = in_order_credit_kzt(self)
+            merchant_balance = merchant_available_balance(self.solution.merchant)
+        else:
+            for_merchant = self.usd_amount - self.merchant_fee
+            merchant_balance = self.solution.merchant.balance
 
         to_aggregator = Transaction.create(_from=trader.frozen_balance_usdt, _to=aggregator_balance,
                                            value=self.usd_amount, _transaction_type=transaction_type_1,
                                            _linked_in_order=self, _comment="In-order completed")
 
-        from_aggregator_to_merchant = Transaction.create(_from=aggregator_balance, _to=self.solution.merchant.balance,
+        from_aggregator_to_merchant = Transaction.create(_from=aggregator_balance, _to=merchant_balance,
                                                          value=for_merchant, _transaction_type=transaction_type_2,
                                                          _linked_in_order=self, _comment="In-order completed")
 
@@ -286,9 +303,14 @@ class InOrder(models.Model):
             team=self.payment_details.group.trader.team,
             payment_system=self.solution.payment_system,
         )
+        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
+
         self.amount = paid_amount
         self.usd_amount = new_usd
-        self.merchant_fee = self.solution.mdr_in * new_usd / Decimal(100)
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            self.merchant_fee = merchant_fee_in_kzt(paid_amount, self.solution.mdr_in)
+        else:
+            self.merchant_fee = self.solution.mdr_in * new_usd / Decimal(100)
         self.trader_fee = team_rate.mdr_in * new_usd / Decimal(100)
         self.recalculated = True
         self.recalculated_amount = paid_amount
@@ -635,19 +657,37 @@ class OutOrder(models.Model):
             return order_obj
 
         trader = chosen_detail.group.trader
-        for_merchant, for_trader, for_platform = calculate_fees(usd_amount, solution, trader, direction="out")
+        from merchant.kzt_settlement import (
+            merchant_available_balance,
+            uses_melbet_kzt_settlement,
+        )
 
-        merchant_fee = for_merchant - usd_amount
-        trader_fee = for_trader - usd_amount
+        if uses_melbet_kzt_settlement(solution.merchant, solution.payment_system):
+            for_merchant, for_trader, for_platform = calculate_fees(amount, solution, trader, direction="out")
+            merchant_fee = for_merchant - amount
+            trader_fee = for_trader - amount
+            merchant_bal = merchant_available_balance(solution.merchant)
+            if merchant_bal.amount < for_merchant or time > solution.payment_system.constrain_time_out + timezone.now():
+                status = OutOrderStatus.objects.get(name="Cannot process")
+                order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
+                                solution=solution,
+                                payment_details=None, destination_details=details,
+                                merchant_order_id=merchant_order_id, agent_fee=Decimal(0))
+                order_obj.save()
+                return order_obj
+        else:
+            for_merchant, for_trader, for_platform = calculate_fees(usd_amount, solution, trader, direction="out")
+            merchant_fee = for_merchant - usd_amount
+            trader_fee = for_trader - usd_amount
 
-        if solution.merchant.balance.amount < for_merchant or time > solution.payment_system.constrain_time_out + timezone.now():
-            status = OutOrderStatus.objects.get(name="Cannot process")
-            order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
-                            solution=solution,
-                            payment_details=None, destination_details=details,
-                            merchant_order_id=merchant_order_id, agent_fee=Decimal(0))
-            order_obj.save()
-            return order_obj
+            if solution.merchant.balance.amount < for_merchant or time > solution.payment_system.constrain_time_out + timezone.now():
+                status = OutOrderStatus.objects.get(name="Cannot process")
+                order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
+                                solution=solution,
+                                payment_details=None, destination_details=details,
+                                merchant_order_id=merchant_order_id, agent_fee=Decimal(0))
+                order_obj.save()
+                return order_obj
 
         status = OutOrderStatus.objects.get(name="New")
         order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
@@ -672,19 +712,55 @@ class OutOrder(models.Model):
 
     def freeze(self, comment=""):
         transaction_type = TransactionType.objects.get(name="Freeze")
-        for_merchant = self.usd_amount + self.merchant_fee
-        Transaction.create(_from=self.solution.merchant.balance, _to=self.solution.merchant.frozen_balance,
-                           value=for_merchant, _transaction_type=transaction_type,
-                           _linked_out_order=self,
-                           _comment=comment)
+        from merchant.kzt_settlement import (
+            merchant_available_balance,
+            merchant_frozen_balance,
+            out_order_freeze_kzt,
+            uses_melbet_kzt_settlement,
+        )
+
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            for_merchant = out_order_freeze_kzt(self)
+            Transaction.create(
+                _from=merchant_available_balance(self.solution.merchant),
+                _to=merchant_frozen_balance(self.solution.merchant),
+                value=for_merchant,
+                _transaction_type=transaction_type,
+                _linked_out_order=self,
+                _comment=comment,
+            )
+        else:
+            for_merchant = self.usd_amount + self.merchant_fee
+            Transaction.create(_from=self.solution.merchant.balance, _to=self.solution.merchant.frozen_balance,
+                               value=for_merchant, _transaction_type=transaction_type,
+                               _linked_out_order=self,
+                               _comment=comment)
 
     def unfreeze(self, comment=""):
         transaction_type_2 = TransactionType.objects.get(name="Deposit")
-        for_merchant = self.usd_amount + self.merchant_fee
-        Transaction.create(_from=self.solution.merchant.frozen_balance,
-                                           _to=self.solution.merchant.balance,
-                                           value=for_merchant, _transaction_type=transaction_type_2,
-                                           _linked_out_order=self, _comment=comment)
+        from merchant.kzt_settlement import (
+            merchant_available_balance,
+            merchant_frozen_balance,
+            out_order_freeze_kzt,
+            uses_melbet_kzt_settlement,
+        )
+
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            for_merchant = out_order_freeze_kzt(self)
+            Transaction.create(
+                _from=merchant_frozen_balance(self.solution.merchant),
+                _to=merchant_available_balance(self.solution.merchant),
+                value=for_merchant,
+                _transaction_type=transaction_type_2,
+                _linked_out_order=self,
+                _comment=comment,
+            )
+        else:
+            for_merchant = self.usd_amount + self.merchant_fee
+            Transaction.create(_from=self.solution.merchant.frozen_balance,
+                               _to=self.solution.merchant.balance,
+                               value=for_merchant, _transaction_type=transaction_type_2,
+                               _linked_out_order=self, _comment=comment)
 
     def decrease_current_volume(self):
         group = PaymentDetailsGroup.objects.select_for_update().get(id=self.payment_details.group.id)
@@ -706,9 +782,21 @@ class OutOrder(models.Model):
         trader = self.payment_details.group.trader
         merchant = self.solution.merchant
 
-        for_merchant, for_trader = self.usd_amount + self.merchant_fee, self.usd_amount + self.trader_fee
+        from merchant.kzt_settlement import (
+            merchant_frozen_balance,
+            out_order_freeze_kzt,
+            uses_melbet_kzt_settlement,
+        )
 
-        to_aggregator = Transaction.create(_from=merchant.frozen_balance, _to=aggregator_balance,
+        if uses_melbet_kzt_settlement(merchant, self.solution.payment_system):
+            for_merchant = out_order_freeze_kzt(self)
+            for_trader = self.usd_amount + self.trader_fee
+            frozen_kzt = merchant_frozen_balance(merchant)
+        else:
+            for_merchant, for_trader = self.usd_amount + self.merchant_fee, self.usd_amount + self.trader_fee
+            frozen_kzt = merchant.frozen_balance
+
+        to_aggregator = Transaction.create(_from=frozen_kzt, _to=aggregator_balance,
                                            value=for_merchant, _transaction_type=transaction_type_1,
                                            _linked_out_order=self, _comment="Out-order completed")
 
@@ -784,10 +872,24 @@ class OutOrder(models.Model):
 
         aggregator_balance = Balance.objects.get(type=2)
 
-        for_merchant, for_trader = self.usd_amount + self.merchant_fee, self.usd_amount + self.trader_fee
+        from merchant.kzt_settlement import (
+            merchant_available_balance,
+            merchant_frozen_balance,
+            out_order_freeze_kzt,
+            uses_melbet_kzt_settlement,
+        )
+
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            for_merchant = out_order_freeze_kzt(self)
+            for_trader = self.usd_amount + self.trader_fee
+            merchant_fr = merchant_frozen_balance(self.solution.merchant)
+        else:
+            for_merchant, for_trader = self.usd_amount + self.merchant_fee, self.usd_amount + self.trader_fee
+            merchant_bal = self.solution.merchant.balance
+            merchant_fr = self.solution.merchant.frozen_balance
 
         Transaction.create(_from=trader.balance_usdt, _to=aggregator_balance, value=for_trader, _transaction_type=transaction_type, _linked_out_order=self, _comment="Out-order arbitrage")
-        Transaction.create(_from=aggregator_balance, _to=self.solution.merchant.frozen_balance, value=for_merchant,
+        Transaction.create(_from=aggregator_balance, _to=merchant_fr, value=for_merchant,
                            _transaction_type=transaction_type, _linked_out_order=self, _comment="Out-order arbitrage")
 
         self.payment_details.group.status = 4
@@ -898,8 +1000,21 @@ class OutOrder(models.Model):
                                value=self.usd_amount + self.trader_fee, _transaction_type=transaction_type_1,
                                _linked_out_order=self, _comment="Order cancelled")
 
-            Transaction.create(_from=aggregator_balance, _to=self.solution.merchant.balance,
-                               value=self.usd_amount + self.merchant_fee, _transaction_type=transaction_type_2,
+            from merchant.kzt_settlement import (
+                merchant_available_balance,
+                out_order_freeze_kzt,
+                uses_melbet_kzt_settlement,
+            )
+
+            if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+                refund = out_order_freeze_kzt(self)
+                merchant_bal = merchant_available_balance(self.solution.merchant)
+            else:
+                refund = self.usd_amount + self.merchant_fee
+                merchant_bal = self.solution.merchant.balance
+
+            Transaction.create(_from=aggregator_balance, _to=merchant_bal,
+                               value=refund, _transaction_type=transaction_type_2,
                                _linked_out_order=self, _comment="Order cancelled")
 
             status = OutOrderStatus.objects.get(name="Cancelled by support")
@@ -964,7 +1079,12 @@ class OutOrder(models.Model):
                 'details': 'Cannot recalculate not completed order'})
 
         new_usd_amount = new_amount / self.solution.payment_system.get_rate()
-        new_merchant_fee = self.solution.mdr_out * new_usd_amount / Decimal(100)
+        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
+
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            new_merchant_fee = merchant_fee_in_kzt(new_amount, self.solution.mdr_out)
+        else:
+            new_merchant_fee = self.solution.mdr_out * new_usd_amount / Decimal(100)
         new_trader_fee = self.payment_details.group.trader.team.rate_out * new_usd_amount / Decimal(100)
 
         self.unfreeze("Recalculation")
@@ -1046,7 +1166,10 @@ class Transaction(models.Model):
         # to_balance = Balance.objects.get(id=_to.id)
 
         if from_balance.type != 3 and from_balance.amount < value and _comment != "Crypto deposit":
-            raise ValidationError({'details': 'Not enough funds to transfer money'})
+            from merchant.kzt_settlement import balance_allows_negative_ledger
+
+            if not balance_allows_negative_ledger(from_balance):
+                raise ValidationError({'details': 'Not enough funds to transfer money'})
 
         from_balance.amount -= value
         to_balance.amount += value
@@ -1099,6 +1222,12 @@ class Transaction(models.Model):
                 name = self.to_balance.frozen_merchant.get().user.username
             return f"{name}-frozen"
         else:
+            if self.to_balance.available_merchant_kzt.exists():
+                name = self.to_balance.available_merchant_kzt.get().user.username
+                return f"{name}-kzt-available"
+            if self.to_balance.frozen_merchant_kzt.exists():
+                name = self.to_balance.frozen_merchant_kzt.get().user.username
+                return f"{name}-kzt-frozen"
             if self.to_balance.available.exists():
                 name = self.to_balance.available.get().user.username
             elif self.to_balance.available_merchant.exists():
@@ -1185,6 +1314,12 @@ class Address(models.Model):
     balance = models.ForeignKey(to=Balance, on_delete=models.CASCADE, related_name="address")
 
     def update_balance(self, new_balance):
+        from merchant.models import Merchant
+        from merchant.kzt_settlement import credit_melbet_crypto_deposit, is_melbet_merchant
+
+        merchant = Merchant.objects.filter(balance_id=self.balance_id).first()
+        if merchant is not None and is_melbet_merchant(merchant):
+            return credit_melbet_crypto_deposit(merchant, Decimal(str(new_balance)))
         _from = Balance.objects.get(type=3)
         _type = TransactionType.objects.get(name="Deposit")
         Transaction.create(_from, self.balance, _transaction_type=_type, value=new_balance, _comment="Crypto deposit")

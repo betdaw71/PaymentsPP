@@ -231,12 +231,20 @@ class BalanceViewset(viewsets.ModelViewSet):
 
         merchants = Merchant.objects.all()
         for merchant in merchants:
-            data_merchants.append({
+            row = {
                 "id": merchant.id,
                 "username": merchant.user.username,
                 "available_balance_amount": merchant.balance.amount if merchant.balance else 0.0,
                 "frozen_balance_amount": merchant.frozen_balance.amount if merchant.frozen_balance else 0.0,
-            })
+            }
+            from merchant.kzt_settlement import ensure_kzt_balances, is_melbet_merchant
+
+            if is_melbet_merchant(merchant):
+                ensure_kzt_balances(merchant)
+                merchant.refresh_from_db()
+                row["available_balance_kzt"] = float(merchant.balance_kzt.amount) if merchant.balance_kzt else 0.0
+                row["frozen_balance_kzt"] = float(merchant.frozen_balance_kzt.amount) if merchant.frozen_balance_kzt else 0.0
+            data_merchants.append(row)
 
         return Response(status=status.HTTP_200_OK, data=data_merchants)
 
@@ -292,6 +300,14 @@ class BalanceViewset(viewsets.ModelViewSet):
                 "frozen_amount": merchant.frozen_balance.amount if merchant.frozen_balance else 0.0,
                 "deposit_address": merchant.balance.address.get().address_public
             }
+            from merchant.kzt_settlement import ensure_kzt_balances, is_melbet_merchant
+
+            if is_melbet_merchant(merchant):
+                ensure_kzt_balances(merchant)
+                merchant.refresh_from_db()
+                data["amount_kzt"] = float(merchant.balance_kzt.amount) if merchant.balance_kzt else 0.0
+                data["frozen_amount_kzt"] = float(merchant.frozen_balance_kzt.amount) if merchant.frozen_balance_kzt else 0.0
+                data["currency_kzt"] = "KZT"
             return Response(status=status.HTTP_200_OK, data=data)
         elif hasattr(request.user, 'submerchant'):
             merchant: Merchant = request.user.submerchant.merchant
