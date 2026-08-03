@@ -135,6 +135,11 @@ def diagnose() -> None:
     print(f"Merchant: {MERCHANT_USERNAME} id={merchant.id}")
     print(f"Solution: {PS_NAME} mdr_in={sol.mdr_in}% limits in {sol.min_limit_in}–{sol.max_limit_in}")
     print(f"C2CKZT groups (status=1): {groups.count()}")
+    from django.conf import settings
+
+    pref = (getattr(settings, "MELBET_KZT_TEST_TRADER_USERNAME", None) or "").strip()
+    if pref:
+        print(f"Routing preference (env): {pref}")
     for g in groups[:10]:
         print(f"  trader={g.trader.user.username} volume={g.current_volume} owner={g.owner!r}")
     balances("diagnose")

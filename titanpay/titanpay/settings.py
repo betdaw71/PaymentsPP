@@ -319,6 +319,8 @@ PROTOCOL_BINANCE_PAY_TYPE = os.getenv('PROTOCOL_BINANCE_PAY_TYPE', 'HalykBank')
 
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
+# Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)
+MELBET_KZT_TEST_TRADER_USERNAME = os.getenv('MELBET_KZT_TEST_TRADER_USERNAME', '')
 
 
 

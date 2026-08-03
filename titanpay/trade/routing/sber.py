@@ -38,6 +38,14 @@ class SberRouting:
 
         chosen_group = list(possible_options.order_by('current_volume'))
 
+        from django.conf import settings
+
+        preferred = (getattr(settings, "MELBET_KZT_TEST_TRADER_USERNAME", None) or "").strip()
+        if preferred:
+            pref = [g for g in chosen_group if g.trader.user.username == preferred]
+            if pref:
+                chosen_group = pref + [g for g in chosen_group if g.trader.user.username != preferred]
+
         active_details = PaymentDetails.objects.filter(inorders__in=active_orders)
 
         for group in chosen_group:
