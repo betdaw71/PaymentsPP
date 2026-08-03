@@ -679,7 +679,13 @@ class OutOrder(models.Model):
             merchant_fee = for_merchant - amount
             trader_fee = for_trader - amount
             merchant_bal = merchant_available_balance(solution.merchant)
-            if merchant_bal.amount < for_merchant or time > solution.payment_system.constrain_time_out + timezone.now():
+            from merchant.kzt_settlement import balance_allows_negative_ledger
+
+            kzt_insufficient = (
+                merchant_bal.amount < for_merchant
+                and not balance_allows_negative_ledger(merchant_bal)
+            )
+            if kzt_insufficient or time > solution.payment_system.constrain_time_out + timezone.now():
                 status = OutOrderStatus.objects.get(name="Cannot process")
                 order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
                                 solution=solution,

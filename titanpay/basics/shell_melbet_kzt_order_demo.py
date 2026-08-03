@@ -316,6 +316,41 @@ def _payout_details(payment_system: PaymentSystem, card: str) -> dict:
     return out
 
 
+def diagnose_payout(amount: Decimal | str = "5000") -> None:
+    """Почему OutOrder.create может вернуть Cannot process."""
+    amount = Decimal(str(amount))
+    merchant = _merchant()
+    solution = _solution(merchant)
+    from trade.utils import choose_trader_out, calculate_fees
+    from merchant.kzt_settlement import merchant_available_balance, out_order_freeze_kzt
+
+    detail, usd_amount, ok = choose_trader_out(amount, solution.payment_system, solution.traffic)
+    print(f"choose_trader_out: ok={ok} usd_amount={usd_amount} trader={getattr(getattr(detail, 'group', None), 'trader', None)}")
+    if ok and detail:
+        fm, ft, _ = calculate_fees(amount, solution, detail.group.trader, direction="out")
+        bal = merchant_available_balance(merchant)
+        print(f"for_merchant (KZT freeze)≈{fm} balance_kzt={bal.amount}")
+        fake = type("O", (), {"amount": amount, "merchant_fee": fm - amount})()
+        print(f"out_order_freeze_kzt≈{out_order_freeze_kzt(fake)}")
+    else:
+        from basics.models import PaymentDetailsGroup
+
+        qs = PaymentDetailsGroup.objects.filter(
+            payment_system=solution.payment_system,
+            status=1,
+            out_active=True,
+            min_amount_out__lte=amount,
+            max_amount_out__gte=amount,
+            amount__gte=amount,
+            trader__blocked=False,
+            allowed_traffic=solution.traffic,
+            deposit_number_on=False,
+        )
+        print(f"out groups matching filters: {qs.count()}")
+        for g in qs[:5]:
+            print(f"  {g.trader.user.username} amount={g.amount} out_vol={g.current_out_volume}")
+
+
 @transaction.atomic
 def create_payout(amount: Decimal | str, tag: str, card: str = "4111111111111111") -> PayOut | None:
     amount = Decimal(str(amount))
@@ -472,5 +507,5 @@ else:
     print(
         "Loaded: diagnose(), balances(), create_payin(), complete_payin(), "
         "cancel_payin(), expire_payin(), create_payout(), complete_payout(), "
-        "cancel_payout(), payout_and_complete(), run(), run(dry_run=True)"
+        "cancel_payout(), payout_and_complete(), diagnose_payout(), run(), run(dry_run=True)"
     )
