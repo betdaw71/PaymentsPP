@@ -108,6 +108,14 @@ def credit_melbet_crypto_deposit(merchant: Merchant, usdt_amount: Decimal) -> bo
     return True
 
 
+def melbet_kzt_test_trader_username(merchant: Merchant | None) -> str | None:
+    """Тестовый трейдер в роутинге — только для melbet KZT мерчантов (не для всех C2CKZT)."""
+    if not is_melbet_merchant(merchant):
+        return None
+    name = (getattr(settings, "MELBET_KZT_TEST_TRADER_USERNAME", None) or "").strip()
+    return name or None
+
+
 def get_melbet_merchant(username: str | None = None) -> Merchant | None:
     if username:
         user = User.objects.filter(username=username).first()

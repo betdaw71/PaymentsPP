@@ -84,7 +84,9 @@ class InOrder(models.Model):
 
         active_orders = cls.objects.filter(status__name__in=["New", "Money sent by user"], amount=amount, solution__payment_system=solution.payment_system)
 
-        chosen_detail, usd_amount, payment_system_obj, success = choose_trader_in(amount, solution.payment_system, solution.traffic, active_orders, client_deposit_count)
+        chosen_detail, usd_amount, payment_system_obj, success = choose_trader_in(
+            amount, solution.payment_system, solution.traffic, active_orders, client_deposit_count, merchant=solution.merchant,
+        )
 
         if not success:
             status = InOrderStatus.objects.get(name="Cannot process")
@@ -657,7 +659,9 @@ class OutOrder(models.Model):
         else:
             excluded = None
 
-        chosen_detail, usd_amount, success = choose_trader_out(amount, solution.payment_system, solution.traffic, excluded)
+        chosen_detail, usd_amount, success = choose_trader_out(
+            amount, solution.payment_system, solution.traffic, excluded, merchant=solution.merchant,
+        )
 
         if not success:
             status = OutOrderStatus.objects.get(name="Cannot process")

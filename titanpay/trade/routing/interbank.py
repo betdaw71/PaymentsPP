@@ -56,7 +56,7 @@ class SberRouting:
 
     def choose_detail_in(self, amount: Decimal, usd_amount: Decimal, payment_system: PaymentSystem,
                          traffic_type: TrafficType, active_orders,
-                         client_deposit_count):
+                         client_deposit_count, merchant=None):
 
         possible_options = self.get_possible_options_in(None, payment_system, amount, traffic_type, usd_amount)
 
@@ -79,7 +79,7 @@ class SberRouting:
         return possible_groups.order_by('current_out_volume')
 
     def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType,
-                          excluded=None):
+                          excluded=None, merchant=None):
         if excluded is None:
             excluded = list()
 

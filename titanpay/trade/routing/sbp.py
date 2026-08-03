@@ -96,7 +96,7 @@ class SBPRouting:
         return None
 
     def choose_detail_in(self, amount: Decimal, usd_amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders,
-                         client_deposit_count):
+                         client_deposit_count, merchant=None):
 
         risk_cluster = initial_risk_cluster = self.get_risks(client_deposit_count, traffic_type, amount)
 
@@ -151,7 +151,7 @@ class SBPRouting:
 
         return possible_groups.order_by('current_out_volume')
 
-    def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None):
+    def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None, merchant=None):
         if excluded is None:
             excluded = list()
 

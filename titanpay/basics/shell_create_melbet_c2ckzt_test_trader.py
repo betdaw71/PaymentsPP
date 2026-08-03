@@ -5,7 +5,7 @@
 
 Роутинг:
   - по умолчанию: группа с наименьшим current_volume (не рандом между трейдерами);
-  - на стенде: MELBET_KZT_TEST_TRADER_USERNAME=melbet_c2ckzt_test в .env → всегда этот трейдер.
+  - на стенде: MELBET_KZT_TEST_TRADER_USERNAME=melbet_c2ckzt_test в .env — только для pay-in/out мерчантов melbet/melbet_test (не для всех C2CKZT).
 
 Запуск:
   docker compose exec app python manage.py shell -c "exec(open('basics/shell_create_melbet_c2ckzt_test_trader.py').read()); run()"

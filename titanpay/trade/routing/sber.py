@@ -33,14 +33,13 @@ class SberRouting:
         ).filter(Q(total_value__lte=F("limit_per_period")) | Q(trader__user__username__in=psp_users))
         return filtered_options
     
-    def get_details(self, possible_options, active_orders, amount):
+    def get_details(self, possible_options, active_orders, amount, merchant=None):
         from payments.psp_payin import is_psp_trader
+        from merchant.kzt_settlement import melbet_kzt_test_trader_username
 
         chosen_group = list(possible_options.order_by('current_volume'))
 
-        from django.conf import settings
-
-        preferred = (getattr(settings, "MELBET_KZT_TEST_TRADER_USERNAME", None) or "").strip()
+        preferred = melbet_kzt_test_trader_username(merchant)
         if preferred:
             pref = [g for g in chosen_group if g.trader.user.username == preferred]
             if pref:
@@ -69,7 +68,7 @@ class SberRouting:
     def check_cluster(self, risk_cluster, payment_system, amount, active_orders, traffic_type, usd_amount):
         options = self.get_possible_options_in(risk_cluster, payment_system, amount, traffic_type, usd_amount)
 
-        chosen_detail = self.get_details(options, active_orders, amount)
+        chosen_detail = self.get_details(options, active_orders, amount, merchant=merchant)
 
         if chosen_detail is not None:
             return chosen_detail
@@ -77,11 +76,11 @@ class SberRouting:
         return None
 
     def choose_detail_in(self, amount: Decimal, usd_amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders,
-                         client_deposit_count):
+                         client_deposit_count, merchant=None):
 
         possible_options = self.get_possible_options_in(None, payment_system, amount, traffic_type, usd_amount)
 
-        chosen_detail = self.get_details(possible_options, active_orders, amount)
+        chosen_detail = self.get_details(possible_options, active_orders, amount, merchant=merchant)
 
         if chosen_detail is not None:
             return chosen_detail
@@ -96,7 +95,7 @@ class SberRouting:
 
         return possible_groups.order_by('current_out_volume')
 
-    def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None):
+    def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None, merchant=None):
         if excluded is None:
             excluded = list()
 
@@ -105,9 +104,9 @@ class SberRouting:
             return None
 
         groups = list(possible_options)
-        from django.conf import settings
+        from merchant.kzt_settlement import melbet_kzt_test_trader_username
 
-        preferred = (getattr(settings, "MELBET_KZT_TEST_TRADER_USERNAME", None) or "").strip()
+        preferred = melbet_kzt_test_trader_username(merchant)
         if preferred:
             pref = [g for g in groups if g.trader.user.username == preferred]
             if pref:

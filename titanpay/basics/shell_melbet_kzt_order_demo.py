@@ -324,7 +324,9 @@ def diagnose_payout(amount: Decimal | str = "5000") -> None:
     from trade.utils import choose_trader_out, calculate_fees
     from merchant.kzt_settlement import merchant_available_balance, out_order_freeze_kzt
 
-    detail, usd_amount, ok = choose_trader_out(amount, solution.payment_system, solution.traffic)
+    detail, usd_amount, ok = choose_trader_out(
+        amount, solution.payment_system, solution.traffic, merchant=solution.merchant,
+    )
     print(f"choose_trader_out: ok={ok} usd_amount={usd_amount} trader={getattr(getattr(detail, 'group', None), 'trader', None)}")
     if ok and detail:
         fm, ft, _ = calculate_fees(amount, solution, detail.group.trader, direction="out")

@@ -98,7 +98,7 @@ class SberDepRouting:
         return None
 
     def choose_detail_in(self, amount: Decimal, usd_amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders,
-                         client_deposit_count):
+                         client_deposit_count, merchant=None):
 
         payment_system = PaymentSystem.objects.get(name=SBER_NAME)
 
@@ -147,5 +147,5 @@ class SberDepRouting:
         return None
 
     def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType,
-                          excluded=None):
+                          excluded=None, merchant=None):
         raise ValidationError("This method does not support pay-outs!")

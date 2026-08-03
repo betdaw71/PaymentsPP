@@ -41,12 +41,14 @@ def calculate_fees(amount, solution: MerchantSolution, trader: Trader, direction
     return for_merchant, for_trader, for_platform
 
 
-def choose_trader_in(amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders, client_deposit_count):
+def choose_trader_in(amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders, client_deposit_count, merchant=None):
     router = route(payment_system)
 
     usd_amount = amount / payment_system.get_rate()
 
-    chosen_detail = router.choose_detail_in(amount, usd_amount, payment_system, traffic_type, active_orders, client_deposit_count)
+    chosen_detail = router.choose_detail_in(
+        amount, usd_amount, payment_system, traffic_type, active_orders, client_deposit_count, merchant=merchant,
+    )
 
     if chosen_detail is None:
         return None, usd_amount, payment_system, False
@@ -54,10 +56,10 @@ def choose_trader_in(amount: Decimal, payment_system: PaymentSystem, traffic_typ
     return chosen_detail, usd_amount, payment_system, True
 
 
-def choose_trader_out(amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None):
+def choose_trader_out(amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None, merchant=None):
     router = route(payment_system)
 
-    chosen_detail = router.choose_detail_out(amount, payment_system, traffic_type, excluded)
+    chosen_detail = router.choose_detail_out(amount, payment_system, traffic_type, excluded, merchant=merchant)
 
     usd_amount = amount / payment_system.get_rate()
 
