@@ -301,14 +301,19 @@ def expire_payin(moid: str) -> None:
 
 
 def _payout_details(payment_system: PaymentSystem, card: str) -> dict:
-    """Только ключи из required_fields PS (на стенде C2CKZT часто только card_number)."""
+    """Строго только ключи из payment_system.required_fields (без owner/bank «сверху»)."""
     fields = payment_system.required_fields if isinstance(payment_system.required_fields, dict) else {}
-    keys = list(fields.keys()) or ["card_number"]
-    details = {k: card for k in keys if k == "card_number"}
-    for k in keys:
-        if k not in details:
-            details[k] = "demo"
-    return details
+    if not fields:
+        return {"card_number": card}
+    out: dict[str, str] = {}
+    for key in fields:
+        if key == "card_number":
+            out[key] = card
+        elif key == "phone":
+            out[key] = "+77051112233"
+        else:
+            out[key] = "demo"
+    return out
 
 
 @transaction.atomic
@@ -323,7 +328,7 @@ def create_payout(amount: Decimal | str, tag: str, card: str = "4111111111111111
     client = _client(merchant, f"out-{tag}")
     if check_pending(client, _in=False):
         raise ValueError("Client has pending pay-out")
-    details = {"card_number": card, "owner": "Demo Holder", "bank": "Halyk"}
+    details = _payout_details(ps, card)
     out_order = OutOrder.create(
         amount=amount,
         solution=solution,
@@ -342,11 +347,25 @@ def create_payout(amount: Decimal | str, tag: str, card: str = "4111111111111111
         details=details,
         client=client,
     )
-    print(f"[create_payout {tag}] amount={amount} OutOrder={out_order.status.name}")
+    print(f"[create_payout {tag}] amount={amount} OutOrder={out_order.status.name} merchant_order_id={moid}")
     if out_order.status.name == "Cannot process":
         pay_out.declined()
         return pay_out
     return pay_out
+
+
+@transaction.atomic
+def payout_and_complete(amount: Decimal | str = "5000", tag: str = "p1") -> None:
+    """Создать pay-out и завершить (без плейсхолдера kztdemo-... в id)."""
+    po = create_payout(amount, tag)
+    if po is None:
+        return
+    if po.order_id and po.order.status.name == "New":
+        complete_payout(po.merchant_order_id)
+        trader = None
+        if po.order.payment_details_id:
+            trader = po.order.payment_details.group.trader
+        balances("after payout_and_complete", trader=trader)
 
 
 @transaction.atomic
@@ -453,5 +472,5 @@ else:
     print(
         "Loaded: diagnose(), balances(), create_payin(), complete_payin(), "
         "cancel_payin(), expire_payin(), create_payout(), complete_payout(), "
-        "cancel_payout(), run(), run(dry_run=True)"
+        "cancel_payout(), payout_and_complete(), run(), run(dry_run=True)"
     )
