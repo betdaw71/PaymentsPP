@@ -300,6 +300,17 @@ def expire_payin(moid: str) -> None:
     print(f"  -> InOrder={order.status.name} PayIn={pay_in.status.name}")
 
 
+def _payout_details(payment_system: PaymentSystem, card: str) -> dict:
+    """Только ключи из required_fields PS (на стенде C2CKZT часто только card_number)."""
+    fields = payment_system.required_fields if isinstance(payment_system.required_fields, dict) else {}
+    keys = list(fields.keys()) or ["card_number"]
+    details = {k: card for k in keys if k == "card_number"}
+    for k in keys:
+        if k not in details:
+            details[k] = "demo"
+    return details
+
+
 @transaction.atomic
 def create_payout(amount: Decimal | str, tag: str, card: str = "4111111111111111") -> PayOut | None:
     amount = Decimal(str(amount))
