@@ -218,7 +218,19 @@ class InOrder(models.Model):
                                            value=self.usd_amount, _transaction_type=transaction_type_1,
                                            _linked_in_order=self, _comment="In-order completed")
 
-        from_aggregator_to_merchant = Transaction.create(_from=aggregator_balance, _to=merchant_balance,
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            # KZT merchant leg: не списываем USDT-агрегатор на сумму в тенге (только USDT от трейдера выше).
+            blockchain = Balance.objects.get(type=3)
+            from_aggregator_to_merchant = Transaction.create(
+                _from=blockchain,
+                _to=merchant_balance,
+                value=for_merchant,
+                _transaction_type=transaction_type_2,
+                _linked_in_order=self,
+                _comment="In-order completed",
+            )
+        else:
+            from_aggregator_to_merchant = Transaction.create(_from=aggregator_balance, _to=merchant_balance,
                                                          value=for_merchant, _transaction_type=transaction_type_2,
                                                          _linked_in_order=self, _comment="In-order completed")
 
