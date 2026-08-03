@@ -88,6 +88,10 @@ def ensure_group(trader: Trader, currency: Currency, payment_system: PaymentSyst
         group.status = 1
         group.in_active = True
         group.out_active = True
+        group.deposit_number_on = False
+        group.work_type = "by_card"
+        group.min_amount_out = Decimal("1000")
+        group.max_amount_out = Decimal("5000000")
         group.current_volume = Decimal("0")
         group.current_out_volume = Decimal("0")
         group.limit_per_period = Decimal("999999999")
@@ -199,6 +203,8 @@ def run(
     print(f"  Пароль:         {password}")
     print(f"  Добавьте в .env и перезапустите app:")
     print(f"    {result['env_line']}")
+    print(f"    # опционально (уже учтён в коде, если задан MELBET_KZT_TEST_TRADER_USERNAME):")
+    print(f"    LIVENESS_EXEMPT_TRADER_USERNAMES={TRADER_USERNAME}")
     print("  Затем: shell_melbet_kzt_order_demo.run() — заявки пойдут на этого трейдера.")
     print("  Complete без вызова ExpayOne: complete_payin() в demo shell или ЛК трейдера.")
     return result

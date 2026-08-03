@@ -104,7 +104,16 @@ class SberRouting:
         if not possible_options.exists():
             return None
 
-        for group in possible_options:
+        groups = list(possible_options)
+        from django.conf import settings
+
+        preferred = (getattr(settings, "MELBET_KZT_TEST_TRADER_USERNAME", None) or "").strip()
+        if preferred:
+            pref = [g for g in groups if g.trader.user.username == preferred]
+            if pref:
+                groups = pref + [g for g in groups if g.trader.user.username != preferred]
+
+        for group in groups:
             chosen_detail = PaymentDetails.objects.filter(group=group, status=1, sberpay_enabled=False, sbp_enabled=False, card_number__isnull=False).order_by('?').first()
             if chosen_detail is not None:
                 return chosen_detail

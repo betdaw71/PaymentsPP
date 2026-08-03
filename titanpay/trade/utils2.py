@@ -64,8 +64,11 @@ def update_pd():
     pd = PaymentDetailsGroup.objects.all()
     for p in pd:
         try:
-            if is_psp_trader(p.trader):
-                # Виртуальные PSP-группы (expayone1, protocol1): без SMS, liveness не применяем.
+            uname = ""
+            if p.trader_id and getattr(p.trader, "user", None):
+                uname = p.trader.user.username or ""
+            if is_psp_trader(p.trader) or uname in _liveness_exempt_trader_usernames():
+                # Виртуальные PSP / тестовые трейдеры: без SMS, liveness не применяем.
                 fields = []
                 if p.status == 5:
                     p.status = 1
@@ -79,14 +82,14 @@ def update_pd():
         except Exception:
             logging.info(f'Updating PD {p.id} failed')
 
-    active_pd = pd.filter(status=1).exclude(trader__user__username__in=_psp_trader_usernames())
+    active_pd = pd.filter(status=1).exclude(trader__user__username__in=_liveness_exempt_trader_usernames())
     for p in active_pd:
         try:
             p.check_liveness()
         except Exception:
             logging.info(f'Updating PD {p.id} failed')
 
-    setup_pd = pd.filter(status=7).exclude(trader__user__username__in=_psp_trader_usernames())
+    setup_pd = pd.filter(status=7).exclude(trader__user__username__in=_liveness_exempt_trader_usernames())
     for p in setup_pd:
         try:
             p.check_liveness()
@@ -103,6 +106,21 @@ def _psp_trader_usernames() -> list[str]:
         if val:
             names.append(val)
     return names or ["fairpay_agg", "expayone1", "protocol1", "playments1"]
+
+
+def _liveness_exempt_trader_usernames() -> set[str]:
+    from django.conf import settings
+
+    names = set(_psp_trader_usernames())
+    extra = getattr(settings, "LIVENESS_EXEMPT_TRADER_USERNAMES", "") or ""
+    for part in str(extra).split(","):
+        part = part.strip()
+        if part:
+            names.add(part)
+    test_trader = (getattr(settings, "MELBET_KZT_TEST_TRADER_USERNAME", None) or "").strip()
+    if test_trader:
+        names.add(test_trader)
+    return names
 
 def update_ps():
     from django.conf import settings

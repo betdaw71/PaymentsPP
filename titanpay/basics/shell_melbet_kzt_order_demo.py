@@ -349,6 +349,16 @@ def diagnose_payout(amount: Decimal | str = "5000") -> None:
         print(f"out groups matching filters: {qs.count()}")
         for g in qs[:5]:
             print(f"  {g.trader.user.username} amount={g.amount} out_vol={g.current_out_volume}")
+        print("All C2CKZT groups (debug):")
+        from basics.models import PaymentDetailsGroup as PDG
+
+        for g in PDG.objects.filter(payment_system=solution.payment_system).select_related("trader__user"):
+            traf = list(g.allowed_traffic.values_list("name", flat=True))
+            print(
+                f"  {g.trader.user.username if g.trader else '?'} status={g.status} "
+                f"in={g.in_active} out={g.out_active} dep_on={g.deposit_number_on} "
+                f"amt={g.amount} traffic={traf}"
+            )
 
 
 @transaction.atomic
