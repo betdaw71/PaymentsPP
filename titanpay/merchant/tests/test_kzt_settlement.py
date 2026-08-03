@@ -2,8 +2,8 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
+from rest_framework.exceptions import ValidationError
 
 from basics.models import Balance, Currency, PaymentSystem
 from merchant.kzt_settlement import (
