@@ -7,16 +7,24 @@ from django.contrib.auth.models import User
 from django.db import transaction
 
 from basics.models import Balance, Currency, PaymentSystem
+from django.conf import settings
+
 from merchant.models import Merchant
 
 MELBET_USERNAME = "melbet"
+MELBET_TEST_USERNAME = "melbet_test"
 KZT_PS_NAME = "C2CKZT"
+
+
+def melbet_kzt_usernames() -> frozenset[str]:
+    raw = getattr(settings, "MELBET_KZT_USERNAMES", MELBET_USERNAME)
+    return frozenset(part.strip() for part in str(raw).split(",") if part.strip())
 
 
 def is_melbet_merchant(merchant: Merchant | None) -> bool:
     if merchant is None or not getattr(merchant, "user", None):
         return False
-    return merchant.user.username == MELBET_USERNAME
+    return merchant.user.username in melbet_kzt_usernames()
 
 
 def uses_melbet_kzt_settlement(merchant: Merchant, payment_system) -> bool:
@@ -100,8 +108,19 @@ def credit_melbet_crypto_deposit(merchant: Merchant, usdt_amount: Decimal) -> bo
     return True
 
 
-def get_melbet_merchant() -> Merchant | None:
-    user = User.objects.filter(username=MELBET_USERNAME).first()
-    if user is None:
-        return None
-    return Merchant.objects.filter(user=user).first()
+def get_melbet_merchant(username: str | None = None) -> Merchant | None:
+    if username:
+        user = User.objects.filter(username=username).first()
+        if user is None:
+            return None
+        return Merchant.objects.filter(user=user).first()
+    for name in (MELBET_USERNAME, MELBET_TEST_USERNAME):
+        if name not in melbet_kzt_usernames():
+            continue
+        user = User.objects.filter(username=name).first()
+        if user is None:
+            continue
+        merchant = Merchant.objects.filter(user=user).first()
+        if merchant is not None:
+            return merchant
+    return None

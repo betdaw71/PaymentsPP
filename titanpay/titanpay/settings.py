@@ -317,9 +317,12 @@ PROTOCOL_API_KEY = os.getenv('PROTOCOL_API_KEY', '374|NZRwEhxoiTWAhjUNx2PetIjYQe
 # Binance P2P payTypes для Halyk (см. GET /api/v2/banks?currency=KZT)
 PROTOCOL_BINANCE_PAY_TYPE = os.getenv('PROTOCOL_BINANCE_PAY_TYPE', 'HalykBank')
 
+# Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
+MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
 
 
-# Concored / ProcessorCore PSP (MMK KBZPay, WavePay; колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/concored/)
+
+# Concored / ProcessorCore PSP
 CONCORDED_API_BASE = os.getenv('CONCORDED_API_BASE', '').rstrip('/')
 CONCORDED_TRADER_USERNAME = os.getenv('CONCORDED_TRADER_USERNAME', 'concored_mmk')
 CONCORDED_KBZPAY_TOKEN = os.getenv('CONCORDED_KBZPAY_TOKEN', '')
