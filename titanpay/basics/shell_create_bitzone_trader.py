@@ -15,8 +15,11 @@ Webhook: {PUBLIC_API_URL}/api/v1/webhooks/psp/bitzone/ (x-signature = HMAC-SHA25
   - Webhook URL = https://api.avapay.net/api/v1/webhooks/psp/bitzone/
   - IP whitelist — egress IP сервера steepchocolate
 
-Запуск:
-  docker compose exec app python manage.py shell < basics/shell_create_bitzone_trader.py
+Запуск (с хоста, файл в репо):
+  docker compose exec -T app python manage.py shell < titanpay/basics/shell_create_bitzone_trader.py
+
+Или внутри образа (/app):
+  docker compose exec app python manage.py shell -c "exec(open('basics/shell_create_bitzone_trader.py').read()); run()"
 """
 from decimal import Decimal
 import datetime
@@ -183,7 +186,10 @@ def run():
     print(f"  6) Trader login: {TRADER_USERNAME} / {TRADER_PASSWORD} (смените пароль)")
 
 
-if __name__ == "__main__":
+import sys
+
+
+if __name__ == "__main__" or (len(sys.argv) >= 2 and sys.argv[1] == "shell"):
     run()
 else:
-    print("Run: run()")
+    run()
