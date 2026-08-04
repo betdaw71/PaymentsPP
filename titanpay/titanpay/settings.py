@@ -317,6 +317,17 @@ PROTOCOL_API_KEY = os.getenv('PROTOCOL_API_KEY', '374|NZRwEhxoiTWAhjUNx2PetIjYQe
 # Binance P2P payTypes для Halyk (см. GET /api/v2/banks?currency=KZT)
 PROTOCOL_BINANCE_PAY_TYPE = os.getenv('PROTOCOL_BINANCE_PAY_TYPE', 'HalykBank')
 
+# Bitzone PSP (колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/bitzone/)
+BITZONE_API_BASE = os.getenv('BITZONE_API_BASE', 'https://api.bitzone.space').rstrip('/')
+BITZONE_API_KEY = os.getenv('BITZONE_API_KEY', '')
+BITZONE_TRADER_USERNAME = os.getenv('BITZONE_TRADER_USERNAME', 'bitzone1')
+# method: card, sbp, cross_card, cross_sbp, … — см. https://developers.bitzone.space/docs/pay-in/
+BITZONE_PAYIN_METHOD = os.getenv('BITZONE_PAYIN_METHOD', 'cross_card')
+BITZONE_BANK = os.getenv('BITZONE_BANK', '')
+BITZONE_DEFAULT_PAYER_IP = os.getenv('BITZONE_DEFAULT_PAYER_IP', '127.0.0.1')
+BITZONE_SIGN_OUTBOUND = os.getenv('BITZONE_SIGN_OUTBOUND', 'true').lower() in ('true', '1', 'yes')
+BITZONE_PAYER_USER_ID_FROM_CLIENT = os.getenv('BITZONE_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
+
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
 # Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)

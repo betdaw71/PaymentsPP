@@ -101,7 +101,7 @@ def _psp_trader_usernames() -> list[str]:
     from django.conf import settings
 
     names = []
-    for key in ("FAIRPAY_TRADER_USERNAME", "EXPAYONE_TRADER_USERNAME", "PROTOCOL_TRADER_USERNAME", "PLAYMENTS_TRADER_USERNAME"):
+    for key in ("FAIRPAY_TRADER_USERNAME", "EXPAYONE_TRADER_USERNAME", "PROTOCOL_TRADER_USERNAME", "PLAYMENTS_TRADER_USERNAME", "BITZONE_TRADER_USERNAME"):
         val = (getattr(settings, key, None) or "").strip()
         if val:
             names.append(val)

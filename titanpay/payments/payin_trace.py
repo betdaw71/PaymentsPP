@@ -26,6 +26,9 @@ class Direction:
     PAYMAP_OUT_REQUEST = "paymap_out_request"
     PAYMAP_OUT_RESPONSE = "paymap_out_response"
     PAYMAP_WEBHOOK = "paymap_webhook"
+    BITZONE_OUT_REQUEST = "bitzone_out_request"
+    BITZONE_OUT_RESPONSE = "bitzone_out_response"
+    BITZONE_WEBHOOK = "bitzone_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 
