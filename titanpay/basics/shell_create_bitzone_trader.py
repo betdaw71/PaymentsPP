@@ -186,10 +186,4 @@ def run():
     print(f"  6) Trader login: {TRADER_USERNAME} / {TRADER_PASSWORD} (смените пароль)")
 
 
-import sys
-
-
-if __name__ == "__main__" or (len(sys.argv) >= 2 and sys.argv[1] == "shell"):
-    run()
-else:
-    run()
+run()
