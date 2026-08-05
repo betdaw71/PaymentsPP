@@ -45,37 +45,93 @@ def _sign_body(body: str) -> str:
     return hmac.new(_api_key().encode("utf-8"), body.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def _webhook_signing_key() -> str:
-    """Ключ для проверки x-signature (по доке — API key; опционально отдельный secret)."""
-    explicit = (getattr(settings, "BITZONE_WEBHOOK_SECRET", None) or "").strip()
-    if explicit:
-        return explicit
-    return _api_key()
+def _signing_keys_for_webhook() -> list[str]:
+    keys: list[str] = []
+    for env_name in ("BITZONE_WEBHOOK_SECRET", "BITZONE_API_KEY"):
+        val = (getattr(settings, env_name, None) or "").strip()
+        if val and val not in keys:
+            keys.append(val)
+    extra = (getattr(settings, "BITZONE_WEBHOOK_SIGNING_KEYS", None) or "").strip()
+    if extra:
+        for part in extra.split(","):
+            part = part.strip()
+            if part and part not in keys:
+                keys.append(part)
+    return keys
 
 
-def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
-    key = _webhook_signing_key()
-    if not key or not signature:
-        return False
+def _webhook_body_candidates(raw_body: bytes) -> list[bytes]:
+    if not raw_body:
+        return []
+    out: list[bytes] = []
+    seen: set[bytes] = set()
+
+    def add(b: bytes) -> None:
+        if b and b not in seen:
+            seen.add(b)
+            out.append(b)
+
+    add(raw_body)
+    if raw_body.startswith(b"\xef\xbb\xbf"):
+        add(raw_body[3:])
+    add(raw_body.rstrip(b" \t\r\n"))
+    try:
+        text = raw_body.decode("utf-8")
+        add(text.encode("utf-8"))
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            for sort_keys in (False, True):
+                canon = json.dumps(
+                    parsed, separators=(",", ":"), ensure_ascii=False, sort_keys=sort_keys
+                )
+                add(canon.encode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        pass
+    return out
+
+
+def _normalize_received_signature(signature: str | None) -> str | None:
+    if not signature:
+        return None
     sig = signature.strip()
     if sig.lower().startswith("sha256="):
         sig = sig.split("=", 1)[1].strip()
-    sig = sig.lower()
+    return sig.lower() or None
 
-    def _expected(message: bytes) -> str:
-        return hmac.new(key.encode("utf-8"), message, hashlib.sha256).hexdigest().lower()
 
-    candidates: list[bytes] = []
-    if raw_body:
-        candidates.append(raw_body)
-        try:
-            text = raw_body.decode("utf-8")
-            candidates.append(text.encode("utf-8"))
-        except UnicodeDecodeError:
-            pass
-    for message in candidates:
-        if hmac.compare_digest(sig, _expected(message)):
-            return True
+def _hmac_sha256_hex(key: str, message: bytes) -> str:
+    return hmac.new(key.encode("utf-8"), message, hashlib.sha256).hexdigest().lower()
+
+
+def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
+    sig = _normalize_received_signature(signature)
+    if not sig:
+        return False
+    if getattr(settings, "BITZONE_WEBHOOK_SKIP_VERIFY", False):
+        logger.warning("Bitzone webhook: BITZONE_WEBHOOK_SKIP_VERIFY is enabled")
+        return True
+
+    keys = _signing_keys_for_webhook()
+    if not keys:
+        return False
+
+    messages = _webhook_body_candidates(raw_body)
+    for key in keys:
+        for message in messages:
+            expected_hex = _hmac_sha256_hex(key, message)
+            if hmac.compare_digest(sig, expected_hex):
+                return True
+            # Некоторые провайдеры отдают base64 вместо hex
+            try:
+                import base64
+
+                expected_b64 = base64.b64encode(
+                    hmac.new(key.encode("utf-8"), message, hashlib.sha256).digest()
+                ).decode("ascii")
+                if hmac.compare_digest(sig, expected_b64.lower()):
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
     return False
 
 
