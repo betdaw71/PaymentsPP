@@ -539,6 +539,9 @@ def cancel_inorder_on_psp_create_failed(order) -> None:
 
 def _extract_upstream_error(payload: dict) -> str | None:
     """Только для внутренних логов / diagnose_payin — не отдавать мерчанту."""
+    top_message = payload.get("message")
+    if top_message and str(top_message).strip():
+        top_message = str(top_message).strip()
     err = payload.get("error")
     if isinstance(err, dict):
         parts = [err.get("message"), err.get("details")]
@@ -547,10 +550,12 @@ def _extract_upstream_error(payload: dict) -> str | None:
             return ": ".join(parts)
         if err.get("code") is not None:
             return f"upstream error code {err['code']}"
+    if top_message and err and not isinstance(err, dict):
+        return f"{top_message} ({err})"
+    if top_message:
+        return top_message
     if err:
         return str(err)
-    if payload.get("message"):
-        return str(payload["message"])
     return None
 
 

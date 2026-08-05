@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 
+from django.conf import settings
 from django.db import transaction
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
@@ -11,7 +12,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from payments.bitzone_client import bitzone_webhook_outcome, verify_webhook_signature
+from payments.bitzone_client import bitzone_webhook_outcome, verify_webhook_signature, _api_key
 from payments.models import BitzonePayInSession, PayIn
 from payments.payin_trace import Direction, trace_log
 from payments.psp_payin import complete_inorder_from_psp_webhook
@@ -29,12 +30,26 @@ class BitzoneWebhookView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    parser_classes = ()
 
     def post(self, request, *args, **kwargs):
         raw_body = request.body or b""
-        signature = request.headers.get("x-signature") or request.META.get("HTTP_X_SIGNATURE")
+        if not raw_body and hasattr(request, "_request"):
+            raw_body = getattr(request._request, "body", b"") or b""
+        signature = (
+            request.headers.get("x-signature")
+            or request.headers.get("X-Signature")
+            or request.META.get("HTTP_X_SIGNATURE")
+        )
         if not verify_webhook_signature(raw_body, signature):
-            logger.warning("Bitzone webhook: invalid signature")
+            logger.warning(
+                "Bitzone webhook: invalid signature api_key_set=%s webhook_secret_set=%s "
+                "sig_header=%s body_len=%s",
+                bool(_api_key()),
+                bool((getattr(settings, "BITZONE_WEBHOOK_SECRET", "") or "").strip()),
+                bool(signature and str(signature).strip()),
+                len(raw_body),
+            )
             return Response({"ok": False, "error": "invalid_signature"}, status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -44,7 +59,7 @@ class BitzoneWebhookView(APIView):
 
         provider_id = body.get("id")
         extra = body.get("extra") if isinstance(body.get("extra"), dict) else {}
-        external_id = extra.get("externalTransactionId")
+        external_id = body.get("externalTransactionId") or extra.get("externalTransactionId")
         outcome = bitzone_webhook_outcome(body)
 
         session = None

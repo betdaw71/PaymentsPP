@@ -326,6 +326,8 @@ BITZONE_PAYIN_METHOD = os.getenv('BITZONE_PAYIN_METHOD', 'cross_card')
 BITZONE_BANK = os.getenv('BITZONE_BANK', '')
 BITZONE_DEFAULT_PAYER_IP = os.getenv('BITZONE_DEFAULT_PAYER_IP', '127.0.0.1')
 BITZONE_SIGN_OUTBOUND = os.getenv('BITZONE_SIGN_OUTBOUND', 'true').lower() in ('true', '1', 'yes')
+# Если в ЛК Bitzone отдельный secret для подписи webhook — иначе используется BITZONE_API_KEY
+BITZONE_WEBHOOK_SECRET = os.getenv('BITZONE_WEBHOOK_SECRET', '')
 BITZONE_PAYER_USER_ID_FROM_CLIENT = os.getenv('BITZONE_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)

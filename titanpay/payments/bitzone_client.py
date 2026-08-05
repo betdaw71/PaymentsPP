@@ -45,12 +45,38 @@ def _sign_body(body: str) -> str:
     return hmac.new(_api_key().encode("utf-8"), body.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _webhook_signing_key() -> str:
+    """Ключ для проверки x-signature (по доке — API key; опционально отдельный secret)."""
+    explicit = (getattr(settings, "BITZONE_WEBHOOK_SECRET", None) or "").strip()
+    if explicit:
+        return explicit
+    return _api_key()
+
+
 def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
-    key = _api_key()
+    key = _webhook_signing_key()
     if not key or not signature:
         return False
-    expected = hmac.new(key.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(signature.strip(), expected)
+    sig = signature.strip()
+    if sig.lower().startswith("sha256="):
+        sig = sig.split("=", 1)[1].strip()
+    sig = sig.lower()
+
+    def _expected(message: bytes) -> str:
+        return hmac.new(key.encode("utf-8"), message, hashlib.sha256).hexdigest().lower()
+
+    candidates: list[bytes] = []
+    if raw_body:
+        candidates.append(raw_body)
+        try:
+            text = raw_body.decode("utf-8")
+            candidates.append(text.encode("utf-8"))
+        except UnicodeDecodeError:
+            pass
+    for message in candidates:
+        if hmac.compare_digest(sig, _expected(message)):
+            return True
+    return False
 
 
 def _headers(body: str, *, sign: bool) -> dict[str, str]:
@@ -189,6 +215,7 @@ def bitzone_create_pay_in(
     bank_val = (bank or getattr(settings, "BITZONE_BANK", None) or "").strip()
     if bank_val:
         payload["bank"] = bank_val
+    payload["callbackUrl"] = bitzone_callback_url()
 
     return _request("POST", "/payment/trading/pay-in", json_payload=payload, pay_in=pay_in)
 
