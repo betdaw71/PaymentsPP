@@ -30,7 +30,10 @@ def bitzone_callback_url() -> str:
 
 
 def _api_key() -> str:
-    return (getattr(settings, "BITZONE_API_KEY", None) or "").strip()
+    raw = (getattr(settings, "BITZONE_API_KEY", None) or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+        raw = raw[1:-1].strip()
+    return raw
 
 
 def _api_base() -> str:
@@ -46,15 +49,18 @@ def _sign_body(body: str) -> str:
 
 
 def _signing_keys_for_webhook() -> list[str]:
+    """По доке Bitzone: HMAC-SHA256(api_key, raw_body). Отдельного webhook secret нет."""
     keys: list[str] = []
-    for env_name in ("BITZONE_WEBHOOK_SECRET", "BITZONE_API_KEY"):
-        val = (getattr(settings, env_name, None) or "").strip()
-        if val and val not in keys:
-            keys.append(val)
+    api = _api_key()
+    if api:
+        keys.append(api)
+    secret = (getattr(settings, "BITZONE_WEBHOOK_SECRET", None) or "").strip()
+    if secret and secret not in keys:
+        keys.append(secret)
     extra = (getattr(settings, "BITZONE_WEBHOOK_SIGNING_KEYS", None) or "").strip()
     if extra:
         for part in extra.split(","):
-            part = part.strip()
+            part = part.strip().strip("\"'")
             if part and part not in keys:
                 keys.append(part)
     return keys
@@ -93,10 +99,26 @@ def _webhook_body_candidates(raw_body: bytes) -> list[bytes]:
 def _normalize_received_signature(signature: str | None) -> str | None:
     if not signature:
         return None
-    sig = signature.strip()
+    sig = str(signature).strip()
+    if "," in sig:
+        sig = sig.split(",", 1)[0].strip()
     if sig.lower().startswith("sha256="):
         sig = sig.split("=", 1)[1].strip()
     return sig.lower() or None
+
+
+def _verify_doc_exact(key: str, raw_body: bytes, sig: str) -> bool:
+    """Как в https://developers.bitzone.space/docs/authentication (Python)."""
+    try:
+        request_body = raw_body.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    computed = hmac.new(
+        key.encode("utf-8"),
+        request_body.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest().lower()
+    return hmac.compare_digest(sig, computed)
 
 
 def _hmac_sha256_hex(key: str, message: bytes) -> str:
@@ -114,6 +136,10 @@ def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
     keys = _signing_keys_for_webhook()
     if not keys:
         return False
+
+    for key in keys:
+        if _verify_doc_exact(key, raw_body, sig):
+            return True
 
     messages = _webhook_body_candidates(raw_body)
     for key in keys:
@@ -133,6 +159,28 @@ def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
             except Exception:  # noqa: BLE001
                 pass
     return False
+
+
+def webhook_signature_debug_hint(raw_body: bytes, signature: str | None) -> str:
+    """Сравнение подписи по доке (без утечки полного ключа)."""
+    sig = _normalize_received_signature(signature)
+    if not sig:
+        return "no_signature"
+    keys = _signing_keys_for_webhook()
+    if not keys:
+        return "no_api_key"
+    if _verify_doc_exact(keys[0], raw_body, sig):
+        return "doc_exact_match"
+    try:
+        request_body = raw_body.decode("utf-8")
+        computed = hmac.new(
+            keys[0].encode("utf-8"),
+            request_body.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest().lower()
+        return f"recv={sig[:12]}… expected={computed[:12]}… key_len={len(keys[0])}"
+    except Exception:  # noqa: BLE001
+        return "decode_error"
 
 
 def _headers(body: str, *, sign: bool) -> dict[str, str]:

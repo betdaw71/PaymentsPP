@@ -11,7 +11,13 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.exceptions import ValidationError
 
-from payments.bitzone_client import bitzone_webhook_outcome, verify_webhook_signature, _api_key, _signing_keys_for_webhook
+from payments.bitzone_client import (
+    bitzone_webhook_outcome,
+    verify_webhook_signature,
+    webhook_signature_debug_hint,
+    _api_key,
+    _signing_keys_for_webhook,
+)
 from payments.models import BitzonePayInSession, PayIn
 from payments.payin_trace import Direction, trace_log
 from payments.psp_payin import complete_inorder_from_psp_webhook
@@ -87,14 +93,17 @@ def bitzone_webhook_view(request):
     signature = request.headers.get("x-signature") or request.META.get("HTTP_X_SIGNATURE")
 
     if not verify_webhook_signature(raw_body, signature):
+        hint = webhook_signature_debug_hint(raw_body, signature)
         logger.warning(
             "Bitzone webhook: invalid signature api_key_set=%s signing_keys=%s "
-            "sig_header=%s sig_len=%s body_len=%s",
+            "sig_header=%s sig_len=%s body_len=%s encoding=%s hint=%s",
             bool(_api_key()),
             len(_signing_keys_for_webhook()),
             bool(signature and str(signature).strip()),
             len((signature or "").strip()),
             len(raw_body),
+            request.META.get("HTTP_CONTENT_ENCODING", ""),
+            hint,
         )
         return _json_response({"ok": False, "error": "invalid_signature"}, status=403)
 

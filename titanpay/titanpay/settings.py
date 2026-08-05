@@ -326,12 +326,13 @@ BITZONE_PAYIN_METHOD = os.getenv('BITZONE_PAYIN_METHOD', 'cross_card')
 BITZONE_BANK = os.getenv('BITZONE_BANK', '')
 BITZONE_DEFAULT_PAYER_IP = os.getenv('BITZONE_DEFAULT_PAYER_IP', '127.0.0.1')
 BITZONE_SIGN_OUTBOUND = os.getenv('BITZONE_SIGN_OUTBOUND', 'true').lower() in ('true', '1', 'yes')
-# Если в ЛК Bitzone отдельный secret для подписи webhook — иначе используется BITZONE_API_KEY
+# Опционально, если провайдер когда-либо выдаст отдельный secret (сейчас — только BITZONE_API_KEY)
 BITZONE_WEBHOOK_SECRET = os.getenv('BITZONE_WEBHOOK_SECRET', '')
 # Доп. ключи для проверки x-signature (через запятую), если в ЛК отдельный signing secret
 BITZONE_WEBHOOK_SIGNING_KEYS = os.getenv('BITZONE_WEBHOOK_SIGNING_KEYS', '')
 # Только для отладки на staging — НЕ включать на prod
 BITZONE_WEBHOOK_SKIP_VERIFY = os.getenv('BITZONE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+BITZONE_WEBHOOK_DEBUG = os.getenv('BITZONE_WEBHOOK_DEBUG', 'false').lower() in ('true', '1', 'yes')
 BITZONE_PAYER_USER_ID_FROM_CLIENT = os.getenv('BITZONE_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
