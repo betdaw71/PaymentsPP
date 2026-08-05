@@ -419,6 +419,9 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
         return None
     candidates: list[Any] = []
     for key in (
+        "disputeTraderFiatAmount",
+        "disputeMerchantFiatAmount",
+        "fiatAmount",
         "amount",
         "paidAmount",
         "paid_amount",
