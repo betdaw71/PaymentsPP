@@ -36,6 +36,28 @@ def _api_key() -> str:
     return raw
 
 
+def _expand_signing_key_candidates(primary: str) -> list[str]:
+    """Варианты ключа: полный, части после | (частый формат id|secret в ЛК)."""
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(val: str) -> None:
+        val = (val or "").strip()
+        if val and val not in seen:
+            seen.add(val)
+            out.append(val)
+
+    add(primary)
+    if "|" in primary:
+        parts = [p.strip() for p in primary.split("|") if p.strip()]
+        for part in parts:
+            add(part)
+        if len(parts) >= 2:
+            add(parts[-1])
+            add("|".join(parts[1:]))
+    return out
+
+
 def _api_base() -> str:
     return (getattr(settings, "BITZONE_API_BASE", "https://api.bitzone.space") or "").rstrip("/")
 
@@ -51,18 +73,22 @@ def _sign_body(body: str) -> str:
 def _signing_keys_for_webhook() -> list[str]:
     """По доке Bitzone: HMAC-SHA256(api_key, raw_body). Отдельного webhook secret нет."""
     keys: list[str] = []
-    api = _api_key()
-    if api:
-        keys.append(api)
+    seen: set[str] = set()
+
+    def add_key(val: str) -> None:
+        for candidate in _expand_signing_key_candidates(val):
+            if candidate not in seen:
+                seen.add(candidate)
+                keys.append(candidate)
+
+    add_key(_api_key())
     secret = (getattr(settings, "BITZONE_WEBHOOK_SECRET", None) or "").strip()
-    if secret and secret not in keys:
-        keys.append(secret)
+    if secret:
+        add_key(secret)
     extra = (getattr(settings, "BITZONE_WEBHOOK_SIGNING_KEYS", None) or "").strip()
     if extra:
         for part in extra.split(","):
-            part = part.strip().strip("\"'")
-            if part and part not in keys:
-                keys.append(part)
+            add_key(part.strip().strip("\"'"))
     return keys
 
 
@@ -178,7 +204,7 @@ def webhook_signature_debug_hint(raw_body: bytes, signature: str | None) -> str:
             request_body.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest().lower()
-        return f"recv={sig[:12]}… expected={computed[:12]}… key_len={len(keys[0])}"
+        return f"recv={sig[:12]}… expected={computed[:12]}… key_len={len(keys[0])} keys_tried={len(keys)}"
     except Exception:  # noqa: BLE001
         return "decode_error"
 
