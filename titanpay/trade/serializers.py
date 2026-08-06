@@ -13,6 +13,7 @@ from titanpay.settings import (
     C2C_NAME,
     PROTOCOL_C2C_NAME,
     C2CTRY_NAME,
+    PLUTUS_TEST_PS_NAME,
     CONCORDED_KBZPAY_PS_NAME,
     CONCORDED_WAVEPAY_PS_NAME,
 )
@@ -25,7 +26,11 @@ def payment_details_payload_for_order(payment_details, payment_system_name: str)
     """Реквизит в ответе списка ордеров: имя PS из UPI_INTENT_NAME (settings) — как карта Сбера."""
     if payment_details is None:
         return {}
-    if payment_system_name in (SBER_NAME, UPI_INTENT_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
+    card_ps = {SBER_NAME, UPI_INTENT_NAME, C2C_NAME, PROTOCOL_C2C_NAME}
+    test_ps = (PLUTUS_TEST_PS_NAME or "").strip()
+    if test_ps:
+        card_ps.add(test_ps)
+    if payment_system_name in card_ps:
         return PaymentDetailsSberOrderSerializer(payment_details).data
     if payment_system_name in (SBERDEP_NAME, C2CTRY_NAME):
         return PaymentDetailsSberDepOrderSerializer(payment_details).data

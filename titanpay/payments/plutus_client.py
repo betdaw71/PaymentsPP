@@ -54,7 +54,7 @@ def _paymethod_map() -> dict[str, str]:
                 return {str(k): str(v) for k, v in parsed.items()}
         except json.JSONDecodeError:
             logger.warning("PLUTUS_PAYMETHOD_MAP is not valid JSON")
-    return {"C2C": "c2c", "C2CKZT": "c2c"}
+    return {"C2C": "c2c", "C2CKZT": "c2c", "C2CKZTTEST": "c2c"}
 
 
 def plutus_paymethod_for(payment_system_name: str) -> str:

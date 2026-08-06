@@ -344,6 +344,8 @@ PLUTUS_DEFAULT_PAYMETHOD = os.getenv('PLUTUS_DEFAULT_PAYMETHOD', 'c2c')
 PLUTUS_PAYMETHOD_MAP = os.getenv('PLUTUS_PAYMETHOD_MAP', '')
 PLUTUS_PAYIN_TIMEOUT = int(os.getenv('PLUTUS_PAYIN_TIMEOUT', '900') or 900)
 PLUTUS_CONTRAGENT = os.getenv('PLUTUS_CONTRAGENT', 'false').lower() in ('true', '1', 'yes')
+# Тестовая PS только Plutus (shell_setup_plutus_c2ckzttest_routing.py)
+PLUTUS_TEST_PS_NAME = os.getenv('PLUTUS_TEST_PS_NAME', 'C2CKZTTEST')
 
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
