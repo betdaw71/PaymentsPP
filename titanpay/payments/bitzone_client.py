@@ -384,19 +384,23 @@ def bitzone_map_requisite(create_body: dict) -> dict:
         return {}
     owner = req.get("ownerName") or ""
     bank = req.get("bank") or create_body.get("bank") or ""
+
+    # Bitzone часто шлёт и sbpNumber, и requisites (карта). Для cross_card/card мерчанту нужна карта.
+    raw_req = (req.get("requisites") or "").strip()
+    if raw_req:
+        digits = "".join(c for c in raw_req if c.isdigit())
+        if len(digits) >= 13:
+            return {"card_number": digits[:19], "owner": owner, "bank": bank}
+        if raw_req.startswith("+") or (digits and len(digits) <= 12):
+            phone = raw_req if raw_req.startswith("+") else f"+{digits}"
+            return {"phone": phone, "owner": owner, "bank": bank}
+        return {"card_number": raw_req, "owner": owner, "bank": bank}
+
     sbp = (req.get("sbpNumber") or "").strip()
     if sbp:
         phone = sbp if sbp.startswith("+") else f"+{''.join(c for c in sbp if c.isdigit())}"
         return {"phone": phone, "owner": owner, "bank": bank}
-    raw_req = (req.get("requisites") or "").strip()
-    if not raw_req:
-        return {}
-    digits = "".join(c for c in raw_req if c.isdigit())
-    if len(digits) >= 16:
-        return {"card_number": digits[:16], "owner": owner, "bank": bank}
-    if raw_req.startswith("+") or (digits and len(digits) <= 12):
-        return {"phone": raw_req if raw_req.startswith("+") else f"+{digits}", "owner": owner, "bank": bank}
-    return {"card_number": raw_req, "owner": owner, "bank": bank}
+    return {}
 
 
 def bitzone_requisite_for_payin(pay_in: Any) -> dict | None:

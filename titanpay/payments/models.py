@@ -214,6 +214,21 @@ class BitzonePayInSession(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class PlutusPayInSession(models.Model):
+    """Связка PayIn ↔ сделка PlutusPay (POST /merchant/v2/incoming/payment/create/)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="plutus_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_trade_uuid = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    payment_system_name = models.CharField(max_length=64, blank=True, default="")
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class ConcoredPayInSession(models.Model):
     """Связка PayIn ↔ платёж Concored / ProcessorCore (MMK KBZPay, WavePay)."""
 

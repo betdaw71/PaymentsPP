@@ -29,6 +29,9 @@ class Direction:
     BITZONE_OUT_REQUEST = "bitzone_out_request"
     BITZONE_OUT_RESPONSE = "bitzone_out_response"
     BITZONE_WEBHOOK = "bitzone_webhook"
+    PLUTUS_OUT_REQUEST = "plutus_out_request"
+    PLUTUS_OUT_RESPONSE = "plutus_out_response"
+    PLUTUS_WEBHOOK = "plutus_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 

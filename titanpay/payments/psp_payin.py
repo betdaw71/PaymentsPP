@@ -38,6 +38,7 @@ def is_psp_trader(trader) -> bool:
     from payments import concored_client as cc
     from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
+    from payments import plutus_client as plc2
 
     return (
         fc.is_fairpay_trader(trader)
@@ -47,6 +48,7 @@ def is_psp_trader(trader) -> bool:
         or cc.is_concored_trader(trader)
         or pmc.is_paymap_trader(trader)
         or bzc.is_bitzone_trader(trader)
+        or plc2.is_plutus_trader(trader)
     )
 
 
@@ -97,6 +99,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import concored_client as cc
     from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
 
     names = {
         fc.fairpay_trader_username(),
@@ -106,6 +109,7 @@ def psp_trader_usernames() -> frozenset[str]:
         cc.concored_trader_username(),
         pmc.paymap_trader_username(),
         bzc.bitzone_trader_username(),
+        pltc.plutus_trader_username(),
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -148,6 +152,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import concored_client as cc
     from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
 
     for getter in (
         fc.fairpay_requisite_for_payin,
@@ -157,6 +162,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         cc.concored_requisite_for_payin,
         pmc.paymap_requisite_for_payin,
         bzc.bitzone_requisite_for_payin,
+        pltc.plutus_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -172,6 +178,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import concored_client as cc
     from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
@@ -179,7 +186,8 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = plc.enrich_payin_payment_details(representation, pay_in)
     representation = cc.enrich_payin_payment_details(representation, pay_in)
     representation = pmc.enrich_payin_payment_details(representation, pay_in)
-    return bzc.enrich_payin_payment_details(representation, pay_in)
+    representation = bzc.enrich_payin_payment_details(representation, pay_in)
+    return pltc.enrich_payin_payment_details(representation, pay_in)
 
 
 def payin_routed_group(pay_in: Any):
@@ -215,6 +223,7 @@ def _psp_provider_for_trader(trader):
     from payments import concored_client as cc
     from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
@@ -222,6 +231,8 @@ def _psp_provider_for_trader(trader):
         return "expayone", ec.try_attach_expayone_session
     if bzc.is_bitzone_trader(trader):
         return "bitzone", bzc.try_attach_bitzone_session
+    if pltc.is_plutus_trader(trader):
+        return "plutus", pltc.try_attach_plutus_session
     if fc.is_fairpay_trader(trader):
         return "fairpay", fc.try_attach_fairpay_session
     if plc.is_playments_trader(trader):
@@ -403,6 +414,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import concored_client as cc
     from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
@@ -411,6 +423,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     cc.concored_cancel_if_linked(pay_in)
     pmc.paymap_cancel_if_linked(pay_in)
     bzc.bitzone_cancel_if_linked(pay_in)
+    pltc.plutus_cancel_if_linked(pay_in)
 
 
 def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
@@ -419,6 +432,7 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
         return None
     candidates: list[Any] = []
     for key in (
+        "received_amount",
         "disputeTraderFiatAmount",
         "disputeMerchantFiatAmount",
         "fiatAmount",
@@ -545,6 +559,9 @@ def _extract_upstream_error(payload: dict) -> str | None:
     top_message = payload.get("message")
     if top_message and str(top_message).strip():
         top_message = str(top_message).strip()
+    detail = payload.get("detail")
+    if detail and str(detail).strip():
+        return str(detail).strip()
     err = payload.get("error")
     if isinstance(err, dict):
         parts = [err.get("message"), err.get("details")]
@@ -585,6 +602,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         FairpayPayInSession,
         PaymapPayInSession,
         PlaymentsPayInSession,
+        PlutusPayInSession,
         ProtocolPayInSession,
     )
 
@@ -600,6 +618,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         ConcoredPayInSession,
         PaymapPayInSession,
         BitzonePayInSession,
+        PlutusPayInSession,
     ):
         try:
             session = model.objects.get(pay_in=pay_in)
@@ -627,6 +646,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         FairpayPayInSession,
         PaymapPayInSession,
         PlaymentsPayInSession,
+        PlutusPayInSession,
         ProtocolPayInSession,
     )
 
@@ -645,6 +665,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (ConcoredPayInSession, "concored"),
         (PaymapPayInSession, "paymap"),
         (BitzonePayInSession, "bitzone"),
+        (PlutusPayInSession, "plutus"),
     ):
         try:
             session = model.objects.get(pay_in=pay_in)

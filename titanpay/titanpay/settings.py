@@ -335,6 +335,16 @@ BITZONE_WEBHOOK_SKIP_VERIFY = os.getenv('BITZONE_WEBHOOK_SKIP_VERIFY', 'false').
 BITZONE_WEBHOOK_DEBUG = os.getenv('BITZONE_WEBHOOK_DEBUG', 'false').lower() in ('true', '1', 'yes')
 BITZONE_PAYER_USER_ID_FROM_CLIENT = os.getenv('BITZONE_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 
+# PlutusPay PSP (https://plutuspay.top/docs, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/plutus/)
+PLUTUS_API_BASE = os.getenv('PLUTUS_API_BASE', 'https://plutuspay.top').rstrip('/')
+PLUTUS_API_KEY = os.getenv('PLUTUS_API_KEY', '')
+PLUTUS_TRADER_USERNAME = os.getenv('PLUTUS_TRADER_USERNAME', 'plutus1')
+PLUTUS_DEFAULT_PAYMETHOD = os.getenv('PLUTUS_DEFAULT_PAYMETHOD', 'c2c')
+# JSON: {"C2C":"c2c","C2CKZT":"c2c"} — paymethod в create pay-in
+PLUTUS_PAYMETHOD_MAP = os.getenv('PLUTUS_PAYMETHOD_MAP', '')
+PLUTUS_PAYIN_TIMEOUT = int(os.getenv('PLUTUS_PAYIN_TIMEOUT', '900') or 900)
+PLUTUS_CONTRAGENT = os.getenv('PLUTUS_CONTRAGENT', 'false').lower() in ('true', '1', 'yes')
+
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
 # Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)

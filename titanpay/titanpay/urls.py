@@ -24,6 +24,7 @@ from payments.playments_views import PlaymentsDepositWebhookView, PlaymentsWithd
 from payments.concored_views import ConcoredWebhookView
 from payments.paymap_views import PaymapWebhookView
 from payments.bitzone_views import bitzone_webhook_view
+from payments.plutus_views import plutus_webhook_view
 from payments.payment_page import payment_page, payment_page_redirect
 
 admin.site.site_header = admin.site.site_title = 'AvaPay'
@@ -51,6 +52,7 @@ urlpatterns = [
     path('api/v1/webhooks/psp/concored/', ConcoredWebhookView.as_view(), name='webhook-concored'),
     path('api/v1/webhooks/psp/paymap/', PaymapWebhookView.as_view(), name='webhook-paymap'),
     path('api/v1/webhooks/psp/bitzone/', bitzone_webhook_view, name='webhook-bitzone'),
+    path('api/v1/webhooks/psp/plutus/', plutus_webhook_view, name='webhook-plutus'),
     path('prometheus-X60iSjSJB4PA2mdqDnA1mRBZbmGpapdMpwZ6L29c', include('django_prometheus.urls')),
     # Платёжная страница (invoice / redirect): pay.{domain}/{uuid}
     path('<uuid:pay_in_id>/', payment_page, name='payment-page'),
