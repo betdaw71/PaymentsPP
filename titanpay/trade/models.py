@@ -128,10 +128,15 @@ class InOrder(models.Model):
 
     def freeze(self, comment=""):
         trader = self.payment_details.group.trader
+        value = self.usd_amount
+        from payments.psp_payin import is_psp_trader, psp_order_usd_ledger_amount
+
+        if is_psp_trader(trader):
+            value = psp_order_usd_ledger_amount(self)
 
         transaction_type = TransactionType.objects.get(name="Freeze")
         Transaction.create(_from=trader.balance_usdt, _to=trader.frozen_balance_usdt,
-                           value=self.usd_amount, _transaction_type=transaction_type, _linked_in_order=self,
+                           value=value, _transaction_type=transaction_type, _linked_in_order=self,
                            _comment=comment)
 
     def unfreeze(self, comment=""):
@@ -191,6 +196,11 @@ class InOrder(models.Model):
 
         ensure_psp_frozen_for_complete(self)
         trader = self.payment_details.group.trader
+        from payments.psp_payin import is_psp_trader, psp_order_usd_ledger_amount
+
+        charge_usd = self.usd_amount
+        if is_psp_trader(trader):
+            charge_usd = psp_order_usd_ledger_amount(self)
 
         status = InOrderStatus.objects.get(name="Completed")
         self.status = status
@@ -217,7 +227,7 @@ class InOrder(models.Model):
             merchant_balance = self.solution.merchant.balance
 
         to_aggregator = Transaction.create(_from=trader.frozen_balance_usdt, _to=aggregator_balance,
-                                           value=self.usd_amount, _transaction_type=transaction_type_1,
+                                           value=charge_usd, _transaction_type=transaction_type_1,
                                            _linked_in_order=self, _comment="In-order completed")
 
         if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from django.db import transaction
@@ -52,10 +52,24 @@ def is_psp_trader(trader) -> bool:
     )
 
 
+def psp_order_usd_ledger_amount(order) -> Decimal:
+    """
+    USDT для Freeze/Charge у PSP: Transaction.value хранит 2 знака после запятой.
+    Микросуммы (< 0.01 USDT) иначе округляются до 0 и complete падает на проверке frozen.
+    """
+    raw = Decimal(str(getattr(order, "usd_amount", 0) or 0))
+    if raw <= 0:
+        return Decimal("0")
+    q = raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if q <= 0:
+        q = Decimal("0.01")
+    return q
+
+
 def ensure_psp_frozen_for_complete(order) -> None:
     """
-    PSP pay-in: сумма должна быть заморожена при InOrder.create.
-    Перед complete только проверяем frozen_balance_usdt (без автодолива).
+    PSP pay-in: на frozen должна быть сумма заказа в ledger-формате (2 dp).
+    После expire/cancel webhook разморозка снимает freeze; перед complete дозамораживаем из available.
     """
     if not getattr(order, "payment_details_id", None):
         return
@@ -64,11 +78,21 @@ def ensure_psp_frozen_for_complete(order) -> None:
         return
 
     from basics.models import Balance
+    from trade.models import Transaction, TransactionType
 
     frozen_bal = Balance.objects.select_for_update().get(pk=trader.frozen_balance_usdt_id)
-    need = Decimal(str(order.usd_amount))
-    if frozen_bal.amount < need:
-        available_bal = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
+    need = psp_order_usd_ledger_amount(order)
+    if need <= 0:
+        return
+    if frozen_bal.amount >= need:
+        return
+
+    shortfall = (need - frozen_bal.amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if shortfall <= 0:
+        return
+
+    available_bal = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
+    if available_bal.amount < shortfall:
         raise ValidationError(
             {
                 "details": (
@@ -77,6 +101,16 @@ def ensure_psp_frozen_for_complete(order) -> None:
                 )
             }
         )
+
+    transaction_type = TransactionType.objects.get(name="Freeze")
+    Transaction.create(
+        _from=trader.balance_usdt,
+        _to=trader.frozen_balance_usdt,
+        value=shortfall,
+        _transaction_type=transaction_type,
+        _linked_in_order=order,
+        _comment="PSP replenish frozen before complete",
+    )
 
 
 def sort_groups_for_routing(groups, amount=None):

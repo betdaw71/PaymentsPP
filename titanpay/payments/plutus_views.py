@@ -32,17 +32,18 @@ def _handle_success(session: PlutusPayInSession, body: dict) -> JsonResponse:
     if not pay_in or not pay_in.order_id:
         return _json_response({"ok": False, "error": "no_pay_in"}, status=400)
 
+    inorder_state = None
     try:
         with transaction.atomic():
             locked = InOrder.objects.select_for_update().get(pk=pay_in.order_id)
+            inorder_state = locked.status.name if locked.status else None
             if locked.status and locked.status.name == "Completed":
                 return _json_response({"ok": True, "idempotent": True})
             complete_inorder_from_psp_webhook(locked, body)
     except ValidationError as exc:
-        state = pay_in.order.status.name if pay_in.order and pay_in.order.status else None
         logger.warning(
             "Plutus success webhook: bad InOrder state %s PayIn=%s detail=%s",
-            state,
+            inorder_state,
             pay_in.id,
             exc.detail,
         )
