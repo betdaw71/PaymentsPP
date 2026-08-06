@@ -10,6 +10,7 @@ from titanpay.settings import (
     CONCORDED_KBZPAY_PS_NAME,
     CONCORDED_WAVEPAY_PS_NAME,
     PROTOCOL_C2C_NAME,
+    PLUTUS_TEST_PS_NAME,
     SBERDEP_NAME,
     SBERPAY_NAME,
     SBER_NAME,
@@ -35,14 +36,22 @@ def route(payment_system):
     elif payment_system.name == UPI_INTENT_NAME:
         # FairPay: локальная группа трейдера (fairpay_agg) с «картой» — тот же отбор, что SberRouting
         return sber
-    elif payment_system.name in (
+    elif payment_system.name in _c2c_style_ps_names():
+        # C2C / PSP H2H (в т.ч. MMK KBZPay, WavePay через Concored)
+        return sber
+    raise ValidationError("There is no routing for this payment system")
+
+
+def _c2c_style_ps_names():
+    names = {
         C2C_NAME,
         PROTOCOL_C2C_NAME,
         C2CTRY_NAME,
         CONCORDED_KBZPAY_PS_NAME,
         CONCORDED_WAVEPAY_PS_NAME,
         C2CMMK_NAME,
-    ):
-        # C2C / PSP H2H (в т.ч. MMK KBZPay, WavePay через Concored)
-        return sber
-    raise ValidationError("There is no routing for this payment system")
+    }
+    test_ps = (PLUTUS_TEST_PS_NAME or "").strip()
+    if test_ps:
+        names.add(test_ps)
+    return names
