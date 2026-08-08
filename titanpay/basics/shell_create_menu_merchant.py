@@ -1,5 +1,6 @@
 """
-Django shell: мерчант MENU (RUB) — Syndicate Pay, основные РФ банки + C2C/SBP.
+Django shell: отдельный мерчант menu_ru (RUB) — Syndicate Pay, основные РФ банки + C2C/SBP.
+Не трогает существующего пользователя menu (другая валюта/ЛК).
 
 Ставка pay-in (mdr_in): 10.5% по умолчанию.
 Роутинг: виртуальные группы syndicate1 на каждую payment_system.
@@ -8,10 +9,13 @@ Django shell: мерчант MENU (RUB) — Syndicate Pay, основные РФ
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_create_menu_merchant.py
 
 Перед этим: syndicate1 + SYNDICATE_* в .env (shell_create_syndicate_trader.py).
+
+Переопределение: MENU_RU_MERCHANT_USERNAME, MENU_RU_MERCHANT_PASSWORD.
 """
 from __future__ import annotations
 
 import datetime
+import os
 import uuid
 from decimal import Decimal
 
@@ -47,8 +51,8 @@ from titanpay.settings import (
     TBANK_NAME,
 )
 
-MERCHANT_USERNAME = "menu"
-DEFAULT_PASSWORD = "Menu_Merchant_2026!"
+MERCHANT_USERNAME = os.environ.get("MENU_RU_MERCHANT_USERNAME", "menu_ru")
+DEFAULT_PASSWORD = os.environ.get("MENU_RU_MERCHANT_PASSWORD", "Menu_RU_Merchant_2026!")
 TRAFFIC_NAME = "Standard"
 MDR_IN = Decimal("10.5")
 MDR_OUT = Decimal("10.5")
@@ -164,7 +168,7 @@ def ensure_syndicate_virtual_group(trader: Trader, currency: Currency, ps: Payme
         return group
 
     group = PaymentDetailsGroup.objects.create(
-        owner=f"Syndicate MENU {label}",
+        owner=f"Syndicate {MERCHANT_USERNAME} {label}",
         trader=trader,
         currency=currency,
         payment_system=ps,
@@ -208,7 +212,7 @@ def ensure_syndicate_routing(trader: Trader, currency: Currency, traffic: Traffi
 @transaction.atomic
 def run(password: str = DEFAULT_PASSWORD) -> dict:
     print("=" * 60)
-    print("MENU merchant — RUB / Syndicate (mdr_in 10.5%)")
+    print(f"{MERCHANT_USERNAME} — RUB / Syndicate (mdr_in 10.5%)")
     print("=" * 60)
 
     language, _ = Language.objects.get_or_create(name="English")
@@ -228,17 +232,19 @@ def run(password: str = DEFAULT_PASSWORD) -> dict:
     ensure_syndicate_routing(trader, currency, traffic, payment_systems)
 
     print(f"\nМерчант {MERCHANT_USERNAME}:")
+    email = f"{MERCHANT_USERNAME}@merchant.local"
     user, user_created = User.objects.get_or_create(
         username=MERCHANT_USERNAME,
-        defaults={"email": "menu@merchant.local", "first_name": "MENU"},
+        defaults={"email": email, "first_name": "MENU RU"},
     )
     if user_created:
         user.set_password(password)
         user.save()
         print(f"  + User {MERCHANT_USERNAME}")
     else:
-        print(f"  ~ User {MERCHANT_USERNAME}")
+        print(f"  ~ User {MERCHANT_USERNAME} (ключи API не перевыпускаются)")
 
+    merchant_created = False
     if hasattr(user, "merchant"):
         merchant = user.merchant
         print(f"  ~ Merchant {merchant.id}")
@@ -250,10 +256,11 @@ def run(password: str = DEFAULT_PASSWORD) -> dict:
             language=language,
             balance=balance,
             frozen_balance=frozen,
-            telegram="@menu_merchant",
+            telegram=f"@{MERCHANT_USERNAME}",
             phone="+79000000000",
         )
         Address.objects.create(balance=balance, address_public=_deposit_address(MERCHANT_USERNAME))
+        merchant_created = True
         print(f"  + Merchant {merchant.id}")
 
     merchant.payment_systems.set(payment_systems)
@@ -283,12 +290,18 @@ def run(password: str = DEFAULT_PASSWORD) -> dict:
             tag = "+" if created else "~"
             print(f"  {tag} MerchantSolution ps={ps.name} ftd={ftd} mdr_in={MDR_IN}%")
 
-    api_key = APIKeys.create(merchant=merchant)
-    Token.objects.filter(user=user).delete()
-    token = Token.objects.create(user=user)
+    if user_created or merchant_created:
+        api_key = APIKeys.create(merchant=merchant)
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
+    else:
+        api_key = merchant.api_keys.filter(active=True).order_by("-created_at").first()
+        if api_key is None:
+            api_key = APIKeys.create(merchant=merchant)
+        token, _ = Token.objects.get_or_create(user=user)
 
     print("\n" + "=" * 60)
-    print("ГОТОВО — MENU")
+    print(f"ГОТОВО — {MERCHANT_USERNAME}")
     print("=" * 60)
     print(f"  Merchant ID:  {merchant.id}")
     print(f"  Username:     {MERCHANT_USERNAME}")
