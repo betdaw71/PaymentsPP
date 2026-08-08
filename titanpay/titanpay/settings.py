@@ -353,7 +353,7 @@ SYNDICATE_MERCHANT_ID = os.getenv('SYNDICATE_MERCHANT_ID', '')
 SYNDICATE_MERCHANT_LOGIN = os.getenv('SYNDICATE_MERCHANT_LOGIN', '')
 SYNDICATE_API_KEY = os.getenv('SYNDICATE_API_KEY', '')
 SYNDICATE_TRADER_USERNAME = os.getenv('SYNDICATE_TRADER_USERNAME', 'syndicate1')
-# JSON: {"C2C":"any-bank","SBP":"sbp","SBER":"sberbank"} — код bank в POST /api/orders/create
+# JSON: переопределения к payments/data/syndicate_banks.json (полный каталог из xlsx)
 SYNDICATE_BANK_MAP = os.getenv('SYNDICATE_BANK_MAP', '')
 SYNDICATE_DEFAULT_BANK = os.getenv('SYNDICATE_DEFAULT_BANK', 'any-bank')
 SYNDICATE_WEBHOOK_SKIP_VERIFY = os.getenv('SYNDICATE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')

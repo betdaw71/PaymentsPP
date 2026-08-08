@@ -5,6 +5,8 @@ import hashlib
 import json
 import logging
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -74,7 +76,28 @@ def sign_unclaimed(*, login: str, order_ref: str, api_key: str) -> str:
     return hashlib.sha256(f"{login}:{order_ref}:{api_key}".encode("utf-8")).hexdigest()
 
 
-def _bank_map() -> dict[str, str]:
+@lru_cache(maxsize=1)
+def _banks_catalog() -> dict[str, Any]:
+    path = Path(__file__).resolve().parent / "data" / "syndicate_banks.json"
+    if not path.is_file():
+        return {"banks": [], "payment_system_to_bank_code": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Syndicate banks catalog unreadable: %s", exc)
+        return {"banks": [], "payment_system_to_bank_code": {}}
+    if not isinstance(data, dict):
+        return {"banks": [], "payment_system_to_bank_code": {}}
+    return data
+
+
+def syndicate_banks_list() -> list[dict[str, Any]]:
+    """Справочник из banks-*.xlsx (259 записей) — code, name, nspk_code, …"""
+    banks = _banks_catalog().get("banks")
+    return banks if isinstance(banks, list) else []
+
+
+def _env_bank_map() -> dict[str, str]:
     raw = getattr(settings, "SYNDICATE_BANK_MAP", None)
     if isinstance(raw, dict):
         return {str(k): str(v) for k, v in raw.items()}
@@ -85,19 +108,69 @@ def _bank_map() -> dict[str, str]:
                 return {str(k): str(v) for k, v in parsed.items()}
         except json.JSONDecodeError:
             logger.warning("SYNDICATE_BANK_MAP is not valid JSON")
+    return {}
+
+
+def _bundled_ps_bank_map() -> dict[str, str]:
+    raw = _banks_catalog().get("payment_system_to_bank_code")
+    if isinstance(raw, dict):
+        return {str(k): str(v) for k, v in raw.items()}
     from titanpay.settings import C2C_NAME, SBP_NAME
 
-    return {
-        C2C_NAME: "any-bank",
-        SBP_NAME: "sbp",
-        "SBER": "sberbank",
-    }
+    return {C2C_NAME: "any-bank", SBP_NAME: "sbp"}
+
+
+def _bank_map() -> dict[str, str]:
+    """Bundled xlsx map + переопределения из SYNDICATE_BANK_MAP (.env)."""
+    merged = dict(_bundled_ps_bank_map())
+    merged.update(_env_bank_map())
+    return merged
+
+
+def _lookup_bank_code_in_catalog(payment_system_name: str) -> str | None:
+    ps = (payment_system_name or "").strip()
+    if not ps:
+        return None
+    pl = ps.lower()
+    codes: dict[str, str] = {}
+    names: list[tuple[str, str]] = []
+    for bank in syndicate_banks_list():
+        if not isinstance(bank, dict):
+            continue
+        code = (bank.get("code") or "").strip()
+        name = (bank.get("name") or "").strip()
+        if code:
+            codes[code.lower()] = code
+        if name:
+            names.append((name.lower(), code))
+
+    if pl in codes:
+        return codes[pl]
+    if pl.isdigit() and len(pl) >= 10:
+        for bank in syndicate_banks_list():
+            if isinstance(bank, dict) and str(bank.get("nspk_code") or "") == ps:
+                return (bank.get("code") or "").strip() or None
+    for nl, code in names:
+        if nl == pl or pl in nl or nl in pl:
+            return code or None
+    return None
 
 
 def syndicate_bank_for(payment_system_name: str) -> str | None:
-    code = _bank_map().get(payment_system_name, "").strip()
-    if code:
-        return code
+    ps = (payment_system_name or "").strip()
+    if not ps:
+        return None
+    mapped = _bank_map().get(ps)
+    if not mapped:
+        for key, val in _bank_map().items():
+            if key.lower() == ps.lower():
+                mapped = val
+                break
+    if mapped:
+        return mapped.strip() or None
+    from_catalog = _lookup_bank_code_in_catalog(ps)
+    if from_catalog:
+        return from_catalog
     default = (getattr(settings, "SYNDICATE_DEFAULT_BANK", None) or "any-bank").strip()
     return default or None
 

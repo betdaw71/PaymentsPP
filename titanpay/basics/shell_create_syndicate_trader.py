@@ -16,8 +16,10 @@ Webhook: {PUBLIC_API_URL}/api/v1/webhooks/psp/syndicate/
 В кабинете Syndicate укажите callback:
   https://api.avapay.net/api/v1/webhooks/psp/syndicate/
 
-Справочник кодов банков: GET https://api.syndicate-pay.com/api/banks
-(или файл banks-*.xlsx от поддержки Syndicate)
+Справочник кодов банков: payments/data/syndicate_banks.json (из banks-*.xlsx, 259 шт.)
+Перегенерация:
+  python3 titanpay/basics/generate_syndicate_banks_json.py /path/to/banks-*.xlsx
+SYNDICATE_BANK_MAP в .env только для переопределения (не обязателен).
 
 Запуск:
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_create_syndicate_trader.py
