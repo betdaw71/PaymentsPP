@@ -347,6 +347,17 @@ PLUTUS_CONTRAGENT = os.getenv('PLUTUS_CONTRAGENT', 'false').lower() in ('true', 
 # Тестовая PS только Plutus (shell_setup_plutus_c2ckzttest_routing.py)
 PLUTUS_TEST_PS_NAME = os.getenv('PLUTUS_TEST_PS_NAME', 'C2CKZTTEST')
 
+# Syndicate Pay PSP (https://api.syndicate-pay.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/syndicate/)
+SYNDICATE_API_BASE = os.getenv('SYNDICATE_API_BASE', 'https://api.syndicate-pay.com').rstrip('/')
+SYNDICATE_MERCHANT_ID = os.getenv('SYNDICATE_MERCHANT_ID', '')
+SYNDICATE_MERCHANT_LOGIN = os.getenv('SYNDICATE_MERCHANT_LOGIN', '')
+SYNDICATE_API_KEY = os.getenv('SYNDICATE_API_KEY', '')
+SYNDICATE_TRADER_USERNAME = os.getenv('SYNDICATE_TRADER_USERNAME', 'syndicate1')
+# JSON: {"C2C":"any-bank","SBP":"sbp","SBER":"sberbank"} — код bank в POST /api/orders/create
+SYNDICATE_BANK_MAP = os.getenv('SYNDICATE_BANK_MAP', '')
+SYNDICATE_DEFAULT_BANK = os.getenv('SYNDICATE_DEFAULT_BANK', 'any-bank')
+SYNDICATE_WEBHOOK_SKIP_VERIFY = os.getenv('SYNDICATE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
 # Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)

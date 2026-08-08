@@ -32,6 +32,9 @@ class Direction:
     PLUTUS_OUT_REQUEST = "plutus_out_request"
     PLUTUS_OUT_RESPONSE = "plutus_out_response"
     PLUTUS_WEBHOOK = "plutus_webhook"
+    SYNDICATE_OUT_REQUEST = "syndicate_out_request"
+    SYNDICATE_OUT_RESPONSE = "syndicate_out_response"
+    SYNDICATE_WEBHOOK = "syndicate_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 
