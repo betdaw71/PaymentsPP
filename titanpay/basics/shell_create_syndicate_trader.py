@@ -70,6 +70,8 @@ def ensure_virtual_group(trader, currency, payment_system, traffic, label: str):
             changed = True
         if changed:
             group.save()
+        if not group.allowed_traffic.filter(pk=traffic.pk).exists():
+            group.allowed_traffic.add(traffic)
         print(f"  ~ virtual group {label} ({group.id})")
         return group
     group = PaymentDetailsGroup.objects.create(
@@ -81,31 +83,41 @@ def ensure_virtual_group(trader, currency, payment_system, traffic, label: str):
         amount=Decimal("999999"),
         in_active=True,
         out_active=False,
+        min_amount_out=Decimal("100"),
+        max_amount_out=Decimal("500000"),
         work_type="by_card",
-        allowed_traffic=traffic,
-        min_limit_in=Decimal("100"),
-        max_limit_in=Decimal("500000"),
-        min_limit_out=Decimal("100"),
-        max_limit_out=Decimal("500000"),
+        deposit_number_on=False,
+        auto_live=timezone.now(),
+    )
+    group.allowed_traffic.add(traffic)
+    card = "4" + uuid.uuid4().hex[:15]
+    card = "".join(c for c in card if c.isdigit())[:16].ljust(16, "0")
+    PaymentDetails.objects.create(
+        group=group,
+        status=1,
+        amount=Decimal("999999"),
+        card_number=card,
+        deposit_number=str(uuid.uuid4().int % 10**20).zfill(20),
+        sberpay_enabled=False,
+        sbp_enabled=False,
     )
     print(f"  + virtual group {label} ({group.id})")
     return group
 
 
 def ensure_virtual_detail(group, label: str):
-    detail = PaymentDetails.objects.filter(group=group, card_number="0000000000000001").first()
+    detail = PaymentDetails.objects.filter(group=group, status=1).first()
     if detail:
-        if detail.status != 1:
-            detail.status = 1
-            detail.save()
         print(f"  ~ virtual detail {label} ({detail.id})")
         return detail
+    card = "4" + uuid.uuid4().hex[:15]
+    card = "".join(c for c in card if c.isdigit())[:16].ljust(16, "0")
     detail = PaymentDetails.objects.create(
         group=group,
         status=1,
-        card_number="0000000000000001",
-        owner="Syndicate PSP",
-        bank="Syndicate",
+        amount=Decimal("999999"),
+        card_number=card,
+        deposit_number=str(uuid.uuid4().int % 10**20).zfill(20),
         sberpay_enabled=False,
         sbp_enabled=False,
     )
