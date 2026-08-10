@@ -13,7 +13,12 @@ from rest_framework.exceptions import ValidationError
 from payments.models import PayIn, SyndicatePayInSession
 from payments.payin_trace import Direction, trace_log
 from payments.psp_payin import complete_inorder_from_psp_webhook
-from payments.syndicate_client import syndicate_webhook_outcome, verify_syndicate_callback_signature
+from payments.syndicate_client import (
+    find_syndicate_session_for_webhook,
+    syndicate_webhook_outcome,
+    syndicate_webhook_signature_debug_hint,
+    verify_syndicate_callback_signature,
+)
 from trade.models import InOrder
 
 logger = logging.getLogger(__name__)
@@ -92,20 +97,22 @@ def syndicate_webhook_view(request):
         body = {}
 
     if not verify_syndicate_callback_signature(body):
-        logger.warning("Syndicate webhook: invalid signature invid=%s", body.get("InvId") or body.get("invid"))
+        logger.warning(
+            "Syndicate webhook: invalid signature invid=%s hint=%s",
+            body.get("InvId") or body.get("invid"),
+            syndicate_webhook_signature_debug_hint(body),
+        )
         return _json_response({"ok": False, "error": "invalid_signature"}, status=403)
 
+    session = find_syndicate_session_for_webhook(body)
     invid = body.get("InvId") or body.get("invid")
-    session = None
-    if invid:
-        session = (
-            SyndicatePayInSession.objects.filter(external_id=str(invid))
-            .select_related("pay_in", "pay_in__order")
-            .first()
-        )
 
     if session is None:
-        logger.warning("Syndicate webhook: session not found invid=%s", invid)
+        logger.warning(
+            "Syndicate webhook: session not found invid=%s id=%s",
+            invid,
+            body.get("id"),
+        )
         return _json_response({"ok": False, "error": "unknown_order"}, status=404)
 
     trace_log(
@@ -126,4 +133,9 @@ def syndicate_webhook_view(request):
         return _handle_success(session, body)
     if outcome == "fail":
         return _handle_terminal_fail(session)
-    return _json_response({"ok": True, "ignored": True})
+    logger.info(
+        "Syndicate webhook ignored status=%s PayIn=%s",
+        body.get("Status") or body.get("status"),
+        session.pay_in_id,
+    )
+    return _json_response({"ok": True, "ignored": True, "status": body.get("status") or body.get("Status")})

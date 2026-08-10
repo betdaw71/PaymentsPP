@@ -306,31 +306,82 @@ def _norm_status(raw: str | None) -> str:
 
 def syndicate_webhook_outcome(body: dict) -> str | None:
     status = _norm_status(body.get("Status") or body.get("status"))
-    if status == "completed":
+    if status in ("completed", "success", "paid", "выполнен", "успешно", "успешная"):
         return "success"
-    if status in ("cancelled", "unclaimed"):
+    if status in ("cancelled", "unclaimed", "canceled", "failed", "отменен", "отменён"):
         return "fail"
     return None
 
 
 def _callback_sum_candidates(body: dict) -> list[str]:
     out: list[str] = []
-    for key in ("OutSum", "outSum", "FactSum", "fact_sum", "sum"):
-        val = body.get(key)
+    seen: set[str] = set()
+
+    def add(val) -> None:
         if val is None:
-            continue
+            return
         s = str(val).strip()
-        if not s:
-            continue
+        if not s or s in seen:
+            return
+        seen.add(s)
         out.append(s)
         try:
             d = Decimal(s.replace(",", "."))
             out.append(format_sum_for_signature(d))
             if d == d.to_integral_value():
                 out.append(str(int(d)))
+            normalized = f"{d:.2f}"
+            if normalized not in seen:
+                seen.add(normalized)
+                out.append(normalized)
+            normalized4 = f"{d:.4f}"
+            if normalized4 not in seen:
+                seen.add(normalized4)
+                out.append(normalized4)
         except (InvalidOperation, ValueError):
             pass
+
+    for key in (
+        "OutSum",
+        "outSum",
+        "FactSum",
+        "fact_sum",
+        "sum",
+        "Sum",
+        "paid_sum",
+        "PaidSum",
+    ):
+        add(body.get(key))
+    card = body.get("card")
+    if isinstance(card, dict):
+        add(card.get("sum"))
     return out
+
+
+def _expected_callback_signatures(sum_str: str, invid: str) -> list[str]:
+    api_key = _api_key()
+    login = _merchant_login()
+    out = [sign_callback(sum_str=sum_str, invid=invid, api_key=api_key)]
+    if login:
+        payload = f"{login}:{sum_str}:{invid}:{api_key}"
+        out.append(hashlib.sha256(payload.encode("utf-8")).hexdigest())
+    return out
+
+
+def syndicate_webhook_signature_debug_hint(body: dict) -> str:
+    invid = str(body.get("InvId") or body.get("invid") or "").strip()
+    sig = str(body.get("SignatureValue") or body.get("signature") or "").strip()
+    if not invid:
+        return "missing invid"
+    if not sig:
+        return "missing SignatureValue/signature"
+    sums = _callback_sum_candidates(body)
+    if not sums:
+        return "no sum fields in body"
+    expected = []
+    for s in sums[:3]:
+        expected.extend(_expected_callback_signatures(s, invid)[:2])
+    return f"invid={invid} sums_sample={sums[:4]} expected_sample={expected[:2]} got={sig[:16]}..."
 
 
 def verify_syndicate_callback_signature(body: dict) -> bool:
@@ -345,10 +396,38 @@ def verify_syndicate_callback_signature(body: dict) -> bool:
         return False
 
     for sum_str in _callback_sum_candidates(body):
-        expected = sign_callback(sum_str=sum_str, invid=invid, api_key=api_key)
-        if expected.lower() == sig:
-            return True
+        for expected in _expected_callback_signatures(sum_str, invid):
+            if expected.lower() == sig:
+                return True
     return False
+
+
+def find_syndicate_session_for_webhook(body: dict):
+    """Сессия по invid (PayIn UUID) или id ордера Syndicate (create response id)."""
+    from payments.models import SyndicatePayInSession
+
+    invid = body.get("InvId") or body.get("invid")
+    if invid:
+        session = (
+            SyndicatePayInSession.objects.filter(external_id=str(invid))
+            .select_related("pay_in", "pay_in__order")
+            .first()
+        )
+        if session:
+            return session
+
+    for key in ("id", "order_id", "orderId"):
+        raw = body.get(key)
+        if raw is None or raw == "":
+            continue
+        session = (
+            SyndicatePayInSession.objects.filter(provider_order_id=str(raw))
+            .select_related("pay_in", "pay_in__order")
+            .first()
+        )
+        if session:
+            return session
+    return None
 
 
 def syndicate_map_requisite(create_body: dict) -> dict:

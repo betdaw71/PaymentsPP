@@ -152,7 +152,13 @@ def bitzone_webhook_view(request):
         return _handle_success(session, body)
     if outcome == "fail":
         return _handle_terminal_fail(session)
-    return _json_response({"ok": True, "ignored": True})
+    logger.info(
+        "Bitzone webhook ignored status=%s external=%s provider_id=%s",
+        body.get("status"),
+        external_id,
+        provider_id,
+    )
+    return _json_response({"ok": True, "ignored": True, "status": body.get("status")})
 
 
 # DRF alias (legacy imports)

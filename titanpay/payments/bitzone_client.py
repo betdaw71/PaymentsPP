@@ -362,7 +362,7 @@ def _norm_status(raw: str | None) -> str:
 
 def bitzone_webhook_outcome(body: dict) -> str | None:
     """success | fail | None (intermediate)."""
-    status = _norm_status(body.get("status"))
+    status = _norm_status(body.get("status")).replace("-", "_")
     if status in (
         "closed",
         # Спор/пересчёт: трейдер подтвердил фактическую сумму (см. disputeTraderFiatAmount).

@@ -5,13 +5,16 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 
 from payments.models import (
+    BitzonePayInSession,
     ConcoredPayInSession,
     ExpayonePayInSession,
     FairpayPayInSession,
     PayIn,
     PayInTraceLog,
     PaymapPayInSession,
+    PlutusPayInSession,
     ProtocolPayInSession,
+    SyndicatePayInSession,
 )
 from payments.psp_payin import psp_create_failure_reason_internal
 from trade.models import InOrder, Transaction
@@ -90,6 +93,9 @@ class Command(BaseCommand):
             ("Protocol", ProtocolPayInSession),
             ("Concored", ConcoredPayInSession),
             ("PayMap", PaymapPayInSession),
+            ("Bitzone", BitzonePayInSession),
+            ("Plutus", PlutusPayInSession),
+            ("Syndicate", SyndicatePayInSession),
         ):
             try:
                 s = model.objects.get(pay_in=pay_in)
@@ -184,6 +190,9 @@ class Command(BaseCommand):
             ProtocolPayInSession,
             ConcoredPayInSession,
             PaymapPayInSession,
+            BitzonePayInSession,
+            PlutusPayInSession,
+            SyndicatePayInSession,
         ):
             if model.objects.filter(pay_in=pay_in).exists():
                 return True

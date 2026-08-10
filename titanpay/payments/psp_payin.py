@@ -477,6 +477,24 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
     """Фактически оплаченная сумма из callback PSP (Protocol: amount / result.amount)."""
     if not isinstance(body, dict):
         return None
+
+    def _positive_decimal(raw) -> Decimal | None:
+        if raw is None:
+            return None
+        try:
+            val = Decimal(str(raw).strip().replace(",", "."))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+        return val if val > 0 else None
+
+    status = (body.get("status") or "").strip().lower().replace("-", "_")
+    # Bitzone: после спора приходит re_calculation с фактической суммой в dispute* полях.
+    if status in ("re_calculation", "recalculation", "closed", "dispute"):
+        for key in ("disputeTraderFiatAmount", "disputeMerchantFiatAmount"):
+            paid = _positive_decimal(body.get(key))
+            if paid is not None:
+                return paid
+
     candidates: list[Any] = []
     for key in (
         "FactSum",
