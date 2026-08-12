@@ -364,6 +364,7 @@ BOTONPAY_API_KEY = os.getenv('BOTONPAY_API_KEY', '')
 BOTONPAY_WEBHOOK_SECRET = os.getenv('BOTONPAY_WEBHOOK_SECRET', '')
 BOTONPAY_TRADER_USERNAME = os.getenv('BOTONPAY_TRADER_USERNAME', 'botonpay1')
 BOTONPAY_WEBHOOK_SKIP_VERIFY = os.getenv('BOTONPAY_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+BOTONPAY_TEST_PS_NAME = os.getenv('BOTONPAY_TEST_PS_NAME', 'C2CKZTTEST')
 
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
