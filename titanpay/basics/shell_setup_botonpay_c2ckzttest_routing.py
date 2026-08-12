@@ -46,7 +46,7 @@ from basics.models import (
 from merchant.models import Merchant, MerchantSolution
 from payments.botonpay_client import botonpay_trader_username
 from payments.models import BotonpayPayInSession
-from payments.psp_payin import complete_inorder_from_psp_webhook
+from payments.psp_payin import complete_inorder_from_psp_webhook, psp_trader_usernames
 from trade.models import InOrder
 
 PS_NAME = (getattr(settings, "BOTONPAY_TEST_PS_NAME", None) or "C2CKZTTEST").strip()
@@ -182,6 +182,23 @@ def ensure_merchant_solution(merchant: Merchant, ps: PaymentSystem, traffic: Tra
             )
         tag = "+" if created else "~"
         print(f"  {tag} MerchantSolution ftd={ftd} ps={PS_NAME}")
+
+
+def deactivate_other_psp_groups_on_test_ps(ps: PaymentSystem, *, keep_username: str) -> None:
+    """C2CKZTTEST — только botonpay1; plutus1 и др. PSP отключаем (иначе роутинг берёт plutus первым)."""
+    keep_trader = Trader.objects.filter(user__username=keep_username).first()
+    qs = PaymentDetailsGroup.objects.filter(payment_system=ps, in_active=True).select_related(
+        "trader__user"
+    )
+    if keep_trader:
+        qs = qs.exclude(trader_id=keep_trader.id)
+    psp_names = psp_trader_usernames()
+    for group in qs:
+        uname = group.trader.user.username if group.trader and group.trader.user else ""
+        if uname in psp_names:
+            group.in_active = False
+            group.save(update_fields=["in_active"])
+            print(f"  - deactivated C2CKZTTEST group {group.id} trader={uname}")
 
 
 @transaction.atomic
