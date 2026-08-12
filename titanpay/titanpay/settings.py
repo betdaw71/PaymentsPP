@@ -358,6 +358,13 @@ SYNDICATE_BANK_MAP = os.getenv('SYNDICATE_BANK_MAP', '')
 SYNDICATE_DEFAULT_BANK = os.getenv('SYNDICATE_DEFAULT_BANK', 'any-bank')
 SYNDICATE_WEBHOOK_SKIP_VERIFY = os.getenv('SYNDICATE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
 
+# BotonPay PSP (https://botonpay.org/api-docs) — pay-in deals, KZT transgran / multi-fiat
+BOTONPAY_API_BASE = os.getenv('BOTONPAY_API_BASE', 'https://botonpay.org/api/public/v1').rstrip('/')
+BOTONPAY_API_KEY = os.getenv('BOTONPAY_API_KEY', '')
+BOTONPAY_WEBHOOK_SECRET = os.getenv('BOTONPAY_WEBHOOK_SECRET', '')
+BOTONPAY_TRADER_USERNAME = os.getenv('BOTONPAY_TRADER_USERNAME', 'botonpay1')
+BOTONPAY_WEBHOOK_SKIP_VERIFY = os.getenv('BOTONPAY_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
 # Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)

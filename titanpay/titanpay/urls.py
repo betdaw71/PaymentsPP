@@ -26,6 +26,7 @@ from payments.paymap_views import PaymapWebhookView
 from payments.bitzone_views import bitzone_webhook_view
 from payments.plutus_views import plutus_webhook_view
 from payments.syndicate_views import syndicate_webhook_view
+from payments.botonpay_views import botonpay_webhook_view
 from payments.payment_page import payment_page, payment_page_redirect
 
 admin.site.site_header = admin.site.site_title = 'AvaPay'
@@ -55,6 +56,7 @@ urlpatterns = [
     path('api/v1/webhooks/psp/bitzone/', bitzone_webhook_view, name='webhook-bitzone'),
     path('api/v1/webhooks/psp/plutus/', plutus_webhook_view, name='webhook-plutus'),
     path('api/v1/webhooks/psp/syndicate/', syndicate_webhook_view, name='webhook-syndicate'),
+    path('api/v1/webhooks/psp/botonpay/', botonpay_webhook_view, name='webhook-botonpay'),
     path('prometheus-X60iSjSJB4PA2mdqDnA1mRBZbmGpapdMpwZ6L29c', include('django_prometheus.urls')),
     # Платёжная страница (invoice / redirect): pay.{domain}/{uuid}
     path('<uuid:pay_in_id>/', payment_page, name='payment-page'),

@@ -35,6 +35,9 @@ class Direction:
     SYNDICATE_OUT_REQUEST = "syndicate_out_request"
     SYNDICATE_OUT_RESPONSE = "syndicate_out_response"
     SYNDICATE_WEBHOOK = "syndicate_webhook"
+    BOTONPAY_OUT_REQUEST = "botonpay_out_request"
+    BOTONPAY_OUT_RESPONSE = "botonpay_out_response"
+    BOTONPAY_WEBHOOK = "botonpay_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 

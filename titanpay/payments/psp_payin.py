@@ -40,6 +40,7 @@ def is_psp_trader(trader) -> bool:
     from payments import bitzone_client as bzc
     from payments import plutus_client as plc2
     from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
 
     return (
         fc.is_fairpay_trader(trader)
@@ -51,6 +52,7 @@ def is_psp_trader(trader) -> bool:
         or bzc.is_bitzone_trader(trader)
         or plc2.is_plutus_trader(trader)
         or syc.is_syndicate_trader(trader)
+        or bpc.is_botonpay_trader(trader)
     )
 
 
@@ -137,6 +139,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
 
     names = {
         fc.fairpay_trader_username(),
@@ -148,6 +151,7 @@ def psp_trader_usernames() -> frozenset[str]:
         bzc.bitzone_trader_username(),
         pltc.plutus_trader_username(),
         syc.syndicate_trader_username(),
+        bpc.botonpay_trader_username(),
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -192,6 +196,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
 
     for getter in (
         fc.fairpay_requisite_for_payin,
@@ -203,6 +208,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         bzc.bitzone_requisite_for_payin,
         pltc.plutus_requisite_for_payin,
         syc.syndicate_requisite_for_payin,
+        bpc.botonpay_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -220,6 +226,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
@@ -229,7 +236,8 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = pmc.enrich_payin_payment_details(representation, pay_in)
     representation = bzc.enrich_payin_payment_details(representation, pay_in)
     representation = pltc.enrich_payin_payment_details(representation, pay_in)
-    return syc.enrich_payin_payment_details(representation, pay_in)
+    representation = syc.enrich_payin_payment_details(representation, pay_in)
+    return bpc.enrich_payin_payment_details(representation, pay_in)
 
 
 def payin_routed_group(pay_in: Any):
@@ -267,11 +275,14 @@ def _psp_provider_for_trader(trader):
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
     if ec.is_expayone_trader(trader):
         return "expayone", ec.try_attach_expayone_session
+    if bpc.is_botonpay_trader(trader):
+        return "botonpay", bpc.try_attach_botonpay_session
     if bzc.is_bitzone_trader(trader):
         return "bitzone", bzc.try_attach_bitzone_session
     if pltc.is_plutus_trader(trader):
@@ -461,6 +472,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
@@ -471,6 +483,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     bzc.bitzone_cancel_if_linked(pay_in)
     pltc.plutus_cancel_if_linked(pay_in)
     syc.syndicate_cancel_if_linked(pay_in)
+    bpc.botonpay_cancel_if_linked(pay_in)
 
 
 def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
@@ -505,6 +518,7 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
         "disputeTraderFiatAmount",
         "disputeMerchantFiatAmount",
         "fiatAmount",
+        "amount_fiat",
         "amount",
         "paidAmount",
         "paid_amount",
@@ -666,6 +680,7 @@ def classify_payin_decline(pay_in: Any) -> str:
     """Внутренняя классификация отказа (без PII upstream)."""
     from payments.models import (
         BitzonePayInSession,
+        BotonpayPayInSession,
         ConcoredPayInSession,
         ExpayonePayInSession,
         FairpayPayInSession,
@@ -690,6 +705,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         BitzonePayInSession,
         PlutusPayInSession,
         SyndicatePayInSession,
+        BotonpayPayInSession,
     ):
         try:
             session = model.objects.get(pay_in=pay_in)
@@ -712,6 +728,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
     """Подробности для логов и manage.py diagnose_payin (не API мерчанта)."""
     from payments.models import (
         BitzonePayInSession,
+        BotonpayPayInSession,
         ConcoredPayInSession,
         ExpayonePayInSession,
         FairpayPayInSession,
@@ -739,6 +756,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (BitzonePayInSession, "bitzone"),
         (PlutusPayInSession, "plutus"),
         (SyndicatePayInSession, "syndicate"),
+        (BotonpayPayInSession, "botonpay"),
     ):
         try:
             session = model.objects.get(pay_in=pay_in)

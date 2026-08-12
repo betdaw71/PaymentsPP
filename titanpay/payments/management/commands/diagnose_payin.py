@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from payments.models import (
     BitzonePayInSession,
+    BotonpayPayInSession,
     ConcoredPayInSession,
     ExpayonePayInSession,
     FairpayPayInSession,
@@ -94,6 +95,7 @@ class Command(BaseCommand):
             ("Concored", ConcoredPayInSession),
             ("PayMap", PaymapPayInSession),
             ("Bitzone", BitzonePayInSession),
+            ("BotonPay", BotonpayPayInSession),
             ("Plutus", PlutusPayInSession),
             ("Syndicate", SyndicatePayInSession),
         ):
@@ -191,6 +193,7 @@ class Command(BaseCommand):
             ConcoredPayInSession,
             PaymapPayInSession,
             BitzonePayInSession,
+            BotonpayPayInSession,
             PlutusPayInSession,
             SyndicatePayInSession,
         ):
