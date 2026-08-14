@@ -56,6 +56,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.HTTP_INFO(f"\n=== PayIn {pay_in.id} ==="))
         self.stdout.write(f"status:           {pay_in.status.name if pay_in.status else None}")
+        self.stdout.write(f"recalculated:     {pay_in.recalculated}")
         self.stdout.write(f"merchant:         {pay_in.merchant.user.username if pay_in.merchant else None}")
         self.stdout.write(f"merchant_order:   {pay_in.merchant_order_id}")
         self.stdout.write(f"amount:           {pay_in.amount} {pay_in.currency.symbol if pay_in.currency else ''}")
@@ -69,6 +70,9 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.HTTP_INFO(f"\n=== InOrder {order.id} ==="))
         self.stdout.write(f"status:           {order.status.name if order.status else None}")
+        self.stdout.write(f"recalculated:     {order.recalculated}")
+        if order.recalculated:
+            self.stdout.write(f"recalc_amount:    {order.recalculated_amount}")
         self.stdout.write(f"payment_details:  {order.payment_details_id}")
         if order.payment_details:
             self.stdout.write(
@@ -105,6 +109,18 @@ class Command(BaseCommand):
                 self.stdout.write(f"{label}: нет сессии")
                 continue
             self.stdout.write(f"\n{label} session:")
+            if label == "Bitzone":
+                self.stdout.write(f"  provider_id:      {getattr(s, 'provider_transaction_id', '')}")
+                self.stdout.write(f"  external_id:      {getattr(s, 'external_id', '')}")
+                self.stdout.write(f"  last_status:      {getattr(s, 'last_notified_status', '')}")
+                wh = s.last_webhook_payload or {}
+                if wh:
+                    self.stdout.write(
+                        f"  last_webhook:     status={wh.get('status')} "
+                        f"fiat={wh.get('fiatAmount')} "
+                        f"disputeTrader={wh.get('disputeTraderFiatAmount')} "
+                        f"disputeMerchant={wh.get('disputeMerchantFiatAmount')}"
+                    )
             cr = s.create_response or {}
             self.stdout.write(json.dumps(cr, ensure_ascii=False, indent=2, default=str)[:4000])
 

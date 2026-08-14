@@ -345,6 +345,185 @@ class InOrder(models.Model):
         pay_in.save(update_fields=["amount", "recalculated", "updated_at"])
         return True
 
+    def _merchant_credit_amount(self) -> Decimal:
+        from merchant.kzt_settlement import in_order_credit_kzt, uses_melbet_kzt_settlement
+
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            return in_order_credit_kzt(self)
+        return self.usd_amount - self.merchant_fee
+
+    def _apply_completed_recalc_ledger(
+        self,
+        trader,
+        *,
+        old_charge_usd: Decimal,
+        old_for_merchant: Decimal,
+        old_for_trader: Decimal,
+        new_charge_usd: Decimal,
+        new_for_merchant: Decimal,
+        new_for_trader: Decimal,
+    ) -> None:
+        from decimal import ROUND_HALF_UP
+
+        from basics.models import Balance
+        from merchant.kzt_settlement import merchant_available_balance, uses_melbet_kzt_settlement
+        from payments.psp_payin import ensure_psp_frozen_for_complete, is_psp_trader
+
+        aggregator = Balance.objects.get(type=2)
+        tx_charge = TransactionType.objects.get(name="Charge")
+        tx_deposit = TransactionType.objects.get(name="Deposit")
+        comment = "PSP completed recalculation"
+
+        if is_psp_trader(trader):
+            d_charge = (new_charge_usd - old_charge_usd).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if d_charge > 0:
+                ensure_psp_frozen_for_complete(self)
+                Transaction.create(
+                    _from=trader.frozen_balance_usdt,
+                    _to=aggregator,
+                    value=d_charge,
+                    _transaction_type=tx_charge,
+                    _linked_in_order=self,
+                    _comment=comment,
+                )
+            elif d_charge < 0:
+                Transaction.create(
+                    _from=aggregator,
+                    _to=trader.frozen_balance_usdt,
+                    value=-d_charge,
+                    _transaction_type=tx_deposit,
+                    _linked_in_order=self,
+                    _comment=comment,
+                )
+
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            merchant_balance = merchant_available_balance(self.solution.merchant)
+            blockchain = Balance.objects.get(type=3)
+            d_merchant = (new_for_merchant - old_for_merchant).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if d_merchant > 0:
+                Transaction.create(
+                    _from=blockchain,
+                    _to=merchant_balance,
+                    value=d_merchant,
+                    _transaction_type=tx_deposit,
+                    _linked_in_order=self,
+                    _comment=comment,
+                )
+            elif d_merchant < 0:
+                Transaction.create(
+                    _from=merchant_balance,
+                    _to=blockchain,
+                    value=-d_merchant,
+                    _transaction_type=tx_charge,
+                    _linked_in_order=self,
+                    _comment=comment,
+                )
+        else:
+            merchant_balance = self.solution.merchant.balance
+            d_merchant = (new_for_merchant - old_for_merchant).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if d_merchant > 0:
+                Transaction.create(
+                    _from=aggregator,
+                    _to=merchant_balance,
+                    value=d_merchant,
+                    _transaction_type=tx_deposit,
+                    _linked_in_order=self,
+                    _comment=comment,
+                )
+            elif d_merchant < 0:
+                Transaction.create(
+                    _from=merchant_balance,
+                    _to=aggregator,
+                    value=-d_merchant,
+                    _transaction_type=tx_charge,
+                    _linked_in_order=self,
+                    _comment=comment,
+                )
+
+        d_trader = (new_for_trader - old_for_trader).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if d_trader > 0:
+            Transaction.create(
+                _from=aggregator,
+                _to=trader.balance_usdt,
+                value=d_trader,
+                _transaction_type=tx_deposit,
+                _linked_in_order=self,
+                _comment=comment,
+            )
+        elif d_trader < 0:
+            Transaction.create(
+                _from=trader.balance_usdt,
+                _to=aggregator,
+                value=-d_trader,
+                _transaction_type=tx_charge,
+                _linked_in_order=self,
+                _comment=comment,
+            )
+
+    def apply_psp_completed_recalc(self, paid_amount: Decimal) -> bool:
+        """Перерасчёт после Completed (Bitzone re_calculation после closed)."""
+        from decimal import ROUND_HALF_UP
+
+        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
+        from payments.psp_payin import is_psp_trader, psp_order_usd_ledger_amount
+
+        if self.status.name != "Completed":
+            raise ValidationError({"error": "Wrong status for completed PSP recalc"})
+        paid_amount = Decimal(str(paid_amount)).quantize(Decimal("0.01"))
+        if paid_amount <= 0 or paid_amount == self.amount:
+            return False
+
+        trader = self.payment_details.group.trader
+        old_amount = self.amount
+        old_charge = psp_order_usd_ledger_amount(self) if is_psp_trader(trader) else self.usd_amount
+        old_for_merchant = self._merchant_credit_amount()
+        old_for_trader = self.trader_fee
+
+        rate = self.solution.payment_system.get_rate()
+        new_usd = paid_amount / rate
+        team_rate = TraderTeamRates.objects.get(
+            team=trader.team,
+            payment_system=self.solution.payment_system,
+        )
+        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            new_merchant_fee = merchant_fee_in_kzt(paid_amount, self.solution.mdr_in)
+        else:
+            new_merchant_fee = self.solution.mdr_in * new_usd / Decimal(100)
+        new_trader_fee = team_rate.mdr_in * new_usd / Decimal(100)
+
+        self.amount = paid_amount
+        self.usd_amount = new_usd
+        self.merchant_fee = new_merchant_fee
+        self.trader_fee = new_trader_fee
+        new_charge = psp_order_usd_ledger_amount(self) if is_psp_trader(trader) else new_usd
+        new_for_merchant = self._merchant_credit_amount()
+        new_for_trader = new_trader_fee
+
+        self._apply_completed_recalc_ledger(
+            trader,
+            old_charge_usd=old_charge,
+            old_for_merchant=old_for_merchant,
+            old_for_trader=old_for_trader,
+            new_charge_usd=new_charge,
+            new_for_merchant=new_for_merchant,
+            new_for_trader=new_for_trader,
+        )
+
+        self.recalculated = True
+        self.recalculated_amount = paid_amount
+        self.save()
+
+        group = self.payment_details.group
+        group.total_volume += paid_amount - old_amount
+        group.save(update_fields=["total_volume"])
+
+        pay_in = self.pay_in.get()
+        pay_in.amount = paid_amount
+        pay_in.recalculated = True
+        pay_in.save(update_fields=["amount", "recalculated", "updated_at"])
+        pay_in.send_callback({"status": pay_in.status.name})
+        return True
+
     def complete_from_psp_success(self, paid_amount: Decimal | None = None) -> None:
         """Завершение pay-in по success webhook PSP (в т.ч. Expired + перерасчёт)."""
         state = self.status.name if self.status else None

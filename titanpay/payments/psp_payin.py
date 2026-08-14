@@ -560,13 +560,37 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
     return None
 
 
-def complete_inorder_from_psp_webhook(order, webhook_body: dict | None) -> None:
+def psp_webhook_is_recalculation(body: dict | None) -> bool:
+    if not isinstance(body, dict):
+        return False
+    status = (body.get("status") or "").strip().lower().replace("-", "_")
+    return status in ("re_calculation", "recalculation")
+
+
+def handle_psp_success_webhook(order, webhook_body: dict | None) -> str:
+    """
+    Обработка success webhook PSP.
+    Возвращает: completed | recalculated | idempotent.
+    """
     from trade.models import InOrder
 
     if not isinstance(order, InOrder):
         raise ValidationError({"error": "no_inorder"})
+
     paid_amount = parse_psp_webhook_paid_amount(webhook_body)
+    state = order.status.name if order.status else None
+    if state == "Completed":
+        if psp_webhook_is_recalculation(webhook_body) and paid_amount and paid_amount != order.amount:
+            if order.apply_psp_completed_recalc(paid_amount):
+                return "recalculated"
+        return "idempotent"
+
     order.complete_from_psp_success(paid_amount)
+    return "completed"
+
+
+def complete_inorder_from_psp_webhook(order, webhook_body: dict | None) -> None:
+    handle_psp_success_webhook(order, webhook_body)
 
 
 def mark_inorder_cannot_process_from_psp_api(pay_in: Any, *, provider: str | None = None) -> None:
