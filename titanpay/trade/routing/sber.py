@@ -34,10 +34,13 @@ class SberRouting:
         return filtered_options
     
     def get_details(self, possible_options, active_orders, amount, merchant=None):
-        from payments.psp_payin import is_psp_trader
+        from payments.psp_payin import is_psp_trader, sort_groups_for_routing
         from merchant.kzt_settlement import melbet_kzt_test_trader_username
 
-        chosen_group = list(possible_options.order_by('current_volume'))
+        chosen_group = sort_groups_for_routing(
+            possible_options.select_related("trader", "trader__user", "trader__team", "payment_system"),
+            amount,
+        )
 
         preferred = melbet_kzt_test_trader_username(merchant)
         if preferred:

@@ -117,8 +117,42 @@ def ensure_psp_frozen_for_complete(order) -> None:
     )
 
 
+def _team_mdr_in_map(groups) -> dict[tuple[int, int], Decimal]:
+    """(team_id, payment_system_id) -> mdr_in для сортировки PSP-каскада."""
+    from basics.models import TraderTeamRates
+
+    team_ids = {g.trader.team_id for g in groups if g.trader and g.trader.team_id}
+    ps_ids = {g.payment_system_id for g in groups if g.payment_system_id}
+    if not team_ids or not ps_ids:
+        return {}
+    return {
+        (row["team_id"], row["payment_system_id"]): row["mdr_in"]
+        for row in TraderTeamRates.objects.filter(
+            team_id__in=team_ids,
+            payment_system_id__in=ps_ids,
+        ).values("team_id", "payment_system_id", "mdr_in")
+    }
+
+
 def sort_groups_for_routing(groups, amount=None):
-    """PSP и обычные группы — только по current_volume (сумма не делит ExpayOne/Protocol)."""
+    """
+    Порядок выбора PSP-группы.
+    Если все кандидаты — PSP-трейдеры: сначала меньший mdr_in (дешевле провайдер),
+    затем current_volume. Иначе — только по current_volume (как раньше).
+    """
+    groups = list(groups)
+    if not groups:
+        return groups
+    if all(is_psp_trader(g.trader) for g in groups):
+        mdr_map = _team_mdr_in_map(groups)
+        return sorted(
+            groups,
+            key=lambda g: (
+                mdr_map.get((g.trader.team_id, g.payment_system_id), Decimal("999")),
+                g.current_volume or Decimal(0),
+                g.trader.user.username if g.trader and g.trader.user else "",
+            ),
+        )
     return sorted(groups, key=lambda g: g.current_volume or Decimal(0))
 
 

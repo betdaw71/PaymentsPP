@@ -67,20 +67,37 @@ class Command(BaseCommand):
         except Exception as exc:
             raise CommandError(f"route() failed: {exc}") from exc
 
+        from basics.models import TraderTeamRates
+        from payments.psp_payin import sort_groups_for_routing
+
         options_qs = router.get_possible_options_in(None, ps, amount, traffic, usd_amount)
         self.stdout.write(f"\nгрупп после фильтра: {options_qs.count()}")
 
-        for g in options_qs[:15]:
-            t = g.trader
-            bal = t.balance_usdt.amount if t.balance_usdt else None
-            cards = PaymentDetails.objects.filter(
-                group=g, status=1, sberpay_enabled=False, sbp_enabled=False, card_number__isnull=False
-            ).count()
-            traffics = list(g.allowed_traffic.values_list("name", flat=True))
-            self.stdout.write(
-                f"  ✓ group {g.id} trader={t.user.username} cards={cards} "
-                f"vol={g.current_volume}/{g.limit_per_period} balance_usdt={bal} traffic={traffics}"
+        mdr_map = {
+            (r["team_id"], r["payment_system_id"]): r["mdr_in"]
+            for r in TraderTeamRates.objects.filter(payment_system=ps).values(
+                "team_id", "payment_system_id", "mdr_in"
             )
+        }
+        sorted_groups = sort_groups_for_routing(
+            options_qs.select_related("trader", "trader__user", "trader__team", "payment_system"),
+            amount,
+        )
+        if sorted_groups:
+            self.stdout.write(self.style.HTTP_INFO("\nпорядок каскада (первый = будет выбран):"))
+            for i, g in enumerate(sorted_groups[:15], 1):
+                t = g.trader
+                bal = t.balance_usdt.amount if t.balance_usdt else None
+                cards = PaymentDetails.objects.filter(
+                    group=g, status=1, sberpay_enabled=False, sbp_enabled=False, card_number__isnull=False
+                ).count()
+                traffics = list(g.allowed_traffic.values_list("name", flat=True))
+                mdr = mdr_map.get((t.team_id, ps.id))
+                mdr_s = f" mdr_in={mdr}%" if mdr is not None else ""
+                self.stdout.write(
+                    f"  {i}. group {g.id} trader={t.user.username}{mdr_s} cards={cards} "
+                    f"vol={g.current_volume}/{g.limit_per_period} balance_usdt={bal} traffic={traffics}"
+                )
 
         if not options_qs.exists():
             self.stdout.write(self.style.WARNING("\n--- Все группы на PS (почему отфильтрованы) ---"))
