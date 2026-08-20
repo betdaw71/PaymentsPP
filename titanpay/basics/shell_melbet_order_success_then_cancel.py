@@ -4,22 +4,22 @@
 Ищет заявку по PayIn UUID или merchant_order_id.
 
 Запуск на сервере (pandapay пример):
-  # 1) посмотреть состояние
+  # lookup = PayIn UUID или merchant_order_id (оба формата UUID поддерживаются)
   docker compose exec -T \\
-    -e PAYIN_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
+    -e MERCHANT_ORDER_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
     -e ACTION=inspect \\
     app python manage.py shell < titanpay/basics/shell_melbet_order_success_then_cancel.py
 
   # 2) dry-run отмены
   docker compose exec -T \\
-    -e PAYIN_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
+    -e MERCHANT_ORDER_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
     -e ACTION=cancel \\
     -e DRY_RUN=1 \\
     app python manage.py shell < titanpay/basics/shell_melbet_order_success_then_cancel.py
 
   # 3) боевая отмена + возврат средств + Failed callback
   docker compose exec -T \\
-    -e PAYIN_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
+    -e MERCHANT_ORDER_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
     -e ACTION=cancel \\
     app python manage.py shell < titanpay/basics/shell_melbet_order_success_then_cancel.py
 
@@ -33,7 +33,6 @@
 from __future__ import annotations
 
 import os
-import uuid
 from decimal import Decimal
 
 from django.db import transaction
@@ -43,7 +42,7 @@ from payments.models import PayIn, PayInStatus
 from payments.psp_payin import complete_inorder_from_psp_webhook, is_psp_trader
 from trade.models import InOrder, InOrderStatus, InOrderStatusChange, Transaction, TransactionType
 
-DEFAULT_LOOKUP = "6b6ccf00-3ecc-49db-abce-cbfae3f0d327"
+DEFAULT_LOOKUP = "6b6ccf00-3ecc-49db-abce-cbfae3f0d327"  # pandapay merchant_order_id
 COMPLETION_COMMENTS = frozenset({"In-order completed", "Commission", "Teamlead commission"})
 SHELL_FREEZE_COMMENT = "Shell: top-up freeze before complete"
 UNFREEZE_COMMENT = "Revert completed pay-in"
@@ -133,17 +132,8 @@ def _unfreeze_all_for_order(order: InOrder, comment: str) -> None:
         print("[step2] warning: some Freeze txs still unreversed — check balances manually")
 
 
-def _looks_like_uuid(value: str) -> bool:
-    try:
-        uuid.UUID(str(value))
-    except (ValueError, TypeError, AttributeError):
-        return False
-    return True
-
-
-def _get_order(lookup: str) -> tuple[PayIn, InOrder]:
-    lookup = str(lookup).strip()
-    qs = PayIn.objects.select_related(
+def _payin_qs():
+    return PayIn.objects.select_related(
         "status",
         "order__status",
         "order__payment_details__group__trader__user",
@@ -151,14 +141,16 @@ def _get_order(lookup: str) -> tuple[PayIn, InOrder]:
         "melbet_session",
         "protocol_session",
     )
-    if _looks_like_uuid(lookup):
-        pay_in = qs.filter(id=lookup).first()
-        if pay_in is None:
-            raise PayIn.DoesNotExist(f"PayIn id={lookup!r} not found")
-    else:
-        pay_in = qs.filter(merchant_order_id=lookup).first()
-        if pay_in is None:
-            raise PayIn.DoesNotExist(f"PayIn merchant_order_id={lookup!r} not found")
+
+
+def _get_order(lookup: str) -> tuple[PayIn, InOrder]:
+    lookup = str(lookup).strip()
+    qs = _payin_qs()
+    pay_in = qs.filter(id=lookup).first() or qs.filter(merchant_order_id=lookup).first()
+    if pay_in is None:
+        raise PayIn.DoesNotExist(
+            f"PayIn not found by id or merchant_order_id={lookup!r}"
+        )
     if pay_in.order_id is None:
         raise ValueError(f"PayIn {pay_in.id} has no linked InOrder")
     return pay_in, pay_in.order
