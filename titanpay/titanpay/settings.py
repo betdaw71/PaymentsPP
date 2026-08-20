@@ -370,6 +370,11 @@ BOTONPAY_TEST_PS_NAME = os.getenv('BOTONPAY_TEST_PS_NAME', 'C2CKZTTEST')
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
 # Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)
 MELBET_KZT_TEST_TRADER_USERNAME = os.getenv('MELBET_KZT_TEST_TRADER_USERNAME', '')
+# Melbet redirect: probe nearby amounts when routing/PSP cascade fails (KZT step e.g. ±20)
+MELBET_AMOUNT_PROBE_ENABLED = os.getenv('MELBET_AMOUNT_PROBE_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+MELBET_AMOUNT_PROBE_DELTAS = os.getenv('MELBET_AMOUNT_PROBE_DELTAS', '20,-20,50,-50,100,-100')
+MELBET_AMOUNT_PROBE_MAX_EXTRA = int(os.getenv('MELBET_AMOUNT_PROBE_MAX_EXTRA', '6'))
+MELBET_AMOUNT_PROBE_RANDOMIZE = os.getenv('MELBET_AMOUNT_PROBE_RANDOMIZE', 'true').lower() in ('1', 'true', 'yes')
 
 
 

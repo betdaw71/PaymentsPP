@@ -10,6 +10,11 @@ from rest_framework.exceptions import ValidationError
 
 from basics.models import Currency, PaymentSystem
 from merchant.models import MerchantSolution
+from payments.integrations.melbet.amount_probe import (
+    is_melbet_deposit_allocated,
+    melbet_candidate_amounts,
+    reallocate_melbet_in_order,
+)
 from payments.integrations.melbet.mapping import (
     account_number_to_details,
     client_name_from_fields,
@@ -115,7 +120,7 @@ def create_melbet_deposit(
     _assert_no_duplicate_order(config, order_id)
 
     currency, payment_system = _resolve_ps(config, payload)
-    amount = Decimal(str(payload["amount"]))
+    requested_amount = Decimal(str(payload["amount"]))
     merchant = config.merchant
     ftd = config.default_ftd
 
@@ -129,7 +134,7 @@ def create_melbet_deposit(
         raise MelbetServiceError("This payment method is not active", code=400)
 
     try:
-        assert_payin_amount_within_solution(solution, amount)
+        assert_payin_amount_within_solution(solution, requested_amount)
     except ValidationError as exc:
         detail = exc.detail
         message = detail.get("error") if isinstance(detail, dict) else str(detail)
@@ -141,15 +146,18 @@ def create_melbet_deposit(
     if check_pending(client, _in=True):
         raise MelbetServiceError("Client has a pending pay-in", code=409)
 
+    candidate_amounts = melbet_candidate_amounts(requested_amount, solution)
+    first_amount = candidate_amounts[0]
+
     with transaction.atomic():
         in_order = InOrder.create(
-            amount=amount,
+            amount=first_amount,
             solution=solution,
             client_deposit_count=client.order_count,
             merchant_order_id=order_id,
         )
         pay_in = PayIn.objects.create(
-            amount=amount,
+            amount=first_amount,
             currency=currency,
             payment_system=payment_system,
             merchant_order_id=order_id,
@@ -170,17 +178,38 @@ def create_melbet_deposit(
             melbet_method=(payload.get("method") or "").strip(),
         )
 
-    from payments.payin_trace import trace_routing_result
+    from payments.payin_trace import Direction, trace_log, trace_routing_result
 
-    in_order.refresh_from_db()
-    trace_routing_result(pay_in, in_order)
-    in_order.refresh_from_db()
-    if in_order.status.name == "Cannot process":
-        _fail_melbet_deposit_allocation(pay_in, send_callback=False)
+    for idx, candidate_amount in enumerate(candidate_amounts):
+        if idx > 0:
+            reallocate_melbet_in_order(pay_in, candidate_amount, solution, client)
+            pay_in.refresh_from_db()
 
-    try_attach_psp_sessions(pay_in)
-    pay_in.refresh_from_db()
-    if pay_in.status and pay_in.status.name == "Declined":
+        in_order = pay_in.order
+        in_order.refresh_from_db()
+        trace_routing_result(pay_in, in_order)
+        in_order.refresh_from_db()
+
+        if in_order.status.name != "Cannot process":
+            try_attach_psp_sessions(pay_in)
+
+        pay_in.refresh_from_db()
+        in_order.refresh_from_db()
+        if is_melbet_deposit_allocated(pay_in):
+            if candidate_amount != requested_amount:
+                trace_log(
+                    pay_in=pay_in,
+                    direction=Direction.ROUTING,
+                    body={
+                        "amount_probe": True,
+                        "requested_amount": str(requested_amount),
+                        "allocated_amount": str(candidate_amount),
+                        "attempt": idx + 1,
+                    },
+                    note=f"melbet amount probe {requested_amount} -> {candidate_amount}",
+                )
+            break
+    else:
         _fail_melbet_deposit_allocation(pay_in, send_callback=False)
 
     _ = client_ip
