@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q, Sum
+from django.utils import timezone
 
 from basics.models import Trader
 from trade.models import InOrder, OutOrder, Transaction, WithdrawalRequest
@@ -80,10 +81,27 @@ class Command(BaseCommand):
         )
         in_sum = in_orders.aggregate(s=Sum("usd_amount"))["s"] or Decimal("0")
         self.stdout.write(f"\n[1] Активные InOrder (hold): {in_orders.count()} шт, sum usd_amount={in_sum}")
-        for o in in_orders:
+        now = timezone.now()
+        past_due_new = 0
+        past_due_sum = Decimal("0")
+        for o in in_orders.select_related("solution__payment_system"):
+            ttl = o.solution.payment_system.expired_time_in
+            overdue = o.status.name == "New" and o.creation_date <= now - ttl
+            mark = " PAST_DUE_UI_TIMER" if overdue else ""
+            if overdue:
+                past_due_new += 1
+                past_due_sum += o.usd_amount
             self.stdout.write(
                 f"  - {o.id}  status={o.status.name}  amount={o.amount}  "
-                f"usd={o.usd_amount}  created={o.creation_date}"
+                f"usd={o.usd_amount}  created={o.creation_date}{mark}"
+            )
+        if past_due_new:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  !! New с истёкшим expires_at (UI уже «истекла», cron ещё не разморозил): "
+                    f"{past_due_new} шт, usd={past_due_sum}. "
+                    f"Чинить: manage.py force_expire_stuck_inorders {username} --apply"
+                )
             )
 
         # --- 2. Pending withdrawals ---

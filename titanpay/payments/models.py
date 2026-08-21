@@ -1,7 +1,7 @@
 import logging
 from decimal import Decimal
 
-from django.db import models
+from django.db import models, transaction
 from basics.models import Currency, PaymentSystem
 from trade.models import InOrder, OutOrder
 from merchant.models import Merchant
@@ -102,14 +102,19 @@ class PayIn(models.Model):
         data["payment_system"] = self.payment_system.name
         data["recalculated"] = self.order.recalculated
         data["timestamp"] = int(timezone.now().timestamp())
-        signature = self.merchant.api_keys.get(active=True).sign_data(data)
+        try:
+            signature = self.merchant.api_keys.get(active=True).sign_data(data)
+        except Exception as exc:
+            logging.error("PayIn %s callback sign failed: %s", self.id, exc)
+            return None
 
         headers = {"Signature": signature, "Content-Type": "application/json"}
 
         status_code = 500
         response_text = ""
         try:
-            r = requests.post(self.callback_url, json=data, headers=headers)
+            # timeout обязателен: иначе expire() держит atomic/очередь на висящем HTTP
+            r = requests.post(self.callback_url, json=data, headers=headers, timeout=10)
             status_code = r.status_code
             response_text = (r.text or "")[:2000]
         except Exception as exc:
@@ -136,7 +141,17 @@ class PayIn(models.Model):
         self.updated_at = timezone.now()
         self.save()
         if send_callback:
-            self.send_callback({"status": status_name})
+            # После commit: разморозка/Expired не ждут HTTP к мерчанту
+            pay_in_id = self.id
+            payload = {"status": status_name}
+
+            def _send():
+                try:
+                    PayIn.objects.get(pk=pay_in_id).send_callback(payload)
+                except Exception as exc:
+                    logging.error("PayIn %s deferred callback failed: %s", pay_in_id, exc)
+
+            transaction.on_commit(_send)
 
     def recalculate(self, new_amount):
         self.amount = new_amount

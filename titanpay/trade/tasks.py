@@ -16,7 +16,10 @@ def update_all():
         print(e)
 
     logging.debug('expiring')
-    expire()
+    try:
+        expire()
+    except Exception as e:
+        logging.error(f"expire failed: {e}")
 
     logging.debug('Updating rates')
     try:
