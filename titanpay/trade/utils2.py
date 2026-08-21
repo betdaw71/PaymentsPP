@@ -164,30 +164,46 @@ def expire():
         arbitrage_orders_in = InOrder.objects.filter(status__name="Arbitrage", amount__lte=ps.auto_close_amount, solution__payment_system=ps, updated_date__lte=arb_time_out)
 
         for order in expired_in_orders:
-            with transaction.atomic():
-                order.deal_time_expired()
+            try:
+                with transaction.atomic():
+                    order.deal_time_expired()
+            except Exception as e:
+                # Одна заявка не должна блокировать разморозку остальных (callback/API key/etc).
+                logging.exception("expire InOrder %s failed: %s", order.id, e)
 
         for order in expired_out_orders:
-            with transaction.atomic():
-                order.deal_expired()
+            try:
+                with transaction.atomic():
+                    order.deal_expired()
+            except Exception as e:
+                logging.exception("expire OutOrder %s failed: %s", order.id, e)
 
         for order in arbitrage_orders_in:
-            with transaction.atomic():
-                order = InOrder.objects.select_for_update().get(id=order.id)
-                if order.status.name == "Arbitrage":
-                    order.complete_after_arbitrage()
+            try:
+                with transaction.atomic():
+                    order = InOrder.objects.select_for_update().get(id=order.id)
+                    if order.status.name == "Arbitrage":
+                        order.complete_after_arbitrage()
+            except Exception as e:
+                logging.exception("auto-complete Arbitrage InOrder %s failed: %s", order.id, e)
 
         not_confirmed_time_out = timezone.now() - ps.confirm_time_out
         finished_out_orders = OutOrder.objects.filter(status__name="Money sent by trader", updated_date__lte=not_confirmed_time_out, solution__payment_system=ps, pdf_sent=True, sms_sent=False)
         sms_out_orders = OutOrder.objects.filter(status__name="New", updated_date__lte=time_out, solution__payment_system=ps, pdf_sent=False, sms_sent=True)
 
         for order in finished_out_orders:
-            with transaction.atomic():
-                order.manual_check()
+            try:
+                with transaction.atomic():
+                    order.manual_check()
+            except Exception as e:
+                logging.exception("manual_check OutOrder %s failed: %s", order.id, e)
 
         for order in sms_out_orders:
-            with transaction.atomic():
-                order.manual_check()
+            try:
+                with transaction.atomic():
+                    order.manual_check()
+            except Exception as e:
+                logging.exception("manual_check (sms) OutOrder %s failed: %s", order.id, e)
 
     # time_fail_out = timezone.now() - ps.constrain_time_out
     # failed_out_orders_new = OutOrder.objects.filter(status=new_out, first_creation_date__lte=time_fail_out)

@@ -541,6 +541,9 @@ class InOrderStatusChange(models.Model):
         status_change_obj = cls(status=status, order=order, timedelta=timedelta)
         status_change_obj.save()
 
+        if not order.pay_in.exists():
+            return status_change_obj
+
         if status.name == "Completed":
             order.pay_in.get().success()
         elif status.name in ["Money sent by user", "Arbitrage", "Recalculation", "New"]:
