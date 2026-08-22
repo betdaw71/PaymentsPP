@@ -98,12 +98,9 @@ class InOrder(models.Model):
 
         status = InOrderStatus.objects.get(name="New")
 
-        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
+        from merchant.tiered_mdr import merchant_payin_fee
 
-        if uses_melbet_kzt_settlement(solution.merchant, payment_system_obj):
-            merchant_fee = merchant_fee_in_kzt(amount, solution.mdr_in)
-        else:
-            merchant_fee = solution.mdr_in * usd_amount / Decimal(100)
+        merchant_fee = merchant_payin_fee(solution=solution, amount=amount, usd_amount=usd_amount)
         team_rate = TraderTeamRates.objects.get(team=chosen_detail.group.trader.team, payment_system=payment_system_obj)
         trader_fee = team_rate.mdr_in * usd_amount / Decimal(100)
 
@@ -336,14 +333,13 @@ class InOrder(models.Model):
             team=self.payment_details.group.trader.team,
             payment_system=self.solution.payment_system,
         )
-        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
+        from merchant.tiered_mdr import merchant_payin_fee
 
         self.amount = paid_amount
         self.usd_amount = new_usd
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
-            self.merchant_fee = merchant_fee_in_kzt(paid_amount, self.solution.mdr_in)
-        else:
-            self.merchant_fee = self.solution.mdr_in * new_usd / Decimal(100)
+        self.merchant_fee = merchant_payin_fee(
+            solution=self.solution, amount=paid_amount, usd_amount=new_usd
+        )
         self.trader_fee = team_rate.mdr_in * new_usd / Decimal(100)
         self.recalculated = True
         self.recalculated_amount = paid_amount
@@ -473,7 +469,6 @@ class InOrder(models.Model):
         """Перерасчёт после Completed (Bitzone re_calculation после closed)."""
         from decimal import ROUND_HALF_UP
 
-        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
         from payments.psp_payin import is_psp_trader, psp_order_usd_ledger_amount
 
         if self.status.name != "Completed":
@@ -494,10 +489,11 @@ class InOrder(models.Model):
             team=trader.team,
             payment_system=self.solution.payment_system,
         )
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
-            new_merchant_fee = merchant_fee_in_kzt(paid_amount, self.solution.mdr_in)
-        else:
-            new_merchant_fee = self.solution.mdr_in * new_usd / Decimal(100)
+        from merchant.tiered_mdr import merchant_payin_fee
+
+        new_merchant_fee = merchant_payin_fee(
+            solution=self.solution, amount=paid_amount, usd_amount=new_usd
+        )
         new_trader_fee = team_rate.mdr_in * new_usd / Decimal(100)
 
         self.amount = paid_amount
@@ -726,7 +722,11 @@ class InOrder(models.Model):
 
     def recalculate(self, new_amount: Decimal):
         new_usd_amount = new_amount / self.solution.payment_system.get_rate()
-        new_merchant_fee = self.solution.mdr_in * new_usd_amount / Decimal(100)
+        from merchant.tiered_mdr import merchant_payin_fee
+
+        new_merchant_fee = merchant_payin_fee(
+            solution=self.solution, amount=new_amount, usd_amount=new_usd_amount
+        )
         new_trader_fee = self.payment_details.group.trader.team.rate_in * new_usd_amount / Decimal(100)
 
         if self.creation_date.timestamp() // SYSTEM_INTERVAL_VALUE == int(timezone.now().timestamp()) // SYSTEM_INTERVAL_VALUE:
