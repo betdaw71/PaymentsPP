@@ -1,6 +1,9 @@
 """
 Диагностика ночного простоя Melbet (выдача реквизитов) — особенно после deploy amount probe.
 
+Ищет только Melbet redirect (pay_in с melbet_session). Для pandapay и др.:
+  shell_diagnose_merchant_outage.py  (MERCHANT=pandapay)
+
 Пример (последние 12 часов, melbet):
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_diagnose_melbet_outage.py
 
