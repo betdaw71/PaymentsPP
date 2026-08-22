@@ -21,6 +21,16 @@ def update_all():
     except Exception as e:
         logging.error(f"expire failed: {e}")
 
+    logging.debug('psp freeze reconcile')
+    try:
+        from payments.psp_payin import reconcile_stuck_psp_inorder_freezes
+
+        released = reconcile_stuck_psp_inorder_freezes(limit=200)
+        if released:
+            logging.info("reconcile_stuck_psp_inorder_freezes: %s order(s)", released)
+    except Exception as e:
+        logging.error(f"psp freeze reconcile failed: {e}")
+
     logging.debug('Updating rates')
     try:
         update_ps()

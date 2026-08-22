@@ -140,49 +140,58 @@ class InOrder(models.Model):
                            _comment=comment)
 
     def unfreeze(self, comment=""):
-        """Разморозка по исходной Freeze-транзакции (важно после PSP fallback swap группы)."""
-        freeze_tx = (
-            Transaction.objects.filter(
-                linked_in_order=self,
-                transaction_type__name="Freeze",
-            )
-            .select_related("from_balance", "to_balance")
-            .order_by("-creation_date")
-            .first()
-        )
-        if freeze_tx is None:
-            return
-        already = Transaction.objects.filter(
-            linked_in_order=self,
-            transaction_type__name="Deposit",
-            from_balance=freeze_tx.to_balance,
-            to_balance=freeze_tx.from_balance,
-            creation_date__gte=freeze_tx.creation_date,
-        ).exists()
-        if already:
-            return
-        from_balance = Balance.objects.select_for_update().get(pk=freeze_tx.to_balance_id)
-        value = freeze_tx.value
-        if from_balance.amount < value:
-            logging.getLogger(__name__).warning(
-                "InOrder %s unfreeze: frozen %.2f < freeze %.2f (%s); releasing available frozen",
-                self.id,
-                from_balance.amount,
-                value,
-                comment,
-            )
-            value = from_balance.amount
-        if value <= 0:
-            return
+        """Разморозка всех неоткатанных Freeze по заявке (PSP может иметь несколько freeze)."""
+        from basics.models import Balance
+
+        logger = logging.getLogger(__name__)
         transaction_type_2 = TransactionType.objects.get(name="Deposit")
-        Transaction.create(
-            _from=freeze_tx.to_balance,
-            _to=freeze_tx.from_balance,
-            value=value,
-            _transaction_type=transaction_type_2,
-            _linked_in_order=self,
-            _comment=comment,
-        )
+        max_passes = 10
+
+        for _ in range(max_passes):
+            unreversed = None
+            for freeze_tx in (
+                Transaction.objects.filter(
+                    linked_in_order=self,
+                    transaction_type__name="Freeze",
+                )
+                .select_related("from_balance", "to_balance")
+                .order_by("creation_date")
+            ):
+                already = Transaction.objects.filter(
+                    linked_in_order=self,
+                    transaction_type__name="Deposit",
+                    from_balance=freeze_tx.to_balance,
+                    to_balance=freeze_tx.from_balance,
+                    creation_date__gte=freeze_tx.creation_date,
+                ).exists()
+                if not already:
+                    unreversed = freeze_tx
+                    break
+            if unreversed is None:
+                return
+
+            from_balance = Balance.objects.select_for_update().get(pk=unreversed.to_balance_id)
+            value = unreversed.value
+            if from_balance.amount < value:
+                logger.warning(
+                    "InOrder %s unfreeze: frozen %.2f < freeze %.2f (%s); releasing available frozen",
+                    self.id,
+                    from_balance.amount,
+                    value,
+                    comment,
+                )
+                value = from_balance.amount
+            if value <= 0:
+                continue
+            Transaction.create(
+                _from=unreversed.to_balance,
+                _to=unreversed.from_balance,
+                value=value,
+                _transaction_type=transaction_type_2,
+                _linked_in_order=self,
+                _comment=comment,
+            )
+        logger.warning("InOrder %s unfreeze: max passes reached (%s)", self.id, comment)
 
     def decrease_current_volume(self):
         group = PaymentDetailsGroup.objects.select_for_update().get(id=self.payment_details.group.id)

@@ -117,6 +117,120 @@ def ensure_psp_frozen_for_complete(order) -> None:
     )
 
 
+_INORDER_OPEN_STATUSES = frozenset({"New", "Money sent by user"})
+_INORDER_RELEASE_FREEZE_STATUSES = frozenset(
+    {
+        "Expired",
+        "Cannot process",
+        "Cancelled",
+        "Cancelled by support",
+        "Cancelled by trader",
+        "Cancelled by user",
+    }
+)
+
+
+def freeze_tx_is_reversed(freeze_tx) -> bool:
+    from trade.models import Transaction
+
+    return Transaction.objects.filter(
+        linked_in_order_id=freeze_tx.linked_in_order_id,
+        transaction_type__name="Deposit",
+        from_balance_id=freeze_tx.to_balance_id,
+        to_balance_id=freeze_tx.from_balance_id,
+        creation_date__gte=freeze_tx.creation_date,
+    ).exists()
+
+
+def inorder_ids_with_unreversed_freezes() -> set:
+    from trade.models import Transaction
+
+    order_ids: set = set()
+    for fz in Transaction.objects.filter(
+        transaction_type__name="Freeze",
+        linked_in_order_id__isnull=False,
+    ).only("id", "linked_in_order_id", "to_balance_id", "from_balance_id", "creation_date"):
+        if not freeze_tx_is_reversed(fz):
+            order_ids.add(fz.linked_in_order_id)
+    return order_ids
+
+
+def expected_psp_frozen_usdt(trader) -> Decimal:
+    """Сумма freeze по активным InOrder New (ожидаемый frozen у PSP-трейдера)."""
+    from trade.models import InOrder
+
+    if not is_psp_trader(trader):
+        return Decimal("0")
+    total = Decimal("0")
+    qs = InOrder.objects.filter(
+        payment_details__group__trader=trader,
+        status__name__in=_INORDER_OPEN_STATUSES,
+    ).only("id", "usd_amount")
+    for order in qs:
+        total += psp_order_usd_ledger_amount(order)
+    return total
+
+
+def reconcile_stuck_psp_inorder_freezes(*, limit: int = 200) -> int:
+    """
+    Разморозить InOrder в терминальных статусах, где остались неоткатанные Freeze.
+    Вызывается из cron (trade.tasks.update_all).
+    """
+    from trade.models import InOrder
+
+    order_ids = inorder_ids_with_unreversed_freezes()
+    if not order_ids:
+        return 0
+
+    fixed = 0
+    for order in (
+        InOrder.objects.filter(id__in=order_ids)
+        .select_related("status", "payment_details__group__trader")
+        .order_by("-updated_date")[:limit]
+    ):
+        status_name = order.status.name if order.status else ""
+        if status_name in _INORDER_OPEN_STATUSES:
+            continue
+        if status_name not in _INORDER_RELEASE_FREEZE_STATUSES and status_name != "Completed":
+            continue
+        trader = None
+        if order.payment_details_id:
+            trader = order.payment_details.group.trader
+        if trader is None:
+            from basics.models import Trader
+            from trade.models import Transaction
+
+            fz = (
+                Transaction.objects.filter(linked_in_order=order, transaction_type__name="Freeze")
+                .order_by("creation_date")
+                .first()
+            )
+            if fz is not None:
+                trader = Trader.objects.filter(frozen_balance_usdt_id=fz.to_balance_id).first()
+        if trader is None or not is_psp_trader(trader):
+            continue
+        with transaction.atomic():
+            locked = InOrder.objects.select_for_update().get(pk=order.pk)
+            locked.unfreeze("PSP reconcile stuck freeze")
+        fixed += 1
+    return fixed
+
+
+def psp_trader_frozen_snapshot(trader) -> dict:
+    from basics.models import Balance
+
+    frozen = Balance.objects.get(pk=trader.frozen_balance_usdt_id).amount
+    available = Balance.objects.get(pk=trader.balance_usdt_id).amount
+    expected = expected_psp_frozen_usdt(trader)
+    return {
+        "trader": trader.user.username,
+        "frozen_usdt": frozen,
+        "available_usdt": available,
+        "expected_frozen_usdt": expected,
+        "stuck_usdt": frozen - expected,
+    }
+
+
 def _team_mdr_in_map(groups) -> dict[tuple[int, int], Decimal]:
     """(team_id, payment_system_id) -> mdr_in для сортировки PSP-каскада."""
     from basics.models import TraderTeamRates
