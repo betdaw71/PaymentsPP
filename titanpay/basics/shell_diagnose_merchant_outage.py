@@ -222,7 +222,10 @@ def _summarize(label: str, merchant: str, start: datetime, end: datetime) -> dic
     if psp_fail_notes:
         print(f"  psp fail traces (top 5): {psp_fail_notes.most_common(5)}")
     if routing_multi:
-        print(f"  pay-ins with >1 routing trace: {len(routing_multi)} (melbet amount probe only)")
+        print(
+            f"  pay-ins with >1 routing trace: {len(routing_multi)} "
+            f"(обычно PSP fallback expayone→protocol→botonpay, не melbet probe)"
+        )
 
     stats = _print_conversion(payins, in_orders)
 
@@ -264,8 +267,11 @@ def _interpret(bad: dict, good: dict | None, merchant: str) -> None:
     if bad["assigned_psp"] == 0 and bad["declined"] > 0:
         print("  [!] Ни одного PSP-назначения — проверьте routing (diagnose_routing), активность групп PSP.")
 
-    if bad["routing_multi"] > 0:
-        print("  [!] Multiple routing traces — только melbet amount probe; для pandapay не должно быть.")
+    if bad["routing_multi"] > bad["total"] * 0.5 and bad["cannot_process"] > 0:
+        print(
+            "  [!] Много routing traces — типично PSP fallback (несколько провайдеров подряд), "
+            "не melbet amount probe."
+        )
 
     if good and good["total"] > 0:
         bad_dr = 100 * bad["declined"] / bad["total"]
