@@ -968,6 +968,111 @@ def psp_create_failure_reason(pay_in: Any) -> str:
     return MERCHANT_DECLINE_MESSAGES.get(code, MERCHANT_DECLINE_MESSAGES["requisites_unavailable"])
 
 
+_PSP_SESSION_PROVIDER_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("payments.models.ExpayonePayInSession", "expayone", "provider_order_id"),
+    ("payments.models.FairpayPayInSession", "fairpay", "provider_order_id"),
+    ("payments.models.ProtocolPayInSession", "protocol", "provider_payment_id"),
+    ("payments.models.PlaymentsPayInSession", "playments", "provider_deposit_id"),
+    ("payments.models.ConcoredPayInSession", "concored", "provider_payment_id"),
+    ("payments.models.PaymapPayInSession", "paymap", "provider_invoice_id"),
+    ("payments.models.BitzonePayInSession", "bitzone", "provider_transaction_id"),
+    ("payments.models.PlutusPayInSession", "plutus", "provider_trade_uuid"),
+    ("payments.models.SyndicatePayInSession", "syndicate", "provider_order_id"),
+    ("payments.models.BotonpayPayInSession", "botonpay", "provider_deal_uuid"),
+)
+
+
+def _botonpay_deal_uuid_from_session(session) -> str:
+    deal_uuid = (getattr(session, "provider_deal_uuid", None) or "").strip()
+    if deal_uuid:
+        return deal_uuid
+    wh = getattr(session, "last_webhook_payload", None) or {}
+    if isinstance(wh, dict):
+        for key in ("deal_uuid", "deal_id"):
+            raw = wh.get(key)
+            if raw:
+                return str(raw).strip()
+    cr = getattr(session, "create_response", None) or {}
+    if isinstance(cr, dict):
+        deal = cr.get("deal") if isinstance(cr.get("deal"), dict) else cr
+        if isinstance(deal, dict):
+            for key in ("deal_uuid", "deal_id", "id"):
+                raw = deal.get(key)
+                if raw:
+                    return str(raw).strip()
+    return ""
+
+
+def psp_external_reference(pay_in: Any) -> dict[str, str] | None:
+    """ID заявки у PSP для сверки (BotonPay deal_uuid, Bitzone id, …)."""
+    if pay_in is None:
+        return None
+    pay_in_id = str(getattr(pay_in, "id", pay_in))
+
+    for model_path, provider, field_name in _PSP_SESSION_PROVIDER_FIELDS:
+        module_name, class_name = model_path.rsplit(".", 1)
+        import importlib
+
+        model = getattr(importlib.import_module(module_name), class_name)
+        try:
+            session = model.objects.get(pay_in_id=pay_in_id)
+        except model.DoesNotExist:
+            continue
+
+        if provider == "botonpay":
+            ext_id = _botonpay_deal_uuid_from_session(session)
+        else:
+            ext_id = (getattr(session, field_name, None) or "").strip()
+
+        if not ext_id:
+            continue
+        return {
+            "psp_provider": provider,
+            "psp_provider_order_id": ext_id,
+            "platform_pay_in_id": pay_in_id,
+        }
+    return None
+
+
+def psp_external_references_for_pay_in_ids(pay_in_ids: list) -> dict[str, dict[str, str]]:
+    """Batch lookup для экспорта: pay_in_id -> psp_external_reference dict."""
+    if not pay_in_ids:
+        return {}
+    id_set = {str(x) for x in pay_in_ids}
+    out: dict[str, dict[str, str]] = {}
+
+    for model_path, provider, field_name in _PSP_SESSION_PROVIDER_FIELDS:
+        module_name, class_name = model_path.rsplit(".", 1)
+        import importlib
+
+        model = getattr(importlib.import_module(module_name), class_name)
+        rows = model.objects.filter(pay_in_id__in=id_set).values(
+            "pay_in_id", field_name, "last_webhook_payload", "create_response"
+        )
+        for row in rows:
+            pid = str(row["pay_in_id"])
+            if pid in out:
+                continue
+            if provider == "botonpay":
+                class _S:
+                    pass
+
+                s = _S()
+                s.provider_deal_uuid = row.get(field_name) or ""
+                s.last_webhook_payload = row.get("last_webhook_payload")
+                s.create_response = row.get("create_response")
+                ext_id = _botonpay_deal_uuid_from_session(s)
+            else:
+                ext_id = (row.get(field_name) or "").strip()
+            if ext_id:
+                out[pid] = {
+                    "psp_provider": provider,
+                    "psp_provider_order_id": ext_id,
+                    "platform_pay_in_id": pid,
+                }
+    return out
+
+
 def get_payin_decline_payload(pay_in: Any) -> dict | None:
     """Если PayIn уже Declined — payload для ответа мерчанту (без raise)."""
     pay_in.refresh_from_db()
