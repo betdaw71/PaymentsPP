@@ -645,6 +645,13 @@ class InOrder(models.Model):
             self.payment_details.group.save()
         self.complete()
 
+        try:
+            from appeals.notify import resolve_pending_appeals_for_order
+            resolve_pending_appeals_for_order(self, approved=True)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("appeal approve notify failed order=%s", self.id)
+
     def cancel_order(self):
         if self.status.name != "New":
             raise ValidationError({

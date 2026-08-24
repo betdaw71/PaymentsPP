@@ -25,7 +25,7 @@ class AppealProcessResult:
     ok: bool
     message: str
     recognized: bool = False
-    outcome: str = "rejected"  # success | rejected | partial
+    outcome: str = "rejected"  # success | rejected | partial | pending
 
 
 def _reject(message: str, *, recognized: bool = False) -> AppealProcessResult:
@@ -38,6 +38,10 @@ def _success(message: str, *, recognized: bool = True) -> AppealProcessResult:
 
 def _partial(message: str, *, recognized: bool = True) -> AppealProcessResult:
     return AppealProcessResult(ok=True, message=message, recognized=recognized, outcome="partial")
+
+
+def _pending(message: str, *, recognized: bool = True) -> AppealProcessResult:
+    return AppealProcessResult(ok=True, message=message, recognized=recognized, outcome="pending")
 
 
 def get_chat_counterparty(chat_id: int) -> AppealTelegramChat | None:
@@ -127,10 +131,12 @@ def _provider_chat(*, psp_provider: str, trader_username: str = "") -> AppealTel
     )
 
 
-def _provider_caption(psp_provider: str, provider_external_id: str) -> str:
-    if not provider_external_id:
-        return ""
-    return provider_external_id
+def _provider_caption(*, pay_in, psp_provider: str, provider_external_id: str) -> str:
+    if psp_provider == "botonpay" and provider_external_id:
+        return provider_external_id
+    if provider_external_id:
+        return provider_external_id
+    return str(pay_in.id)
 
 
 def _upload_receipt(file_bytes: bytes, pay_in_id: str, filename: str) -> str:
@@ -196,7 +202,10 @@ def process_merchant_appeal_message(
 
     if PayInAppeal.objects.filter(
         pay_in=pay_in,
-        status__in=[PayInAppealStatus.CREATED, PayInAppealStatus.SENT_TO_PROVIDER],
+        status__in=[
+            PayInAppealStatus.CREATED,
+            PayInAppealStatus.SENT_TO_PROVIDER,
+        ],
     ).exists():
         return _reject("Апелляция по этой заявке уже создана.", recognized=True)
 
@@ -243,7 +252,11 @@ def process_merchant_appeal_message(
 
     from appeals.telegram_out import send_receipt_to_provider_chat
 
-    caption = _provider_caption(psp_provider, provider_external_id)
+    caption = _provider_caption(
+        pay_in=pay_in,
+        psp_provider=psp_provider,
+        provider_external_id=provider_external_id,
+    )
     sent = send_receipt_to_provider_chat(
         chat_id=provider_chat.telegram_chat_id,
         file_bytes=file_bytes,
@@ -261,5 +274,4 @@ def process_merchant_appeal_message(
     appeal.provider_message_id = sent.message_id
     appeal.save(update_fields=["status", "provider_chat_id", "provider_message_id"])
 
-    ext_hint = f" ({provider_external_id})" if provider_external_id else ""
-    return _success(f"Успех{ext_hint}")
+    return _pending("Апелляция принята, ожидаем подтверждения.")

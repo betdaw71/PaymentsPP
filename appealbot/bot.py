@@ -201,6 +201,8 @@ def _handle_receipt(message: Message):
     if outcome == "success":
         _set_reaction(message.chat.id, message.message_id, "👍")
         bot.reply_to(message, reply_text or "Успех")
+    elif outcome == "pending":
+        bot.reply_to(message, reply_text or "Апелляция принята, ожидаем подтверждения.")
     elif outcome == "partial":
         bot.reply_to(message, reply_text)
     else:

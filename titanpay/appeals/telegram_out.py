@@ -17,6 +17,18 @@ def _bot_token() -> str:
     return getattr(settings, "APPEAL_TELEGRAM_BOT_TOKEN", "") or ""
 
 
+def _api_post(method: str, payload: dict) -> dict:
+    token = _bot_token()
+    if not token:
+        return {"ok": False, "description": "APPEAL_TELEGRAM_BOT_TOKEN не задан"}
+    url = f"https://api.telegram.org/bot{token}/{method}"
+    response = requests.post(url, json=payload, timeout=30)
+    try:
+        return response.json()
+    except ValueError:
+        return {"ok": False, "description": response.text[:300]}
+
+
 def send_receipt_to_provider_chat(
     *,
     chat_id: int,
@@ -55,3 +67,34 @@ def send_receipt_to_provider_chat(
 
     message_id = payload.get("result", {}).get("message_id")
     return SendResult(ok=True, message_id=message_id)
+
+
+def notify_merchant_appeal_message(
+    *,
+    chat_id: int | None,
+    message_id: int | None,
+    approved: bool,
+) -> None:
+    if not chat_id or not message_id:
+        return
+
+    emoji = "👍" if approved else "👎"
+    text = "Успех" if approved else "Отклонена"
+
+    _api_post(
+        "setMessageReaction",
+        {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "reaction": [{"type": "emoji", "emoji": emoji}],
+            "is_big": approved,
+        },
+    )
+    _api_post(
+        "sendMessage",
+        {
+            "chat_id": chat_id,
+            "text": text,
+            "reply_to_message_id": message_id,
+        },
+    )

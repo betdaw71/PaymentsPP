@@ -72,6 +72,8 @@ class PayInAppealSource(models.TextChoices):
 class PayInAppealStatus(models.TextChoices):
     CREATED = "created", "Created"
     SENT_TO_PROVIDER = "sent_to_provider", "Sent to provider"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
     DUPLICATE = "duplicate", "Duplicate"
     FAILED = "failed", "Failed"
     NO_PROVIDER_CHAT = "no_provider_chat", "No provider chat"
