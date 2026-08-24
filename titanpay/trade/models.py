@@ -703,6 +703,13 @@ class InOrder(models.Model):
 
         InOrderStatusChange.create(order=self, status=status)
 
+        try:
+            from appeals.notify import resolve_pending_appeals_for_order
+            resolve_pending_appeals_for_order(self, approved=False)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("appeal reject notify failed order=%s", self.id)
+
     def trader_recalculate(self, new_amount: Decimal):
         if self.status.name != "Arbitrage":
             raise ValidationError({'error': 'Wrong status!'})

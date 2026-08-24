@@ -131,6 +131,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      APPEAL_TELEBOT_TOKEN: ${APPEAL_TELEBOT_TOKEN}
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media

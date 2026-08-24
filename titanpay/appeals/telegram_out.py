@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import requests
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -74,14 +77,19 @@ def notify_merchant_appeal_message(
     chat_id: int | None,
     message_id: int | None,
     approved: bool,
-) -> None:
+) -> bool:
     if not chat_id or not message_id:
-        return
+        logger.warning(
+            "appeal notify skipped: missing chat_id=%s message_id=%s",
+            chat_id,
+            message_id,
+        )
+        return False
 
     emoji = "👍" if approved else "👎"
     text = "Успех" if approved else "Отклонена"
 
-    _api_post(
+    reaction_result = _api_post(
         "setMessageReaction",
         {
             "chat_id": chat_id,
@@ -90,7 +98,15 @@ def notify_merchant_appeal_message(
             "is_big": approved,
         },
     )
-    _api_post(
+    if not reaction_result.get("ok"):
+        logger.warning(
+            "appeal setMessageReaction failed chat_id=%s message_id=%s: %s",
+            chat_id,
+            message_id,
+            reaction_result.get("description") or reaction_result,
+        )
+
+    message_result = _api_post(
         "sendMessage",
         {
             "chat_id": chat_id,
@@ -98,3 +114,13 @@ def notify_merchant_appeal_message(
             "reply_to_message_id": message_id,
         },
     )
+    if not message_result.get("ok"):
+        logger.error(
+            "appeal sendMessage failed chat_id=%s message_id=%s: %s",
+            chat_id,
+            message_id,
+            message_result.get("description") or message_result,
+        )
+        return False
+
+    return True
