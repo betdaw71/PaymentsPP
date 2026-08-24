@@ -36,7 +36,6 @@ from basics.models import (
     TrafficType,
 )
 from merchant.models import Merchant, MerchantSolution
-from payments.psp_payin import psp_trader_usernames
 
 PS_NAME = os.environ.get("TEST_PS_NAME", "C2CKZTTEST").strip()
 MERCHANT_USERNAME = os.environ.get("MERCHANT_USERNAME", "lunatrixpay").strip()
@@ -117,8 +116,6 @@ def ensure_trader_group(trader: Trader, ps: PaymentSystem, kzt: Currency, traffi
             status=1,
             amount=Decimal("9999999"),
             card_number=card,
-            owner="Test Holder",
-            bank="Test Bank",
             deposit_number=str(uuid.uuid4().int % 10**20).zfill(20),
             sberpay_enabled=False,
             sbp_enabled=False,
@@ -142,8 +139,6 @@ def ensure_trader_group(trader: Trader, ps: PaymentSystem, kzt: Currency, traffi
             status=1,
             amount=Decimal("9999999"),
             card_number=card,
-            owner="Test Holder",
-            bank="Test Bank",
             deposit_number=str(uuid.uuid4().int % 10**20).zfill(20),
             sberpay_enabled=False,
             sbp_enabled=False,
