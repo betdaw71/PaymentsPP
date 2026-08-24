@@ -34,6 +34,23 @@ def _set_reaction(chat_id: int, message_id: int, emoji: str) -> None:
         logger.warning("set_message_reaction failed: %s", exc)
 
 
+def _api_json(response: requests.Response) -> dict:
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            return payload
+    except ValueError:
+        pass
+    body = (response.text or "")[:300]
+    logger.error("API non-JSON response %s: %s", response.status_code, body)
+    return {
+        "ok": False,
+        "message": f"Ошибка API ({response.status_code})",
+        "recognized": False,
+        "outcome": "rejected",
+    }
+
+
 def backend_init_chat(chat_id: int, counterparty_id: str, title: str, username: str) -> tuple[bool, str]:
     response = requests.post(
         f"{BACKEND_URL}/init_chat/",
@@ -46,7 +63,7 @@ def backend_init_chat(chat_id: int, counterparty_id: str, title: str, username: 
         headers=HEADERS,
         timeout=30,
     )
-    payload = response.json()
+    payload = _api_json(response)
     return payload.get("ok", False), payload.get("message", "Ошибка API")
 
 
@@ -66,15 +83,7 @@ def backend_process_message(
         headers=HEADERS,
         timeout=60,
     )
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = {
-            "ok": False,
-            "message": f"Ошибка API ({response.status_code})",
-            "recognized": False,
-            "outcome": "rejected",
-        }
+    payload = _api_json(response)
     payload.setdefault("recognized", False)
     payload.setdefault("outcome", "rejected")
     return payload
@@ -140,6 +149,18 @@ def handle_text(message: Message):
 
 @bot.message_handler(content_types=["photo", "document"])
 def handle_receipt(message: Message):
+    try:
+        _handle_receipt(message)
+    except Exception:
+        logger.exception("handle_receipt failed")
+        try:
+            _set_reaction(message.chat.id, message.message_id, "👎")
+            bot.reply_to(message, "Отклонена: внутренняя ошибка бота")
+        except Exception:
+            pass
+
+
+def _handle_receipt(message: Message):
     logger.info(
         "receipt chat_id=%s message_id=%s caption=%r",
         message.chat.id,

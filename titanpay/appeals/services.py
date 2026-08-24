@@ -129,8 +129,24 @@ def _provider_caption(psp_provider: str, provider_external_id: str) -> str:
 
 
 def _upload_receipt(file_bytes: bytes, pay_in_id: str, filename: str) -> str:
-    object_name = f"appeals/{pay_in_id}/{uuid.uuid4()}_{filename}"
+    ext = "jpg"
+    if filename and "." in filename:
+        ext = filename.rsplit(".", 1)[-1].lower()[:8] or "jpg"
+    short_id = str(pay_in_id).replace("-", "")[:12]
+    object_name = f"appeals/{short_id}-{uuid.uuid4().hex[:10]}.{ext}"
     return upload_receipt_storage(BytesIO(file_bytes), object_name)
+
+
+def _save_order_pic(order, receipt_url: str) -> None:
+    if not order or not receipt_url:
+        return
+    if len(receipt_url) > 200:
+        return
+    try:
+        order.pic = receipt_url
+        order.save(update_fields=["pic"])
+    except ValidationError:
+        pass
 
 
 def _try_order_arbitrage(order) -> None:
@@ -179,11 +195,13 @@ def process_merchant_appeal_message(
     ).exists():
         return _reject("Апелляция по этой заявке уже создана.", recognized=True)
 
-    receipt_url = _upload_receipt(file_bytes, str(pay_in.id), filename or "receipt")
+    try:
+        receipt_url = _upload_receipt(file_bytes, str(pay_in.id), filename or "receipt")
+    except Exception as exc:
+        return _reject(f"Не удалось сохранить чек: {exc}", recognized=True)
+
     order = pay_in.order
-    if order and not order.pic:
-        order.pic = receipt_url
-        order.save(update_fields=["pic"])
+    _save_order_pic(order, receipt_url)
 
     _try_order_arbitrage(order)
 
