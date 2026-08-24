@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'sms',
     'trade',
     'bots',
+    'appeals',
     'usermanagement',
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist"
@@ -280,6 +281,9 @@ S3_ENDPOINT = os.getenv('S3_ENDPOINT')
 ACCESS_KEY = os.getenv('ACCESS_KEY')
 SECRET_S3_KEY = os.getenv('SECRET_S3_KEY')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
+
+# Telegram appeal bot (отправка чеков в чат провайдера)
+APPEAL_TELEGRAM_BOT_TOKEN = os.getenv('APPEAL_TELEBOT_TOKEN', '')
 
 # Публичный базовый URL API (экспорт, ссылки в логах; переопределите через PUBLIC_API_URL)
 PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'https://api.avapay.net')

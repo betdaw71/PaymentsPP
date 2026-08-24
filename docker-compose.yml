@@ -1,4 +1,27 @@
 services:
+  wellknown:
+    image: nginx:alpine
+    container_name: avapay_wellknown
+    restart: unless-stopped
+    volumes:
+      - ./wellknown/security.txt:/usr/share/nginx/html/security.txt:ro
+      - ./wellknown/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wellknown.rule=(Host(`avapay.net`) || Host(`api.avapay.net`) || Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`) || Host(`doc.avapay.net`) || Host(`promo.avapay.net`) || Host(`traefik.avapay.net`) || Host(`pgadmin.avapay.net`)) && (Path(`/.well-known/security.txt`) || Path(`/security.txt`))"
+      - "traefik.http.routers.wellknown.entrypoints=websecure"
+      - "traefik.http.routers.wellknown.tls=true"
+      - "traefik.http.routers.wellknown.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.wellknown.priority=200"
+      - "traefik.http.routers.wellknown.service=wellknown"
+      - "traefik.http.services.wellknown.loadbalancer.server.port=80"
+      - "traefik.http.routers.wellknown-http.rule=(Host(`avapay.net`) || Host(`api.avapay.net`) || Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`) || Host(`doc.avapay.net`) || Host(`promo.avapay.net`) || Host(`traefik.avapay.net`) || Host(`pgadmin.avapay.net`)) && (Path(`/.well-known/security.txt`) || Path(`/security.txt`))"
+      - "traefik.http.routers.wellknown-http.entrypoints=web"
+      - "traefik.http.routers.wellknown-http.priority=200"
+      - "traefik.http.routers.wellknown-http.service=wellknown"
+
   traefik:
     image: traefik:latest
     container_name: traefik
@@ -205,6 +228,19 @@ services:
       BACKEND_URL: http://app:8080/api/v1/bot
       TGBOT_TOKEN: ${TGBOT_TOKEN}
       TELEBOT_TOKEN: ${ORDERBOT_TELEBOT_TOKEN}
+    depends_on:
+      - app
+    networks:
+      - project_network
+
+  appealbot:
+    build: ./appealbot
+    container_name: titanpay_appealbot
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://app:8080/api/v1/bot/appeals
+      TGBOT_TOKEN: ${APPEAL_BOT_API_TOKEN}
+      TELEBOT_TOKEN: ${APPEAL_TELEBOT_TOKEN}
     depends_on:
       - app
     networks:

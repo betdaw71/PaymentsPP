@@ -92,6 +92,11 @@ class Command(BaseCommand):
             TGBot.objects.create(user=smsdata_user)
             Token.objects.create(user=smsdata_user)
 
+        if not User.objects.filter(username="appeal_bot_user").exists():
+            appeal_user = User.objects.create_user(username="appeal_bot_user", password=str(uuid.uuid4()))
+            TGBot.objects.create(user=appeal_user)
+            Token.objects.create(user=appeal_user)
+
         print('Bots created')
 
     def handle(self, *args, **options):
