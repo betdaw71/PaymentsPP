@@ -74,21 +74,26 @@ def init_telegram_chat(
     return True, f"Чат {action} как {role_label}: {counterparty.name} ({counterparty.id})."
 
 
-def _trader_username_for_pay_in(pay_in) -> str:
-    order = pay_in.order
+def _trader_for_order(order):
     if not order or not order.payment_details_id:
-        return ""
-    trader = order.payment_details.trader
+        return None
+    details = order.payment_details
+    if not details or not details.group_id:
+        return None
+    return details.group.trader
+
+
+def _trader_username_for_pay_in(pay_in) -> str:
+    trader = _trader_for_order(pay_in.order)
     if not trader or not getattr(trader, "user", None):
         return ""
     return trader.user.username or ""
 
 
 def _psp_provider_for_pay_in(pay_in) -> str:
-    order = pay_in.order
-    if not order or not order.payment_details_id:
+    trader = _trader_for_order(pay_in.order)
+    if not trader:
         return ""
-    trader = order.payment_details.trader
     provider_key, _ = _psp_provider_for_trader(trader)
     return provider_key or ""
 
