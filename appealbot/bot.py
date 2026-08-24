@@ -1,9 +1,10 @@
+import logging
 import os
 import re
 
 import requests
 import telebot
-from telebot.types import Message
+from telebot.types import Message, ReactionTypeEmoji
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://app:8080/api/v1/bot/appeals")
 TGBOT_TOKEN = os.getenv("TGBOT_TOKEN", "")
@@ -13,9 +14,24 @@ UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("appealbot")
+
 bot = telebot.TeleBot(TELEBOT_TOKEN)
 
 HEADERS = {"Authorization": f"Token {TGBOT_TOKEN}"}
+
+
+def _set_reaction(chat_id: int, message_id: int, emoji: str) -> None:
+    try:
+        bot.set_message_reaction(
+            chat_id,
+            message_id,
+            reaction=[ReactionTypeEmoji(emoji)],
+            is_big=emoji == "👍",
+        )
+    except Exception as exc:
+        logger.warning("set_message_reaction failed: %s", exc)
 
 
 def backend_init_chat(chat_id: int, counterparty_id: str, title: str, username: str) -> tuple[bool, str]:
@@ -34,7 +50,9 @@ def backend_init_chat(chat_id: int, counterparty_id: str, title: str, username: 
     return payload.get("ok", False), payload.get("message", "Ошибка API")
 
 
-def backend_process_message(chat_id: int, message_id: int, text: str, file_bytes: bytes, filename: str) -> tuple[bool, str, bool]:
+def backend_process_message(
+    chat_id: int, message_id: int, text: str, file_bytes: bytes, filename: str
+) -> dict:
     files = {"file": (filename, file_bytes)}
     data = {
         "chat_id": str(chat_id),
@@ -48,9 +66,18 @@ def backend_process_message(chat_id: int, message_id: int, text: str, file_bytes
         headers=HEADERS,
         timeout=60,
     )
-    payload = response.json()
-    skip = payload.get("skip", False)
-    return payload.get("ok", False), payload.get("message", ""), skip
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {
+            "ok": False,
+            "message": f"Ошибка API ({response.status_code})",
+            "recognized": False,
+            "outcome": "rejected",
+        }
+    payload.setdefault("recognized", False)
+    payload.setdefault("outcome", "rejected")
+    return payload
 
 
 @bot.message_handler(commands=["start", "help"])
@@ -58,8 +85,9 @@ def help_command(message: Message):
     bot.reply_to(
         message,
         "Бот апелляций AvaPay.\n\n"
-        "В группе мерчанта: /init <uuid контрагента>\n"
-        "Затем отправьте сообщение с чеком (фото или файл) и ID заявки в тексте.",
+        "1. В BotFather отключите Group Privacy (иначе бот не видит фото в группе)\n"
+        "2. В группе мерчанта: /init <uuid контрагента>\n"
+        "3. Отправьте фото чека с ID заявки в подписи (caption)",
     )
 
 
@@ -112,23 +140,57 @@ def handle_text(message: Message):
 
 @bot.message_handler(content_types=["photo", "document"])
 def handle_receipt(message: Message):
+    logger.info(
+        "receipt chat_id=%s message_id=%s caption=%r",
+        message.chat.id,
+        message.message_id,
+        message.caption or "",
+    )
+
     downloaded = _download_file(message)
     if downloaded is None:
         bot.reply_to(message, "Прикрепите чек как фото или файл (изображение/PDF).")
         return
 
     file_bytes, filename = downloaded
-    ok, reply, skip = backend_process_message(
-        chat_id=message.chat.id,
-        message_id=message.message_id,
-        text=message.caption or message.text or "",
-        file_bytes=file_bytes,
-        filename=filename,
-    )
-    if skip:
+    try:
+        payload = backend_process_message(
+            chat_id=message.chat.id,
+            message_id=message.message_id,
+            text=message.caption or message.text or "",
+            file_bytes=file_bytes,
+            filename=filename,
+        )
+    except requests.RequestException as exc:
+        logger.exception("backend request failed")
+        _set_reaction(message.chat.id, message.message_id, "👎")
+        bot.reply_to(message, f"Отклонена: нет связи с API ({exc})")
         return
-    bot.reply_to(message, reply)
+
+    if payload.get("skip"):
+        return
+
+    recognized = bool(payload.get("recognized"))
+    outcome = payload.get("outcome") or "rejected"
+    reply_text = payload.get("message") or ""
+
+    if recognized:
+        _set_reaction(message.chat.id, message.message_id, "👀")
+
+    if outcome == "success":
+        _set_reaction(message.chat.id, message.message_id, "👍")
+        bot.reply_to(message, reply_text or "Успех")
+    elif outcome == "partial":
+        bot.reply_to(message, reply_text)
+    else:
+        _set_reaction(message.chat.id, message.message_id, "👎")
+        bot.reply_to(message, reply_text or "Отклонена")
 
 
 if __name__ == "__main__":
+    if not TELEBOT_TOKEN:
+        raise SystemExit("TELEBOT_TOKEN is not set")
+    if not TGBOT_TOKEN:
+        logger.warning("TGBOT_TOKEN is empty — API calls will fail")
+    logger.info("Appeal bot starting, backend=%s", BACKEND_URL)
     bot.infinity_polling(timeout=30, long_polling_timeout=30)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from io import BytesIO
 
 from django.core.exceptions import ValidationError
@@ -17,6 +18,26 @@ from appeals.models import (
 )
 from payments.psp_payin import _psp_provider_for_trader, psp_external_reference
 from payments.utils import upload_receipt_storage
+
+
+@dataclass
+class AppealProcessResult:
+    ok: bool
+    message: str
+    recognized: bool = False
+    outcome: str = "rejected"  # success | rejected | partial
+
+
+def _reject(message: str, *, recognized: bool = False) -> AppealProcessResult:
+    return AppealProcessResult(ok=False, message=message, recognized=recognized, outcome="rejected")
+
+
+def _success(message: str, *, recognized: bool = True) -> AppealProcessResult:
+    return AppealProcessResult(ok=True, message=message, recognized=recognized, outcome="success")
+
+
+def _partial(message: str, *, recognized: bool = True) -> AppealProcessResult:
+    return AppealProcessResult(ok=True, message=message, recognized=recognized, outcome="partial")
 
 
 def get_chat_counterparty(chat_id: int) -> AppealTelegramChat | None:
@@ -133,30 +154,30 @@ def process_merchant_appeal_message(
     text: str,
     file_bytes: bytes,
     filename: str,
-) -> tuple[bool, str]:
+) -> AppealProcessResult:
     chat = get_chat_counterparty(chat_id)
     if chat is None:
-        return False, "Чат не зарегистрирован. Выполните /init <uuid контрагента>."
+        return _reject("Чат не зарегистрирован. Выполните /init <uuid контрагента>.")
     counterparty = chat.counterparty
     if counterparty.role != AppealCounterpartyRole.MERCHANT:
-        return False, "Этот чат зарегистрирован как провайдерский. Апелляции принимаются только из чата мерчанта."
+        return _reject("Этот чат зарегистрирован как провайдерский. Апелляции принимаются только из чата мерчанта.")
 
     if not file_bytes:
-        return False, "Прикрепите чек (фото или файл)."
+        return _reject("Прикрепите чек (фото или файл).")
 
     resolved = resolve_pay_in_from_message(text or "")
     if not resolved.ok:
-        return False, resolved.error_message
+        return _reject(resolved.error_message)
 
     pay_in = resolved.pay_in
     if counterparty.merchant_id and pay_in.merchant_id != counterparty.merchant_id:
-        return False, "Заявка не относится к этому мерчанту."
+        return _reject("Заявка не относится к этому мерчанту.", recognized=True)
 
     if PayInAppeal.objects.filter(
         pay_in=pay_in,
         status__in=[PayInAppealStatus.CREATED, PayInAppealStatus.SENT_TO_PROVIDER],
     ).exists():
-        return False, "Апелляция по этой заявке уже создана."
+        return _reject("Апелляция по этой заявке уже создана.", recognized=True)
 
     receipt_url = _upload_receipt(file_bytes, str(pay_in.id), filename or "receipt")
     order = pay_in.order
@@ -192,9 +213,9 @@ def process_merchant_appeal_message(
             f"trader={trader_username or '—'}"
         )
         appeal.save(update_fields=["status", "error_message"])
-        return True, (
+        return _partial(
             f"Апелляция создана (ID {appeal.id}), но чат провайдера не настроен "
-            f"({psp_provider or 'локальный трейдер'})."
+            f"({psp_provider or trader_username or 'локальный трейдер'})."
         )
 
     from appeals.telegram_out import send_receipt_to_provider_chat
@@ -210,7 +231,7 @@ def process_merchant_appeal_message(
         appeal.status = PayInAppealStatus.FAILED
         appeal.error_message = sent.error or "Не удалось отправить в чат провайдера"
         appeal.save(update_fields=["status", "error_message"])
-        return True, f"Апелляция создана, но не отправлена провайдеру: {sent.error}"
+        return _partial(f"Апелляция создана, но не отправлена провайдеру: {sent.error}")
 
     appeal.status = PayInAppealStatus.SENT_TO_PROVIDER
     appeal.provider_chat_id = provider_chat.telegram_chat_id
@@ -218,4 +239,4 @@ def process_merchant_appeal_message(
     appeal.save(update_fields=["status", "provider_chat_id", "provider_message_id"])
 
     ext_hint = f" ({provider_external_id})" if provider_external_id else ""
-    return True, f"Апелляция создана и отправлена провайдеру{ext_hint}."
+    return _success(f"Успех{ext_hint}")

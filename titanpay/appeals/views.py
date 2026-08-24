@@ -1,5 +1,6 @@
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from appeals.services import init_telegram_chat, process_merchant_appeal_message
@@ -28,6 +29,7 @@ def init_chat(request):
 
 
 @api_view(["POST"])
+@parser_classes([MultiPartParser, FormParser])
 @permission_classes([TgBotPermission])
 def process_message(request):
     chat_id = request.data.get("chat_id")
@@ -37,22 +39,45 @@ def process_message(request):
 
     if chat_id is None or message_id is None:
         return Response(
-            {"ok": False, "message": "Нужны chat_id и message_id."},
+            {"ok": False, "message": "Нужны chat_id и message_id.", "recognized": False, "outcome": "rejected"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
     if uploaded is None:
-        return Response({"ok": False, "skip": True, "message": ""}, status=status.HTTP_200_OK)
+        return Response(
+            {"ok": False, "skip": True, "message": "", "recognized": False, "outcome": "skip"},
+            status=status.HTTP_200_OK,
+        )
 
     file_bytes = uploaded.read()
     filename = uploaded.name or "receipt"
 
-    ok, message = process_merchant_appeal_message(
-        chat_id=int(chat_id),
-        message_id=int(message_id),
-        text=text,
-        file_bytes=file_bytes,
-        filename=filename,
+    try:
+        result = process_merchant_appeal_message(
+            chat_id=int(chat_id),
+            message_id=int(message_id),
+            text=text,
+            file_bytes=file_bytes,
+            filename=filename,
+        )
+    except Exception as exc:
+        return Response(
+            {
+                "ok": False,
+                "message": f"Ошибка сервера: {exc}",
+                "recognized": False,
+                "outcome": "rejected",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    code = status.HTTP_200_OK if result.ok else status.HTTP_400_BAD_REQUEST
+    return Response(
+        {
+            "ok": result.ok,
+            "message": result.message,
+            "recognized": result.recognized,
+            "outcome": result.outcome,
+        },
+        status=code,
     )
-    code = status.HTTP_200_OK if ok else status.HTTP_400_BAD_REQUEST
-    return Response({"ok": ok, "message": message}, status=code)

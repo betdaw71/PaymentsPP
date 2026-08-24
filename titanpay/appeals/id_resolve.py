@@ -80,6 +80,15 @@ def resolve_pay_in_from_message(text: str) -> ResolveResult:
             pay_ins.append(pay_in)
 
     if not pay_ins:
+        for line in (text or "").splitlines():
+            candidate = line.strip()
+            if not candidate or UUID_RE.search(candidate):
+                continue
+            pay_in = PayIn.objects.filter(merchant_order_id=candidate).select_related("merchant", "order").first()
+            if pay_in:
+                pay_ins.append(pay_in)
+
+    if not pay_ins:
         return ResolveResult(
             ok=False,
             error_code="not_found",
