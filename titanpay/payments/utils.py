@@ -39,6 +39,57 @@ def s3_configured() -> bool:
     return bool(BUCKET_NAME and S3_ENDPOINT and ACCESS_KEY and SECRET_S3_KEY)
 
 
+def _s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=S3_ENDPOINT,
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_S3_KEY,
+    )
+
+
+def s3_object_key_from_url(url: str) -> str | None:
+    if not url or not BUCKET_NAME:
+        return None
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    path = (parsed.path or "").lstrip("/")
+    if not path:
+        return None
+
+    if path.startswith(f"{BUCKET_NAME}/"):
+        return path[len(BUCKET_NAME) + 1 :]
+
+    if S3_ENDPOINT:
+        prefix = f"{S3_ENDPOINT.rstrip('/')}/{BUCKET_NAME}/"
+        if url.startswith(prefix):
+            return url[len(prefix) :]
+
+    host = (parsed.hostname or "").lower()
+    if host == f"{BUCKET_NAME}.storage.yandexcloud.net":
+        return path
+
+    return None
+
+
+def public_storage_url(url: str, *, expires_in: int = 3600) -> str:
+    """Публичная ссылка: presigned URL для приватного S3, иначе как есть."""
+    if not url:
+        return url
+    key = s3_object_key_from_url(url)
+    if not key or not s3_configured():
+        return url
+    try:
+        return _s3_client().generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": BUCKET_NAME, "Key": key},
+            ExpiresIn=expires_in,
+        )
+    except Exception:
+        return url
+
+
 def upload_to_s3(file, object_name):
     if not s3_configured():
         raise ValueError(

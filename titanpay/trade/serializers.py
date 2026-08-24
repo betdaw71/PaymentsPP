@@ -139,7 +139,7 @@ class InOrderTraderFullSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class InOrderTraderBossListSerializer(serializers.ModelSerializer):
@@ -201,7 +201,45 @@ class InOrderTraderBossFullSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        return _attach_pic_url(representation, instance)
+
+
+def _attach_psp_reference(representation: dict, in_order) -> dict:
+    from payments.models import PayIn
+    from payments.psp_payin import psp_external_reference
+
+    pay_in = PayIn.objects.filter(order_id=in_order.pk).first()
+    representation["pay_in_id"] = str(pay_in.id) if pay_in else ""
+    ref = psp_external_reference(pay_in) if pay_in else None
+    representation["psp_provider"] = ref["psp_provider"] if ref else ""
+    representation["psp_provider_order_id"] = ref["psp_provider_order_id"] if ref else ""
+    return representation
+
+
+def _attach_pic_url(representation: dict, instance) -> dict:
+    from payments.models import PayIn
+    from payments.utils import public_storage_url
+
+    pic = (getattr(instance, "pic", None) or "").strip()
+    if not pic:
+        pay_in = PayIn.objects.filter(order_id=instance.pk).first()
+        if pay_in:
+            try:
+                from appeals.models import PayInAppeal
+
+                appeal = (
+                    PayInAppeal.objects.filter(pay_in=pay_in)
+                    .exclude(receipt_url="")
+                    .order_by("-created_at")
+                    .first()
+                )
+                if appeal:
+                    pic = appeal.receipt_url
+            except Exception:
+                pass
+    if pic:
+        representation["pic"] = public_storage_url(pic)
+    return representation
 
 
 class InOrderSupportListSerializer(serializers.ModelSerializer):
@@ -236,7 +274,7 @@ class InOrderSupportListSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        return _attach_psp_reference(representation, instance)
 
 
 class InOrderSupportSerializer(serializers.ModelSerializer):
@@ -273,7 +311,8 @@ class InOrderSupportSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        representation = _attach_psp_reference(representation, instance)
+        return _attach_pic_url(representation, instance)
 
 
 class InOrderMerchantListSerializer(serializers.ModelSerializer):
@@ -317,7 +356,7 @@ class InOrderMerchantSerializer(serializers.ModelSerializer):
         representation['traffic_type'] = instance.solution.traffic.name
         representation['customer_id'] = instance.pay_in.get().client.client_id
         # representation['customer_id'] = "000303033"
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class InOrderTeamLeadSerializer(serializers.ModelSerializer):
@@ -391,7 +430,7 @@ class OutOrderTraderFullSerializer(serializers.ModelSerializer):
         representation['traffic_type'] = instance.solution.traffic.name
         representation['owner'] = instance.payment_details.group.owner
         representation['expires_at'] = (instance.solution.payment_system.expired_time_out + instance.creation_date).timestamp()
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderTraderBossListSerializer(serializers.ModelSerializer):
@@ -436,7 +475,7 @@ class OutOrderTraderBossFullSerializer(serializers.ModelSerializer):
         representation['trader'] = instance.payment_details.group.trader.user.username if instance.payment_details is not None else None
         representation['owner'] = instance.payment_details.group.owner if instance.payment_details is not None else None
         representation['expires_at'] = (instance.solution.payment_system.expired_time_out + instance.creation_date).timestamp()
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderSupportListSerializer(serializers.ModelSerializer):
@@ -491,7 +530,7 @@ class OutOrderSupportSerializer(serializers.ModelSerializer):
         representation['customer_id'] = instance.pay_out.get().client.client_id if instance.pay_out.exists() else None
         representation['expires_at'] = (instance.solution.payment_system.expired_time_out + instance.creation_date).timestamp()
 
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderMerchantListSerializer(serializers.ModelSerializer):
@@ -513,7 +552,7 @@ class OutOrderMerchantListSerializer(serializers.ModelSerializer):
         representation['traffic_type'] = instance.solution.traffic.name
         # representation['customer_id'] = instance.pay_out.get().client.client_id
         # representation['customer_id'] = "000303033"
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderMerchantSerializer(serializers.ModelSerializer):
@@ -535,7 +574,7 @@ class OutOrderMerchantSerializer(serializers.ModelSerializer):
         representation['traffic_type'] = instance.solution.traffic.name
         representation['customer_id'] = instance.pay_out.get().client.client_id if instance.pay_out.exists() else None
         # representation['customer_id'] = "000303033"
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderTeamLeadSerializer(serializers.ModelSerializer):
