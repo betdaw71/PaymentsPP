@@ -312,7 +312,19 @@ class PayInInvoiceInProgressSerializer(serializers.ModelSerializer):
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
         representation['waiting_confirmation'] = True
         representation['order_status'] = instance.order.status.name if instance.order and instance.order.status else None
-        return representation
+        from payments.psp_payin import enrich_payin_payment_details as enrich_psp, requisite_for_payin
+
+        req = requisite_for_payin(instance)
+        if req:
+            representation['payment_details'] = req
+        elif instance.order and instance.order.payment_details is not None:
+            serializer_cls = get_in_ps_serializer(instance.payment_system.name)
+            representation['payment_details'] = (
+                serializer_cls(instance.order.payment_details).data if serializer_cls else {}
+            )
+        else:
+            representation['payment_details'] = {}
+        return enrich_psp(representation, instance)
 
 
 class PayInInvoiceSuccessSerializer(serializers.ModelSerializer):

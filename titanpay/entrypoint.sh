@@ -16,6 +16,7 @@ python manage.py migrate --no-input
 
 echo "=== Collecting static files ==="
 python manage.py collectstatic --no-input --clear
+python manage.py diagnose_payment_page_deploy || true
 
 echo "=== Killing old gunicorn processes ==="
 pkill -f gunicorn || true

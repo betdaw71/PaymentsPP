@@ -1,16 +1,7 @@
 """Подсказки с картинками для платёжной страницы (KZT)."""
 from __future__ import annotations
 
-from django.conf import settings
-
-KASPI_GUIDE_STATIC_PATH = "/static/payment_page/kaspi-international-transfers-guide.png"
-
-
-def kaspi_guide_image_url() -> str:
-    base = (getattr(settings, "PUBLIC_API_URL", None) or "").rstrip("/")
-    if base:
-        return f"{base}{KASPI_GUIDE_STATIC_PATH}"
-    return KASPI_GUIDE_STATIC_PATH
+from payments.payment_page_assets import kaspi_guide_public_url
 
 
 def build_bank_guides(
@@ -47,7 +38,7 @@ def build_bank_guides(
     return [
         {
             "id": "kaspi_international",
-            "image_url": kaspi_guide_image_url(),
+            "image_url": kaspi_guide_public_url(),
             "title": title,
             "caption": caption,
         }
