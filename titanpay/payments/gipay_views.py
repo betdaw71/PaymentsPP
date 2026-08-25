@@ -11,7 +11,11 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from payments.gipay_client import gipay_webhook_outcome, verify_webhook_signature
+from payments.gipay_client import (
+    gipay_webhook_outcome,
+    verify_webhook_signature,
+    webhook_signature_debug_hint,
+)
 from payments.models import GipayPayInSession, PayIn
 from payments.payin_trace import Direction, trace_log
 from payments.psp_payin import complete_inorder_from_psp_webhook
@@ -30,11 +34,29 @@ class GipayWebhookView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
+    def _extract_signature(self, request) -> str | None:
+        for key in ("Signature", "X-Signature", "x-signature"):
+            value = request.headers.get(key)
+            if value:
+                return value
+        for meta_key in ("HTTP_SIGNATURE", "HTTP_X_SIGNATURE"):
+            value = request.META.get(meta_key)
+            if value:
+                return value
+        return None
+
     def post(self, request, *args, **kwargs):
         raw_body = request.body or b""
-        signature = request.headers.get("Signature") or request.META.get("HTTP_SIGNATURE")
+        signature = self._extract_signature(request)
         if not verify_webhook_signature(raw_body, signature):
-            logger.warning("GiPay webhook: invalid signature")
+            logger.warning(
+                "GiPay webhook: invalid signature hint=%s headers=%s",
+                webhook_signature_debug_hint(raw_body, signature),
+                {
+                    "Signature": bool(request.headers.get("Signature") or request.META.get("HTTP_SIGNATURE")),
+                    "X-Signature": bool(request.headers.get("X-Signature") or request.META.get("HTTP_X_SIGNATURE")),
+                },
+            )
             return Response({"ok": False, "error": "invalid_signature"}, status=status.HTTP_403_FORBIDDEN)
 
         try:

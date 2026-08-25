@@ -66,15 +66,81 @@ def _headers(body: str) -> dict[str, str]:
     }
 
 
+def _normalize_received_signature(signature: str | None) -> str | None:
+    sig = (signature or "").strip()
+    if not sig:
+        return None
+    if sig.lower().startswith("sha256="):
+        sig = sig.split("=", 1)[1].strip()
+    return sig.lower() or None
+
+
+def _webhook_signing_keys() -> list[str]:
+    keys: list[str] = []
+    for val in (_secret_key(), _api_key()):
+        if val and val not in keys:
+            keys.append(val)
+    extra = (getattr(settings, "GIPAY_WEBHOOK_SIGNING_KEYS", None) or "").strip()
+    for part in extra.split(","):
+        part = part.strip()
+        if part and part not in keys:
+            keys.append(part)
+    return keys
+
+
+def _webhook_body_candidates(raw_body: bytes) -> list[bytes]:
+    candidates = [raw_body]
+    try:
+        text = raw_body.decode("utf-8")
+    except UnicodeDecodeError:
+        return candidates
+    if text:
+        candidates.append(text.encode("utf-8"))
+        try:
+            obj = json.loads(text)
+            if isinstance(obj, dict):
+                canonical = json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+                canonical_bytes = canonical.encode("utf-8")
+                if canonical_bytes not in candidates:
+                    candidates.append(canonical_bytes)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return candidates
+
+
+def _hmac_sha256_hex(key: str, message: bytes) -> str:
+    return hmac.new(key.encode("utf-8"), message, hashlib.sha256).hexdigest().lower()
+
+
 def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
+    sig = _normalize_received_signature(signature)
+    if not sig:
+        return False
     if getattr(settings, "GIPAY_WEBHOOK_SKIP_VERIFY", False):
         logger.warning("GiPay webhook: GIPAY_WEBHOOK_SKIP_VERIFY is enabled")
         return True
-    secret = _secret_key()
-    if not secret or not signature:
+    keys = _webhook_signing_keys()
+    if not keys:
         return False
-    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(signature.strip(), expected)
+    for key in keys:
+        for message in _webhook_body_candidates(raw_body):
+            if hmac.compare_digest(sig, _hmac_sha256_hex(key, message)):
+                return True
+    return False
+
+
+def webhook_signature_debug_hint(raw_body: bytes, signature: str | None) -> str:
+    sig = _normalize_received_signature(signature)
+    if not sig:
+        return "no_signature_header"
+    keys = _webhook_signing_keys()
+    if not keys:
+        return "no_signing_keys_configured"
+    expected = _hmac_sha256_hex(keys[0], raw_body)
+    return (
+        f"recv={sig[:12]}… expected_raw={expected[:12]}… "
+        f"key_len={len(keys[0])} keys_tried={len(keys)} body_len={len(raw_body)}"
+    )
 
 
 def _request(

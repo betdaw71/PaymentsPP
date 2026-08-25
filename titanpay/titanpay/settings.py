@@ -318,6 +318,8 @@ GIPAY_ASSET_OR_BANK = os.getenv('GIPAY_ASSET_OR_BANK', '')
 GIPAY_DEFAULT_PAYER_IP = os.getenv('GIPAY_DEFAULT_PAYER_IP', '127.0.0.1')
 GIPAY_PAYER_USER_ID_FROM_CLIENT = os.getenv('GIPAY_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 GIPAY_WEBHOOK_SKIP_VERIFY = os.getenv('GIPAY_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+# Доп. ключи для проверки Signature (через запятую), если в ЛК отдельный signing secret
+GIPAY_WEBHOOK_SIGNING_KEYS = os.getenv('GIPAY_WEBHOOK_SIGNING_KEYS', '')
 
 # Protocol PSP (prot0col.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/protocol/)
 PROTOCOL_API_BASE = os.getenv('PROTOCOL_API_BASE', 'https://prot0col.com').rstrip('/')
