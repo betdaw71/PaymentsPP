@@ -178,7 +178,4 @@ def run(password: str = DEFAULT_PASSWORD) -> dict:
     return result
 
 
-if __name__ == "__main__":
-    run()
-else:
-    print("Запустите: run()")
+run()
