@@ -49,12 +49,41 @@ PS_NAME = "C2CKZT"
 def ensure_virtual_group(trader, currency, payment_system, traffic, label: str):
     group = PaymentDetailsGroup.objects.filter(trader=trader, payment_system=payment_system, currency=currency).first()
     if group:
-        if group.status != 1 or not group.in_active:
+        changed = False
+        if group.status != 1:
             group.status = 1
+            changed = True
+        if not group.in_active:
             group.in_active = True
+            changed = True
+        if group.amount < Decimal("999999"):
             group.amount = Decimal("999999")
-            group.save(update_fields=["status", "in_active", "amount"])
-        print(f"  ~ virtual group {label} ({group.id})")
+            changed = True
+        if changed:
+            group.save()
+        if not group.allowed_traffic.filter(pk=traffic.pk).exists():
+            group.allowed_traffic.add(traffic)
+        cards = PaymentDetails.objects.filter(
+            group=group,
+            status=1,
+            sberpay_enabled=False,
+            sbp_enabled=False,
+            card_number__isnull=False,
+        ).count()
+        if cards == 0:
+            card = "4" + uuid.uuid4().hex[:15]
+            card = "".join(c for c in card if c.isdigit())[:16].ljust(16, "0")
+            PaymentDetails.objects.create(
+                group=group,
+                status=1,
+                amount=Decimal("999999"),
+                card_number=card,
+                deposit_number=str(uuid.uuid4().int % 10**20).zfill(20),
+                sberpay_enabled=False,
+                sbp_enabled=False,
+            )
+            print(f"  + virtual card for group {group.id}")
+        print(f"  ~ virtual group {label} ({group.id}) status={group.status} in_active={group.in_active}")
         return
     group = PaymentDetailsGroup.objects.create(
         owner=f"{GROUP_OWNER} {label}",
