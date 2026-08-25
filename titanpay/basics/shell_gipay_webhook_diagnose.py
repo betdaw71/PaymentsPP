@@ -20,7 +20,7 @@ try:
 except ImportError:
     def webhook_signature_debug_hint(raw_body, signature):  # type: ignore[no-redef]
         return "update app image (git pull + rebuild)"
-from payments.models import GipayPayInSession, PayIn, PayInTrace
+from payments.models import GipayPayInSession, PayIn, PayInTraceLog
 from payments.payin_trace import Direction
 
 PAYIN_ID = (os.environ.get("PAYIN_ID") or "").strip()
