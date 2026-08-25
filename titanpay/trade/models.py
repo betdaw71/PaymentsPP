@@ -266,6 +266,13 @@ class InOrder(models.Model):
         InOrderStatusChange.create(order=self, status=status)
         self.save()
 
+        try:
+            from appeals.notify import resolve_pending_appeals_for_order
+            resolve_pending_appeals_for_order(self, approved=True)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("appeal approve notify failed order=%s", self.id)
+
     def automatically_complete(self, sms, balance=None):
         if self.status.name != "Money sent by user" and self.status.name != "New" and self.status.name != "Arbitrage":
             raise ValidationError({"error": f"Current status is {self.status.name}"})
@@ -616,7 +623,7 @@ class InOrder(models.Model):
         InOrderStatusChange.create(order=self, status=status)
 
     def arbitrage_expired(self):
-        if self.status.name != "Money sent by user":
+        if self.status.name not in ("Money sent by user", "New"):
             raise ValidationError({
                 'error': 'Wrong method is used. This method is for changing status to "Arbitrage"'})
         status = InOrderStatus.objects.get(name="Arbitrage")
@@ -644,13 +651,6 @@ class InOrder(models.Model):
             self.payment_details.group.status = 1
             self.payment_details.group.save()
         self.complete()
-
-        try:
-            from appeals.notify import resolve_pending_appeals_for_order
-            resolve_pending_appeals_for_order(self, approved=True)
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception("appeal approve notify failed order=%s", self.id)
 
     def cancel_order(self):
         if self.status.name != "New":

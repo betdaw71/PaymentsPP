@@ -167,7 +167,7 @@ def _try_order_arbitrage(order) -> None:
     try:
         if status_name in {"Cancelled", "Expired", "Cancelled by support", "Cancelled by trader"}:
             order.arbitrage()
-        elif status_name == "Money sent by user":
+        elif status_name in {"Money sent by user", "New"}:
             order.arbitrage_expired()
     except ValidationError:
         pass
