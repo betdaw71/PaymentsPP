@@ -67,7 +67,19 @@ def run() -> None:
             client=client,
         )
         decline_payin(pay_in, send_callback=False)
-        print("ERROR: routing failed — no requisites (trader USDT freeze / inactive group)")
+        active = InOrder.objects.filter(
+            status__name__in=["New", "Money sent by user"],
+            amount=AMOUNT,
+            solution__payment_system=sol.payment_system,
+        ).exclude(pk=in_order.pk)
+        print("ERROR: routing failed — Cannot process")
+        if active.exists():
+            print(f"  likely cause: {active.count()} active order(s) on same amount {AMOUNT} block the card")
+            for o in active[:5]:
+                print(f"    stuck: {o.id} status={o.status.name} moid={o.merchant_order_id}")
+            print(f"  try: TEST_AMOUNT={AMOUNT + 1} or expire/cancel stuck orders")
+        else:
+            print("  likely cause: USDT freeze failed or no free card in group")
         print("PayIn declined:", pay_in.id)
         return
 

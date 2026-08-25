@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from basics.models import PaymentDetails, PaymentDetailsGroup, PaymentSystem, TraderTeamRates
 from merchant.models import Merchant, MerchantSolution
+from trade.models import InOrder
 from trade.routing.base import route
 from trade.routing.routeutils import get_teams_for_ps
 from trade.utils import choose_trader_in
@@ -142,8 +143,42 @@ class Command(BaseCommand):
                 for issue in issues:
                     self.stdout.write(self.style.WARNING(f"      → {issue}"))
 
-        detail, _, _, ok = choose_trader_in(amount, ps, traffic, [], 0)
-        self.stdout.write(self.style.HTTP_INFO(f"\nchoose_trader_in → {'OK group ' + str(detail.group_id) if ok else 'Cannot process'}"))
+        active_orders = InOrder.objects.filter(
+            status__name__in=["New", "Money sent by user"],
+            amount=amount,
+            solution__payment_system=ps,
+        )
+        active_n = active_orders.count()
+        if active_n:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"\nактивных заявок на сумму {amount} ({ps.name}): {active_n} "
+                    "(блокируют карту при той же сумме — не PSP)"
+                )
+            )
+            for o in active_orders.select_related("status", "payment_details__group__trader__user")[:10]:
+                trader = (
+                    o.payment_details.group.trader.user.username
+                    if o.payment_details and o.payment_details.group
+                    else "—"
+                )
+                self.stdout.write(f"  • {o.id} status={o.status.name} trader={trader} moid={o.merchant_order_id}")
+
+        detail, _, _, ok = choose_trader_in(
+            amount, ps, traffic, active_orders, 0, merchant=merchant,
+        )
+        self.stdout.write(
+            self.style.HTTP_INFO(
+                f"\nchoose_trader_in → {'OK group ' + str(detail.group_id) if ok else 'Cannot process'}"
+            )
+        )
+        if not ok and active_n:
+            self.stdout.write(self.style.ERROR(
+                "\nВероятная причина: все карты заняты активными заявками на эту сумму.\n"
+                "  • Дождитесь expire/cancel старых заявок, или\n"
+                "  • Создайте pay-in с другой суммой (например amount+1), или\n"
+                "  • Добавьте ещё PaymentDetails в группу трейдера."
+            ))
         if not ok:
             self.stdout.write(self.style.ERROR(
                 "\nФикс на сервере:\n"
