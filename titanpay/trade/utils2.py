@@ -182,8 +182,13 @@ def expire():
         arbitrage_orders_in = InOrder.objects.filter(status__name="Arbitrage", amount__lte=ps.auto_close_amount, solution__payment_system=ps, updated_date__lte=arb_time_out)
 
         for order in expired_in_orders:
-            with transaction.atomic():
-                order.deal_time_expired()
+            try:
+                with transaction.atomic():
+                    locked = InOrder.objects.select_for_update().get(pk=order.pk)
+                    if locked.status and locked.status.name == "New":
+                        locked.deal_time_expired()
+            except Exception:
+                logging.exception("expire: failed to expire InOrder %s", order.pk)
 
         for order in expired_out_orders:
             with transaction.atomic():
@@ -264,8 +269,19 @@ def build_orders_excel_buffer(queryset, *, for_merchant: bool = False, payment_f
 
     data = list(queryset.values(*value_fields))
 
+    pay_in_ids = [str(item.get(payment_fk_id_field)) for item in data if item.get(payment_fk_id_field)]
+    if payment_fk_id_field == 'pay_in__id':
+        from payments.psp_payin import psp_external_references_for_pay_in_ids
+
+        psp_refs = psp_external_references_for_pay_in_ids(pay_in_ids)
+    else:
+        psp_refs = {}
+
     for item in data:
         item[payment_column_key] = item.pop(payment_fk_id_field, None)
+        ref = psp_refs.get(str(item.get(payment_column_key) or ""), {})
+        item["psp_provider"] = ref.get("psp_provider", "")
+        item["psp_provider_order_id"] = ref.get("psp_provider_order_id", "")
         if item['creation_date']:
             item['creation_date'] = item['creation_date'].astimezone(pytz.utc).replace(tzinfo=None)
         if not for_merchant:
@@ -286,6 +302,8 @@ def build_orders_excel_buffer(queryset, *, for_merchant: bool = False, payment_f
         'merchant_order_id': 'Merchant order ID',
         'solution__payment_system__name': 'Платёжная система',
         'creation_date': 'Дата создания',
+        'psp_provider': 'PSP',
+        'psp_provider_order_id': 'ID заявки PSP',
     }
     if not for_merchant:
         column_mapping.update({

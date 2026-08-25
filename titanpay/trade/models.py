@@ -792,6 +792,23 @@ class InOrderStatusChange(models.Model):
     created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     @classmethod
+    def _sync_pay_in_for_status(cls, order: InOrder, status: InOrderStatus) -> None:
+        pay_in = order.pay_in.order_by("-created_at").first()
+        if pay_in is None:
+            logging.getLogger(__name__).warning(
+                "InOrder %s status=%s: no linked PayIn — skip pay_in sync",
+                order.id,
+                status.name,
+            )
+            return
+        if status.name == "Completed":
+            pay_in.success()
+        elif status.name in ["Money sent by user", "Arbitrage", "Recalculation", "New"]:
+            pay_in.in_progress()
+        else:
+            pay_in.failed()
+
+    @classmethod
     def create(cls, order: InOrder, status: InOrderStatus):
         last_change = cls.objects.filter(order=order)
 
@@ -804,12 +821,7 @@ class InOrderStatusChange(models.Model):
         status_change_obj = cls(status=status, order=order, timedelta=timedelta)
         status_change_obj.save()
 
-        if status.name == "Completed":
-            order.pay_in.get().success()
-        elif status.name in ["Money sent by user", "Arbitrage", "Recalculation", "New"]:
-            order.pay_in.get().in_progress()
-        else:
-            order.pay_in.get().failed()
+        cls._sync_pay_in_for_status(order, status)
         return status_change_obj
 
 
