@@ -38,6 +38,9 @@ class Direction:
     BOTONPAY_OUT_REQUEST = "botonpay_out_request"
     BOTONPAY_OUT_RESPONSE = "botonpay_out_response"
     BOTONPAY_WEBHOOK = "botonpay_webhook"
+    GIPAY_OUT_REQUEST = "gipay_out_request"
+    GIPAY_OUT_RESPONSE = "gipay_out_response"
+    GIPAY_WEBHOOK = "gipay_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 

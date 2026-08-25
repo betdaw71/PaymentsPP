@@ -55,9 +55,13 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
     if pay_in:
         return pay_in
 
-    from payments.models import BotonpayPayInSession
+    from payments.models import BotonpayPayInSession, GipayPayInSession
 
     session = BotonpayPayInSession.objects.filter(provider_deal_uuid=str(parsed)).select_related("pay_in").first()
+    if session and session.pay_in_id:
+        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
+
+    session = GipayPayInSession.objects.filter(provider_payment_id=str(parsed)).select_related("pay_in").first()
     if session and session.pay_in_id:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 

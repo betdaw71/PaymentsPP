@@ -10,6 +10,7 @@ from payments.models import (
     ConcoredPayInSession,
     ExpayonePayInSession,
     FairpayPayInSession,
+    GipayPayInSession,
     PayIn,
     PayInTraceLog,
     PaymapPayInSession,
@@ -96,6 +97,7 @@ class Command(BaseCommand):
             ("ExpayOne", ExpayonePayInSession),
             ("FairPay", FairpayPayInSession),
             ("Protocol", ProtocolPayInSession),
+            ("GiPay", GipayPayInSession),
             ("Concored", ConcoredPayInSession),
             ("PayMap", PaymapPayInSession),
             ("Bitzone", BitzonePayInSession),
@@ -121,6 +123,12 @@ class Command(BaseCommand):
                         f"disputeTrader={wh.get('disputeTraderFiatAmount')} "
                         f"disputeMerchant={wh.get('disputeMerchantFiatAmount')}"
                     )
+            elif label == "BotonPay":
+                from payments.psp_payin import _botonpay_deal_uuid_from_session
+
+                self.stdout.write(f"  platform_pay_in:  {getattr(s, 'external_id', '')}")
+                self.stdout.write(f"  botonpay_deal_id: {_botonpay_deal_uuid_from_session(s)}")
+                self.stdout.write(f"  last_status:      {getattr(s, 'last_notified_status', '')}")
             cr = s.create_response or {}
             self.stdout.write(json.dumps(cr, ensure_ascii=False, indent=2, default=str)[:4000])
 
@@ -206,6 +214,7 @@ class Command(BaseCommand):
             ExpayonePayInSession,
             FairpayPayInSession,
             ProtocolPayInSession,
+            GipayPayInSession,
             ConcoredPayInSession,
             PaymapPayInSession,
             BitzonePayInSession,

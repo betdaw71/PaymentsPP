@@ -41,6 +41,7 @@ def is_psp_trader(trader) -> bool:
     from payments import plutus_client as plc2
     from payments import syndicate_client as syc
     from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
 
     return (
         fc.is_fairpay_trader(trader)
@@ -53,6 +54,7 @@ def is_psp_trader(trader) -> bool:
         or plc2.is_plutus_trader(trader)
         or syc.is_syndicate_trader(trader)
         or bpc.is_botonpay_trader(trader)
+        or gpc.is_gipay_trader(trader)
     )
 
 
@@ -288,6 +290,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
     from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
 
     names = {
         fc.fairpay_trader_username(),
@@ -300,6 +303,7 @@ def psp_trader_usernames() -> frozenset[str]:
         pltc.plutus_trader_username(),
         syc.syndicate_trader_username(),
         bpc.botonpay_trader_username(),
+        gpc.gipay_trader_username(),
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -345,6 +349,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
     from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
 
     for getter in (
         fc.fairpay_requisite_for_payin,
@@ -357,6 +362,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         pltc.plutus_requisite_for_payin,
         syc.syndicate_requisite_for_payin,
         bpc.botonpay_requisite_for_payin,
+        gpc.gipay_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -375,6 +381,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
     from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
@@ -385,7 +392,8 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = bzc.enrich_payin_payment_details(representation, pay_in)
     representation = pltc.enrich_payin_payment_details(representation, pay_in)
     representation = syc.enrich_payin_payment_details(representation, pay_in)
-    return bpc.enrich_payin_payment_details(representation, pay_in)
+    representation = bpc.enrich_payin_payment_details(representation, pay_in)
+    return gpc.enrich_payin_payment_details(representation, pay_in)
 
 
 def payin_routed_group(pay_in: Any):
@@ -424,9 +432,12 @@ def _psp_provider_for_trader(trader):
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
     from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
+    if gpc.is_gipay_trader(trader):
+        return "gipay", gpc.try_attach_gipay_session
     if ec.is_expayone_trader(trader):
         return "expayone", ec.try_attach_expayone_session
     if bpc.is_botonpay_trader(trader):
@@ -621,6 +632,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
     from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
@@ -632,6 +644,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     pltc.plutus_cancel_if_linked(pay_in)
     syc.syndicate_cancel_if_linked(pay_in)
     bpc.botonpay_cancel_if_linked(pay_in)
+    gpc.gipay_cancel_if_linked(pay_in)
 
 
 def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
@@ -861,6 +874,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         PlutusPayInSession,
         SyndicatePayInSession,
         ProtocolPayInSession,
+        GipayPayInSession,
     )
 
     order = getattr(pay_in, "order", None)
@@ -871,6 +885,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         ExpayonePayInSession,
         FairpayPayInSession,
         ProtocolPayInSession,
+        GipayPayInSession,
         PlaymentsPayInSession,
         ConcoredPayInSession,
         PaymapPayInSession,
@@ -909,6 +924,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         PlutusPayInSession,
         SyndicatePayInSession,
         ProtocolPayInSession,
+        GipayPayInSession,
     )
 
     code = classify_payin_decline(pay_in)
@@ -922,6 +938,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (ExpayonePayInSession, "expayone"),
         (FairpayPayInSession, "fairpay"),
         (ProtocolPayInSession, "protocol"),
+        (GipayPayInSession, "gipay"),
         (PlaymentsPayInSession, "playments"),
         (ConcoredPayInSession, "concored"),
         (PaymapPayInSession, "paymap"),
@@ -972,6 +989,7 @@ _PSP_SESSION_PROVIDER_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("payments.models.ExpayonePayInSession", "expayone", "provider_order_id"),
     ("payments.models.FairpayPayInSession", "fairpay", "provider_order_id"),
     ("payments.models.ProtocolPayInSession", "protocol", "provider_payment_id"),
+    ("payments.models.GipayPayInSession", "gipay", "provider_payment_id"),
     ("payments.models.PlaymentsPayInSession", "playments", "provider_deposit_id"),
     ("payments.models.ConcoredPayInSession", "concored", "provider_payment_id"),
     ("payments.models.PaymapPayInSession", "paymap", "provider_invoice_id"),

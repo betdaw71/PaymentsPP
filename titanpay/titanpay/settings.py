@@ -307,6 +307,18 @@ EXPAYONE_GATEWAY_MAP = os.getenv('EXPAYONE_GATEWAY_MAP', '')
 # C2C/KZT: POST /api/h2h/order с currency=kzt (без payment_gateway), см. доку ExpayOne
 EXPAYONE_USE_CURRENCY_FOR_C2C = os.getenv('EXPAYONE_USE_CURRENCY_FOR_C2C', 'true').lower() in ('true', '1', 'yes')
 
+# GiPay PSP (gipay.org, Aggrepay API v2, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/gipay/)
+GIPAY_API_BASE = os.getenv('GIPAY_API_BASE', 'https://gipay.org').rstrip('/')
+GIPAY_MERCHANT_ID = os.getenv('GIPAY_MERCHANT_ID', '')
+GIPAY_SECRET_KEY = os.getenv('GIPAY_SECRET_KEY', '')
+GIPAY_API_KEY = os.getenv('GIPAY_API_KEY', '')
+GIPAY_TRADER_USERNAME = os.getenv('GIPAY_TRADER_USERNAME', 'gipay1')
+GIPAY_PAYIN_METHOD = os.getenv('GIPAY_PAYIN_METHOD', 'kztg')
+GIPAY_ASSET_OR_BANK = os.getenv('GIPAY_ASSET_OR_BANK', '')
+GIPAY_DEFAULT_PAYER_IP = os.getenv('GIPAY_DEFAULT_PAYER_IP', '127.0.0.1')
+GIPAY_PAYER_USER_ID_FROM_CLIENT = os.getenv('GIPAY_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
+GIPAY_WEBHOOK_SKIP_VERIFY = os.getenv('GIPAY_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+
 # Protocol PSP (prot0col.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/protocol/)
 PROTOCOL_API_BASE = os.getenv('PROTOCOL_API_BASE', 'https://prot0col.com').rstrip('/')
 PROTOCOL_MERCHANT_ID = os.getenv('PROTOCOL_MERCHANT_ID', '')

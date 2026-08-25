@@ -29,6 +29,7 @@ from payments.bitzone_views import bitzone_webhook_view
 from payments.plutus_views import plutus_webhook_view
 from payments.syndicate_views import syndicate_webhook_view
 from payments.botonpay_views import botonpay_webhook_view
+from payments.gipay_views import GipayWebhookView
 from payments.payment_page import payment_page, payment_page_redirect
 from payments.payment_page_assets import serve_payment_page_asset
 from basics.security_txt import security_txt
@@ -63,6 +64,7 @@ urlpatterns = [
     path('api/v1/webhooks/psp/plutus/', plutus_webhook_view, name='webhook-plutus'),
     path('api/v1/webhooks/psp/syndicate/', syndicate_webhook_view, name='webhook-syndicate'),
     path('api/v1/webhooks/psp/botonpay/', botonpay_webhook_view, name='webhook-botonpay'),
+    path('api/v1/webhooks/psp/gipay/', GipayWebhookView.as_view(), name='webhook-gipay'),
     path('prometheus-X60iSjSJB4PA2mdqDnA1mRBZbmGpapdMpwZ6L29c', include('django_prometheus.urls')),
     path(
         "payment-page-assets/<str:filename>",
