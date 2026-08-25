@@ -4,7 +4,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 
 from payments.bank_guides import build_bank_guides
-from payments.payment_page_assets import kaspi_guide_public_url
+from payments.payment_page_assets import kaspi_guide_public_url, payment_page_public_base
 from payments.receipt_policy import receipt_required_for_payin
 
 
@@ -26,7 +26,11 @@ class Command(BaseCommand):
             / "kaspi-international-transfers-guide.png"
         )
         checks.append(("kaspi png in repo", asset.is_file()))
-        checks.append(("kaspi asset URL", bool(kaspi_guide_public_url())))
+        guide_url = kaspi_guide_public_url()
+        checks.append(("kaspi asset URL", bool(guide_url)))
+        checks.append(
+            ("kaspi URL on pay host", "api." not in guide_url or "pay." in guide_url),
+        )
 
         guides = build_bank_guides(currency="KZT", locale="ru", bank_actions=[{"id": "kaspi", "label": "Kaspi"}])
         checks.append(("build_bank_guides KZT", len(guides) == 1))
@@ -38,7 +42,8 @@ class Command(BaseCommand):
             self.stdout.write(f"  [{mark}] {name}")
             ok = ok and passed
 
-        self.stdout.write(f"\n  kaspi_guide_url: {kaspi_guide_public_url()}")
+        self.stdout.write(f"\n  payment_page_base: {payment_page_public_base()}")
+        self.stdout.write(f"  kaspi_guide_url: {kaspi_guide_public_url()}")
         self.stdout.write(f"  asset_bytes: {asset.stat().st_size if asset.is_file() else 0}")
 
         sample = checks and ok

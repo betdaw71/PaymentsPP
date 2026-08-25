@@ -25,7 +25,15 @@ def serve_payment_page_asset(request, filename: str):
     return response
 
 
+def payment_page_public_base() -> str:
+    """Базовый URL хоста платёжной страницы (pay.{domain}), не API."""
+    page_domain = (getattr(settings, "PAYMENT_PAGE_URL", None) or "").strip().strip("/")
+    if page_domain:
+        return f"https://pay.{page_domain}"
+    return (getattr(settings, "PUBLIC_API_URL", None) or "").rstrip("/")
+
+
 def kaspi_guide_public_url() -> str:
-    base = (getattr(settings, "PUBLIC_API_URL", None) or "").rstrip("/")
     path = "/payment-page-assets/kaspi-international-transfers-guide.png"
+    base = payment_page_public_base()
     return f"{base}{path}" if base else path

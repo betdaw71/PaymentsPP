@@ -321,7 +321,10 @@
       guides.forEach((guide) => {
         let imgSrc = guide.image_url || "";
         if (imgSrc && !/^https?:\/\//i.test(imgSrc)) {
-          imgSrc = API_BASE.replace(/\/$/, "") + (imgSrc.startsWith("/") ? imgSrc : "/" + imgSrc);
+          imgSrc = window.location.origin + (imgSrc.startsWith("/") ? imgSrc : "/" + imgSrc);
+        } else if (imgSrc && /api\.avapay\./i.test(imgSrc)) {
+          // legacy obtain: картинка на pay-хосте, не на api
+          imgSrc = imgSrc.replace(/^https?:\/\/api\./i, window.location.protocol + "//pay.");
         }
         const block = document.createElement("div");
         block.className = "bank-guide";
