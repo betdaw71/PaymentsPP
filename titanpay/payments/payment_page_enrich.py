@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from payments.bank_deeplinks import build_bank_actions, build_transfer_clipboard
+from payments.bank_guides import build_bank_guides
 from payments.integrations.melbet.mapping import sender_bank_for_melbet_method
 from payments.models import PayIn
 from payments.receipt_policy import has_receipt_for_payin, receipt_required_for_payin
@@ -50,8 +51,13 @@ def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = N
             payment_details=pd,
             locale=locale,
         )
+        data["bank_guides"] = build_bank_guides(
+            currency=currency,
+            locale=locale,
+        )
     else:
         data.setdefault("bank_actions", [])
         data.setdefault("clipboard_text", "")
+        data.setdefault("bank_guides", [])
 
     return data

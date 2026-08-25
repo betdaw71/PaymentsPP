@@ -73,6 +73,16 @@
     .error { color: #fca5a5; text-align: center; padding: 24px; }
     .hidden { display: none !important; }
     .bank-actions { margin: 12px 0; }
+    .bank-guide {
+      margin: 16px 0; padding: 14px; border: 1px solid var(--border);
+      border-radius: 12px; background: #111827;
+    }
+    .bank-guide-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    .bank-guide-caption { font-size: 12px; color: var(--muted); line-height: 1.45; margin-bottom: 12px; }
+    .bank-guide-image {
+      display: block; width: 100%; max-width: 320px; margin: 0 auto;
+      border-radius: 12px; border: 1px solid var(--border);
+    }
     .receipt-box {
       margin: 16px 0; padding: 14px; border: 1px dashed var(--border);
       border-radius: 12px; background: #111827;
@@ -105,6 +115,7 @@
           <span class="timer-value" id="timer">—</span>
         </div>
         <div id="details"></div>
+        <div id="bank-guides"></div>
         <div class="bank-actions" id="bank-actions"></div>
         <div class="receipt-box hidden" id="receipt-box">
           <div class="receipt-label" id="txt-receipt-label"></div>
@@ -298,6 +309,24 @@
       return html || `<p class="hint">${t("noReq")}</p>`;
     }
 
+    function renderBankGuides(data) {
+      const box = document.getElementById("bank-guides");
+      box.innerHTML = "";
+      const guides = data.bank_guides || [];
+      if (!guides.length) return;
+
+      guides.forEach((guide) => {
+        const block = document.createElement("div");
+        block.className = "bank-guide";
+        block.innerHTML = `
+          <div class="bank-guide-title">${guide.title || ""}</div>
+          <div class="bank-guide-caption">${guide.caption || ""}</div>
+          <img class="bank-guide-image" src="${guide.image_url}" alt="${guide.title || ""}" loading="lazy">
+        `;
+        box.appendChild(block);
+      });
+    }
+
     function renderBankActions(data) {
       const box = document.getElementById("bank-actions");
       box.innerHTML = "";
@@ -407,6 +436,7 @@
       document.getElementById("amount-line").textContent = fmtAmount(data.amount, data.currency);
       document.getElementById("ps-line").textContent = data.payment_system || "";
       document.getElementById("details").innerHTML = renderDetails(data.payment_details);
+      renderBankGuides(data);
       renderBankActions(data);
       setupReceiptUi(data);
       wireCopyButtons();
