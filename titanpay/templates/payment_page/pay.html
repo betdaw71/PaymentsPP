@@ -177,6 +177,7 @@
         okTitle: "Төлем сәтті", okMsg: "Дүкен сайтына бағыттауда…",
         failTitle: "Төлем орындалмады", failDeclined: "Төлем қабылданбады", failMsg: "Бағыттауда…",
         noReq: "Реквизиттер уақытша жоқ", notFound: "Төлем табылмады",
+        noReqTitle: "Төлем қолжетімсіз", noReqMsg: "Реквизиттер берілмеді. Жаңа төлем сұраңыз.",
         sentErr: "Растау сәтсіз", cancelErr: "Болдырмау қатесі",
         bankSection: "Банк қосымшасы",
         receiptLabel: "Төлем чегі",
@@ -199,6 +200,7 @@
         okTitle: "Оплата успешна", okMsg: "Перенаправляем на сайт магазина…",
         failTitle: "Платёж не выполнен", failDeclined: "Платёж отклонён", failMsg: "Перенаправляем…",
         noReq: "Реквизиты временно недоступны", notFound: "Платёж не найден",
+        noReqTitle: "Платёж недоступен", noReqMsg: "Реквизиты не выданы. Создайте новый платёж.",
         sentErr: "Не удалось подтвердить оплату", cancelErr: "Ошибка отмены",
         bankSection: "Приложение банка",
         receiptLabel: "Чек об оплате",
@@ -429,6 +431,14 @@
       if (data.waiting_confirmation || data.pending_verification || wasSent()) {
         show("wait-screen");
         startPolling();
+        return;
+      }
+
+      if (data.requisites_available === false) {
+        show("fail-screen");
+        document.getElementById("fail-title").textContent = t("noReqTitle");
+        document.getElementById("fail-msg").textContent = t("noReqMsg");
+        if (data.failed_url) window.location.href = data.failed_url;
         return;
       }
 

@@ -23,6 +23,17 @@ def resolve_locale(pay_in: PayIn, lang_hint: str | None = None) -> str:
     return "ru"
 
 
+def _requisites_available(data: dict, pay_in: PayIn) -> bool:
+    status_name = pay_in.status.name if pay_in.status else ""
+    if status_name in ("Declined", "Failed"):
+        return False
+    order_status = pay_in.order.status.name if pay_in.order and pay_in.order.status else ""
+    if order_status == "Cannot process":
+        return False
+    pd = data.get("payment_details") or {}
+    return bool(pd.get("card_number") or pd.get("phone") or pd.get("deposit_number"))
+
+
 def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = None) -> dict:
     locale = locale or resolve_locale(pay_in)
     currency = data.get("currency") or (pay_in.currency.symbol if pay_in.currency else "")
@@ -36,6 +47,7 @@ def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = N
     data["pending_verification"] = order_status in ("Money sent by user", "Arbitrage")
     data["receipt_required"] = receipt_required_for_payin(pay_in)
     data["receipt_uploaded"] = has_receipt_for_payin(pay_in)
+    data["requisites_available"] = _requisites_available(data, pay_in)
 
     if pd and data.get("status") not in ("Success", "Failed", "Declined"):
         data["bank_actions"] = build_bank_actions(
