@@ -19,7 +19,7 @@
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_setup_lunatrix_plutus_c2ckzttest_routing.py
 
 Проверка:
-  docker compose exec -T app python manage.py diagnose_routing lunatrixpay --ps C2CKZTTEST --amount 100 --ftd false
+  docker compose exec -T app python manage.py diagnose_routing lunatrixpay --ps C2CKZTTEST --amount 5000 --ftd false
 
 Создать сделку:
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_create_lunatrix_plutus_c2ckzttest_payin.py
@@ -114,10 +114,10 @@ def run() -> None:
     print(f"  • Pay-in: merchant={MERCHANT_USERNAME}, payment_system={PS_NAME}, currency=KZT")
     print(
         f"  • diagnose: python manage.py diagnose_routing {MERCHANT_USERNAME} "
-        f"--ps {PS_NAME} --amount 100 --ftd false"
+        f"--ps {PS_NAME} --amount 5000 --ftd false"
     )
     print("  • create: shell_create_lunatrix_plutus_c2ckzttest_payin.py")
-    print("  • sandbox Plutus: сумма 100 → автоколбек ~5 с (если PLUTUS_API_KEY=th_sandbox_...)")
+    print("  • sandbox Plutus: th_sandbox_... + сумма 100 (нужен min_limit_in<=100 у lunatrix)")
 
 
 run()
