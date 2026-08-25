@@ -312,6 +312,18 @@
       return html || `<p class="hint">${t("noReq")}</p>`;
     }
 
+    function guideImageSrc(guide) {
+      const raw = (guide && guide.image_url) || "";
+      const assetPath = "/payment-page-assets/kaspi-international-transfers-guide.png";
+      let path = assetPath;
+      if (raw.includes("/payment-page-assets/")) {
+        path = raw.replace(/^https?:\/\/[^/]+/i, "");
+      } else if (raw && !/^https?:\/\//i.test(raw)) {
+        path = raw.startsWith("/") ? raw : "/" + raw;
+      }
+      return window.location.origin + path;
+    }
+
     function renderBankGuides(data) {
       const box = document.getElementById("bank-guides");
       box.innerHTML = "";
@@ -319,13 +331,7 @@
       if (!guides.length) return;
 
       guides.forEach((guide) => {
-        let imgSrc = guide.image_url || "";
-        if (imgSrc && !/^https?:\/\//i.test(imgSrc)) {
-          imgSrc = window.location.origin + (imgSrc.startsWith("/") ? imgSrc : "/" + imgSrc);
-        } else if (imgSrc && /api\.avapay\./i.test(imgSrc)) {
-          // legacy obtain: картинка на pay-хосте, не на api
-          imgSrc = imgSrc.replace(/^https?:\/\/api\./i, window.location.protocol + "//pay.");
-        }
+        const imgSrc = guideImageSrc(guide);
         const block = document.createElement("div");
         block.className = "bank-guide";
         block.innerHTML = `
@@ -333,6 +339,13 @@
           <div class="bank-guide-caption">${guide.caption || ""}</div>
           <img class="bank-guide-image" src="${imgSrc}" alt="${guide.title || ""}" loading="lazy">
         `;
+        const img = block.querySelector("img");
+        img.addEventListener("error", () => {
+          if (img.dataset.fallback) return;
+          img.dataset.fallback = "1";
+          const apiBase = API_BASE.replace(/\/$/, "");
+          img.src = apiBase + "/payment-page-assets/kaspi-international-transfers-guide.png";
+        });
         box.appendChild(block);
       });
     }

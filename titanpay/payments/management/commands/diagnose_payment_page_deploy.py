@@ -29,7 +29,7 @@ class Command(BaseCommand):
         guide_url = kaspi_guide_public_url()
         checks.append(("kaspi asset URL", bool(guide_url)))
         checks.append(
-            ("kaspi URL on pay host", "api." not in guide_url or "pay." in guide_url),
+            ("kaspi URL is relative path", guide_url.startswith("/payment-page-assets/")),
         )
 
         guides = build_bank_guides(currency="KZT", locale="ru", bank_actions=[{"id": "kaspi", "label": "Kaspi"}])

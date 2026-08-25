@@ -33,7 +33,10 @@ def payment_page_public_base() -> str:
     return (getattr(settings, "PUBLIC_API_URL", None) or "").rstrip("/")
 
 
+def kaspi_guide_asset_path() -> str:
+    return "/payment-page-assets/kaspi-international-transfers-guide.png"
+
+
 def kaspi_guide_public_url() -> str:
-    path = "/payment-page-assets/kaspi-international-transfers-guide.png"
-    base = payment_page_public_base()
-    return f"{base}{path}" if base else path
+    """Относительный путь — браузер грузит с того же хоста, что и pay-страница."""
+    return kaspi_guide_asset_path()
