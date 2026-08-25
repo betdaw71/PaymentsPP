@@ -4,6 +4,7 @@ from __future__ import annotations
 from payments.bank_deeplinks import build_bank_actions, build_transfer_clipboard
 from payments.integrations.melbet.mapping import sender_bank_for_melbet_method
 from payments.models import PayIn
+from payments.receipt_policy import has_receipt_for_payin, receipt_required_for_payin
 
 
 def _sender_bank_for_payin(pay_in: PayIn) -> str | None:
@@ -32,6 +33,8 @@ def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = N
     data["locale"] = locale
     data["order_status"] = order_status
     data["pending_verification"] = order_status in ("Money sent by user", "Arbitrage")
+    data["receipt_required"] = receipt_required_for_payin(pay_in)
+    data["receipt_uploaded"] = has_receipt_for_payin(pay_in)
 
     if pd and data.get("status") not in ("Success", "Failed", "Declined"):
         data["bank_actions"] = build_bank_actions(

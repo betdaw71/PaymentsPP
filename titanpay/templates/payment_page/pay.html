@@ -73,6 +73,15 @@
     .error { color: #fca5a5; text-align: center; padding: 24px; }
     .hidden { display: none !important; }
     .bank-actions { margin: 12px 0; }
+    .receipt-box {
+      margin: 16px 0; padding: 14px; border: 1px dashed var(--border);
+      border-radius: 12px; background: #111827;
+    }
+    .receipt-box.has-file { border-color: var(--ok); border-style: solid; }
+    .receipt-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .receipt-file { width: 100%; font-size: 13px; color: var(--text); }
+    .receipt-name { margin-top: 8px; font-size: 13px; color: var(--ok); word-break: break-all; }
+    .receipt-hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -97,6 +106,12 @@
         </div>
         <div id="details"></div>
         <div class="bank-actions" id="bank-actions"></div>
+        <div class="receipt-box hidden" id="receipt-box">
+          <div class="receipt-label" id="txt-receipt-label"></div>
+          <input type="file" class="receipt-file" id="receipt-file" accept="image/*,application/pdf">
+          <div class="receipt-name hidden" id="receipt-name"></div>
+          <div class="receipt-hint" id="txt-receipt-hint"></div>
+        </div>
         <p class="hint" id="txt-hint"></p>
         <button class="btn btn-primary" id="btn-sent"></button>
         <button class="btn btn-ghost" id="btn-cancel"></button>
@@ -131,6 +146,9 @@
 
     let locale = localStorage.getItem(`pay_locale_${PAY_IN_ID}`) || DEFAULT_LOCALE;
     let pollTimer = null, countdownTimer = null;
+    let receiptRequired = false;
+    let receiptUploaded = false;
+    let selectedReceiptFile = null;
 
     const I18N = {
       kk: {
@@ -150,6 +168,10 @@
         noReq: "Реквизиттер уақытша жоқ", notFound: "Төлем табылмады",
         sentErr: "Растау сәтсіз", cancelErr: "Болдырмау қатесі",
         bankSection: "Банк қосымшасы",
+        receiptLabel: "Төлем чегі",
+        receiptHint: "Банк қосымшасынан скриншот немесе PDF жүктеңіз, содан кейін «Төледім» басыңыз.",
+        receiptRequired: "Алдымен чек жүктеңіз",
+        receiptUploaded: "Чек жүктелді",
       },
       ru: {
         loading: "Загрузка платежа…",
@@ -168,6 +190,10 @@
         noReq: "Реквизиты временно недоступны", notFound: "Платёж не найден",
         sentErr: "Не удалось подтвердить оплату", cancelErr: "Ошибка отмены",
         bankSection: "Приложение банка",
+        receiptLabel: "Чек об оплате",
+        receiptHint: "Загрузите скриншот или PDF из банковского приложения, затем нажмите «Я оплатил».",
+        receiptRequired: "Сначала прикрепите чек",
+        receiptUploaded: "Чек прикреплён",
       },
     };
 
@@ -202,6 +228,48 @@
       document.getElementById("txt-wait-msg").textContent = t("waitMsg");
       document.getElementById("txt-ok-title").textContent = t("okTitle");
       document.getElementById("txt-ok-msg").textContent = t("okMsg");
+    }
+
+    function updateSentButtonState() {
+      const btn = document.getElementById("btn-sent");
+      if (!receiptRequired) {
+        btn.disabled = false;
+        return;
+      }
+      btn.disabled = !(receiptUploaded || selectedReceiptFile);
+    }
+
+    function setupReceiptUi(data) {
+      receiptRequired = Boolean(data.receipt_required);
+      receiptUploaded = Boolean(data.receipt_uploaded);
+      const box = document.getElementById("receipt-box");
+      const fileInput = document.getElementById("receipt-file");
+      const nameEl = document.getElementById("receipt-name");
+
+      if (!receiptRequired) {
+        box.classList.add("hidden");
+        selectedReceiptFile = null;
+        updateSentButtonState();
+        return;
+      }
+
+      box.classList.remove("hidden");
+      document.getElementById("txt-receipt-label").textContent = t("receiptLabel");
+      document.getElementById("txt-receipt-hint").textContent = t("receiptHint");
+
+      if (receiptUploaded) {
+        box.classList.add("has-file");
+        nameEl.textContent = t("receiptUploaded");
+        nameEl.classList.remove("hidden");
+        fileInput.classList.add("hidden");
+      } else {
+        box.classList.remove("has-file");
+        nameEl.classList.add("hidden");
+        fileInput.classList.remove("hidden");
+        fileInput.value = "";
+        selectedReceiptFile = null;
+      }
+      updateSentButtonState();
     }
 
     function fmtAmount(amount, currency) {
@@ -340,6 +408,7 @@
       document.getElementById("ps-line").textContent = data.payment_system || "";
       document.getElementById("details").innerHTML = renderDetails(data.payment_details);
       renderBankActions(data);
+      setupReceiptUi(data);
       wireCopyButtons();
       if (data.expires_at) startCountdown(data.expires_at);
     }
@@ -372,13 +441,44 @@
       }, 3000);
     }
 
+    document.getElementById("receipt-file").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      selectedReceiptFile = file || null;
+      const nameEl = document.getElementById("receipt-name");
+      const box = document.getElementById("receipt-box");
+      if (selectedReceiptFile) {
+        box.classList.add("has-file");
+        nameEl.textContent = selectedReceiptFile.name;
+        nameEl.classList.remove("hidden");
+      } else {
+        box.classList.remove("has-file");
+        nameEl.classList.add("hidden");
+      }
+      updateSentButtonState();
+    });
+
     document.getElementById("btn-sent").onclick = async () => {
       const btn = document.getElementById("btn-sent");
+      if (receiptRequired && !receiptUploaded && !selectedReceiptFile) {
+        alert(t("receiptRequired"));
+        return;
+      }
       btn.disabled = true;
       try {
-        const res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, {
-          method: "POST", headers: apiHeaders(),
-        });
+        let res;
+        if (selectedReceiptFile) {
+          const form = new FormData();
+          form.append("file", selectedReceiptFile);
+          res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, {
+            method: "POST",
+            headers: apiHeaders(),
+            body: form,
+          });
+        } else {
+          res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, {
+            method: "POST", headers: apiHeaders(),
+          });
+        }
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.details || err.error || t("sentErr"));
@@ -389,7 +489,7 @@
       } catch (e) {
         alert(e.message);
       } finally {
-        btn.disabled = false;
+        updateSentButtonState();
       }
     };
 

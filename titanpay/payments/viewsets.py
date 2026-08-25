@@ -17,6 +17,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from payments.models import Currency, PayIn, PaymentSystem, APIKeys
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from basics.paginators import StandardResultsSetPagination
 from payments.utils import upload_to_s3
 from trade.models import OutOrder, TransactionType, Transaction, InOrder
@@ -25,6 +26,15 @@ from trade.utils import get_client_ip
 from payments.serializers import PaymentSystemMerchantSerializer
 from django.db import transaction
 from payments.psp_payin import cancel_psp_if_linked
+
+RECEIPT_CONTENT_TYPES = frozenset({
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+})
 
 
 class APIKeysViewset(viewsets.ModelViewSet):
@@ -118,11 +128,42 @@ class PayInInvoiceViewset(viewsets.ModelViewSet):  # for redirect
 
         return wrap_merchant_payin_create(self, request, *args, **kwargs)
 
-    @action(detail=True, methods=['POST'], url_path='sent', permission_classes=[])
+    @action(detail=True, methods=['POST'], url_path='sent', permission_classes=[], parser_classes=[MultiPartParser, FormParser])
     def sent(self, request, id=None):
         if not PayIn.objects.filter(id=id).exists():
             return Response(status=status.HTTP_404_NOT_FOUND, data={'details': 'Order not found'})
-        pay_in = PayIn.objects.get(id=id)
+        pay_in = PayIn.objects.select_related(
+            "order__status", "currency", "payment_system"
+        ).get(id=id)
+
+        from payments.receipt_policy import has_receipt_for_payin, receipt_required_for_payin
+        from appeals.services import process_payment_page_receipt
+
+        uploaded = request.FILES.get("file")
+        receipt_required = receipt_required_for_payin(pay_in)
+        if receipt_required and not has_receipt_for_payin(pay_in) and uploaded is None:
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST,
+                data={"error": "receipt_required", "details": "Прикрепите чек об оплате."},
+            )
+
+        if uploaded is not None:
+            content_type = (uploaded.content_type or "").lower()
+            if content_type not in RECEIPT_CONTENT_TYPES:
+                return Response(
+                    status=status.HTTP_400_BAD_REQUEST,
+                    data={"error": "Unsupported file type. Use PNG, JPEG, WEBP or PDF."},
+                )
+            result = process_payment_page_receipt(
+                pay_in=pay_in,
+                file_bytes=uploaded.read(),
+                filename=uploaded.name or "receipt.jpg",
+            )
+            if not result.ok and result.outcome not in ("pending", "partial"):
+                return Response(
+                    status=status.HTTP_400_BAD_REQUEST,
+                    data={"details": result.message},
+                )
 
         try:
             with transaction.atomic():
@@ -135,7 +176,7 @@ class PayInInvoiceViewset(viewsets.ModelViewSet):  # for redirect
                 data=e.detail
             )
 
-        return Response(status=status.HTTP_200_OK, data={'success': True})
+        return Response(status=status.HTTP_200_OK, data={'success': True, 'receipt_uploaded': True})
 
     @transaction.atomic
     @action(detail=True, methods=['POST'], url_path='arbitrage', permission_classes=[])

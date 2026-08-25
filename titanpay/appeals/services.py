@@ -173,6 +173,117 @@ def _try_order_arbitrage(order) -> None:
         pass
 
 
+def _psp_meta_for_pay_in(pay_in):
+    ext = psp_external_reference(pay_in) or {}
+    psp_provider = ext.get("psp_provider") or _psp_provider_for_pay_in(pay_in)
+    trader_username = _trader_username_for_pay_in(pay_in)
+    provider_external_id = ext.get("psp_provider_order_id") or ""
+    return psp_provider, trader_username, provider_external_id
+
+
+def _forward_appeal_to_provider(
+    *,
+    appeal: PayInAppeal,
+    pay_in,
+    file_bytes: bytes,
+    filename: str,
+    psp_provider: str,
+    provider_external_id: str,
+    trader_username: str,
+) -> AppealProcessResult:
+    provider_chat = _provider_chat(psp_provider=psp_provider, trader_username=trader_username)
+    if provider_chat is None:
+        appeal.status = PayInAppealStatus.NO_PROVIDER_CHAT
+        appeal.error_message = (
+            f"Нет Telegram-чата провайдера для PSP={psp_provider or '—'}, "
+            f"trader={trader_username or '—'}"
+        )
+        appeal.save(update_fields=["status", "error_message"])
+        return _partial(
+            f"Апелляция создана (ID {appeal.id}), но чат провайдера не настроен "
+            f"({psp_provider or trader_username or 'локальный трейдер'})."
+        )
+
+    from appeals.telegram_out import send_receipt_to_provider_chat
+
+    caption = _provider_caption(
+        pay_in=pay_in,
+        psp_provider=psp_provider,
+        provider_external_id=provider_external_id,
+    )
+    sent = send_receipt_to_provider_chat(
+        chat_id=provider_chat.telegram_chat_id,
+        file_bytes=file_bytes,
+        filename=filename or "receipt",
+        caption=caption,
+    )
+    if not sent.ok:
+        appeal.status = PayInAppealStatus.FAILED
+        appeal.error_message = sent.error or "Не удалось отправить в чат провайдера"
+        appeal.save(update_fields=["status", "error_message"])
+        return _partial(f"Апелляция создана, но не отправлена провайдеру: {sent.error}")
+
+    appeal.status = PayInAppealStatus.SENT_TO_PROVIDER
+    appeal.provider_chat_id = provider_chat.telegram_chat_id
+    appeal.provider_message_id = sent.message_id
+    appeal.save(update_fields=["status", "provider_chat_id", "provider_message_id"])
+    return _pending("Апелляция принята, ожидаем подтверждения.")
+
+
+@transaction.atomic
+def process_payment_page_receipt(
+    *,
+    pay_in,
+    file_bytes: bytes,
+    filename: str,
+) -> AppealProcessResult:
+    if not file_bytes:
+        return _reject("Прикрепите чек (фото или файл).")
+
+    order = pay_in.order
+    if order is None:
+        return _reject("Заявка без ордера.", recognized=True)
+
+    if order.status.name not in {"New", "Money sent by user"}:
+        return _reject("Неверный статус заявки.", recognized=True)
+
+    if PayInAppeal.objects.filter(
+        pay_in=pay_in,
+        status__in=[
+            PayInAppealStatus.CREATED,
+            PayInAppealStatus.SENT_TO_PROVIDER,
+        ],
+    ).exists():
+        return _pending("Чек уже отправлен.")
+
+    try:
+        receipt_url = _upload_receipt(file_bytes, str(pay_in.id), filename or "receipt")
+    except Exception as exc:
+        return _reject(f"Не удалось сохранить чек: {exc}", recognized=True)
+
+    _save_order_pic(order, receipt_url)
+
+    psp_provider, trader_username, provider_external_id = _psp_meta_for_pay_in(pay_in)
+    appeal = PayInAppeal.objects.create(
+        pay_in=pay_in,
+        in_order=order,
+        source=PayInAppealSource.PAYMENT_PAGE,
+        receipt_url=receipt_url,
+        status=PayInAppealStatus.CREATED,
+        psp_provider=psp_provider or "",
+        provider_external_id=provider_external_id,
+    )
+    return _forward_appeal_to_provider(
+        appeal=appeal,
+        pay_in=pay_in,
+        file_bytes=file_bytes,
+        filename=filename or "receipt",
+        psp_provider=psp_provider,
+        provider_external_id=provider_external_id,
+        trader_username=trader_username,
+    )
+
+
 @transaction.atomic
 def process_merchant_appeal_message(
     *,
@@ -219,10 +330,7 @@ def process_merchant_appeal_message(
 
     _try_order_arbitrage(order)
 
-    ext = psp_external_reference(pay_in) or {}
-    psp_provider = ext.get("psp_provider") or _psp_provider_for_pay_in(pay_in)
-    trader_username = _trader_username_for_pay_in(pay_in)
-    provider_external_id = ext.get("psp_provider_order_id") or ""
+    psp_provider, trader_username, provider_external_id = _psp_meta_for_pay_in(pay_in)
 
     appeal = PayInAppeal.objects.create(
         pay_in=pay_in,
@@ -237,41 +345,12 @@ def process_merchant_appeal_message(
         source_telegram_message_id=message_id,
     )
 
-    provider_chat = _provider_chat(psp_provider=psp_provider, trader_username=trader_username)
-    if provider_chat is None:
-        appeal.status = PayInAppealStatus.NO_PROVIDER_CHAT
-        appeal.error_message = (
-            f"Нет Telegram-чата провайдера для PSP={psp_provider or '—'}, "
-            f"trader={trader_username or '—'}"
-        )
-        appeal.save(update_fields=["status", "error_message"])
-        return _partial(
-            f"Апелляция создана (ID {appeal.id}), но чат провайдера не настроен "
-            f"({psp_provider or trader_username or 'локальный трейдер'})."
-        )
-
-    from appeals.telegram_out import send_receipt_to_provider_chat
-
-    caption = _provider_caption(
+    return _forward_appeal_to_provider(
+        appeal=appeal,
         pay_in=pay_in,
-        psp_provider=psp_provider,
-        provider_external_id=provider_external_id,
-    )
-    sent = send_receipt_to_provider_chat(
-        chat_id=provider_chat.telegram_chat_id,
         file_bytes=file_bytes,
         filename=filename or "receipt",
-        caption=caption,
+        psp_provider=psp_provider,
+        provider_external_id=provider_external_id,
+        trader_username=trader_username,
     )
-    if not sent.ok:
-        appeal.status = PayInAppealStatus.FAILED
-        appeal.error_message = sent.error or "Не удалось отправить в чат провайдера"
-        appeal.save(update_fields=["status", "error_message"])
-        return _partial(f"Апелляция создана, но не отправлена провайдеру: {sent.error}")
-
-    appeal.status = PayInAppealStatus.SENT_TO_PROVIDER
-    appeal.provider_chat_id = provider_chat.telegram_chat_id
-    appeal.provider_message_id = sent.message_id
-    appeal.save(update_fields=["status", "provider_chat_id", "provider_message_id"])
-
-    return _pending("Апелляция принята, ожидаем подтверждения.")
