@@ -108,7 +108,10 @@ def _request(
         note="GiPay API",
     )
     try:
-        r = requests.request(method, url, data=body.encode("utf-8"), headers=_headers(body), timeout=timeout)
+        if method.upper() == "GET":
+            r = requests.request(method, url, headers=_headers(body), timeout=timeout)
+        else:
+            r = requests.request(method, url, data=body.encode("utf-8"), headers=_headers(body), timeout=timeout)
     except requests.RequestException as exc:
         logger.exception("GiPay %s %s failed: %s", method, path, exc)
         trace_log(
@@ -149,15 +152,16 @@ def gipay_create_payment(
     callback_url: str | None = None,
     payer_user_id: str | None = None,
     payer_ip: str | None = None,
+    method: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
-    method = (getattr(settings, "GIPAY_PAYIN_METHOD", None) or "kztg").strip()
+    payin_method = (method or getattr(settings, "GIPAY_PAYIN_METHOD", None) or "kztg").strip()
     payload: dict[str, Any] = {
         "orderId": order_id,
         "merchantId": _merchant_id(),
         "amount": str(int(amount)) if amount == amount.to_integral_value() else str(amount),
         "currency": currency.upper(),
-        "method": method,
+        "method": payin_method,
         "callbackUri": callback_url or gipay_callback_url(),
         "payer": {
             "userId": payer_user_id or order_id,
@@ -168,6 +172,16 @@ def gipay_create_payment(
     if asset_or_bank:
         payload["assetOrBank"] = asset_or_bank
     return _request("POST", "/api/v2/payments", json_payload=payload, pay_in=pay_in)
+
+
+def gipay_get_methods(*, currency: str = "KZT") -> tuple[bool, dict[str, Any] | str]:
+    """GET /api/v2/methods?currency=KZT — какие method codes доступны мерчанту."""
+    cur = (currency or "KZT").strip().upper()
+    return _request("GET", f"/api/v2/methods?currency={cur}", json_payload={}, pay_in=None)
+
+
+def gipay_get_balance() -> tuple[bool, dict[str, Any] | str]:
+    return _request("GET", "/api/v2/balance", json_payload={}, pay_in=None)
 
 
 def _norm_state(raw: str | None) -> str:
