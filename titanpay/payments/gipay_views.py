@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from payments.gipay_client import (
     gipay_webhook_outcome,
+    resolve_gipay_webhook_session,
     verify_webhook_signature,
     webhook_signature_debug_hint,
 )
@@ -68,19 +69,7 @@ class GipayWebhookView(APIView):
         payment_id = body.get("id") or body.get("paymentId")
         outcome = gipay_webhook_outcome(body)
 
-        session = None
-        if order_id:
-            session = (
-                GipayPayInSession.objects.filter(external_id=str(order_id))
-                .select_related("pay_in", "pay_in__order")
-                .first()
-            )
-        if session is None and payment_id:
-            session = (
-                GipayPayInSession.objects.filter(provider_payment_id=str(payment_id))
-                .select_related("pay_in", "pay_in__order")
-                .first()
-            )
+        session = resolve_gipay_webhook_session(order_id=order_id, payment_id=payment_id)
 
         if session is None:
             logger.warning("GiPay webhook: session not found orderId=%s id=%s", order_id, payment_id)

@@ -254,6 +254,73 @@ def _norm_state(raw: str | None) -> str:
     return (raw or "").strip().lower()
 
 
+def resolve_gipay_webhook_session(
+    *,
+    order_id: str | None,
+    payment_id: str | None,
+) -> GipayPayInSession | None:
+    """Найти (или восстановить) GipayPayInSession по orderId / id из callback."""
+    from payments.models import GipayPayInSession, PayIn
+
+    oid = (order_id or "").strip()
+    pid = (payment_id or "").strip()
+
+    if oid:
+        session = (
+            GipayPayInSession.objects.filter(external_id=oid)
+            .select_related("pay_in", "pay_in__order")
+            .first()
+        )
+        if session is not None:
+            return session
+
+    if pid:
+        session = (
+            GipayPayInSession.objects.filter(provider_payment_id=pid)
+            .select_related("pay_in", "pay_in__order")
+            .first()
+        )
+        if session is not None:
+            return session
+
+    # GiPay иногда шлёт provider id в orderId (probe-*, g08e…)
+    if oid and oid.startswith("g") and len(oid) > 20:
+        session = (
+            GipayPayInSession.objects.filter(provider_payment_id=oid)
+            .select_related("pay_in", "pay_in__order")
+            .first()
+        )
+        if session is not None:
+            return session
+
+    if not oid:
+        return None
+
+    pay_in = PayIn.objects.filter(pk=oid).select_related("order__payment_details__group__trader").first()
+    if pay_in is None or pay_in.order is None or pay_in.order.payment_details is None:
+        return None
+    if not is_gipay_trader(pay_in.order.payment_details.group.trader):
+        return None
+
+    session, created = GipayPayInSession.objects.get_or_create(
+        pay_in=pay_in,
+        defaults={"external_id": str(pay_in.id), "create_response": {}, "last_webhook_payload": {}},
+    )
+    updates: list[str] = []
+    if str(session.external_id) != str(pay_in.id):
+        session.external_id = str(pay_in.id)
+        updates.append("external_id")
+    if pid and not session.provider_payment_id:
+        session.provider_payment_id = pid
+        updates.append("provider_payment_id")
+    if updates:
+        updates.append("updated_at")
+        session.save(update_fields=updates)
+    if created:
+        logger.info("GiPay webhook: recovered session for PayIn=%s orderId=%s", pay_in.id, oid)
+    return session
+
+
 def gipay_webhook_outcome(body: dict) -> str | None:
     """success | fail | None (ignore intermediate)."""
     state = _norm_state(body.get("state"))
