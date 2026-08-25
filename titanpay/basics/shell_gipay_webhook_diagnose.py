@@ -14,7 +14,12 @@ import os
 
 from django.conf import settings
 
-from payments.gipay_client import gipay_callback_url, verify_webhook_signature, webhook_signature_debug_hint
+from payments.gipay_client import gipay_callback_url, verify_webhook_signature
+try:
+    from payments.gipay_client import webhook_signature_debug_hint
+except ImportError:
+    def webhook_signature_debug_hint(raw_body, signature):  # type: ignore[no-redef]
+        return "update app image (git pull + rebuild)"
 from payments.models import GipayPayInSession, PayIn, PayInTrace
 from payments.payin_trace import Direction
 
