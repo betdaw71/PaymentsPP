@@ -6,8 +6,9 @@ Django shell: виртуальная группа payment_system=C2C (KZT) дл�
 
 Предварительно: gipay1 уже создан (shell_create_gipay_trader.py).
 
-В .env:
-  GIPAY_PAYIN_METHOD_MAP={"C2CKZT":"tgkz","C2C":"c2c"}
+В .env (опционально, по умолчанию оба PS → tgkz):
+  GIPAY_PAYIN_METHOD=tgkz
+  GIPAY_PAYIN_METHOD_MAP={"C2CKZT":"tgkz","C2C":"tgkz"}
 
 Запуск:
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_gipay_add_c2c_group.py
@@ -154,7 +155,7 @@ def run():
 
     print("")
     print("Done.")
-    print('  1) .env: GIPAY_PAYIN_METHOD_MAP={"C2CKZT":"tgkz","C2C":"c2c"}')
+    print('  1) .env: GIPAY_PAYIN_METHOD=tgkz (C2CKZT и C2C → method tgkz у GiPay)')
     print("  2) MerchantSolution у мерчанта: payment_system=C2C, currency=KZT")
     print("  3) diagnose: python manage.py diagnose_routing pandapay --ps C2C --amount 10000 --ftd false")
 

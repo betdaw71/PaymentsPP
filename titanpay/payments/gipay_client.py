@@ -41,7 +41,7 @@ def _parse_method_map() -> dict[str, str]:
 
 
 def gipay_payin_method_for(payment_system_name: str | None) -> str:
-    """GiPay method code по PaymentSystem: C2CKZT→tgkz, C2C→c2c (см. GET /api/v2/methods)."""
+    """GiPay method code: для KZT и C2CKZT, и C2C — tgkz (см. GET /api/v2/methods)."""
     ps_name = (payment_system_name or "").strip()
     mapped = _parse_method_map().get(ps_name)
     if mapped:

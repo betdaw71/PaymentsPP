@@ -12,7 +12,7 @@ API: Aggrepay v2 (POST /api/v2/payments), аналогично Protocol.
   GIPAY_API_KEY=...
   GIPAY_TRADER_USERNAME=gipay1
   GIPAY_PAYIN_METHOD=tgkz
-  GIPAY_PAYIN_METHOD_MAP={"C2CKZT":"tgkz","C2C":"c2c"}
+  GIPAY_PAYIN_METHOD_MAP={"C2CKZT":"tgkz","C2C":"tgkz"}
 
 Запуск:
   docker compose exec -T app python manage.py shell < basics/shell_create_gipay_trader.py
