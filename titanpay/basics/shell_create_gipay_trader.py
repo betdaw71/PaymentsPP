@@ -11,7 +11,8 @@ API: Aggrepay v2 (POST /api/v2/payments), аналогично Protocol.
   GIPAY_SECRET_KEY=...
   GIPAY_API_KEY=...
   GIPAY_TRADER_USERNAME=gipay1
-  GIPAY_PAYIN_METHOD=kztg
+  GIPAY_PAYIN_METHOD=tgkz
+  GIPAY_PAYIN_METHOD_MAP={"C2CKZT":"tgkz","C2C":"c2c"}
 
 Запуск:
   docker compose exec -T app python manage.py shell < basics/shell_create_gipay_trader.py
@@ -137,9 +138,10 @@ def run():
     print("Done.")
     print("  1) migrate (payments 0020_gipay_pay_in_session)")
     print("  2) Head support: controlled_teams → GiPay KZT")
-    print("  3) MerchantSolution: payment_system=C2CKZT, лимиты по договору")
-    print("  4) .env GIPAY_* + PUBLIC_API_URL; whitelist IP в ЛК merchant.gipay.net")
-    print("  5) Callback URL → https://api.avapay.net/api/v1/webhooks/psp/gipay/")
+    print("  3) C2C KZT: shell_gipay_add_c2c_group.py")
+    print("  4) MerchantSolution: payment_system=C2CKZT / C2C, лимиты по договору")
+    print("  5) .env GIPAY_* + PUBLIC_API_URL; whitelist IP в ЛК merchant.gipay.net")
+    print("  6) Callback URL → https://api.avapay.net/api/v1/webhooks/psp/gipay/")
 
 
 run()

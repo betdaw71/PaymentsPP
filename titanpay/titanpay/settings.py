@@ -314,6 +314,8 @@ GIPAY_SECRET_KEY = os.getenv('GIPAY_SECRET_KEY', '')
 GIPAY_API_KEY = os.getenv('GIPAY_API_KEY', '')
 GIPAY_TRADER_USERNAME = os.getenv('GIPAY_TRADER_USERNAME', 'gipay1')
 GIPAY_PAYIN_METHOD = os.getenv('GIPAY_PAYIN_METHOD', 'tgkz')
+# JSON: {"C2CKZT":"tgkz","C2C":"c2c"} — method в POST /api/v2/payments по PaymentSystem.name
+GIPAY_PAYIN_METHOD_MAP = os.getenv('GIPAY_PAYIN_METHOD_MAP', '')
 GIPAY_ASSET_OR_BANK = os.getenv('GIPAY_ASSET_OR_BANK', '')
 GIPAY_DEFAULT_PAYER_IP = os.getenv('GIPAY_DEFAULT_PAYER_IP', '127.0.0.1')
 GIPAY_PAYER_USER_ID_FROM_CLIENT = os.getenv('GIPAY_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')

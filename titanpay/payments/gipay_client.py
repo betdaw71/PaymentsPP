@@ -24,6 +24,31 @@ def is_gipay_trader(trader) -> bool:
     return trader.user.username == gipay_trader_username()
 
 
+def _parse_method_map() -> dict[str, str]:
+    raw = getattr(settings, "GIPAY_PAYIN_METHOD_MAP", None)
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return {str(k): str(v) for k, v in raw.items()}
+    try:
+        data = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        logger.warning("GIPAY_PAYIN_METHOD_MAP is not valid JSON")
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def gipay_payin_method_for(payment_system_name: str | None) -> str:
+    """GiPay method code по PaymentSystem: C2CKZT→tgkz, C2C→c2c (см. GET /api/v2/methods)."""
+    ps_name = (payment_system_name or "").strip()
+    mapped = _parse_method_map().get(ps_name)
+    if mapped:
+        return mapped.strip()
+    return (getattr(settings, "GIPAY_PAYIN_METHOD", None) or "tgkz").strip()
+
+
 def gipay_callback_url() -> str:
     explicit = (getattr(settings, "GIPAY_CALLBACK_URL", None) or "").strip().rstrip("/")
     if explicit:
@@ -405,6 +430,9 @@ def try_attach_gipay_session(pay_in: Any) -> bool | None:
         order_id=external_id,
         currency=currency_sym,
         payer_user_id=payer_user_id,
+        method=gipay_payin_method_for(
+            pay_in.payment_system.name if pay_in.payment_system else None
+        ),
         pay_in=pay_in,
     )
     if not ok:
