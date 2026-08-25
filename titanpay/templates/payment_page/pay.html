@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- pay-page: receipt-upload + kaspi-guide v2 -->
 <html lang="{{ default_locale|default:'ru' }}">
 <head>
   <meta charset="utf-8">
@@ -318,12 +319,16 @@
       if (!guides.length) return;
 
       guides.forEach((guide) => {
+        let imgSrc = guide.image_url || "";
+        if (imgSrc && !/^https?:\/\//i.test(imgSrc)) {
+          imgSrc = API_BASE.replace(/\/$/, "") + (imgSrc.startsWith("/") ? imgSrc : "/" + imgSrc);
+        }
         const block = document.createElement("div");
         block.className = "bank-guide";
         block.innerHTML = `
           <div class="bank-guide-title">${guide.title || ""}</div>
           <div class="bank-guide-caption">${guide.caption || ""}</div>
-          <img class="bank-guide-image" src="${guide.image_url}" alt="${guide.title || ""}" loading="lazy">
+          <img class="bank-guide-image" src="${imgSrc}" alt="${guide.title || ""}" loading="lazy">
         `;
         box.appendChild(block);
       });

@@ -66,6 +66,7 @@ def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = N
         data["bank_guides"] = build_bank_guides(
             currency=currency,
             locale=locale,
+            bank_actions=data.get("bank_actions"),
         )
     else:
         data.setdefault("bank_actions", [])
