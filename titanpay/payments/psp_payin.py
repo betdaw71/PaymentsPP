@@ -647,6 +647,15 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     gpc.gipay_cancel_if_linked(pay_in)
 
 
+def _norm_webhook_status(raw) -> str:
+  """PSP status field may be str, bool (GiPay: true/false), or absent — use state separately."""
+  if raw is None:
+    return ""
+  if isinstance(raw, bool):
+    return "true" if raw else "false"
+  return str(raw).strip().lower().replace("-", "_")
+
+
 def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
     """Фактически оплаченная сумма из callback PSP (Protocol: amount / result.amount)."""
     if not isinstance(body, dict):
@@ -661,7 +670,7 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
             return None
         return val if val > 0 else None
 
-    status = (body.get("status") or "").strip().lower().replace("-", "_")
+    status = _norm_webhook_status(body.get("status"))
     # Bitzone: после спора приходит re_calculation с фактической суммой в dispute* полях.
     if status in ("re_calculation", "recalculation", "closed", "dispute"):
         for key in ("disputeTraderFiatAmount", "disputeMerchantFiatAmount"):
@@ -724,7 +733,7 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
 def psp_webhook_is_recalculation(body: dict | None) -> bool:
     if not isinstance(body, dict):
         return False
-    status = (body.get("status") or "").strip().lower().replace("-", "_")
+    status = _norm_webhook_status(body.get("status"))
     return status in ("re_calculation", "recalculation")
 
 
