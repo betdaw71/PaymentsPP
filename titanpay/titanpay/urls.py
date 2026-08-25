@@ -64,6 +64,7 @@ urlpatterns = [
     path('api/v1/webhooks/psp/plutus/', plutus_webhook_view, name='webhook-plutus'),
     path('api/v1/webhooks/psp/syndicate/', syndicate_webhook_view, name='webhook-syndicate'),
     path('api/v1/webhooks/psp/botonpay/', botonpay_webhook_view, name='webhook-botonpay'),
+    path('api/v1/webhooks/psp/gipay', GipayWebhookView.as_view(), name='webhook-gipay-no-slash'),
     path('api/v1/webhooks/psp/gipay/', GipayWebhookView.as_view(), name='webhook-gipay'),
     path('prometheus-X60iSjSJB4PA2mdqDnA1mRBZbmGpapdMpwZ6L29c', include('django_prometheus.urls')),
     path(
