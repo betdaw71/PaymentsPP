@@ -44,6 +44,9 @@ class Direction:
     VISIONX_OUT_REQUEST = "visionx_out_request"
     VISIONX_OUT_RESPONSE = "visionx_out_response"
     VISIONX_WEBHOOK = "visionx_webhook"
+    PAYPLAT_OUT_REQUEST = "payplat_out_request"
+    PAYPLAT_OUT_RESPONSE = "payplat_out_response"
+    PAYPLAT_WEBHOOK = "payplat_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 

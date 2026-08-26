@@ -40,6 +40,7 @@ PROVIDERS = [
     {"name": "Protocol", "psp_provider": "protocol"},
     {"name": "GiPay", "psp_provider": "gipay"},
     {"name": "VisionX Pay", "psp_provider": "visionx"},
+    {"name": "PayPlat", "psp_provider": "payplat"},
 ]
 
 

@@ -55,7 +55,7 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
     if pay_in:
         return pay_in
 
-    from payments.models import BotonpayPayInSession, GipayPayInSession, VisionxPayInSession
+    from payments.models import BotonpayPayInSession, GipayPayInSession, PayplatPayInSession, VisionxPayInSession
 
     session = BotonpayPayInSession.objects.filter(provider_deal_uuid=str(parsed)).select_related("pay_in").first()
     if session and session.pay_in_id:
@@ -70,6 +70,10 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 
     session = VisionxPayInSession.objects.filter(provider_deal_id=str(parsed)).select_related("pay_in").first()
+    if session and session.pay_in_id:
+        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
+
+    session = PayplatPayInSession.objects.filter(provider_order_id=str(parsed)).select_related("pay_in").first()
     if session and session.pay_in_id:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 

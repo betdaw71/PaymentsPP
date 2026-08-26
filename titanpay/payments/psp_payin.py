@@ -43,6 +43,7 @@ def is_psp_trader(trader) -> bool:
     from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
 
     return (
         fc.is_fairpay_trader(trader)
@@ -57,6 +58,7 @@ def is_psp_trader(trader) -> bool:
         or bpc.is_botonpay_trader(trader)
         or gpc.is_gipay_trader(trader)
         or vxc.is_visionx_trader(trader)
+        or ppc.is_payplat_trader(trader)
     )
 
 
@@ -294,6 +296,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
 
     names = {
         fc.fairpay_trader_username(),
@@ -308,6 +311,7 @@ def psp_trader_usernames() -> frozenset[str]:
         bpc.botonpay_trader_username(),
         gpc.gipay_trader_username(),
         vxc.visionx_trader_username(),
+        ppc.payplat_trader_username(),
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -355,6 +359,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
 
     for getter in (
         fc.fairpay_requisite_for_payin,
@@ -369,6 +374,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         bpc.botonpay_requisite_for_payin,
         gpc.gipay_requisite_for_payin,
         vxc.visionx_requisite_for_payin,
+        ppc.payplat_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -389,6 +395,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
@@ -400,8 +407,11 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = pltc.enrich_payin_payment_details(representation, pay_in)
     representation = syc.enrich_payin_payment_details(representation, pay_in)
     representation = bpc.enrich_payin_payment_details(representation, pay_in)
-    return vxc.enrich_payin_payment_details(
-        gpc.enrich_payin_payment_details(representation, pay_in),
+    return ppc.enrich_payin_payment_details(
+        vxc.enrich_payin_payment_details(
+            gpc.enrich_payin_payment_details(representation, pay_in),
+            pay_in,
+        ),
         pay_in,
     )
 
@@ -444,6 +454,7 @@ def _psp_provider_for_trader(trader):
     from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
@@ -451,6 +462,8 @@ def _psp_provider_for_trader(trader):
         return "gipay", gpc.try_attach_gipay_session
     if vxc.is_visionx_trader(trader):
         return "visionx", vxc.try_attach_visionx_session
+    if ppc.is_payplat_trader(trader):
+        return "payplat", ppc.try_attach_payplat_session
     if ec.is_expayone_trader(trader):
         return "expayone", ec.try_attach_expayone_session
     if bpc.is_botonpay_trader(trader):
@@ -647,6 +660,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
@@ -660,6 +674,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     bpc.botonpay_cancel_if_linked(pay_in)
     gpc.gipay_cancel_if_linked(pay_in)
     vxc.visionx_cancel_if_linked(pay_in)
+    ppc.payplat_cancel_if_linked(pay_in)
 
 
 def _norm_webhook_status(raw) -> str:
@@ -726,6 +741,11 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
         ):
             if result.get(key) is not None:
                 candidates.append(result.get(key))
+    invoice = body.get("invoice")
+    if isinstance(invoice, dict):
+        for key in ("fiat_amount", "fiatAmount", "amount"):
+            if invoice.get(key) is not None:
+                candidates.append(invoice.get(key))
     factor = 1
     try:
         from django.conf import settings
@@ -900,6 +920,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         ProtocolPayInSession,
         GipayPayInSession,
         VisionxPayInSession,
+        PayplatPayInSession,
     )
 
     order = getattr(pay_in, "order", None)
@@ -912,6 +933,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         ProtocolPayInSession,
         GipayPayInSession,
         VisionxPayInSession,
+        PayplatPayInSession,
         PlaymentsPayInSession,
         ConcoredPayInSession,
         PaymapPayInSession,
@@ -927,7 +949,12 @@ def classify_payin_decline(pay_in: Any) -> str:
         cr = session.create_response or {}
         if not isinstance(cr, dict):
             continue
-        if cr.get("error") in ("no_payment_detail_in_response", "no_credentials_in_response", "no_free_requisites"):
+        if cr.get("error") in (
+            "no_payment_detail_in_response",
+            "no_credentials_in_response",
+            "no_free_requisites",
+            "amount_currently_unavailable",
+        ):
             return "requisites_empty_response"
         if _extract_upstream_error(cr):
             return "requisites_unavailable"
@@ -952,6 +979,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         ProtocolPayInSession,
         GipayPayInSession,
         VisionxPayInSession,
+        PayplatPayInSession,
     )
 
     code = classify_payin_decline(pay_in)
@@ -967,6 +995,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (ProtocolPayInSession, "protocol"),
         (GipayPayInSession, "gipay"),
         (VisionxPayInSession, "visionx"),
+        (PayplatPayInSession, "payplat"),
         (PlaymentsPayInSession, "playments"),
         (ConcoredPayInSession, "concored"),
         (PaymapPayInSession, "paymap"),
@@ -1019,6 +1048,7 @@ _PSP_SESSION_PROVIDER_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("payments.models.ProtocolPayInSession", "protocol", "provider_payment_id"),
     ("payments.models.GipayPayInSession", "gipay", "provider_payment_id"),
     ("payments.models.VisionxPayInSession", "visionx", "provider_invoice_id"),
+    ("payments.models.PayplatPayInSession", "payplat", "provider_order_id"),
     ("payments.models.PlaymentsPayInSession", "playments", "provider_deposit_id"),
     ("payments.models.ConcoredPayInSession", "concored", "provider_payment_id"),
     ("payments.models.PaymapPayInSession", "paymap", "provider_invoice_id"),

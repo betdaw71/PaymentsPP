@@ -31,6 +31,7 @@ from payments.syndicate_views import syndicate_webhook_view
 from payments.botonpay_views import botonpay_webhook_view
 from payments.gipay_views import GipayWebhookView
 from payments.visionx_views import VisionxWebhookView
+from payments.payplat_views import PayplatWebhookView
 from payments.payment_page import payment_page, payment_page_redirect
 from payments.payment_page_assets import serve_payment_page_asset
 from basics.security_txt import security_txt
@@ -69,6 +70,8 @@ urlpatterns = [
     path('api/v1/webhooks/psp/gipay/', GipayWebhookView.as_view(), name='webhook-gipay'),
     path('api/v1/webhooks/psp/visionx', VisionxWebhookView.as_view(), name='webhook-visionx-no-slash'),
     path('api/v1/webhooks/psp/visionx/', VisionxWebhookView.as_view(), name='webhook-visionx'),
+    path('api/v1/webhooks/psp/payplat', PayplatWebhookView.as_view(), name='webhook-payplat-no-slash'),
+    path('api/v1/webhooks/psp/payplat/', PayplatWebhookView.as_view(), name='webhook-payplat'),
     path('prometheus-X60iSjSJB4PA2mdqDnA1mRBZbmGpapdMpwZ6L29c', include('django_prometheus.urls')),
     path(
         "payment-page-assets/<str:filename>",
