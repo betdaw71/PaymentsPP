@@ -214,6 +214,22 @@ class GipayPayInSession(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class VisionxPayInSession(models.Model):
+    """Связка PayIn ↔ инвойс VisionX Pay (POST /api/merchant/invoices, H2H Scenario A)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="visionx_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_invoice_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    provider_deal_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    notification_token = models.CharField(max_length=128, blank=True, default="")
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_state = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class BitzonePayInSession(models.Model):
     """Связка PayIn ↔ сделка Bitzone (POST /payment/trading/pay-in)."""
 

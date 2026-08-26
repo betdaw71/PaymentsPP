@@ -323,6 +323,20 @@ GIPAY_WEBHOOK_SKIP_VERIFY = os.getenv('GIPAY_WEBHOOK_SKIP_VERIFY', 'false').lowe
 # Доп. ключи для проверки Signature (через запятую), если в ЛК отдельный signing secret
 GIPAY_WEBHOOK_SIGNING_KEYS = os.getenv('GIPAY_WEBHOOK_SIGNING_KEYS', '')
 
+# VisionX Pay PSP (https://api.visionxpay.club, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/visionx/)
+VISIONX_API_BASE = os.getenv('VISIONX_API_BASE', 'https://api.visionxpay.club').rstrip('/')
+VISIONX_API_KEY = os.getenv('VISIONX_API_KEY', '')
+VISIONX_SECRET_KEY = os.getenv('VISIONX_SECRET_KEY', '')
+VISIONX_TRADER_USERNAME = os.getenv('VISIONX_TRADER_USERNAME', 'visionx1')
+# JSON: {"C2CKZT":"halyk","C2C":"halyk"} — paymentMethod (код банка), null = любой
+VISIONX_PAYIN_METHOD_MAP = os.getenv('VISIONX_PAYIN_METHOD_MAP', '')
+VISIONX_PAYIN_METHOD = os.getenv('VISIONX_PAYIN_METHOD', '')
+# JSON: {"C2CKZT":"TO_CARD","C2C":"TO_CARD"} — paymentOption, null = любой
+VISIONX_PAYIN_OPTION_MAP = os.getenv('VISIONX_PAYIN_OPTION_MAP', '{"C2CKZT":"TO_CARD","C2C":"TO_CARD"}')
+VISIONX_PAYIN_OPTION = os.getenv('VISIONX_PAYIN_OPTION', 'TO_CARD')
+VISIONX_PAYER_USER_ID_FROM_CLIENT = os.getenv('VISIONX_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
+VISIONX_WEBHOOK_SKIP_VERIFY = os.getenv('VISIONX_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+
 # Protocol PSP (prot0col.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/protocol/)
 PROTOCOL_API_BASE = os.getenv('PROTOCOL_API_BASE', 'https://prot0col.com').rstrip('/')
 PROTOCOL_MERCHANT_ID = os.getenv('PROTOCOL_MERCHANT_ID', '')

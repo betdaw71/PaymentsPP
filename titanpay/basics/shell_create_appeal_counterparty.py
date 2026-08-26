@@ -39,6 +39,7 @@ PROVIDERS = [
     {"name": "BitZone", "psp_provider": "bitzone"},
     {"name": "Protocol", "psp_provider": "protocol"},
     {"name": "GiPay", "psp_provider": "gipay"},
+    {"name": "VisionX Pay", "psp_provider": "visionx"},
 ]
 
 

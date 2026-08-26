@@ -41,6 +41,9 @@ class Direction:
     GIPAY_OUT_REQUEST = "gipay_out_request"
     GIPAY_OUT_RESPONSE = "gipay_out_response"
     GIPAY_WEBHOOK = "gipay_webhook"
+    VISIONX_OUT_REQUEST = "visionx_out_request"
+    VISIONX_OUT_RESPONSE = "visionx_out_response"
+    VISIONX_WEBHOOK = "visionx_webhook"
     MERCHANT_CALLBACK = "merchant_callback"
 
 
