@@ -28,6 +28,25 @@ def _card_payin_ps_names():
     return names
 
 
+def merchant_payin_payment_details(pay_in) -> dict:
+    """Реквизиты для мерчанта: PSP API, иначе живой трейдер. Виртуальные карты PSP не отдаём."""
+    from payments.psp_payin import is_psp_trader, requisite_for_payin
+
+    req = requisite_for_payin(pay_in)
+    if req is not None:
+        return req
+    order = getattr(pay_in, "order", None)
+    if order is None or order.payment_details is None:
+        return {}
+    if is_psp_trader(order.payment_details.group.trader):
+        return {}
+    ps_name = pay_in.payment_system.name if pay_in.payment_system else None
+    serializer_cls = get_in_ps_serializer(ps_name) if ps_name else None
+    if serializer_cls is None:
+        return {}
+    return serializer_cls(order.payment_details).data
+
+
 def get_in_ps_serializer(payment_system_name):
     if payment_system_name in _card_payin_ps_names():
         return PaymentDetailsCardSerializer
@@ -108,16 +127,7 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
 
     def get_payment_details(self, obj):
-        from payments.psp_payin import requisite_for_payin
-
-        req = requisite_for_payin(obj)
-        if req is not None:
-            return req
-        if obj.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(obj.payment_system.name)
-            if serializer_cls is not None:
-                return serializer_cls(obj.order.payment_details).data
-        return {}
+        return merchant_payin_payment_details(obj)
 
     def create(self, validated_data):
         merchant = self.context['request'].user.merchant
@@ -237,16 +247,7 @@ class PayInInvoiceRetrieveSerializer(serializers.ModelSerializer):
         fields = ['id', 'currency', 'amount', 'payment_system', 'status', 'payment_details', 'success_url', 'failed_url']
 
     def get_payment_details(self, obj):
-        from payments.psp_payin import requisite_for_payin
-
-        req = requisite_for_payin(obj)
-        if req is not None:
-            return req
-        if obj.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(obj.payment_system.name)
-            if serializer_cls is not None:
-                return serializer_cls(obj.order.payment_details).data
-        return {}
+        return merchant_payin_payment_details(obj)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -280,21 +281,12 @@ class PayInInvoiceNewSerializer(serializers.ModelSerializer):
         representation['status'] = instance.status.name
         representation['currency'] = instance.currency.symbol if instance.currency is not None else None
         representation['payment_system'] = instance.payment_system.name if instance.payment_system is not None else None
-        from payments.psp_payin import enrich_payin_payment_details as enrich_psp, requisite_for_payin
-
-        req = requisite_for_payin(instance)
-        if req:
-            representation['payment_details'] = req
-        elif instance.order and instance.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(instance.payment_system.name)
-            representation['payment_details'] = (
-                serializer_cls(instance.order.payment_details).data if serializer_cls else {}
-            )
-        else:
-            representation['payment_details'] = {}
+        representation['payment_details'] = merchant_payin_payment_details(instance)
         representation['expires_at'] = (instance.created_at + instance.payment_system.expired_time_in).timestamp()
         representation['recalculated'] = instance.order.recalculated
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
+        from payments.psp_payin import enrich_payin_payment_details as enrich_psp
+
         return enrich_psp(representation, instance)
 
 
@@ -312,18 +304,9 @@ class PayInInvoiceInProgressSerializer(serializers.ModelSerializer):
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
         representation['waiting_confirmation'] = True
         representation['order_status'] = instance.order.status.name if instance.order and instance.order.status else None
-        from payments.psp_payin import enrich_payin_payment_details as enrich_psp, requisite_for_payin
+        representation['payment_details'] = merchant_payin_payment_details(instance)
+        from payments.psp_payin import enrich_payin_payment_details as enrich_psp
 
-        req = requisite_for_payin(instance)
-        if req:
-            representation['payment_details'] = req
-        elif instance.order and instance.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(instance.payment_system.name)
-            representation['payment_details'] = (
-                serializer_cls(instance.order.payment_details).data if serializer_cls else {}
-            )
-        else:
-            representation['payment_details'] = {}
         return enrich_psp(representation, instance)
 
 
@@ -373,16 +356,7 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
 
     def get_payment_details(self, obj):
-        from payments.psp_payin import requisite_for_payin
-
-        req = requisite_for_payin(obj)
-        if req is not None:
-            return req
-        if obj.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(obj.payment_system.name)
-            if serializer_cls is not None:
-                return serializer_cls(obj.order.payment_details).data
-        return {}
+        return merchant_payin_payment_details(obj)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -469,16 +443,7 @@ class PayInPaymentRetrieveSerializer(serializers.ModelSerializer):
                   'updated_at', 'payment_details']
 
     def get_payment_details(self, obj):
-        from payments.psp_payin import requisite_for_payin
-
-        req = requisite_for_payin(obj)
-        if req is not None:
-            return req
-        if obj.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(obj.payment_system.name)
-            if serializer_cls is not None:
-                return serializer_cls(obj.order.payment_details).data
-        return {}
+        return merchant_payin_payment_details(obj)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)

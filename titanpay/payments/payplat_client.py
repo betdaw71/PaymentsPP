@@ -494,9 +494,8 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
     session.save(update_fields=["external_id", "updated_at"])
 
     id_contragent = external_id
-    if getattr(settings, "PAYPLAT_CONTRAGENT_FROM_CLIENT", False):
-        if pay_in.client_id and getattr(pay_in, "client", None):
-            id_contragent = str(pay_in.client.client_id)
+    if pay_in.client_id and getattr(pay_in, "client", None):
+        id_contragent = str(pay_in.client.client_id)
 
     ok, data = payplat_create_deal(
         amount=pay_in.amount,
@@ -527,17 +526,26 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
     session.save(update_fields=["create_response", "provider_order_id", "updated_at"])
 
     req = payplat_map_requisite(session.create_response)
-    status = _norm_status((session.create_response or {}).get("status"))
-    if not req and status not in ("in_progress", "created"):
+    from payments.psp_payin import requisite_payload_has_fields
+
+    if not requisite_payload_has_fields(req):
+        upstream = session.create_response
+        order_id = session.provider_order_id
         session.create_response = {
             "error": "no_payment_detail_in_response",
-            "upstream": session.create_response,
+            "upstream": upstream,
         }
         session.provider_order_id = ""
         session.save(update_fields=["create_response", "provider_order_id", "updated_at"])
-        logger.error("PayPlat: no requisite PayIn=%s status=%s", pay_in.id, status)
+        if order_id:
+            payplat_cancel_deal(shop_internal_id=external_id, pay_in=pay_in)
+        logger.error(
+            "PayPlat: no requisite PayIn=%s status=%s",
+            pay_in.id,
+            _norm_status((upstream or {}).get("status")),
+        )
         return False
-    return True if req else False
+    return True
 
 
 def payplat_cancel_if_linked(pay_in: Any) -> None:

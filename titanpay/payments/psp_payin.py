@@ -622,6 +622,12 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
 
     provider_name, attach = _psp_provider_for_trader(trader)
     if attach is None:
+        logger.error(
+            "PSP attach handler missing pay_in_id=%s trader=%s",
+            pay_in.id,
+            trader.user.username if getattr(trader, "user", None) else trader.pk,
+        )
+        mark_inorder_cannot_process_from_psp_api(pay_in, provider="no_handler")
         return
 
     result = attach(pay_in)
