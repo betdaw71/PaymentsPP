@@ -1,7 +1,7 @@
 """
 Prod pandapay KZT: gipay1 + payplat1 активны и первые в каскаде на C2CKZT/C2C.
 
-Не меняет TraderTeamRates.mdr_in (трейдерская комиссия остаётся как в админке).
+Не меняет TraderTeamRates.mdr_in и balance_usdt (учёт балансов не трогаем).
 Приоритет каскада — через .env PSP_ROUTING_PRIORITY_MAP (см. settings.py).
 
 Запуск:
@@ -16,7 +16,6 @@ Prod pandapay KZT: gipay1 + payplat1 активны и первые в каск�
 from __future__ import annotations
 
 import os
-from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import transaction
@@ -24,7 +23,6 @@ from django.db import transaction
 from basics.models import Currency, PaymentDetailsGroup, PaymentSystem, Trader, TrafficType
 from basics.shell_gipay_ensure_prod_groups import ensure_group as ensure_gipay_group
 from basics.shell_payplat_ensure_prod_groups import (
-    PSP_FLOAT_USDT,
     ensure_group as ensure_payplat_group,
     unblock_arbitrage_groups,
 )
@@ -49,17 +47,6 @@ def _trader(username: str) -> Trader | None:
     if user is None:
         return None
     return Trader.objects.filter(user=user).select_related("team").first()
-
-
-def topup_psp_float(trader: Trader, username: str) -> None:
-    if trader is None:
-        print(f"  ! trader {username!r} not found")
-        return
-    target = PSP_FLOAT_USDT if username == payplat_trader_username() else Decimal("50000")
-    if trader.balance_usdt.amount < target:
-        trader.balance_usdt.amount = target
-        trader.balance_usdt.save(update_fields=["amount"])
-        print(f"  + topped balance_usdt to {target} for {username}")
 
 
 def print_cascade_preview(kzt: Currency, traffic: TrafficType) -> None:
@@ -87,7 +74,7 @@ def print_cascade_preview(kzt: Currency, traffic: TrafficType) -> None:
 @transaction.atomic
 def run() -> None:
     print("=" * 60)
-    print(f"Prod routing: {MERCHANT_USERNAME} — payplat1 + gipay1 активны (mdr_in не меняем)")
+    print(f"Prod routing: {MERCHANT_USERNAME} — payplat1 + gipay1 активны")
     print("=" * 60)
 
     kzt = Currency.objects.filter(symbol="KZT").first()
@@ -114,9 +101,6 @@ def run() -> None:
         ensure_gipay_group(gipay, kzt, ps, traffic)
         ensure_payplat_group(payplat, kzt, ps, traffic)
 
-    topup_psp_float(gipay, gipay_trader_username())
-    topup_psp_float(payplat, payplat_trader_username())
-
     merchant = Merchant.objects.filter(user__username=MERCHANT_USERNAME).first()
     if merchant:
         for ps_name in PROD_PS_NAMES:
@@ -128,7 +112,7 @@ def run() -> None:
         print(f"  ! merchant {MERCHANT_USERNAME!r} not found")
 
     print_cascade_preview(kzt, traffic)
-    print("\nDone. TraderTeamRates.mdr_in не изменялся.")
+    print("\nDone. mdr_in и balance_usdt не изменялись.")
     print("  Приоритет каскада: PSP_ROUTING_PRIORITY_MAP в .env")
     print('  {"payplat1": 1, "gipay1": 2}')
     print("  diagnose_routing pandapay --ps C2CKZT --amount 7010 --ftd false")

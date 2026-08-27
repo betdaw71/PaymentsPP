@@ -34,7 +34,6 @@ from basics.models import Currency, PaymentDetailsGroup, PaymentSystem, Trader, 
 from basics.shell_payplat_ensure_prod_groups import (
     CURRENCY_SYMBOL,
     PROD_PS_NAMES,
-    PSP_FLOAT_USDT,
     TEST_PS_NAME,
     deactivate_test_ps,
     ensure_group,
@@ -121,11 +120,6 @@ def run() -> None:
 
     deactivate_test_ps(trader, kzt)
     deactivate_other_psp_on_prod_ps(kzt, keep_username=username)
-
-    if trader.balance_usdt.amount < PSP_FLOAT_USDT:
-        trader.balance_usdt.amount = PSP_FLOAT_USDT
-        trader.balance_usdt.save(update_fields=["amount"])
-        print(f"  + topped balance_usdt to {PSP_FLOAT_USDT} for {username}")
 
     for merchant_username in _merchant_usernames():
         try:

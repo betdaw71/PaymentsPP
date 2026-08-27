@@ -135,11 +135,6 @@ def run() -> None:
             )
         ensure_group(trader, kzt, ps, traffic)
 
-    if trader.balance_usdt.amount < Decimal("100"):
-        trader.balance_usdt.amount = Decimal("500")
-        trader.balance_usdt.save(update_fields=["amount"])
-        print(f"  + topped balance_usdt for {username}")
-
     print("")
     print("Groups on trader:")
     for g in PaymentDetailsGroup.objects.filter(trader=trader).select_related("payment_system"):

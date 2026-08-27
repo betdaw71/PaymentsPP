@@ -35,7 +35,6 @@ PROD_PS_NAMES = ("C2CKZT", C2C_NAME)
 TEST_PS_NAME = "C2CKZTTEST"
 CURRENCY_SYMBOL = "KZT"
 DEFAULT_MDR_IN = Decimal("7")
-PSP_FLOAT_USDT = Decimal("50000")
 
 
 def _ensure_virtual_card(group: PaymentDetailsGroup) -> None:
@@ -161,11 +160,6 @@ def run() -> None:
         ensure_group(trader, kzt, ps, traffic)
 
     deactivate_test_ps(trader, kzt)
-
-    if trader.balance_usdt.amount < PSP_FLOAT_USDT:
-        trader.balance_usdt.amount = PSP_FLOAT_USDT
-        trader.balance_usdt.save(update_fields=["amount"])
-        print(f"  + topped balance_usdt to {PSP_FLOAT_USDT} for {username}")
 
     print("")
     print("Groups on trader:")
