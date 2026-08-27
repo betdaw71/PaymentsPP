@@ -298,7 +298,7 @@ def payplat_create_deal(
     if bank:
         payload["bank"] = bank
     tariff_val = (tariff or payplat_tariff()).strip().upper()
-    if tariff_val and not id_contragent:
+    if tariff_val:
         payload["tariff"] = tariff_val
     return _request("POST", "/deals", json_payload=payload, pay_in=pay_in)
 
@@ -390,11 +390,10 @@ def payplat_webhook_outcome(body: dict) -> str | None:
 
 
 def payplat_map_requisite(create_body: dict) -> dict:
-    """Маппинг ответа POST /deals в payment_details для мерчанта."""
+    """Маппинг ответа POST /deals в payment_details для мерчанта (только H2H card/phone, не redirect)."""
     if not isinstance(create_body, dict):
         return {}
 
-    widget_url = (create_body.get("widget_url") or "").strip()
     requisite = create_body.get("requisite")
     if isinstance(requisite, dict):
         card = (requisite.get("card_number") or "").strip()
@@ -444,8 +443,6 @@ def payplat_map_requisite(create_body: dict) -> dict:
                     "bank": bank,
                 }
 
-    if widget_url:
-        return {"payment_form_url": widget_url}
     return {}
 
 
@@ -513,12 +510,15 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
 
     session.create_response = data if isinstance(data, dict) else {"payload": data}
     if payplat_is_soft_rejection(session.create_response):
+        order_id = str((data or {}).get("order_id") or "")
         session.create_response = {
             "error": "amount_currently_unavailable",
             "upstream": session.create_response,
         }
-        session.provider_order_id = str((data or {}).get("order_id") or "")
+        session.provider_order_id = order_id
         session.save(update_fields=["create_response", "provider_order_id", "updated_at"])
+        if order_id:
+            payplat_cancel_deal(shop_internal_id=external_id, pay_in=pay_in)
         logger.error("PayPlat: soft rejection PayIn=%s", pay_in.id)
         return False
 
