@@ -186,6 +186,9 @@ def run() -> None:
     print("")
     print("Check routing:")
     print("  python manage.py diagnose_routing pandapay --ps C2CKZT --amount 10000 --ftd false")
+    print("")
+    print("Чтобы заявки шли ТОЛЬКО в PayPlat (не fallback):")
+    print("  shell < titanpay/basics/shell_setup_payplat_prod_routing.py")
 
 
 run()
