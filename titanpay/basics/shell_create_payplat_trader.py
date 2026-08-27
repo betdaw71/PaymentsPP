@@ -14,7 +14,7 @@ Django shell: команда + трейдер PayPlat PSP (username payplat1).
   PAYPLAT_SHOP_ID=100000100
   PAYPLAT_SECRET_KEY=100000100
   PAYPLAT_TRADER_USERNAME=payplat1
-  PAYPLAT_REQUISITE_TYPE_MAP={"C2C":"c2c_ab","C2CKZT":"c2c_ab","C2CKZTTEST":"c2c_ab"}
+  PAYPLAT_REQUISITE_TYPE_MAP={"C2C":"h2h","C2CKZT":"h2h","C2CKZTTEST":"h2h"}
   PAYPLAT_PAYER_MAP={"C2C":"kz","C2CKZT":"kz","C2CKZTTEST":"kz"}
   PUBLIC_API_URL=https://api.avapay.net
 

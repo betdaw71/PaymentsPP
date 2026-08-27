@@ -60,8 +60,8 @@ def payplat_requisite_type_for(payment_system_name: str | None) -> str:
     mapped = _parse_json_map("PAYPLAT_REQUISITE_TYPE_MAP").get(ps_name)
     if mapped:
         return mapped.strip().lower()
-    default = (getattr(settings, "PAYPLAT_REQUISITE_TYPE", None) or "c2c_ab").strip().lower()
-    return default or "c2c_ab"
+    default = (getattr(settings, "PAYPLAT_REQUISITE_TYPE", None) or "h2h").strip().lower()
+    return default or "h2h"
 
 
 def payplat_bank_for(payment_system_name: str | None) -> str | None:
@@ -415,8 +415,16 @@ def payplat_webhook_outcome(body: dict) -> str | None:
     return None
 
 
-def payplat_requisite_currency_ok(create_body: dict, pay_in: Any) -> bool:
-    """В ответе PayPlat requisite.currency должен совпадать с валютой заявки (KZT ≠ KGS)."""
+def payplat_requisite_currency_ok(
+    create_body: dict,
+    pay_in: Any,
+    *,
+    payer: str | None = None,
+) -> bool:
+    """В ответе PayPlat requisite.currency должен совпадать с валютой заявки.
+
+    Исключение: h2h + payer=kz — сумма в тенге, карта может быть KGS (cross-border).
+    """
     if not isinstance(create_body, dict):
         return True
     requisite = create_body.get("requisite")
@@ -426,6 +434,10 @@ def payplat_requisite_currency_ok(create_body: dict, pay_in: Any) -> bool:
     if not req_cur:
         return True
     pay_cur = (pay_in.currency.symbol if getattr(pay_in, "currency", None) else "").strip().upper()
+    ps_name = pay_in.payment_system.name if getattr(pay_in, "payment_system", None) else None
+    effective_payer = (payer or payplat_payer_for(ps_name, pay_in) or "").strip().lower()
+    if effective_payer == "kz" and pay_cur == "KZT":
+        return True
     return not pay_cur or req_cur == pay_cur
 
 
@@ -570,7 +582,9 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
     req = payplat_map_requisite(session.create_response)
     from payments.psp_payin import requisite_payload_has_fields
 
-    if requisite_payload_has_fields(req) and not payplat_requisite_currency_ok(session.create_response, pay_in):
+    if requisite_payload_has_fields(req) and not payplat_requisite_currency_ok(
+        session.create_response, pay_in, payer=payer
+    ):
         upstream = session.create_response
         order_id = session.provider_order_id
         req_cur = ""

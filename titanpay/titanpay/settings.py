@@ -350,12 +350,12 @@ PAYPLAT_SHOP_ID = os.getenv('PAYPLAT_SHOP_ID', '')
 PAYPLAT_SECRET_KEY = os.getenv('PAYPLAT_SECRET_KEY', '')
 PAYPLAT_TRADER_USERNAME = os.getenv('PAYPLAT_TRADER_USERNAME', 'payplat1')
 PAYPLAT_TEST_PS_NAME = os.getenv('PAYPLAT_TEST_PS_NAME', 'C2CKZTTEST')
-# JSON: KZT → c2c_ab (H2H карта в requisite). PayPlat "h2h" = card2card KGZ, не KZT!
+# JSON: requisite_type для PayPlat (h2h + payer=kz → сумма в тенге)
 PAYPLAT_REQUISITE_TYPE_MAP = os.getenv(
     'PAYPLAT_REQUISITE_TYPE_MAP',
-    '{"C2C":"c2c_ab","C2CKZT":"c2c_ab","C2CKZTTEST":"c2c_ab"}',
+    '{"C2C":"h2h","C2CKZT":"h2h","C2CKZTTEST":"h2h"}',
 )
-PAYPLAT_REQUISITE_TYPE = os.getenv('PAYPLAT_REQUISITE_TYPE', 'c2c_ab')
+PAYPLAT_REQUISITE_TYPE = os.getenv('PAYPLAT_REQUISITE_TYPE', 'h2h')
 PAYPLAT_BANK_MAP = os.getenv('PAYPLAT_BANK_MAP', '')
 PAYPLAT_BANK = os.getenv('PAYPLAT_BANK', '')
 PAYPLAT_TARIFF = os.getenv('PAYPLAT_TARIFF', 'PRIMARY')
