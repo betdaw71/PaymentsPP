@@ -6,7 +6,7 @@ import hmac
 import json
 import logging
 import time
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import requests
@@ -412,6 +412,42 @@ def payplat_webhook_outcome(body: dict) -> str | None:
     dispute_status = _norm_status(body.get("dispute_status"))
     if dispute_status == "accepted" and status == "success":
         return "success"
+    return None
+
+
+def payplat_is_webhook_body(body: dict | None) -> bool:
+    """IPN PayPlat: shop_internal_id / order_id в теле колбека."""
+    if not isinstance(body, dict):
+        return False
+    if (body.get("shop_internal_id") or "").strip():
+        return True
+    if body.get("order_id") not in (None, ""):
+        return True
+    return False
+
+
+def _positive_decimal(raw) -> Decimal | None:
+    if raw is None:
+        return None
+    try:
+        val = Decimal(str(raw).strip().replace(",", "."))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return val if val > 0 else None
+
+
+def payplat_webhook_paid_amount(body: dict | None) -> Decimal | None:
+    """Фактическая сумма из IPN PayPlat — провайдер: quote_amount (не amount / fiat_amount)."""
+    if not payplat_is_webhook_body(body):
+        return None
+    assert isinstance(body, dict)
+
+    for source in (body, body.get("invoice")):
+        if not isinstance(source, dict):
+            continue
+        paid = _positive_decimal(source.get("quote_amount"))
+        if paid is not None:
+            return paid
     return None
 
 

@@ -731,6 +731,11 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
     if not isinstance(body, dict):
         return None
 
+    from payments.payplat_client import payplat_is_webhook_body, payplat_webhook_paid_amount
+
+    if payplat_is_webhook_body(body):
+        return payplat_webhook_paid_amount(body)
+
     def _positive_decimal(raw) -> Decimal | None:
         if raw is None:
             return None
