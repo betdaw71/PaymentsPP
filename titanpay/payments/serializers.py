@@ -184,9 +184,10 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
 
             decline_payin(pay_in, send_callback=False)
             return pay_in
-        from payments.psp_payin import try_attach_psp_sessions
+        from payments.psp_payin import ensure_psp_payin_requisites_or_decline, try_attach_psp_sessions
 
         try_attach_psp_sessions(pay_in)
+        ensure_psp_payin_requisites_or_decline(pay_in)
         pay_in.refresh_from_db()
         return pay_in
 
@@ -427,9 +428,10 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
 
             decline_payin(pay_in, send_callback=False)
             return pay_in
-        from payments.psp_payin import try_attach_psp_sessions
+        from payments.psp_payin import ensure_psp_payin_requisites_or_decline, try_attach_psp_sessions
 
         try_attach_psp_sessions(pay_in)
+        ensure_psp_payin_requisites_or_decline(pay_in)
         pay_in.refresh_from_db()
         return pay_in
 

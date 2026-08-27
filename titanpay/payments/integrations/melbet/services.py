@@ -191,7 +191,10 @@ def create_melbet_deposit(
         in_order.refresh_from_db()
 
         if in_order.status.name != "Cannot process":
+            from payments.psp_payin import ensure_psp_payin_requisites_or_decline, try_attach_psp_sessions
+
             try_attach_psp_sessions(pay_in)
+            ensure_psp_payin_requisites_or_decline(pay_in)
 
         pay_in.refresh_from_db()
         in_order.refresh_from_db()

@@ -440,6 +440,40 @@ def payin_routed_psp_group_active(pay_in: Any) -> bool:
     return bool(group.in_active and group.status == 1)
 
 
+def _is_virtual_psp_payment_details(payment_details) -> bool:
+    if payment_details is None:
+        return False
+    owner = (getattr(payment_details.group, "owner", None) or "").lower()
+    return "virtual drop" in owner
+
+
+def payin_requires_psp_api_requisites(pay_in: Any) -> bool:
+    """Заявка ушла на виртуальную PSP-группу — реквизиты только из API провайдера."""
+    order = getattr(pay_in, "order", None)
+    if order is None or order.payment_details is None:
+        return False
+    trader = order.payment_details.group.trader
+    if is_psp_trader(trader):
+        return True
+    uname = trader.user.username if trader and getattr(trader, "user", None) else ""
+    if uname and uname in psp_trader_usernames():
+        return True
+    return _is_virtual_psp_payment_details(order.payment_details)
+
+
+def ensure_psp_payin_requisites_or_decline(pay_in: Any, *, provider: str | None = None) -> None:
+    """После attach: нет реквизитов PSP → Cannot process + Declined (для ответа мерчанту)."""
+    if not payin_requires_psp_api_requisites(pay_in):
+        return
+    if _payin_has_psp_requisite(pay_in):
+        return
+    pay_in.refresh_from_db()
+    if pay_in.status and pay_in.status.name == "Declined":
+        return
+    mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider or "missing_requisite")
+    pay_in.refresh_from_db()
+
+
 def _psp_provider_for_trader(trader):
     """Провайдер PSP по трейдеру подобранного реквизита (виртуальная группа)."""
     from payments import expayone_client as ec
@@ -602,9 +636,9 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
     order = getattr(pay_in, "order", None)
     if order is None or order.payment_details is None:
         return
-    trader = order.payment_details.group.trader
-    if not is_psp_trader(trader):
+    if not payin_requires_psp_api_requisites(pay_in):
         return
+    trader = order.payment_details.group.trader
 
     if not payin_routed_group_matches_ps(pay_in):
         logger.error(
@@ -1157,7 +1191,9 @@ def psp_external_references_for_pay_in_ids(pay_in_ids: list) -> dict[str, dict[s
 
 
 def get_payin_decline_payload(pay_in: Any) -> dict | None:
-    """Если PayIn уже Declined — payload для ответа мерчанту (без raise)."""
+    """Если PayIn Declined или PSP без реквизитов — payload для ответа мерчанту (без raise)."""
+    pay_in.refresh_from_db()
+    ensure_psp_payin_requisites_or_decline(pay_in)
     pay_in.refresh_from_db()
     if pay_in.status and pay_in.status.name == "Declined":
         return merchant_decline_payload(pay_in)
