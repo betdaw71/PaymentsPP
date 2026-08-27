@@ -1,8 +1,8 @@
 """
-Prod pandapay KZT: gipay1 + payplat1 активны на C2CKZT/C2C, сломанные PSP отключены.
+Prod pandapay KZT: gipay1 + payplat1 активны и первые в каскаде на C2CKZT/C2C.
 
-Проблема «нет сессии GiPay/PayPlat» = API не вызывался: группа in_active=False или нет виртуальной карты.
-Не связано с балансом USDT и не с «нехваткой виртуальных реквизитов на одинаковые суммы».
+Другие PSP не отключаются — только низкий mdr_in у payplat/gipay (раньше в каскаде).
+Проблема «нет сессии GiPay/PayPlat» = группа in_active=False или нет виртуальной карты.
 
 Запуск:
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_setup_pandapay_gipay_payplat_prod_routing.py
@@ -29,17 +29,14 @@ from basics.shell_setup_payplat_c2ckzttest_routing import ensure_merchant_soluti
 from merchant.models import Merchant
 from payments.gipay_client import gipay_trader_username
 from payments.payplat_client import payplat_trader_username
-from payments.psp_payin import psp_trader_usernames
+from payments.psp_payin import psp_trader_usernames, sort_groups_for_routing
 from titanpay.settings import C2C_NAME
 
 MERCHANT_USERNAME = os.environ.get("MERCHANT_USERNAME", "pandapay").strip()
 TRAFFIC_NAME = "Standard"
 PROD_PS_NAMES = ("C2CKZT", C2C_NAME)
 
-# Рабочие PSP (оставляем в каскаде)
-KEEP_ACTIVE = frozenset({gipay_trader_username(), payplat_trader_username()})
-
-# mdr_in: меньше = раньше в каскаде
+# mdr_in: меньше = раньше в каскаде (остальные PSP не трогаем)
 MDR_BY_TRADER = {
     payplat_trader_username(): Decimal(os.environ.get("PAYPLAT_MDR_IN", "0.3")),
     gipay_trader_username(): Decimal(os.environ.get("GIPAY_MDR_IN", "0.5")),
@@ -71,21 +68,6 @@ def set_mdr(trader: Trader, kzt: Currency, mdr_in: Decimal) -> None:
         print(f"  ~ {trader.user.username} mdr_in={mdr_in}% on {ps_name}")
 
 
-def deactivate_broken_psp_on_prod(kzt: Currency) -> None:
-    psp_names = psp_trader_usernames()
-    for ps_name in PROD_PS_NAMES:
-        ps = PaymentSystem.objects.filter(name=ps_name, currency=kzt).first()
-        if ps is None:
-            continue
-        qs = PaymentDetailsGroup.objects.filter(payment_system=ps, in_active=True).select_related("trader__user")
-        for group in qs:
-            uname = group.trader.user.username if group.trader and group.trader.user else ""
-            if uname in psp_names and uname not in KEEP_ACTIVE:
-                group.in_active = False
-                group.save(update_fields=["in_active"])
-                print(f"  - deactivated {ps_name} group {group.id} trader={uname}")
-
-
 def topup_psp_float(trader: Trader, username: str) -> None:
     if trader is None:
         print(f"  ! trader {username!r} not found")
@@ -97,10 +79,31 @@ def topup_psp_float(trader: Trader, username: str) -> None:
         print(f"  + topped balance_usdt to {target} for {username}")
 
 
+def print_cascade_preview(kzt: Currency, traffic: TrafficType) -> None:
+    ps = PaymentSystem.objects.filter(name="C2CKZT", currency=kzt).first()
+    if ps is None:
+        return
+    groups = list(
+        PaymentDetailsGroup.objects.filter(
+            payment_system=ps,
+            status=1,
+            in_active=True,
+            work_type="by_card",
+            allowed_traffic=traffic,
+            trader__blocked=False,
+            trader__user__username__in=psp_trader_usernames(),
+        ).select_related("trader", "trader__user", "trader__team")
+    )
+    print("\nКаскад PSP на C2CKZT (первые 8):")
+    for i, g in enumerate(sort_groups_for_routing(groups)[:8], 1):
+        uname = g.trader.user.username if g.trader and g.trader.user else "?"
+        print(f"  {i}. {uname}")
+
+
 @transaction.atomic
 def run() -> None:
     print("=" * 60)
-    print(f"Prod routing: {MERCHANT_USERNAME} → gipay1 + payplat1 on {', '.join(PROD_PS_NAMES)}")
+    print(f"Prod routing: {MERCHANT_USERNAME} — payplat1 + gipay1 в топе каскада")
     print("=" * 60)
 
     kzt = Currency.objects.filter(symbol="KZT").first()
@@ -127,9 +130,8 @@ def run() -> None:
         ensure_gipay_group(gipay, kzt, ps, traffic)
         ensure_payplat_group(payplat, kzt, ps, traffic)
 
-    set_mdr(gipay, kzt, MDR_BY_TRADER[gipay_trader_username()])
     set_mdr(payplat, kzt, MDR_BY_TRADER[payplat_trader_username()])
-    deactivate_broken_psp_on_prod(kzt)
+    set_mdr(gipay, kzt, MDR_BY_TRADER[gipay_trader_username()])
     topup_psp_float(gipay, gipay_trader_username())
     topup_psp_float(payplat, payplat_trader_username())
 
@@ -143,14 +145,8 @@ def run() -> None:
     else:
         print(f"  ! merchant {MERCHANT_USERNAME!r} not found")
 
-    print("\nActive PSP groups on C2CKZT:")
-    ps = PaymentSystem.objects.filter(name="C2CKZT", currency=kzt).first()
-    if ps:
-        for g in PaymentDetailsGroup.objects.filter(payment_system=ps, in_active=True).select_related("trader__user"):
-            uname = g.trader.user.username if g.trader and g.trader.user else "?"
-            print(f"  • {uname} group={g.id} status={g.status}")
-
-    print("\nDone. Каскад: payplat1 → gipay1 → (остальные PSP отключены на C2CKZT/C2C)")
+    print_cascade_preview(kzt, traffic)
+    print("\nDone. payplat1 и gipay1 активны; остальные PSP не отключались.")
     print("  diagnose_routing pandapay --ps C2CKZT --amount 7010 --ftd false")
 
 
