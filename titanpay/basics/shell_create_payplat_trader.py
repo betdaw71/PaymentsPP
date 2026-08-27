@@ -51,6 +51,7 @@ TRADER_EMAIL = "payplat1@example.com"
 GROUP_OWNER = "PayPlat Virtual Drop"
 TRAFFIC_NAME = "Standard"
 ACTIVE_TEST_PS = "C2CKZTTEST"
+PSP_FLOAT_USDT = Decimal("50000")
 # (payment_system_name, currency_symbol, in_active)
 PS_ROWS = (
     ("C2C", "KZT", False),
@@ -181,6 +182,16 @@ def enforce_payplat_active_test_only(trader: Trader) -> None:
             print(f"  ~ payplat1 group {ps_name}: in_active={should_active}")
 
 
+def ensure_psp_float(trader: Trader) -> None:
+    bal = trader.balance_usdt
+    if bal.amount < PSP_FLOAT_USDT:
+        bal.amount = PSP_FLOAT_USDT
+        bal.save(update_fields=["amount"])
+        print(f"  + balance_usdt topped up to {PSP_FLOAT_USDT}")
+    else:
+        print(f"  ~ balance_usdt {bal.amount} (ok)")
+
+
 def run():
     print("=== PayPlat trader setup ===")
     lang = Language.objects.first() or Language.objects.create(name="Russian")
@@ -202,7 +213,7 @@ def run():
 
     trader = Trader.objects.filter(user=user).first()
     if trader is None:
-        bal = Balance.objects.create(type=0, amount=Decimal("0"))
+        bal = Balance.objects.create(type=0, amount=PSP_FLOAT_USDT)
         fr = Balance.objects.create(type=1, amount=Decimal("0"))
         trader = Trader.objects.create(
             user=user,
@@ -237,6 +248,7 @@ def run():
         )
 
     enforce_payplat_active_test_only(trader)
+    ensure_psp_float(trader)
 
     print("Done.")
     print("  Active for payplat1: only C2CKZTTEST")

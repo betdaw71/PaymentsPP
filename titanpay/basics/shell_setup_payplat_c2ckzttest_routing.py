@@ -48,6 +48,7 @@ LIMITS = {
     "min_limit_out": Decimal("1000"),
     "max_limit_out": Decimal("500000"),
 }
+PSP_FLOAT_USDT = Decimal("50000")
 PAYPLAT_PS_NAMES = ("C2C", "C2CKZT", "C2CKZTTEST")
 
 
@@ -225,6 +226,11 @@ def run(merchant_username: str = MERCHANT_USERNAME) -> None:
     ensure_payplat_virtual_group(trader, ps, kzt, traffic)
     set_payplat_groups_active(trader=trader, active_ps_name=PS_NAME)
     deactivate_other_psp_groups_on_test_ps(ps, keep_username=payplat_trader_username())
+
+    if trader.balance_usdt.amount < PSP_FLOAT_USDT:
+        trader.balance_usdt.amount = PSP_FLOAT_USDT
+        trader.balance_usdt.save(update_fields=["amount"])
+        print(f"  + topped balance_usdt to {PSP_FLOAT_USDT} for {payplat_trader_username()}")
 
     try:
         merchant = Merchant.objects.get(user__username=merchant_username)
