@@ -30,7 +30,7 @@ def _card_payin_ps_names():
 
 def merchant_payin_payment_details(pay_in) -> dict:
     """Реквизиты для мерчанта: PSP API, иначе живой трейдер. Виртуальные карты PSP не отдаём."""
-    from payments.psp_payin import is_psp_trader, requisite_for_payin
+    from payments.psp_payin import payin_requires_psp_api_requisites, requisite_for_payin
 
     req = requisite_for_payin(pay_in)
     if req is not None:
@@ -38,7 +38,7 @@ def merchant_payin_payment_details(pay_in) -> dict:
     order = getattr(pay_in, "order", None)
     if order is None or order.payment_details is None:
         return {}
-    if is_psp_trader(order.payment_details.group.trader):
+    if payin_requires_psp_api_requisites(pay_in):
         return {}
     ps_name = pay_in.payment_system.name if pay_in.payment_system else None
     serializer_cls = get_in_ps_serializer(ps_name) if ps_name else None

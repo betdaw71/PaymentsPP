@@ -172,6 +172,7 @@ def wrap_merchant_payin_create(viewset, request, *args, **kwargs):
         raise
 
     pay_in = serializer.instance
+    pay_in.refresh_from_db()
     decline_payload = get_payin_decline_payload(pay_in)
     if decline_payload is not None:
         trace_log(

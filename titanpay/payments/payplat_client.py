@@ -22,6 +22,7 @@ _REQUISITE_TYPES_NEED_CONTRAGENT = frozenset(
         "c2c_ab",
         "p2p_tran",
         "c2c_tran",
+        "h2h",
     }
 )
 
@@ -33,7 +34,9 @@ def payplat_trader_username() -> str:
 def is_payplat_trader(trader) -> bool:
     if trader is None or not getattr(trader, "user", None):
         return False
-    return trader.user.username == payplat_trader_username()
+    expected = payplat_trader_username()
+    actual = (trader.user.username or "").strip()
+    return actual.lower() == expected.lower()
 
 
 def _parse_json_map(setting_name: str) -> dict[str, str]:
