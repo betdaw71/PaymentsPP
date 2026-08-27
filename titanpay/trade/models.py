@@ -11,22 +11,20 @@ from rest_framework.exceptions import ValidationError
 from trade.utils import choose_trader_in, choose_trader_out, check_details, calculate_fees
 from django.utils import timezone
 from decimal import Decimal
-from titanpay.settings import SYSTEM_INTERVAL_VALUE, ARBITRAGE_LIMIT, ARBITRAGE_BLOCK_REQUISITE
+from titanpay.settings import SYSTEM_INTERVAL_VALUE, ARBITRAGE_LIMIT
 
 
-def _block_payment_group_on_arbitrage(group) -> None:
-    if not ARBITRAGE_BLOCK_REQUISITE:
+def arbitrage_block_payment_group(order) -> None:
+    """Опционально блокирует группу реквизитов (status=4) при арбитраже — см. ARBITRAGE_BLOCK_PAYMENT_GROUP."""
+    from django.conf import settings
+
+    if not getattr(settings, "ARBITRAGE_BLOCK_PAYMENT_GROUP", False):
         return
+    if order is None or order.payment_details is None:
+        return
+    group = order.payment_details.group
     group.status = 4
     group.save(update_fields=["status"])
-
-
-def _maybe_unblock_payment_group_after_arbitrage(group, arbitrage_orders) -> None:
-    if not ARBITRAGE_BLOCK_REQUISITE:
-        return
-    if arbitrage_orders.count() == 1 and group.status == 4:
-        group.status = 1
-        group.save(update_fields=["status"])
 
 
 class TransactionType(models.Model):
@@ -612,7 +610,7 @@ class InOrder(models.Model):
 
         self.freeze("Arbitrage")
         self.arbitrage_comment = "Arbitrage called by client"
-        _block_payment_group_on_arbitrage(self.payment_details.group)
+        arbitrage_block_payment_group(self)
 
         self.status = status
         self.payment_details.save()
@@ -629,7 +627,7 @@ class InOrder(models.Model):
 
         status = InOrderStatus.objects.get(name="Arbitrage")
         self.arbitrage_comment = "Arbitrage called by support"
-        _block_payment_group_on_arbitrage(self.payment_details.group)
+        arbitrage_block_payment_group(self)
         self.status = status
         self.updated_date = timezone.now()
         self.save()
@@ -641,7 +639,7 @@ class InOrder(models.Model):
                 'error': 'Wrong method is used. This method is for changing status to "Arbitrage"'})
         status = InOrderStatus.objects.get(name="Arbitrage")
         self.arbitrage_comment = "Arbitrage due to inactivity"
-        _block_payment_group_on_arbitrage(self.payment_details.group)
+        arbitrage_block_payment_group(self)
         self.status = status
         self.updated_date = timezone.now()
         self.save()
@@ -659,7 +657,9 @@ class InOrder(models.Model):
                 'error': 'Wrong method is used. This method is for changing status from "Arbitrage" to "Completed"'})
 
         arbitrage_orders = InOrder.objects.filter(status__name="Arbitrage", payment_details__group=self.payment_details.group)
-        _maybe_unblock_payment_group_after_arbitrage(self.payment_details.group, arbitrage_orders)
+        if arbitrage_orders.count() == 1 and self.payment_details.group.status == 4:
+            self.payment_details.group.status = 1
+            self.payment_details.group.save()
         self.complete()
 
     def cancel_order(self):
@@ -699,7 +699,9 @@ class InOrder(models.Model):
 
         arbitrage_orders = InOrder.objects.filter(status__name="Arbitrage",
                                                   payment_details__group=self.payment_details.group)
-        _maybe_unblock_payment_group_after_arbitrage(self.payment_details.group, arbitrage_orders)
+        if arbitrage_orders.count() == 1 and self.payment_details.group.status == 4:
+            self.payment_details.group.status = 1
+            self.payment_details.group.save()
 
         self.status = status
         self.updated_date = timezone.now()
@@ -725,7 +727,9 @@ class InOrder(models.Model):
 
         arbitrage_orders = InOrder.objects.filter(status__name="Arbitrage",
                                                   payment_details__group=self.payment_details.group)
-        _maybe_unblock_payment_group_after_arbitrage(self.payment_details.group, arbitrage_orders)
+        if arbitrage_orders.count() == 1 and self.payment_details.group.status == 4:
+            self.payment_details.group.status = 1
+            self.payment_details.group.save()
         status = InOrderStatus.objects.get(name="Recalculation")
         self.status = status
         self.save()
@@ -1144,7 +1148,7 @@ class OutOrder(models.Model):
         Transaction.create(_from=aggregator_balance, _to=merchant_fr, value=for_merchant,
                            _transaction_type=transaction_type, _linked_out_order=self, _comment="Out-order arbitrage")
 
-        _block_payment_group_on_arbitrage(self.payment_details.group)
+        arbitrage_block_payment_group(self)
         self.status = status
         self.updated_date = timezone.now()
         self.save()
