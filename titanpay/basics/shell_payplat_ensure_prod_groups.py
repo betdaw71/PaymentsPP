@@ -180,6 +180,8 @@ def run() -> None:
     print(".env prod:")
     print("  PAYPLAT_API_BASE=https://payplat.su/v1/api")
     print("  PAYPLAT_REQUISITE_TYPE_MAP={\"C2C\":\"c2c_ab\",\"C2CKZT\":\"c2c_ab\"}")
+    print("  PAYPLAT_PAYER_MAP={\"C2C\":\"kz\",\"C2CKZT\":\"kz\"}")
+    print("  shell_setup_payplat_appeal.py — апелляционный бот")
     print("  ARBITRAGE_BLOCK_PAYMENT_GROUP=false")
     print("")
     print("Check routing:")

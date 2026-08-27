@@ -15,6 +15,7 @@ Django shell: команда + трейдер PayPlat PSP (username payplat1).
   PAYPLAT_SECRET_KEY=100000100
   PAYPLAT_TRADER_USERNAME=payplat1
   PAYPLAT_REQUISITE_TYPE_MAP={"C2C":"c2c_ab","C2CKZT":"c2c_ab","C2CKZTTEST":"c2c_ab"}
+  PAYPLAT_PAYER_MAP={"C2C":"kz","C2CKZT":"kz","C2CKZTTEST":"kz"}
   PUBLIC_API_URL=https://api.avapay.net
 
 Тестовый роутинг мерчанта:

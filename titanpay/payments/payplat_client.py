@@ -78,6 +78,25 @@ def payplat_tariff() -> str:
     return (getattr(settings, "PAYPLAT_TARIFF", None) or "PRIMARY").strip().upper() or "PRIMARY"
 
 
+def payplat_payer_for(payment_system_name: str | None, pay_in: Any = None) -> str | None:
+    """Коридор плательщика PayPlat: kz → сумма в тенге, ru → в рублях (см. документацию h2h/c2c_ab)."""
+    ps_name = (payment_system_name or "").strip()
+    mapped = _parse_json_map("PAYPLAT_PAYER_MAP").get(ps_name)
+    if mapped:
+        val = mapped.strip().lower()
+        return val if val not in ("null", "none", "") else None
+    default = (getattr(settings, "PAYPLAT_PAYER", None) or "").strip().lower()
+    if default and default not in ("null", "none", ""):
+        return default
+    if pay_in is not None and getattr(pay_in, "currency", None):
+        sym = (pay_in.currency.symbol or "").strip().upper()
+        if sym == "KZT":
+            return "kz"
+        if sym == "RUB":
+            return "ru"
+    return None
+
+
 def payplat_callback_url() -> str:
     explicit = (getattr(settings, "PAYPLAT_CALLBACK_URL", None) or "").strip().rstrip("/")
     if explicit:
@@ -284,6 +303,7 @@ def payplat_create_deal(
     id_contragent: str | None = None,
     bank: str | None = None,
     tariff: str | None = None,
+    payer: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
     payload: dict[str, Any] = {
@@ -294,6 +314,9 @@ def payplat_create_deal(
     req_type = (requisite_type or payplat_requisite_type_for(None)).strip().lower()
     if req_type:
         payload["requisite_type"] = req_type
+    payer_val = (payer or "").strip().lower()
+    if payer_val:
+        payload["payer"] = payer_val
     if id_contragent:
         payload["id_contragent"] = id_contragent
     elif req_type in _REQUISITE_TYPES_NEED_CONTRAGENT:
@@ -499,6 +522,7 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
     ps_name = pay_in.payment_system.name if pay_in.payment_system else None
     requisite_type = payplat_requisite_type_for(ps_name)
     bank = payplat_bank_for(ps_name)
+    payer = payplat_payer_for(ps_name, pay_in)
 
     session, _ = PayplatPayInSession.objects.get_or_create(
         pay_in=pay_in,
@@ -517,6 +541,7 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
         requisite_type=requisite_type,
         id_contragent=id_contragent,
         bank=bank,
+        payer=payer,
         pay_in=pay_in,
     )
     if not ok:

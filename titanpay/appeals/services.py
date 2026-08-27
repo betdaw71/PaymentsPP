@@ -134,6 +134,9 @@ def _provider_chat(*, psp_provider: str, trader_username: str = "") -> AppealTel
 def _provider_caption(*, pay_in, psp_provider: str, provider_external_id: str) -> str:
     if psp_provider == "botonpay" and provider_external_id:
         return provider_external_id
+    if psp_provider == "payplat":
+        # PayPlat сверяет апелляции по shop_internal_id (= id PayIn)
+        return str(pay_in.id)
     if provider_external_id:
         return provider_external_id
     return str(pay_in.id)

@@ -359,6 +359,12 @@ PAYPLAT_REQUISITE_TYPE = os.getenv('PAYPLAT_REQUISITE_TYPE', 'c2c_ab')
 PAYPLAT_BANK_MAP = os.getenv('PAYPLAT_BANK_MAP', '')
 PAYPLAT_BANK = os.getenv('PAYPLAT_BANK', '')
 PAYPLAT_TARIFF = os.getenv('PAYPLAT_TARIFF', 'PRIMARY')
+# JSON: коридор плательщика — kz = сумма в тенге, ru = в рублях (документация PayPlat)
+PAYPLAT_PAYER_MAP = os.getenv(
+    'PAYPLAT_PAYER_MAP',
+    '{"C2C":"kz","C2CKZT":"kz","C2CKZTTEST":"kz"}',
+)
+PAYPLAT_PAYER = os.getenv('PAYPLAT_PAYER', 'kz')
 PAYPLAT_CONTRAGENT_FROM_CLIENT = os.getenv('PAYPLAT_CONTRAGENT_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 PAYPLAT_WEBHOOK_SKIP_VERIFY = os.getenv('PAYPLAT_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
 

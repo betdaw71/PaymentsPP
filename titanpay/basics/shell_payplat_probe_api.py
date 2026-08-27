@@ -28,6 +28,7 @@ def run():
         shop_internal_id=external_id,
         requisite_type="c2c_ab",
         id_contragent=f"probe-{uuid.uuid4().hex[:12]}",
+        payer="kz",
         pay_in=None,
     )
     print(f"\n--- create deal ok={ok} shop_internal_id={external_id} ---")
