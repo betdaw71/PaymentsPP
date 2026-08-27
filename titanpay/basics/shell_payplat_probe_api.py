@@ -26,7 +26,7 @@ def run():
     ok, data = payplat_create_deal(
         amount=5000,
         shop_internal_id=external_id,
-        requisite_type="h2h",
+        requisite_type="c2c_ab",
         id_contragent=f"probe-{uuid.uuid4().hex[:12]}",
         pay_in=None,
     )

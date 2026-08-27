@@ -392,6 +392,20 @@ def payplat_webhook_outcome(body: dict) -> str | None:
     return None
 
 
+def payplat_requisite_currency_ok(create_body: dict, pay_in: Any) -> bool:
+    """В ответе PayPlat requisite.currency должен совпадать с валютой заявки (KZT ≠ KGS)."""
+    if not isinstance(create_body, dict):
+        return True
+    requisite = create_body.get("requisite")
+    if not isinstance(requisite, dict):
+        return True
+    req_cur = (requisite.get("currency") or "").strip().upper()
+    if not req_cur:
+        return True
+    pay_cur = (pay_in.currency.symbol if getattr(pay_in, "currency", None) else "").strip().upper()
+    return not pay_cur or req_cur == pay_cur
+
+
 def payplat_map_requisite(create_body: dict) -> dict:
     """Маппинг ответа POST /deals в payment_details для мерчанта (только H2H card/phone, не redirect)."""
     if not isinstance(create_body, dict):
@@ -530,6 +544,32 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
 
     req = payplat_map_requisite(session.create_response)
     from payments.psp_payin import requisite_payload_has_fields
+
+    if requisite_payload_has_fields(req) and not payplat_requisite_currency_ok(session.create_response, pay_in):
+        upstream = session.create_response
+        order_id = session.provider_order_id
+        req_cur = ""
+        requisite = upstream.get("requisite") if isinstance(upstream, dict) else None
+        if isinstance(requisite, dict):
+            req_cur = str(requisite.get("currency") or "")
+        pay_cur = pay_in.currency.symbol if pay_in.currency else ""
+        session.create_response = {
+            "error": "requisite_currency_mismatch",
+            "upstream": upstream,
+            "expected_currency": pay_cur,
+            "got_currency": req_cur,
+        }
+        session.provider_order_id = ""
+        session.save(update_fields=["create_response", "provider_order_id", "updated_at"])
+        if order_id:
+            payplat_cancel_deal(shop_internal_id=external_id, pay_in=pay_in)
+        logger.error(
+            "PayPlat: currency mismatch PayIn=%s expected=%s got=%s",
+            pay_in.id,
+            pay_cur,
+            req_cur,
+        )
+        return False
 
     if not requisite_payload_has_fields(req):
         upstream = session.create_response

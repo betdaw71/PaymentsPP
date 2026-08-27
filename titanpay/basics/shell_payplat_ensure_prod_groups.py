@@ -179,7 +179,7 @@ def run() -> None:
     print("")
     print(".env prod:")
     print("  PAYPLAT_API_BASE=https://payplat.su/v1/api")
-    print("  PAYPLAT_REQUISITE_TYPE_MAP={\"C2C\":\"h2h\",\"C2CKZT\":\"h2h\"}")
+    print("  PAYPLAT_REQUISITE_TYPE_MAP={\"C2C\":\"c2c_ab\",\"C2CKZT\":\"c2c_ab\"}")
     print("  ARBITRAGE_BLOCK_PAYMENT_GROUP=false")
     print("")
     print("Check routing:")

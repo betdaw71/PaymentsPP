@@ -994,6 +994,7 @@ def classify_payin_decline(pay_in: Any) -> str:
             "no_credentials_in_response",
             "no_free_requisites",
             "amount_currently_unavailable",
+            "requisite_currency_mismatch",
         ):
             return "requisites_empty_response"
         if _extract_upstream_error(cr):

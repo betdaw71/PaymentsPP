@@ -31,31 +31,41 @@ class Command(BaseCommand):
     help = "Разбор pay-in по UUID: почему Declined и почему не видно в ЛК саппорта"
 
     def add_arguments(self, parser):
-        parser.add_argument("pay_in_id", type=str, help="UUID pay-in из ответа мерчанту")
+        parser.add_argument("pay_in_id", type=str, help="UUID pay-in (поле id) или merchant_order_id")
 
     def handle(self, *args, **options):
         pid = options["pay_in_id"].strip()
+        qs = PayIn.objects.select_related(
+            "status",
+            "currency",
+            "payment_system",
+            "merchant",
+            "merchant__user",
+            "order",
+            "order__status",
+            "order__solution",
+            "order__solution__merchant",
+            "order__solution__payment_system",
+            "order__solution__traffic",
+            "order__payment_details",
+            "order__payment_details__group",
+            "order__payment_details__group__trader",
+            "order__payment_details__group__trader__user",
+            "order__payment_details__group__trader__team",
+        )
         try:
-            pay_in = PayIn.objects.select_related(
-                "status",
-                "currency",
-                "payment_system",
-                "merchant",
-                "merchant__user",
-                "order",
-                "order__status",
-                "order__solution",
-                "order__solution__merchant",
-                "order__solution__payment_system",
-                "order__solution__traffic",
-                "order__payment_details",
-                "order__payment_details__group",
-                "order__payment_details__group__trader",
-                "order__payment_details__group__trader__user",
-                "order__payment_details__group__trader__team",
-            ).get(id=pid)
+            pay_in = qs.get(id=pid)
         except PayIn.DoesNotExist:
-            raise CommandError(f"PayIn {pid} не найден в БД")
+            by_moid = qs.filter(merchant_order_id=pid).order_by("-created_at").first()
+            if by_moid is None:
+                raise CommandError(
+                    f"PayIn {pid} не найден в БД (ни по id, ни по merchant_order_id). "
+                    f"Используйте поле id из ответа create, не merchant_order_id клиента."
+                )
+            pay_in = by_moid
+            self.stdout.write(
+                self.style.WARNING(f"Найден по merchant_order_id (последний): {pay_in.id}")
+            )
 
         self.stdout.write(self.style.HTTP_INFO(f"\n=== PayIn {pay_in.id} ==="))
         self.stdout.write(f"status:           {pay_in.status.name if pay_in.status else None}")
