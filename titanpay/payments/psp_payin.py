@@ -238,7 +238,7 @@ def psp_trader_frozen_snapshot(trader) -> dict:
 
 
 def _team_mdr_in_map(groups) -> dict[tuple[int, int], Decimal]:
-    """(team_id, payment_system_id) -> mdr_in для сортировки PSP-каскада."""
+    """(team_id, payment_system_id) -> mdr_in (для учёта комиссии; не менять ради каскада)."""
     from basics.models import TraderTeamRates
 
     team_ids = {g.trader.team_id for g in groups if g.trader and g.trader.team_id}
@@ -254,11 +254,47 @@ def _team_mdr_in_map(groups) -> dict[tuple[int, int], Decimal]:
     }
 
 
+def _psp_routing_priority_map() -> dict[str, int]:
+    """username PSP-трейдера → приоритет каскада (меньше = раньше). Не трогает mdr_in."""
+    from django.conf import settings
+
+    raw = getattr(settings, "PSP_ROUTING_PRIORITY_MAP", None)
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        import json
+
+        try:
+            data = json.loads(str(raw or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            data = {}
+    out: dict[str, int] = {}
+    for key, val in (data or {}).items():
+        name = str(key).strip()
+        if not name:
+            continue
+        try:
+            out[name] = int(val)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def psp_routing_priority_for_trader(trader) -> int:
+    """Приоритет в PSP-каскаде (1 = первый). По умолчанию 100."""
+    if trader is None or not getattr(trader, "user", None):
+        return 100
+    username = (trader.user.username or "").strip()
+    if not username:
+        return 100
+    return _psp_routing_priority_map().get(username, 100)
+
+
 def sort_groups_for_routing(groups, amount=None):
     """
     Порядок выбора PSP-группы.
-    Если все кандидаты — PSP-трейдеры: сначала меньший mdr_in (дешевле провайдер),
-    затем current_volume. Иначе — только по current_volume (как раньше).
+    Если все кандидаты — PSP-трейдеры: PSP_ROUTING_PRIORITY_MAP (меньше = раньше),
+    затем mdr_in, current_volume. Иначе — только по current_volume.
     """
     groups = list(groups)
     if not groups:
@@ -268,6 +304,7 @@ def sort_groups_for_routing(groups, amount=None):
         return sorted(
             groups,
             key=lambda g: (
+                psp_routing_priority_for_trader(g.trader),
                 mdr_map.get((g.trader.team_id, g.payment_system_id), Decimal("999")),
                 g.current_volume or Decimal(0),
                 g.trader.user.username if g.trader and g.trader.user else "",

@@ -69,7 +69,7 @@ class Command(BaseCommand):
             raise CommandError(f"route() failed: {exc}") from exc
 
         from basics.models import TraderTeamRates
-        from payments.psp_payin import sort_groups_for_routing
+        from payments.psp_payin import psp_routing_priority_for_trader, sort_groups_for_routing
 
         options_qs = router.get_possible_options_in(None, ps, amount, traffic, usd_amount)
         self.stdout.write(f"\nгрупп после фильтра: {options_qs.count()}")
@@ -95,8 +95,9 @@ class Command(BaseCommand):
                 traffics = list(g.allowed_traffic.values_list("name", flat=True))
                 mdr = mdr_map.get((t.team_id, ps.id))
                 mdr_s = f" mdr_in={mdr}%" if mdr is not None else ""
+                prio = psp_routing_priority_for_trader(t)
                 self.stdout.write(
-                    f"  {i}. group {g.id} trader={t.user.username}{mdr_s} cards={cards} "
+                    f"  {i}. group {g.id} trader={t.user.username} cascade_priority={prio}{mdr_s} cards={cards} "
                     f"vol={g.current_volume}/{g.limit_per_period} balance_usdt={bal} traffic={traffics}"
                 )
 

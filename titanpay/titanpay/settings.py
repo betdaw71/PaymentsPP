@@ -368,6 +368,12 @@ PAYPLAT_PAYER = os.getenv('PAYPLAT_PAYER', 'kz')
 PAYPLAT_CONTRAGENT_FROM_CLIENT = os.getenv('PAYPLAT_CONTRAGENT_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 PAYPLAT_WEBHOOK_SKIP_VERIFY = os.getenv('PAYPLAT_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
 
+# JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
+PSP_ROUTING_PRIORITY_MAP = os.getenv(
+    'PSP_ROUTING_PRIORITY_MAP',
+    '{"payplat1": 1, "gipay1": 2}',
+)
+
 # Protocol PSP (prot0col.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/protocol/)
 PROTOCOL_API_BASE = os.getenv('PROTOCOL_API_BASE', 'https://prot0col.com').rstrip('/')
 PROTOCOL_MERCHANT_ID = os.getenv('PROTOCOL_MERCHANT_ID', '')

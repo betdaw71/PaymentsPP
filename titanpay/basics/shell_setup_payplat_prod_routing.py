@@ -3,7 +3,7 @@ Prod: C2CKZT / C2C → только payplat1 (заявки сразу идут �
 
   - активирует группы payplat1 на C2CKZT и C2C
   - отключает C2CKZTTEST у payplat1
-  - ставит минимальный mdr_in у PayPlat Agg (первый в каскаде)
+  - приоритет каскада через PSP_ROUTING_PRIORITY_MAP в .env (не меняет mdr_in)
   - отключает другие PSP-трейдеры на C2CKZT и C2C
   - снимает arbitrage-block (status=4)
 
@@ -30,7 +30,7 @@ from decimal import Decimal
 from django.contrib.auth.models import User
 from django.db import transaction
 
-from basics.models import Currency, PaymentDetailsGroup, PaymentSystem, Trader, TraderTeamRates, TrafficType
+from basics.models import Currency, PaymentDetailsGroup, PaymentSystem, Trader, TrafficType
 from basics.shell_payplat_ensure_prod_groups import (
     CURRENCY_SYMBOL,
     PROD_PS_NAMES,
@@ -46,31 +46,11 @@ from payments.payplat_client import payplat_trader_username
 from payments.psp_payin import psp_trader_usernames
 
 TRAFFIC_NAME = "Standard"
-PAYPLAT_MDR_IN = Decimal(os.environ.get("PAYPLAT_MDR_IN", "0.5"))
 DEFAULT_MERCHANTS = os.environ.get("MERCHANT_USERNAMES", "pandapay").strip()
 
 
 def _merchant_usernames() -> list[str]:
     return [u.strip() for u in DEFAULT_MERCHANTS.split(",") if u.strip()]
-
-
-def set_payplat_lowest_mdr(trader: Trader, kzt: Currency) -> None:
-    if not trader.team_id:
-        print("  WARN: payplat1 без team — пропуск mdr")
-        return
-    for ps_name in PROD_PS_NAMES:
-        ps = PaymentSystem.objects.filter(name=ps_name, currency=kzt).first()
-        if ps is None:
-            continue
-        rate, created = TraderTeamRates.objects.get_or_create(
-            team=trader.team,
-            payment_system=ps,
-            defaults={"mdr_in": PAYPLAT_MDR_IN, "mdr_out": Decimal("2.5")},
-        )
-        if not created and rate.mdr_in != PAYPLAT_MDR_IN:
-            rate.mdr_in = PAYPLAT_MDR_IN
-            rate.save(update_fields=["mdr_in"])
-        print(f"  ~ PayPlat mdr_in={PAYPLAT_MDR_IN}% on {ps_name}")
 
 
 def deactivate_other_psp_on_prod_ps(kzt: Currency, *, keep_username: str) -> None:
@@ -140,7 +120,6 @@ def run() -> None:
         ensure_group(trader, kzt, ps, traffic)
 
     deactivate_test_ps(trader, kzt)
-    set_payplat_lowest_mdr(trader, kzt)
     deactivate_other_psp_on_prod_ps(kzt, keep_username=username)
 
     if trader.balance_usdt.amount < PSP_FLOAT_USDT:
@@ -162,7 +141,7 @@ def run() -> None:
         print(f"  ✓ merchant {merchant_username} → {', '.join(PROD_PS_NAMES)}")
 
     print("\nDone.")
-    print(f"  • payplat1 первый в каскаде на {', '.join(PROD_PS_NAMES)}")
+    print(f"  • payplat1 первый в каскаде через PSP_ROUTING_PRIORITY_MAP (mdr_in не менялся)")
     print("  • другие PSP (botonpay, gipay, …) на этих PS отключены")
     print("  • restart app после .env PAYPLAT_*")
     print("  • diagnose_routing pandapay --ps C2CKZT --amount 5000 --ftd false")
