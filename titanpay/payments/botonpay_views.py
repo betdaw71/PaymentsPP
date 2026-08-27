@@ -126,6 +126,12 @@ def botonpay_webhook_view(request):
     )
 
     session.last_webhook_payload = body
+    if not session.provider_deal_uuid:
+        for key in ("deal_uuid", "deal_id"):
+            raw = body.get(key)
+            if raw:
+                session.provider_deal_uuid = str(raw)
+                break
     session.last_notified_status = _norm_status(body.get("status")) or session.last_notified_status
     status_version = body.get("status_version")
     if status_version is not None:
@@ -133,7 +139,15 @@ def botonpay_webhook_view(request):
             session.last_status_version = int(status_version)
         except (TypeError, ValueError):
             pass
-    session.save()
+    session.save(
+        update_fields=[
+            "last_webhook_payload",
+            "provider_deal_uuid",
+            "last_notified_status",
+            "last_status_version",
+            "updated_at",
+        ]
+    )
 
     outcome = botonpay_webhook_outcome(body, webhook_event=webhook_event)
     if outcome == "success":

@@ -74,7 +74,7 @@ def print_sessions() -> None:
 
 def print_trace() -> None:
     print("\n=== GiPay webhook trace ===")
-    qs = PayInTrace.objects.filter(direction=Direction.GIPAY_WEBHOOK).order_by("-created_at")
+    qs = PayInTraceLog.objects.filter(direction=Direction.GIPAY_WEBHOOK).order_by("-created_at")
     if PAYIN_ID:
         qs = qs.filter(pay_in_id=PAYIN_ID)
     rows = list(qs[:LIMIT])

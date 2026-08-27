@@ -373,7 +373,7 @@ def try_attach_botonpay_session(pay_in: Any) -> bool | None:
 
     session.create_response = data if isinstance(data, dict) else {"payload": data}
     deal = _deal_from_response(session.create_response)
-    deal_uuid = deal.get("deal_uuid") or deal.get("id")
+    deal_uuid = deal.get("deal_uuid") or deal.get("deal_id") or deal.get("id")
     if deal_uuid:
         session.provider_deal_uuid = str(deal_uuid)
     session.save(update_fields=["create_response", "provider_deal_uuid", "updated_at"])

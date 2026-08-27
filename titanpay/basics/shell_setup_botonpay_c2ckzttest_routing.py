@@ -239,6 +239,7 @@ def run(merchant_username: str = MERCHANT_USERNAME) -> None:
         print(f"  + topped balance_usdt for {botonpay_trader_username()}")
 
     ensure_botonpay_virtual_group(trader, ps, kzt, traffic)
+    deactivate_other_psp_groups_on_test_ps(ps, keep_username=botonpay_trader_username())
 
     try:
         merchant = Merchant.objects.get(user__username=merchant_username)

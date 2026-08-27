@@ -1,12 +1,14 @@
 """
 Диагностика Bitzone перерасчёта по PayIn UUID + опциональный replay из last_webhook_payload.
 
-Пример:
-  docker compose exec app python manage.py shell < basics/shell_bitzone_recalc_diagnose.py
+Пример (dry-run):
+  docker compose exec -T app python manage.py shell < titanpay/basics/shell_bitzone_recalc_diagnose.py
 
-Или:
-  PAYIN_ID=b4680fcc-60eb-4395-9e89-ad0cb56d569a APPLY=1 \\
-    docker compose exec -T app python manage.py shell < basics/shell_bitzone_recalc_diagnose.py
+Replay перерасчёта — env внутрь контейнера через -e (не снаружи compose):
+  docker compose exec -T \\
+    -e PAYIN_ID=b4680fcc-60eb-4395-9e89-ad0cb56d569a \\
+    -e APPLY=1 \\
+    app python manage.py shell < titanpay/basics/shell_bitzone_recalc_diagnose.py
 """
 from __future__ import annotations
 
@@ -77,7 +79,8 @@ def main() -> None:
         return
 
     if not APPLY:
-        print("\nDry-run. Set APPLY=1 to replay handle_psp_success_webhook from last_webhook_payload.")
+        print("\nDry-run. Replay:")
+        print("  docker compose exec -T -e PAYIN_ID=%s -e APPLY=1 app python manage.py shell < titanpay/basics/shell_bitzone_recalc_diagnose.py" % PAYIN_ID)
         return
 
     if not order:
