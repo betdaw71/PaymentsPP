@@ -830,8 +830,20 @@ def handle_psp_success_webhook(order, webhook_body: dict | None) -> str:
     paid_amount = parse_psp_webhook_paid_amount(webhook_body)
     state = order.status.name if order.status else None
     if state == "Completed":
-        if psp_webhook_is_recalculation(webhook_body) and paid_amount and paid_amount != order.amount:
+        from payments.payplat_client import payplat_success_webhook_allows_completed_recalc
+
+        allow_recalc = psp_webhook_is_recalculation(webhook_body) or payplat_success_webhook_allows_completed_recalc(
+            webhook_body
+        )
+        if allow_recalc and paid_amount and paid_amount != order.amount:
+            old_amount = order.amount
             if order.apply_psp_completed_recalc(paid_amount):
+                logger.info(
+                    "PSP completed recalc order_id=%s old=%s new=%s",
+                    order.pk,
+                    old_amount,
+                    paid_amount,
+                )
                 return "recalculated"
         return "idempotent"
 

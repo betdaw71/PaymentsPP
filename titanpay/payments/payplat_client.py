@@ -451,6 +451,13 @@ def payplat_webhook_paid_amount(body: dict | None) -> Decimal | None:
     return None
 
 
+def payplat_success_webhook_allows_completed_recalc(body: dict | None) -> bool:
+    """Повторный SUCCESS IPN PayPlat: можно скорректировать сумму по quote_amount."""
+    if not isinstance(body, dict):
+        return False
+    return payplat_is_webhook_body(body) and payplat_webhook_outcome(body) == "success"
+
+
 def payplat_requisite_currency_ok(
     create_body: dict,
     pay_in: Any,
