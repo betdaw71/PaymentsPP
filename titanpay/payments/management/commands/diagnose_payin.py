@@ -20,7 +20,9 @@ from payments.models import (
     ProtocolPayInSession,
     SyndicatePayInSession,
 )
-from payments.psp_payin import psp_create_failure_reason_internal
+from payments.gipay_client import gipay_trader_username
+from payments.payplat_client import payplat_trader_username
+from payments.psp_payin import psp_create_failure_reason_internal, psp_trader_usernames
 from trade.models import InOrder, Transaction
 from trade.routing.base import route
 from trade.routing.routeutils import get_teams_for_ps
@@ -145,6 +147,9 @@ class Command(BaseCommand):
                 self.stdout.write(f"  last_status:      {getattr(s, 'last_notified_status', '')}")
             cr = s.create_response or {}
             self.stdout.write(json.dumps(cr, ensure_ascii=False, indent=2, default=str)[:4000])
+
+        if pay_in.payment_system_id:
+            self._psp_group_status_on_ps(pay_in)
 
         if order.status and order.status.name == "Cannot process":
             self._explain_in_order_create_failure(pay_in, order)
@@ -305,3 +310,65 @@ class Command(BaseCommand):
         )
         detail = router.choose_detail_in(amount, usd_amount, ps, traffic, active, 0)
         self.stdout.write(f"choose_detail_in → {detail.id if detail else 'None'}")
+
+    def _psp_group_status_on_ps(self, pay_in) -> None:
+        """Почему GiPay/PayPlat не попали в каскад (нет сессии = API не вызывался)."""
+        ps = pay_in.payment_system
+        if ps is None:
+            return
+        traffic = pay_in.order.solution.traffic if pay_in.order and pay_in.order.solution else None
+        focus = (gipay_trader_username(), payplat_trader_username())
+        self.stdout.write(self.style.HTTP_INFO(f"\n=== PSP группы на {ps.name} (gipay/payplat) ==="))
+        for username in focus:
+            from django.contrib.auth.models import User
+
+            user = User.objects.filter(username=username).first()
+            if user is None:
+                self.stdout.write(f"  {username}: user not found")
+                continue
+            group = PaymentDetailsGroup.objects.filter(
+                payment_system=ps,
+                trader__user=user,
+            ).select_related("trader").first()
+            if group is None:
+                self.stdout.write(self.style.ERROR(f"  {username}: нет группы на {ps.name}"))
+                continue
+            has_card = PaymentDetails.objects.filter(
+                group=group,
+                status=1,
+                card_number__isnull=False,
+                sberpay_enabled=False,
+                sbp_enabled=False,
+            ).exists()
+            traffics = list(group.allowed_traffic.values_list("name", flat=True))
+            in_cascade = (
+                group.status == 1
+                and group.in_active
+                and group.work_type == "by_card"
+                and not group.trader.blocked
+                and has_card
+            )
+            tag = self.style.SUCCESS if in_cascade else self.style.ERROR
+            self.stdout.write(
+                tag(
+                    f"  {username}: group={group.id} status={group.status} in_active={group.in_active} "
+                    f"card_ok={has_card} traffic={traffics}"
+                )
+            )
+            if not in_cascade:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "    → API не вызывался: группа не в каскаде fallback "
+                        "(включите shell_setup_pandapay_gipay_payplat_prod_routing.py)"
+                    )
+                )
+            elif traffic and traffic.name not in traffics:
+                self.stdout.write(self.style.WARNING(f"    → traffic «{traffic.name}» не в allowed_traffic"))
+
+        active_psp = PaymentDetailsGroup.objects.filter(
+            payment_system=ps,
+            in_active=True,
+            trader__user__username__in=psp_trader_usernames(),
+        ).select_related("trader__user")
+        names = [g.trader.user.username for g in active_psp if g.trader and g.trader.user]
+        self.stdout.write(f"Все активные PSP на {ps.name}: {names or '(нет)'}")
