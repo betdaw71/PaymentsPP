@@ -220,7 +220,7 @@ class Command(BaseCommand):
             elif entry.direction == "routing" and note == "psp provider fallback":
                 attempts.append((str(body.get("provider") or "?"), body.get("success"), "fallback"))
             elif entry.direction == "merchant_response":
-                merchant_http = entry.status
+                merchant_http = entry.status_code
 
         if not attempts:
             self.stdout.write(self.style.WARNING("  нет routing-записей psp provider api/fallback"))
