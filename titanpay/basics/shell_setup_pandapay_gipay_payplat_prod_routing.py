@@ -2,7 +2,10 @@
 Prod pandapay KZT: gipay1 + payplat1 активны и первые в каскаде на C2CKZT/C2C.
 
 Не меняет TraderTeamRates.mdr_in и balance_usdt (учёт балансов не трогаем).
+Не перезаписывает лимиты существующих MerchantSolution.
 Приоритет каскада — через .env PSP_ROUTING_PRIORITY_MAP (см. settings.py).
+
+Безопасно перезапускать после сбоя: только включает prod-группы и выключает C2CKZTTEST.
 
 Запуск:
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_setup_pandapay_gipay_payplat_prod_routing.py
@@ -18,15 +21,15 @@ from __future__ import annotations
 import os
 
 from django.contrib.auth.models import User
-from django.db import transaction
 
 from basics.models import Currency, PaymentDetailsGroup, PaymentSystem, Trader, TrafficType
 from basics.shell_gipay_ensure_prod_groups import ensure_group as ensure_gipay_group
 from basics.shell_payplat_ensure_prod_groups import (
+    deactivate_test_ps,
     ensure_group as ensure_payplat_group,
     unblock_arbitrage_groups,
 )
-from basics.shell_setup_payplat_c2ckzttest_routing import ensure_merchant_solution
+from basics.shell_merchant_solution import ensure_merchant_solution
 from merchant.models import Merchant
 from payments.gipay_client import gipay_trader_username
 from payments.payplat_client import payplat_trader_username
@@ -71,7 +74,6 @@ def print_cascade_preview(kzt: Currency, traffic: TrafficType) -> None:
         print(f"  {i}. {uname}  cascade_priority={prio}")
 
 
-@transaction.atomic
 def run() -> None:
     print("=" * 60)
     print(f"Prod routing: {MERCHANT_USERNAME} — payplat1 + gipay1 активны")
@@ -101,12 +103,20 @@ def run() -> None:
         ensure_gipay_group(gipay, kzt, ps, traffic)
         ensure_payplat_group(payplat, kzt, ps, traffic)
 
+    deactivate_test_ps(payplat, kzt)
+
+    for trader in (gipay, payplat):
+        uname = trader.user.username if trader.user else "?"
+        bal = trader.balance_usdt.amount if trader.balance_usdt else None
+        frozen = trader.frozen_balance_usdt.amount if trader.frozen_balance_usdt else None
+        print(f"  balance {uname}: available={bal} frozen={frozen} (не меняли)")
+
     merchant = Merchant.objects.filter(user__username=MERCHANT_USERNAME).first()
     if merchant:
         for ps_name in PROD_PS_NAMES:
             ps = PaymentSystem.objects.filter(name=ps_name, currency=kzt).first()
             if ps:
-                ensure_merchant_solution(merchant, ps, traffic)
+                ensure_merchant_solution(merchant, ps, traffic, overwrite_limits=False)
         print(f"  ✓ merchant {MERCHANT_USERNAME}")
     else:
         print(f"  ! merchant {MERCHANT_USERNAME!r} not found")

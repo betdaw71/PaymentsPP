@@ -152,4 +152,7 @@ def run() -> None:
     print(".env: GIPAY_PAYIN_METHOD=tgkz  (оба PS → tgkz у GiPay API)")
 
 
-run()
+# Не вызывать run() при import из другого скрипта (иначе ломает prod routing).
+# При `manage.py shell < этот_файл` __name__ не basics.* — run() сработает.
+if not str(__name__).startswith("basics."):
+    run()

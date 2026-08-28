@@ -28,7 +28,6 @@ import os
 from decimal import Decimal
 
 from django.contrib.auth.models import User
-from django.db import transaction
 
 from basics.models import Currency, PaymentDetailsGroup, PaymentSystem, Trader, TrafficType
 from basics.shell_payplat_ensure_prod_groups import (
@@ -39,7 +38,7 @@ from basics.shell_payplat_ensure_prod_groups import (
     ensure_group,
     unblock_arbitrage_groups,
 )
-from basics.shell_setup_payplat_c2ckzttest_routing import ensure_merchant_solution
+from basics.shell_merchant_solution import ensure_merchant_solution
 from merchant.models import Merchant
 from payments.payplat_client import payplat_trader_username
 from payments.psp_payin import psp_trader_usernames
@@ -88,7 +87,6 @@ def activate_payplat_prod_ps(trader: Trader) -> None:
             print(f"  ~ payplat1 {ps_name}: in_active={should_active} status=1")
 
 
-@transaction.atomic
 def run() -> None:
     username = payplat_trader_username()
     print("=" * 60)
@@ -131,7 +129,7 @@ def run() -> None:
             ps = PaymentSystem.objects.filter(name=ps_name, currency=kzt).first()
             if ps is None:
                 continue
-            ensure_merchant_solution(merchant, ps, traffic)
+            ensure_merchant_solution(merchant, ps, traffic, overwrite_limits=False)
         print(f"  ✓ merchant {merchant_username} → {', '.join(PROD_PS_NAMES)}")
 
     print("\nDone.")

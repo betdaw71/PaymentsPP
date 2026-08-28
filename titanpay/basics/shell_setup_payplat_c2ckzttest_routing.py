@@ -33,7 +33,8 @@ from basics.models import (
     TraderTeamRates,
     TrafficType,
 )
-from merchant.models import Merchant, MerchantSolution
+from basics.shell_merchant_solution import ensure_merchant_solution
+from merchant.models import Merchant
 from payments.payplat_client import payplat_trader_username
 from payments.psp_payin import psp_trader_usernames
 
@@ -164,32 +165,6 @@ def deactivate_other_psp_groups_on_test_ps(ps: PaymentSystem, *, keep_username: 
             print(f"  - deactivated C2CKZTTEST group {group.id} trader={uname}")
 
 
-def ensure_merchant_solution(merchant: Merchant, ps: PaymentSystem, traffic: TrafficType):
-    merchant.payment_systems.add(ps)
-    for ftd in (False, True):
-        sol, created = MerchantSolution.objects.get_or_create(
-            merchant=merchant,
-            payment_system=ps,
-            ftd=ftd,
-            defaults={
-                "status": 1,
-                "traffic": traffic,
-                "mdr_in": Decimal("2.5"),
-                "mdr_out": Decimal("3.0"),
-                "autoclose_arbitrage": False,
-                **LIMITS,
-            },
-        )
-        if not created:
-            sol.status = 1
-            sol.traffic = traffic
-            sol.min_limit_in = LIMITS["min_limit_in"]
-            sol.max_limit_in = LIMITS["max_limit_in"]
-            sol.save(update_fields=["status", "traffic", "min_limit_in", "max_limit_in"])
-        tag = "+" if created else "~"
-        print(f"  {tag} MerchantSolution ftd={ftd} ps={PS_NAME}")
-
-
 @transaction.atomic
 def run(merchant_username: str = MERCHANT_USERNAME) -> None:
     print("=" * 60)
@@ -237,7 +212,7 @@ def run(merchant_username: str = MERCHANT_USERNAME) -> None:
     except Merchant.DoesNotExist as exc:
         raise RuntimeError(f"Merchant {merchant_username!r} not found") from exc
 
-    ensure_merchant_solution(merchant, ps, traffic)
+    ensure_merchant_solution(merchant, ps, traffic, overwrite_limits=True, limits=LIMITS)
 
     print("\nDone.")
     print(f"  • payplat1: active only {PS_NAME}")
@@ -245,4 +220,7 @@ def run(merchant_username: str = MERCHANT_USERNAME) -> None:
     print("  • pay-in: payment_system=C2CKZTTEST, currency=KZT")
 
 
-run()
+# Не вызывать run() при import из prod-скриптов: этот файл отключает C2C/C2CKZT
+# у payplat1 и поднимает balance_usdt — это сломало прод 2026-08-28.
+if not str(__name__).startswith("basics."):
+    run()

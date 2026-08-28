@@ -185,4 +185,6 @@ def run() -> None:
     print("  shell < titanpay/basics/shell_setup_payplat_prod_routing.py")
 
 
-run()
+# Не вызывать run() при import из другого скрипта (иначе ломает prod routing).
+if not str(__name__).startswith("basics."):
+    run()
