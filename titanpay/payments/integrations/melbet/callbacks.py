@@ -4,6 +4,7 @@ import json
 import logging
 
 import requests
+from django.db import transaction
 
 from payments.integrations.melbet.crypto import sign_body
 from payments.integrations.melbet.mapping import TERMINAL_CALLBACK_STATUSES
@@ -44,6 +45,28 @@ def _post_melbet_callback(session: MelbetTransactionSession, callback_url: str) 
     return status_code
 
 
+def _schedule_melbet_callback(session: MelbetTransactionSession, callback_url: str) -> None:
+    """
+    Post the Melbet callback only after the current DB transaction commits.
+
+    Status updates (Success/Failed/…) are often saved inside transaction.atomic()
+    (PSP webhooks, order completion). Sending the HTTP callback synchronously
+    lets the merchant poll before our commit is visible and read PENDING.
+    """
+    session_pk = session.pk
+    order_id = session.order_id
+
+    def _send() -> None:
+        try:
+            fresh = MelbetTransactionSession.objects.select_related("config").get(pk=session_pk)
+        except MelbetTransactionSession.DoesNotExist:
+            logger.error("Melbet callback session missing order_id=%s", order_id)
+            return
+        _post_melbet_callback(fresh, callback_url)
+
+    transaction.on_commit(_send)
+
+
 def try_send_melbet_payin_callback(pay_in, *, status_name: str | None) -> bool:
     """
     True — callback handled by Melbet integration (standard merchant callback must be skipped).
@@ -56,7 +79,7 @@ def try_send_melbet_payin_callback(pay_in, *, status_name: str | None) -> bool:
         return True
     if not pay_in.callback_url:
         return True
-    _post_melbet_callback(session, pay_in.callback_url)
+    _schedule_melbet_callback(session, pay_in.callback_url)
     return True
 
 
@@ -68,5 +91,5 @@ def try_send_melbet_payout_callback(pay_out, *, status_name: str | None) -> bool
         return True
     if not pay_out.callback_url:
         return True
-    _post_melbet_callback(session, pay_out.callback_url)
+    _schedule_melbet_callback(session, pay_out.callback_url)
     return True
