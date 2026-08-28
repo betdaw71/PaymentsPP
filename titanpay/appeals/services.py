@@ -308,7 +308,7 @@ def process_merchant_appeal_message(
 
     resolved = resolve_pay_in_from_message(text or "")
     if not resolved.ok:
-        return _reject(resolved.error_message)
+        return _reject(resolved.error_message, recognized=resolved.recognized)
 
     pay_in = resolved.pay_in
     if counterparty.merchant_id and pay_in.merchant_id != counterparty.merchant_id:
