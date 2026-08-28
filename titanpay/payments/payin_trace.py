@@ -13,9 +13,20 @@ logger = logging.getLogger("payin.trace")
 _routing_snap: ContextVar[dict | None] = ContextVar("payin_routing_snap", default=None)
 
 
+def routing_instance() -> dict:
+    import os
+    import socket
+
+    return {
+        "hostname": socket.gethostname(),
+        "pid": os.getpid(),
+    }
+
+
 def begin_routing_snap(extra: dict | None = None) -> dict:
     """Новый снимок решения роутинга на одну заявку (InOrder.create → trace)."""
     data: dict = {
+        "instance": routing_instance(),
         "solution": extra or {},
         "queryset": None,
         "sort": None,
@@ -341,6 +352,7 @@ def trace_routing_result(pay_in, in_order, *, note: str = "") -> None:
         else None
     )
     body = {
+        "instance": routing_instance(),
         "in_order_id": str(in_order.id),
         "in_order_status": in_order.status.name if in_order.status else None,
         "payment_details_id": str(in_order.payment_details_id) if in_order.payment_details_id else None,

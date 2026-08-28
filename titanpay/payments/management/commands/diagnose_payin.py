@@ -204,6 +204,9 @@ class Command(BaseCommand):
         qs = body.get("queryset") or {}
         chosen = body.get("chosen") or {}
         self.stdout.write(self.style.HTTP_INFO("  --- routing decision ---"))
+        inst = body.get("instance") or {}
+        if inst:
+            self.stdout.write(f"  instance host={inst.get('hostname')} pid={inst.get('pid')}")
         if sol:
             self.stdout.write(
                 f"  solution ftd={sol.get('ftd')} traffic={sol.get('traffic')} "
@@ -262,10 +265,13 @@ class Command(BaseCommand):
             body = entry.body if isinstance(entry.body, dict) else {}
             if entry.direction == "routing" and "after InOrder.create" in note:
                 first_trader = body.get("trader")
+                inst = body.get("instance") or {}
+                host = inst.get("hostname") or "?"
                 self.stdout.write(
                     f"  InOrder.create → trader={first_trader} "
                     f"in_order={body.get('in_order_status')} "
-                    f"ps={body.get('payment_system')} amount={body.get('amount')}"
+                    f"ps={body.get('payment_system')} amount={body.get('amount')} "
+                    f"host={host} pid={inst.get('pid') or '?'}"
                 )
             elif entry.direction == "routing" and note == "routing decision":
                 had_routing_decision = True
