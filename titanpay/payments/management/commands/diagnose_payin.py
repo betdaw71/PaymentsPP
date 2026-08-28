@@ -223,10 +223,11 @@ class Command(BaseCommand):
                 )
             for row in qs.get("included_psp") or []:
                 if row.get("trader") in ("payplat1", "gipay1"):
+                    over = " OVER_LIMIT" if row.get("over_group_limit") else ""
                     self.stdout.write(
                         self.style.SUCCESS(
                             f"    IN {row.get('trader')} prio={row.get('priority')} "
-                            f"bal={row.get('balance_usdt')} vol={row.get('volume')}"
+                            f"bal={row.get('balance_usdt')} vol={row.get('volume')}/{row.get('limit_per_period')}{over}"
                         )
                     )
         sort_rows = body.get("sort") or []
@@ -253,6 +254,7 @@ class Command(BaseCommand):
             return
 
         first_trader = None
+        had_routing_decision = False
         attempts: list[tuple[str, bool | None, str]] = []
         merchant_http = None
         for entry in traces:
@@ -266,6 +268,7 @@ class Command(BaseCommand):
                     f"ps={body.get('payment_system')} amount={body.get('amount')}"
                 )
             elif entry.direction == "routing" and note == "routing decision":
+                had_routing_decision = True
                 self._print_routing_decision(body)
             elif entry.direction == "routing" and note == "psp fallback candidates":
                 self.stdout.write("  fallback candidates (порядок вызова):")
@@ -319,11 +322,16 @@ class Command(BaseCommand):
         if first_trader and first_trader not in ("payplat1", "gipay1"):
             self.stdout.write(
                 self.style.ERROR(
-                    f"  первый слот каскада = {first_trader}, а не payplat1/gipay1 "
-                    f"(sort по volume ИЛИ payplat/gipay выпали из queryset из-за "
-                    f"team/allowed_traffic — PSP больше не режутся по traffic/team)"
+                    f"  первый слот каскада = {first_trader}, а не payplat1/gipay1"
                 )
             )
+            if not had_routing_decision:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "  нет снимка routing decision — заявка обработана другим инстансом "
+                        "или воркером без текущего кода (не этот docker compose after pull)."
+                    )
+                )
         if merchant_http is not None:
             self.stdout.write(f"  ответ create мерчанту HTTP {merchant_http}")
 

@@ -88,13 +88,18 @@ def record_in_queryset(*, payment_system, traffic_type, amount, usd_amount, opti
             reasons.append(f"balance_usdt={bal} < need {usd_amount}")
         traffics = [t.name for t in group.allowed_traffic.all()]
         in_team = bool(trader and trader.team_id in team_ids)
+        vol = group.current_volume or 0
+        lim = group.limit_per_period
+        over_limit = lim is not None and (vol + amount) > lim
         row = {
             "trader": uname,
             "group_id": str(group.id),
             "in_queryset": group.pk in included_ids,
             "balance_usdt": str(bal) if bal is not None else None,
             "need_usdt": str(usd_amount),
-            "volume": str(group.current_volume),
+            "volume": str(vol),
+            "limit_per_period": str(lim) if lim is not None else None,
+            "over_group_limit": over_limit,
             "priority": psp_routing_priority_for_trader(trader),
             "in_team": in_team,
             "traffic": traffics,
@@ -129,6 +134,62 @@ def record_in_queryset(*, payment_system, traffic_type, amount, usd_amount, opti
         included_traders[:12],
         [f"{row.get('trader')}:{row.get('skip') or 'in'}" for row in excluded_psp[:8]],
     )
+    _log_preferred_psp_status(included_psp, excluded_psp, amount, usd_amount)
+
+
+def _log_preferred_psp_status(included_psp, excluded_psp, amount, usd_amount) -> None:
+    from payments.psp_payin import preferred_payin_psp_usernames
+
+    by_name = {}
+    for row in list(included_psp) + list(excluded_psp):
+        by_name[(row.get("trader") or "").strip().lower()] = row
+    for uname in preferred_payin_psp_usernames():
+        row = by_name.get(uname.lower())
+        label = "PAYPLAT" if "payplat" in uname.lower() else "GIPAY" if "gipay" in uname.lower() else uname.upper()
+        if row is None:
+            logger.warning(
+                "%s_NO_SESSION reason=no_group_on_ps — группы нет, API не вызовется",
+                label,
+            )
+            continue
+        vol = row.get("volume")
+        lim = row.get("limit_per_period")
+        over = row.get("over_group_limit")
+        if not row.get("in_queryset"):
+            skip = row.get("skip") or []
+            if any("balance_usdt" in str(s) for s in skip):
+                why = (
+                    f"не хватает баланса USDT (bal={row.get('balance_usdt')} < need {usd_amount})"
+                )
+            elif any("blocked" in str(s) or "status=" in str(s) for s in skip):
+                why = f"группа выключена {skip}"
+            else:
+                why = str(skip)
+            logger.warning(
+                "%s_NO_SESSION reason=not_in_cascade %s vol=%s/%s — сессии не будет, API не вызываем",
+                label,
+                why,
+                vol,
+                lim,
+            )
+            continue
+        if over:
+            logger.info(
+                "%s_STATUS in_cascade=yes group_limit vol=%s/%s amount=%s "
+                "превышен limit_per_period, но PSP не режется по нему — WILL_CALL",
+                label,
+                vol,
+                lim,
+                amount,
+            )
+        else:
+            logger.info(
+                "%s_STATUS in_cascade=yes bal=%s vol=%s/%s — WILL_CALL",
+                label,
+                row.get("balance_usdt"),
+                vol,
+                lim,
+            )
 
 
 def record_in_sort_and_pick(*, sorted_groups, skipped: list, chosen_detail) -> None:

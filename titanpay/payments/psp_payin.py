@@ -313,8 +313,8 @@ def sort_groups_for_routing(groups, amount=None):
     groups = list(groups)
     if not groups:
         return groups
-    psp = [g for g in groups if is_psp_trader(g.trader)]
-    rest = [g for g in groups if not is_psp_trader(g.trader)]
+    psp = [g for g in groups if is_psp_trader(g.trader) or is_preferred_payin_psp(g.trader)]
+    rest = [g for g in groups if g not in psp]
     mdr_map = _team_mdr_in_map(psp) if psp else {}
     psp_sorted = sorted(
         psp,
@@ -332,6 +332,28 @@ def sort_groups_for_routing(groups, amount=None):
 def psp_routing_amount_ok(trader, amount) -> bool:
     """Сумма не ограничивает выбор PSP — лимиты только MerchantSolution и ответ API провайдера."""
     return True
+
+
+def preferred_payin_psp_usernames() -> tuple[str, ...]:
+    """payplat / gipay всегда в каскаде, даже если .env переименовал username."""
+    from payments.gipay_client import gipay_trader_username
+    from payments.payplat_client import payplat_trader_username
+
+    names: list[str] = []
+    for raw in (payplat_trader_username(), "payplat1", gipay_trader_username(), "gipay1"):
+        name = (raw or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
+def is_preferred_payin_psp(trader) -> bool:
+    if trader is None or not getattr(trader, "user", None):
+        return False
+    actual = (trader.user.username or "").strip().lower()
+    if not actual:
+        return False
+    return actual in {n.lower() for n in preferred_payin_psp_usernames()}
 
 
 def psp_trader_usernames() -> frozenset[str]:
@@ -365,6 +387,8 @@ def psp_trader_usernames() -> frozenset[str]:
         gpc.gipay_trader_username(),
         vxc.visionx_trader_username(),
         ppc.payplat_trader_username(),
+        "payplat1",
+        "gipay1",
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -625,7 +649,7 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
             continue
         if group.trader_id in seen_trader_ids:
             continue
-        if not is_psp_trader(group.trader):
+        if not is_psp_trader(group.trader) and not is_preferred_payin_psp(group.trader):
             continue
         detail = PaymentDetails.objects.filter(
             group=group,
@@ -717,58 +741,90 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
     """Реквизит от PSP-трейдера → один запрос к его API; нет реквизитов в ответе → Cannot process."""
     from payments.payin_trace import Direction, trace_log
 
-    order = getattr(pay_in, "order", None)
-    if order is None or order.payment_details is None:
-        return
-    if not payin_requires_psp_api_requisites(pay_in):
-        return
-    trader = order.payment_details.group.trader
+    first_provider = None
+    should_log = False
+    try:
+        order = getattr(pay_in, "order", None)
+        if order is None or order.payment_details is None:
+            return
+        if not payin_requires_psp_api_requisites(pay_in):
+            return
+        should_log = True
+        trader = order.payment_details.group.trader
 
-    if not payin_routed_group_matches_ps(pay_in):
-        logger.error(
-            "PSP attach skipped: routed group PS mismatch pay_in_id=%s ps=%s",
-            pay_in.id,
-            pay_in.payment_system.name if pay_in.payment_system else None,
+        if not payin_routed_group_matches_ps(pay_in):
+            logger.error(
+                "PSP attach skipped: routed group PS mismatch pay_in_id=%s ps=%s",
+                pay_in.id,
+                pay_in.payment_system.name if pay_in.payment_system else None,
+            )
+            mark_inorder_cannot_process_from_psp_api(pay_in, provider="routing_mismatch")
+            return
+
+        if not payin_routed_psp_group_active(pay_in):
+            logger.error("PSP attach skipped: virtual group inactive pay_in_id=%s", pay_in.id)
+            mark_inorder_cannot_process_from_psp_api(pay_in, provider="group_inactive")
+            return
+
+        provider_name, attach = _psp_provider_for_trader(trader)
+        first_provider = provider_name
+        if attach is None:
+            logger.error(
+                "PSP attach handler missing pay_in_id=%s trader=%s",
+                pay_in.id,
+                trader.user.username if getattr(trader, "user", None) else trader.pk,
+            )
+            mark_inorder_cannot_process_from_psp_api(pay_in, provider="no_handler")
+            return
+
+        import time
+
+        started = time.monotonic()
+        result = attach(pay_in)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        trace_log(
+            pay_in=pay_in,
+            direction=Direction.ROUTING,
+            body={"provider": provider_name, "success": result is True, "elapsed_ms": elapsed_ms},
+            note="psp provider api",
         )
-        mark_inorder_cannot_process_from_psp_api(pay_in, provider="routing_mismatch")
-        return
+        if result is True:
+            pay_in.refresh_from_db()
+            if getattr(pay_in, "order_id", None):
+                pay_in.order.refresh_from_db()
+            return
 
-    if not payin_routed_psp_group_active(pay_in):
-        logger.error("PSP attach skipped: virtual group inactive pay_in_id=%s", pay_in.id)
-        mark_inorder_cannot_process_from_psp_api(pay_in, provider="group_inactive")
-        return
+        if try_psp_provider_fallback(pay_in, failed_provider=provider_name):
+            return
 
-    provider_name, attach = _psp_provider_for_trader(trader)
-    if attach is None:
-        logger.error(
-            "PSP attach handler missing pay_in_id=%s trader=%s",
+        mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider_name)
+    finally:
+        if should_log:
+            _log_preferred_session_outcome(pay_in, first_provider=first_provider)
+
+
+def _log_preferred_session_outcome(pay_in, *, first_provider: str | None) -> None:
+    """Нет сессии = API не звали. Сессия с amount_currently_unavailable = отказ провайдера по сумме."""
+    if pay_in is None or not getattr(pay_in, "id", None):
+        return
+    from payments.models import GipayPayInSession, PayplatPayInSession
+
+    has_pp = PayplatPayInSession.objects.filter(pay_in=pay_in).exists()
+    has_gp = GipayPayInSession.objects.filter(pay_in=pay_in).exists()
+    if not has_pp:
+        logger.warning(
+            "PAYPLAT_NO_SESSION pay_in=%s first_slot=%s — сессии нет: API PayPlat не вызывался. "
+            "Это не отказ PayPlat по лимиту/сумме (тогда была бы сессия amount_currently_unavailable). "
+            "Смотри строку PAYPLAT_STATUS / PAYPLAT_NO_SESSION reason= в логе этой заявки.",
             pay_in.id,
-            trader.user.username if getattr(trader, "user", None) else trader.pk,
+            first_provider or "?",
         )
-        mark_inorder_cannot_process_from_psp_api(pay_in, provider="no_handler")
-        return
-
-    import time
-
-    started = time.monotonic()
-    result = attach(pay_in)
-    elapsed_ms = int((time.monotonic() - started) * 1000)
-    trace_log(
-        pay_in=pay_in,
-        direction=Direction.ROUTING,
-        body={"provider": provider_name, "success": result is True, "elapsed_ms": elapsed_ms},
-        note="psp provider api",
-    )
-    if result is True:
-        pay_in.refresh_from_db()
-        if getattr(pay_in, "order_id", None):
-            pay_in.order.refresh_from_db()
-        return
-
-    if try_psp_provider_fallback(pay_in, failed_provider=provider_name):
-        return
-
-    mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider_name)
+    if not has_gp and not has_pp:
+        logger.warning(
+            "GIPAY_NO_SESSION pay_in=%s first_slot=%s — сессии нет: API GiPay тоже не вызывался.",
+            pay_in.id,
+            first_provider or "?",
+        )
 
 
 def _payin_has_psp_requisite(pay_in: Any) -> bool:

@@ -51,13 +51,32 @@ class SberRouting:
     
     def get_details(self, possible_options, active_orders, amount, merchant=None):
         from payments.payin_trace import record_in_sort_and_pick
-        from payments.psp_payin import is_psp_trader, sort_groups_for_routing
+        from payments.psp_payin import (
+            is_preferred_payin_psp,
+            is_psp_trader,
+            preferred_payin_psp_usernames,
+            sort_groups_for_routing,
+        )
         from merchant.kzt_settlement import melbet_kzt_test_trader_username
 
         chosen_group = sort_groups_for_routing(
             possible_options.select_related("trader", "trader__user", "trader__team", "payment_system", "trader__balance_usdt"),
             amount,
         )
+
+        pref_order = {n.lower(): i for i, n in enumerate(preferred_payin_psp_usernames())}
+        preferred_groups = []
+        other_groups = []
+        for group in chosen_group:
+            uname = (group.trader.user.username or "").strip().lower() if group.trader and group.trader.user else ""
+            if uname in pref_order:
+                preferred_groups.append(group)
+            else:
+                other_groups.append(group)
+        preferred_groups.sort(
+            key=lambda g: pref_order.get((g.trader.user.username or "").strip().lower(), 99)
+        )
+        chosen_group = preferred_groups + other_groups
 
         preferred = melbet_kzt_test_trader_username(merchant)
         if preferred:
@@ -76,8 +95,8 @@ class SberRouting:
                 sbp_enabled=False,
                 card_number__isnull=False,
             )
-            # PSP (ExpayOne/FairPay): одна виртуальная карта, реквизит уникален на PayIn — не блокировать по сумме.
-            if not is_psp_trader(group.trader):
+            # PSP / payplat / gipay: виртуальная карта не блокируется активной заявкой на ту же сумму.
+            if not is_psp_trader(group.trader) and not is_preferred_payin_psp(group.trader):
                 available_details = available_details.exclude(id__in=active_details)
             uname = group.trader.user.username if group.trader and group.trader.user else "?"
             if not available_details.exists():
