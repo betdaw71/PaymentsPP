@@ -34,14 +34,28 @@ class SberRouting:
                 output_field=DecimalField(max_digits=32, decimal_places=2),
             )
         ).filter(Q(total_value__lte=F("limit_per_period")) | psp_q)
+        try:
+            from payments.payin_trace import record_in_queryset
+
+            record_in_queryset(
+                payment_system=payment_system,
+                traffic_type=traffic_type,
+                amount=amount,
+                usd_amount=usd_amount,
+                options_qs=filtered_options,
+            )
+        except Exception:
+            import logging
+            logging.getLogger("payin.trace").exception("routing queryset snapshot failed")
         return filtered_options
     
     def get_details(self, possible_options, active_orders, amount, merchant=None):
+        from payments.payin_trace import record_in_sort_and_pick
         from payments.psp_payin import is_psp_trader, sort_groups_for_routing
         from merchant.kzt_settlement import melbet_kzt_test_trader_username
 
         chosen_group = sort_groups_for_routing(
-            possible_options.select_related("trader", "trader__user", "trader__team", "payment_system"),
+            possible_options.select_related("trader", "trader__user", "trader__team", "payment_system", "trader__balance_usdt"),
             amount,
         )
 
@@ -52,6 +66,7 @@ class SberRouting:
                 chosen_group = pref + [g for g in chosen_group if g.trader.user.username != preferred]
 
         active_details = PaymentDetails.objects.filter(inorders__in=active_orders)
+        skipped = []
 
         for group in chosen_group:
             available_details = PaymentDetails.objects.filter(
@@ -64,11 +79,27 @@ class SberRouting:
             # PSP (ExpayOne/FairPay): одна виртуальная карта, реквизит уникален на PayIn — не блокировать по сумме.
             if not is_psp_trader(group.trader):
                 available_details = available_details.exclude(id__in=active_details)
-            if available_details.exists():
-                chosen_detail = available_details.order_by('?').first()
+            uname = group.trader.user.username if group.trader and group.trader.user else "?"
+            if not available_details.exists():
+                skipped.append({"trader": uname, "group_id": str(group.id), "skip": "no_free_card"})
+                continue
+            chosen_detail = available_details.order_by('?').first()
+            try:
+                record_in_sort_and_pick(
+                    sorted_groups=chosen_group,
+                    skipped=skipped,
+                    chosen_detail=chosen_detail,
+                )
+            except Exception:
+                import logging
+                logging.getLogger("payin.trace").exception("routing pick snapshot failed")
+            return chosen_detail
 
-                return chosen_detail
-
+        try:
+            record_in_sort_and_pick(sorted_groups=chosen_group, skipped=skipped, chosen_detail=None)
+        except Exception:
+            import logging
+            logging.getLogger("payin.trace").exception("routing pick snapshot failed")
         return None
 
     def check_cluster(self, risk_cluster, payment_system, amount, active_orders, traffic_type, usd_amount):

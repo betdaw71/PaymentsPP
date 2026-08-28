@@ -95,6 +95,21 @@ class InOrder(models.Model):
     def create(cls, amount: float, solution: MerchantSolution, client_deposit_count, merchant_order_id: str = ""):
         amount = Decimal.from_float(amount) if isinstance(amount, float) else amount
 
+        from payments.payin_trace import begin_routing_snap
+
+        merchant_name = None
+        if solution.merchant_id and getattr(solution.merchant, "user", None):
+            merchant_name = solution.merchant.user.username
+        begin_routing_snap({
+            "merchant": merchant_name,
+            "ftd": solution.ftd,
+            "traffic": solution.traffic.name if solution.traffic_id else None,
+            "traffic_id": str(solution.traffic_id) if solution.traffic_id else None,
+            "ps": solution.payment_system.name if solution.payment_system_id else None,
+            "amount": str(amount),
+            "merchant_order_id": merchant_order_id,
+        })
+
         active_orders = cls.objects.filter(status__name__in=["New", "Money sent by user"], amount=amount, solution__payment_system=solution.payment_system)
 
         chosen_detail, usd_amount, payment_system_obj, success = choose_trader_in(

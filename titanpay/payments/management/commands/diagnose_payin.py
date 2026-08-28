@@ -86,6 +86,11 @@ class Command(BaseCommand):
         self.stdout.write(self.style.HTTP_INFO(f"\n=== InOrder {order.id} ==="))
         self.stdout.write(f"status:           {order.status.name if order.status else None}")
         self.stdout.write(f"recalculated:     {order.recalculated}")
+        if order.solution_id:
+            self.stdout.write(
+                f"ftd:              {order.solution.ftd}  "
+                f"traffic={order.solution.traffic.name if order.solution.traffic_id else None}"
+            )
         if order.recalculated:
             self.stdout.write(f"recalc_amount:    {order.recalculated_amount}")
         self.stdout.write(f"payment_details:  {order.payment_details_id}")
@@ -194,6 +199,51 @@ class Command(BaseCommand):
         self.stdout.write(f"Поиск по merchant_order_id: {pay_in.merchant_order_id}")
         self.stdout.write(f"Полный HTTP trace: python manage.py payin_trace {pay_in.id}")
 
+    def _print_routing_decision(self, body: dict) -> None:
+        sol = body.get("solution") or {}
+        qs = body.get("queryset") or {}
+        chosen = body.get("chosen") or {}
+        self.stdout.write(self.style.HTTP_INFO("  --- routing decision ---"))
+        if sol:
+            self.stdout.write(
+                f"  solution ftd={sol.get('ftd')} traffic={sol.get('traffic')} "
+                f"ps={sol.get('ps')} amount={sol.get('amount')}"
+            )
+        if qs:
+            self.stdout.write(
+                f"  queryset need_usdt={qs.get('need_usdt')} groups={qs.get('included_count')} "
+                f"traders={qs.get('included_traders')}"
+            )
+            for row in qs.get("excluded_psp") or []:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"    EXCLUDED {row.get('trader')} bal={row.get('balance_usdt')} "
+                        f"need={row.get('need_usdt')} skip={row.get('skip')}"
+                    )
+                )
+            for row in qs.get("included_psp") or []:
+                if row.get("trader") in ("payplat1", "gipay1"):
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"    IN {row.get('trader')} prio={row.get('priority')} "
+                            f"bal={row.get('balance_usdt')} vol={row.get('volume')}"
+                        )
+                    )
+        sort_rows = body.get("sort") or []
+        if sort_rows:
+            names = [f"{r.get('n')}:{r.get('trader')}(p={r.get('priority')})" for r in sort_rows[:10]]
+            self.stdout.write(f"  sort: {names}")
+        skipped = body.get("skipped") or []
+        if skipped:
+            self.stdout.write(f"  skipped cards: {skipped}")
+        if chosen:
+            self.stdout.write(
+                self.style.HTTP_INFO(
+                    f"  chosen={chosen.get('trader')} prio={chosen.get('priority')} "
+                    f"bal={chosen.get('balance_usdt')} group={chosen.get('group_id')}"
+                )
+            )
+
     def _print_cascade_trace(self, pay_in) -> None:
         """Факт вызовов API по PayInTraceLog: кто первый, кто fallback, кого не трогали."""
         self.stdout.write(self.style.HTTP_INFO("\n=== Каскад PSP (факт, не текущие группы) ==="))
@@ -215,6 +265,17 @@ class Command(BaseCommand):
                     f"in_order={body.get('in_order_status')} "
                     f"ps={body.get('payment_system')} amount={body.get('amount')}"
                 )
+            elif entry.direction == "routing" and note == "routing decision":
+                self._print_routing_decision(body)
+            elif entry.direction == "routing" and note == "psp fallback candidates":
+                self.stdout.write("  fallback candidates (порядок вызова):")
+                for i, row in enumerate(body.get("candidates") or [], 1):
+                    self.stdout.write(
+                        f"    {i}. {row.get('provider')} trader={row.get('trader')} "
+                        f"prio={row.get('priority')} balance_usdt={row.get('balance_usdt')}"
+                    )
+                if not body.get("candidates"):
+                    self.stdout.write("    (пусто — PayPlat/GiPay нет в iterator)")
             elif entry.direction == "routing" and note == "psp provider api":
                 attempts.append((str(body.get("provider") or "?"), body.get("success"), "first"))
             elif entry.direction == "routing" and note == "psp provider fallback":

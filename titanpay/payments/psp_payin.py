@@ -293,7 +293,11 @@ def psp_routing_priority_for_trader(trader) -> int:
     username = (trader.user.username or "").strip()
     if not username:
         return 100
-    return _psp_routing_priority_map().get(username, 100)
+    mapping = _psp_routing_priority_map()
+    if username in mapping:
+        return mapping[username]
+    lower = {str(k).lower(): v for k, v in mapping.items()}
+    return lower.get(username.lower(), 100)
 
 
 def sort_groups_for_routing(groups, amount=None):
@@ -613,7 +617,7 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
             trader__blocked=False,
             trader__user__username__in=psp_trader_usernames(),
         )
-        .select_related("trader", "trader__user", "trader__team")
+        .select_related("trader", "trader__user", "trader__team", "trader__balance_usdt")
     )
     seen_trader_ids: set[int] = set()
     for group in sort_groups_for_routing(groups, amount):
@@ -639,6 +643,8 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
 
 def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     """Protocol/ExpayOne не выдал реквизиты — пробуем другой PSP с активной группой."""
+    import time
+
     from payments.payin_trace import Direction, trace_log
 
     failed_trader_id = None
@@ -646,11 +652,38 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     if routed is not None:
         failed_trader_id = routed.trader_id
 
-    for provider_name, attach, detail in _iter_psp_fallback_candidates(
-        pay_in, exclude_trader_id=failed_trader_id
-    ):
+    candidates = list(_iter_psp_fallback_candidates(pay_in, exclude_trader_id=failed_trader_id))
+    cand_rows = []
+    for provider_name, _attach, detail in candidates:
+        trader = detail.group.trader if detail and detail.group else None
+        uname = trader.user.username if trader and getattr(trader, "user", None) else None
+        cand_rows.append({
+            "provider": provider_name,
+            "trader": uname,
+            "priority": psp_routing_priority_for_trader(trader),
+            "group_id": str(detail.group_id) if detail else None,
+            "balance_usdt": (
+                str(trader.balance_usdt.amount)
+                if trader and getattr(trader, "balance_usdt", None)
+                else None
+            ),
+        })
+    trace_log(
+        pay_in=pay_in,
+        direction=Direction.ROUTING,
+        body={
+            "failed_provider": failed_provider,
+            "exclude_trader_id": failed_trader_id,
+            "candidates": cand_rows,
+        },
+        note="psp fallback candidates",
+    )
+
+    for provider_name, attach, detail in candidates:
         _swap_inorder_payment_details(pay_in, detail, pay_in.amount)
+        started = time.monotonic()
         result = attach(pay_in)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
         has_req = _payin_has_psp_requisite(pay_in) if result is True else False
         trace_log(
             pay_in=pay_in,
@@ -660,6 +693,7 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
                 "success": result is True,
                 "has_requisite": has_req,
                 "fallback": True,
+                "elapsed_ms": elapsed_ms,
             },
             note="psp provider fallback",
         )
@@ -714,11 +748,15 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
         mark_inorder_cannot_process_from_psp_api(pay_in, provider="no_handler")
         return
 
+    import time
+
+    started = time.monotonic()
     result = attach(pay_in)
+    elapsed_ms = int((time.monotonic() - started) * 1000)
     trace_log(
         pay_in=pay_in,
         direction=Direction.ROUTING,
-        body={"provider": provider_name, "success": result is True},
+        body={"provider": provider_name, "success": result is True, "elapsed_ms": elapsed_ms},
         note="psp provider api",
     )
     if result is True:
