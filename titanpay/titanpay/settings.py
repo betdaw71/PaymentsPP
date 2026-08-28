@@ -515,7 +515,11 @@ CORS_ALLOWED_ORIGINS = [
     'https://payments.safesolutions.click',
     'http://payments.safesolutions.click',
     'https://avapay.net',
-    'https://api.avapay.net'
+    'https://api.avapay.net',
+    'https://pay.avapay.net',
+    'https://avapay.su',
+    'https://www.avapay.su',
+    'https://pay.avapay.su',
 ]
 
 CORS_ALLOW_HEADERS = ('content-disposition', 'accept-encoding', 'access-control-allow-origin',
@@ -545,7 +549,11 @@ CSRF_TRUSTED_ORIGINS = [
     'https://gate.titanpay.me',
     'https://api2.titanpay.me',
     'https://avapay.net',
-    'https://api.avapay.net'
+    'https://api.avapay.net',
+    'https://pay.avapay.net',
+    'https://avapay.su',
+    'https://www.avapay.su',
+    'https://pay.avapay.su',
 ]
 
 ADMINS = [
