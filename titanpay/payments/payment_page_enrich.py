@@ -9,9 +9,15 @@ from payments.receipt_policy import has_receipt_for_payin, receipt_required_for_
 
 
 def _sender_bank_for_payin(pay_in: PayIn) -> str | None:
-    if not hasattr(pay_in, "melbet_session"):
+    from django.core.exceptions import ObjectDoesNotExist
+
+    try:
+        session = pay_in.melbet_session
+    except ObjectDoesNotExist:
         return None
-    return sender_bank_for_melbet_method(pay_in.melbet_session.melbet_method)
+    if session is None:
+        return None
+    return sender_bank_for_melbet_method(session.melbet_method)
 
 
 def resolve_locale(pay_in: PayIn, lang_hint: str | None = None) -> str:

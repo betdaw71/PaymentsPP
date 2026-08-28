@@ -13,15 +13,6 @@ def build_bank_guides(
     if (currency or "").upper() != "KZT":
         return []
 
-    actions = bank_actions or []
-    has_kaspi = any(
-        (a.get("id") or "").lower() == "kaspi"
-        or "kaspi" in (a.get("label") or "").lower()
-        for a in actions
-    )
-    if actions and not has_kaspi:
-        return []
-
     if locale == "kk":
         title = "Kaspi-де аудару"
         caption = (

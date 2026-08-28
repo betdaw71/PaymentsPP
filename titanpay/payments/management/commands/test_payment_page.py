@@ -43,7 +43,7 @@ class Command(BaseCommand):
             help="Создать тестовый Melbet deposit (callback на example.invalid, Melbet не дергается)",
         )
         parser.add_argument("--amount", default="10000", help="Сумма для --create (KZT)")
-        parser.add_argument("--method", default="card2card_kzt", help="Melbet method для --create")
+        parser.add_argument("--method", default="card2card_kzt_kaspi", help="Melbet method для --create")
 
     def handle(self, *args, **options):
         self._failures = 0
@@ -57,7 +57,7 @@ class Command(BaseCommand):
             pay_in = self._create_melbet_deposit(
                 merchant=options.get("merchant") or "melbet",
                 amount=options.get("amount") or "10000",
-                method=options.get("method") or "card2card_kzt",
+                method=options.get("method") or "card2card_kzt_kaspi",
             )
         if pay_in is None:
             pay_in = self._resolve_pay_in(options.get("pay_in_id"), options.get("merchant") or "melbet")
@@ -248,8 +248,22 @@ class Command(BaseCommand):
         if not isinstance(data, dict):
             self._ok("obtain JSON", False, self._response_preview(obtain))
             return
+        order_status = pay_in.order.status.name if pay_in.order and pay_in.order.status else ""
         if is_melbet_merchant(pay_in.merchant):
             self._ok("obtain receipt_required=false", data.get("receipt_required") is False)
+            actions = data.get("bank_actions") or []
+            if order_status in {"New", "In Progress", "Money sent by user"}:
+                self._ok(
+                    "obtain Kaspi button not Homebank",
+                    any((a.get("id") or "").startswith("kaspi") for a in actions)
+                    and not any((a.get("id") or "") == "halyk" for a in actions),
+                    str([a.get("id") for a in actions]),
+                )
+                guides = data.get("bank_guides") or []
+                self._ok(
+                    "obtain Kaspi guide image",
+                    bool(guides) and "kaspi-international-transfers-guide" in str(guides[0].get("image_url") or ""),
+                )
         self._ok("obtain has amount", data.get("amount") is not None, str(data.get("amount")))
         self._ok("obtain has currency", bool(data.get("currency")), str(data.get("currency")))
         self._ok(
@@ -257,7 +271,6 @@ class Command(BaseCommand):
             "requisites_available" in data,
             f"available={data.get('requisites_available')} details={bool(data.get('payment_details'))}",
         )
-        order_status = pay_in.order.status.name if pay_in.order and pay_in.order.status else ""
         if order_status in {"New", "In Progress", "Money sent by user"}:
             self._ok(
                 "active deal has requisites",
