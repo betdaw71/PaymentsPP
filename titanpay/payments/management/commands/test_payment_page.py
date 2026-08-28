@@ -4,15 +4,17 @@
   docker compose exec -T app python manage.py test_payment_page --pay-in <uuid>
   docker compose exec -T app python manage.py test_payment_page --live
   docker compose exec -T app python manage.py test_payment_page --merchant melbet
+  docker compose exec -T app python manage.py test_payment_page --create --live
 """
 from __future__ import annotations
 
 import os
 import uuid
+from decimal import Decimal
 from pathlib import Path
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.test import RequestFactory
 
 from merchant.kzt_settlement import is_melbet_merchant, melbet_kzt_usernames
@@ -35,6 +37,13 @@ class Command(BaseCommand):
             action="store_true",
             help="Дополнительно дернуть публичные URL (pay.* / api.*)",
         )
+        parser.add_argument(
+            "--create",
+            action="store_true",
+            help="Создать тестовый Melbet deposit (callback на example.invalid, Melbet не дергается)",
+        )
+        parser.add_argument("--amount", default="10000", help="Сумма для --create (KZT)")
+        parser.add_argument("--method", default="card2card_kzt", help="Melbet method для --create")
 
     def handle(self, *args, **options):
         self._failures = 0
@@ -43,7 +52,15 @@ class Command(BaseCommand):
         self.stdout.write(self.style.HTTP_INFO("\n=== Payment page smoke test ===\n"))
         self._static_checks()
 
-        pay_in = self._resolve_pay_in(options.get("pay_in_id"), options.get("merchant") or "melbet")
+        pay_in = None
+        if options.get("create"):
+            pay_in = self._create_melbet_deposit(
+                merchant=options.get("merchant") or "melbet",
+                amount=options.get("amount") or "10000",
+                method=options.get("method") or "card2card_kzt",
+            )
+        if pay_in is None:
+            pay_in = self._resolve_pay_in(options.get("pay_in_id"), options.get("merchant") or "melbet")
         if pay_in is None:
             self.stdout.write(self.style.WARNING("  нет заявки этого мерчанта — obtain по живому id пропущен"))
         else:
@@ -83,6 +100,64 @@ class Command(BaseCommand):
         )
         self._ok("kaspi guide png", asset.is_file(), f"{asset.stat().st_size if asset.is_file() else 0} bytes")
         self._ok("kaspi asset path", kaspi_guide_asset_path().startswith("/payment-page-assets/"))
+
+    def _create_melbet_deposit(self, *, merchant: str, amount: str, method: str) -> PayIn:
+        from payments.integrations.melbet.amount_probe import is_melbet_deposit_allocated
+        from payments.integrations.melbet.models import MelbetIntegrationConfig
+        from payments.integrations.melbet.services import MelbetServiceError, create_melbet_deposit, deposit_response
+
+        cfg = (
+            MelbetIntegrationConfig.objects.select_related("merchant__user")
+            .filter(merchant__user__username=merchant, active=True)
+            .first()
+        )
+        if cfg is None:
+            raise CommandError(f"Нет активной MelbetIntegrationConfig для мерчанта {merchant!r}")
+
+        order_id = f"smoke-{uuid.uuid4().hex[:12]}"
+        payload = {
+            "order_id": order_id,
+            "amount": str(Decimal(str(amount))),
+            "currency": "KZT",
+            "method": method,
+            "customer_account_id": f"smoke-{order_id}",
+            "callback_url": "https://example.invalid/melbet-smoke",
+            "success_url": "https://example.invalid/ok",
+            "pending_url": "https://example.invalid/pending",
+            "fail_url": "https://example.invalid/fail",
+        }
+        self.stdout.write(f"  creating Melbet deposit merchant={merchant} amount={payload['amount']} method={method}")
+        try:
+            pay_in = create_melbet_deposit(cfg, payload)
+        except MelbetServiceError as exc:
+            self._ok("create Melbet deposit", False, f"{exc.code} {exc}")
+            raise CommandError(f"Melbet deposit failed: {exc}") from exc
+
+        pay_in = (
+            PayIn.objects.select_related(
+                "status",
+                "currency",
+                "payment_system",
+                "order__status",
+                "order__payment_details__group__trader__user",
+                "merchant__user",
+                "melbet_session",
+            )
+            .get(pk=pay_in.pk)
+        )
+        allocated = is_melbet_deposit_allocated(pay_in)
+        trader = ""
+        if pay_in.order and pay_in.order.payment_details_id:
+            trader = pay_in.order.payment_details.group.trader.user.username
+        resp = deposit_response(pay_in)
+        self._ok(
+            "create Melbet deposit allocated",
+            allocated,
+            f"PayIn={pay_in.id} order={pay_in.order.status.name if pay_in.order else '-'} trader={trader or '-'}",
+        )
+        self.stdout.write(f"  redirect_url: {resp.get('redirect_url')}")
+        self.stdout.write(self.style.WARNING("  тестовая заявка: после проверки отмените её в админке, Melbet не получит callback"))
+        return pay_in
 
     def _resolve_pay_in(self, pay_in_id: str | None, merchant: str) -> PayIn | None:
         qs = PayIn.objects.select_related(
@@ -182,6 +257,13 @@ class Command(BaseCommand):
             "requisites_available" in data,
             f"available={data.get('requisites_available')} details={bool(data.get('payment_details'))}",
         )
+        order_status = pay_in.order.status.name if pay_in.order and pay_in.order.status else ""
+        if order_status in {"New", "In Progress", "Money sent by user"}:
+            self._ok(
+                "active deal has requisites",
+                bool(data.get("requisites_available") and data.get("payment_details")),
+                f"order={order_status}",
+            )
         enriched = enrich_for_payment_page(dict(data), pay_in)
         self._ok("enrich does not crash", True, f"locale={enriched.get('locale')}")
 
