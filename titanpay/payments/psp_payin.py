@@ -292,25 +292,31 @@ def psp_routing_priority_for_trader(trader) -> int:
 
 def sort_groups_for_routing(groups, amount=None):
     """
-    Порядок выбора PSP-группы.
-    Если все кандидаты — PSP-трейдеры: PSP_ROUTING_PRIORITY_MAP (меньше = раньше),
-    затем mdr_in, current_volume. Иначе — только по current_volume.
+    Порядок выбора группы.
+
+    PSP всегда первыми: PSP_ROUTING_PRIORITY_MAP (меньше = раньше), затем mdr_in,
+    current_volume. Обычные трейдеры — после всех PSP, по current_volume.
+
+    Раньше одна не-PSP группа сбрасывала весь каскад в sort по volume, и
+    expayone1 с отрицательным current_volume обгонял payplat1/gipay1.
     """
     groups = list(groups)
     if not groups:
         return groups
-    if all(is_psp_trader(g.trader) for g in groups):
-        mdr_map = _team_mdr_in_map(groups)
-        return sorted(
-            groups,
-            key=lambda g: (
-                psp_routing_priority_for_trader(g.trader),
-                mdr_map.get((g.trader.team_id, g.payment_system_id), Decimal("999")),
-                g.current_volume or Decimal(0),
-                g.trader.user.username if g.trader and g.trader.user else "",
-            ),
-        )
-    return sorted(groups, key=lambda g: g.current_volume or Decimal(0))
+    psp = [g for g in groups if is_psp_trader(g.trader)]
+    rest = [g for g in groups if not is_psp_trader(g.trader)]
+    mdr_map = _team_mdr_in_map(psp) if psp else {}
+    psp_sorted = sorted(
+        psp,
+        key=lambda g: (
+            psp_routing_priority_for_trader(g.trader),
+            mdr_map.get((g.trader.team_id, g.payment_system_id), Decimal("999")),
+            g.current_volume or Decimal(0),
+            g.trader.user.username if g.trader and g.trader.user else "",
+        ),
+    )
+    rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))
+    return psp_sorted + rest_sorted
 
 
 def psp_routing_amount_ok(trader, amount) -> bool:

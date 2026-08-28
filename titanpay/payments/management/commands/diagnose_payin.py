@@ -100,11 +100,24 @@ class Command(BaseCommand):
             self.stdout.write(f"team:             {g.trader.team.name}")
             self.stdout.write(f"group:            {g.id} ({g.owner})")
 
+        declined = bool(pay_in.status and pay_in.status.name == "Declined")
         self.stdout.write(self.style.HTTP_INFO("\n=== Причина (внутренняя, не для мерчанта) ==="))
-        self.stdout.write(psp_create_failure_reason_internal(pay_in))
+        if declined or (order.status and order.status.name in ("Cannot process", "Cancelled")):
+            self.stdout.write(psp_create_failure_reason_internal(pay_in))
+        else:
+            self.stdout.write(
+                f"PayIn={pay_in.status.name if pay_in.status else None} "
+                f"InOrder={order.status.name if order.status else None} — отказ мерчанту не отправлялся"
+            )
+
         self.stdout.write(self.style.HTTP_INFO("\n=== Ответ мерчанту (API) ==="))
-        from payments.psp_payin import merchant_decline_payload
-        self.stdout.write(str(merchant_decline_payload(pay_in)))
+        if declined:
+            from payments.psp_payin import merchant_decline_payload
+            self.stdout.write(str(merchant_decline_payload(pay_in)))
+        else:
+            self.stdout.write("(не declined — смотри merchant_response в каскаде ниже)")
+
+        self._print_cascade_trace(pay_in)
 
         self.stdout.write(self.style.HTTP_INFO("\n=== PSP sessions ==="))
         for label, model in (
@@ -180,6 +193,78 @@ class Command(BaseCommand):
         self.stdout.write(f"Поиск по InOrder id: {order.id}")
         self.stdout.write(f"Поиск по merchant_order_id: {pay_in.merchant_order_id}")
         self.stdout.write(f"Полный HTTP trace: python manage.py payin_trace {pay_in.id}")
+
+    def _print_cascade_trace(self, pay_in) -> None:
+        """Факт вызовов API по PayInTraceLog: кто первый, кто fallback, кого не трогали."""
+        self.stdout.write(self.style.HTTP_INFO("\n=== Каскад PSP (факт, не текущие группы) ==="))
+        traces = list(PayInTraceLog.objects.filter(pay_in=pay_in).order_by("created_at", "id"))
+        if not traces:
+            self.stdout.write(self.style.WARNING("  PayInTraceLog пуст — нет записи кто вызывался"))
+            return
+
+        first_trader = None
+        attempts: list[tuple[str, bool | None, str]] = []
+        merchant_http = None
+        for entry in traces:
+            note = entry.note or ""
+            body = entry.body if isinstance(entry.body, dict) else {}
+            if entry.direction == "routing" and "after InOrder.create" in note:
+                first_trader = body.get("trader")
+                self.stdout.write(
+                    f"  InOrder.create → trader={first_trader} "
+                    f"in_order={body.get('in_order_status')} "
+                    f"ps={body.get('payment_system')} amount={body.get('amount')}"
+                )
+            elif entry.direction == "routing" and note == "psp provider api":
+                attempts.append((str(body.get("provider") or "?"), body.get("success"), "first"))
+            elif entry.direction == "routing" and note == "psp provider fallback":
+                attempts.append((str(body.get("provider") or "?"), body.get("success"), "fallback"))
+            elif entry.direction == "merchant_response":
+                merchant_http = entry.status
+
+        if not attempts:
+            self.stdout.write(self.style.WARNING("  нет routing-записей psp provider api/fallback"))
+            for entry in traces:
+                if entry.direction == "routing":
+                    body = entry.body if isinstance(entry.body, dict) else {}
+                    self.stdout.write(f"  routing note={entry.note!r} body={body}")
+
+        for i, (provider, ok, kind) in enumerate(attempts, 1):
+            if ok is True:
+                tag = self.style.SUCCESS("OK реквизит")
+            elif ok is False:
+                tag = self.style.ERROR("FAIL")
+            else:
+                tag = "?"
+            self.stdout.write(f"  {i}. {provider:12} [{kind:8}] {tag}")
+
+        tried = {p for p, _, _ in attempts}
+        self.stdout.write("")
+        for name in ("payplat", "gipay"):
+            if name in tried:
+                last = next((a for a in reversed(attempts) if a[0] == name), None)
+                ok = last[1] if last else None
+                msg = "вызван, реквизит выдан" if ok is True else "вызван, провайдер отказал"
+                style = self.style.SUCCESS if ok is True else self.style.WARNING
+                self.stdout.write(style(f"  {name}: {msg}"))
+            else:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"  {name}: API НЕ ВЫЗЫВАЛСЯ (нет сессии ≠ отказ провайдера; "
+                        f"первый трейдер был {first_trader or '?'})"
+                    )
+                )
+
+        if first_trader and first_trader not in ("payplat1", "gipay1"):
+            self.stdout.write(
+                self.style.ERROR(
+                    f"  первый слот каскада = {first_trader}, а не payplat1/gipay1 "
+                    f"(до фикса: не-PSP группа сбрасывала sort в current_volume, "
+                    f"expayone1 с отрицательным vol обгонял приоритет)"
+                )
+            )
+        if merchant_http is not None:
+            self.stdout.write(f"  ответ create мерчанту HTTP {merchant_http}")
 
     def _explain_in_order_create_failure(self, pay_in, order):
         """Различить отказ choose_trader_in и сбой freeze() до вызова Concored/других PSP."""

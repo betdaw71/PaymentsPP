@@ -85,6 +85,19 @@ class Command(BaseCommand):
             amount,
         )
         if sorted_groups:
+            from payments.psp_payin import is_psp_trader
+
+            non_psp = [
+                g.trader.user.username
+                for g in sorted_groups
+                if g.trader and g.trader.user and not is_psp_trader(g.trader)
+            ]
+            if non_psp:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  не-PSP в выборке ({non_psp[:5]}): идут ПОСЛЕ всех PSP, приоритет payplat/gipay не сбрасывается"
+                    )
+                )
             self.stdout.write(self.style.HTTP_INFO("\nпорядок каскада (первый = будет выбран):"))
             for i, g in enumerate(sorted_groups[:15], 1):
                 t = g.trader
