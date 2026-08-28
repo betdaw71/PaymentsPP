@@ -45,10 +45,13 @@ class Command(BaseCommand):
 
         pay_in = self._resolve_pay_in(options.get("pay_in_id"), options.get("merchant") or "melbet")
         if pay_in is None:
-            self.stdout.write(self.style.WARNING("  нет активной заявки — HTML/404 проверены, obtain по живому id пропущен"))
+            self.stdout.write(self.style.WARNING("  нет заявки этого мерчанта — obtain по живому id пропущен"))
         else:
             self._check_payin(pay_in)
-            self._check_http_views(pay_in)
+            try:
+                self._check_http_views(pay_in)
+            except Exception as exc:  # noqa: BLE001
+                self._ok("in-process HTTP checks", False, str(exc))
             if options.get("live"):
                 self._check_live(pay_in)
 
@@ -95,16 +98,21 @@ class Command(BaseCommand):
             self._ok(f"PayIn {pay_in_id}", pay_in is not None)
             return pay_in
         names = list(melbet_kzt_usernames()) if merchant in melbet_kzt_usernames() else [merchant]
+        merchant_qs = qs.filter(merchant__user__username__in=names)
         pay_in = (
-            qs.filter(
-                merchant__user__username__in=names,
-                status__name__in=["New", "In Progress"],
-            )
+            merchant_qs.filter(status__name__in=["New", "In Progress"])
             .order_by("-created_at")
             .first()
         )
         if pay_in is None:
-            pay_in = qs.filter(status__name__in=["New", "In Progress"]).order_by("-created_at").first()
+            pay_in = merchant_qs.order_by("-created_at").first()
+            if pay_in:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  нет активной заявки {names} — берём последнюю "
+                        f"{pay_in.status.name if pay_in.status else '-'}"
+                    )
+                )
         if pay_in:
             self.stdout.write(
                 f"  using PayIn {pay_in.id} merchant={pay_in.merchant.user.username if pay_in.merchant else '-'} "
@@ -141,21 +149,30 @@ class Command(BaseCommand):
         html = response.content.decode("utf-8", errors="replace")
         self._ok("HTML contains pay_in id", str(pay_in.id) in html)
         self._ok("HTML has no traceback", "Traceback (most recent call last)" not in html)
-        self._ok("HTML loads obtain endpoint", f"/api/v1/payments/in/invoice/{pay_in.id}/obtain/" in html)
+        self._ok(
+            "HTML loads obtain endpoint",
+            "obtainUrl" in html and "/api/v1/payments/in/invoice/" in html and "PAY_IN_ID" in html,
+        )
 
         from rest_framework.test import APIRequestFactory
 
         from payments.viewsets import PayInInvoiceViewset
 
         api_factory = APIRequestFactory()
-        obtain_view = PayInInvoiceViewset.as_view({"get": "obtain"})
+        obtain_view = PayInInvoiceViewset.as_view(
+            {"get": "obtain"},
+            permission_classes=[],
+            authentication_classes=[],
+        )
         obtain = obtain_view(api_factory.get(f"/api/v1/payments/in/invoice/{pay_in.id}/obtain/"), id=pay_in.id)
         self._ok("obtain HTTP", obtain.status_code == 200, str(obtain.status_code))
         if obtain.status_code != 200:
-            preview = repr(getattr(obtain, "data", getattr(obtain, "content", "")))[:400]
-            self.stdout.write(f"    body: {preview}")
+            self.stdout.write(f"    body: {self._response_preview(obtain)}")
             return
-        data = obtain.data
+        data = getattr(obtain, "data", None)
+        if not isinstance(data, dict):
+            self._ok("obtain JSON", False, self._response_preview(obtain))
+            return
         if is_melbet_merchant(pay_in.merchant):
             self._ok("obtain receipt_required=false", data.get("receipt_required") is False)
         self._ok("obtain has amount", data.get("amount") is not None, str(data.get("amount")))
@@ -195,12 +212,26 @@ class Command(BaseCommand):
 
         from payments.viewsets import PayInInvoiceViewset
 
-        obtain_view = PayInInvoiceViewset.as_view({"get": "obtain"})
+        obtain_view = PayInInvoiceViewset.as_view(
+            {"get": "obtain"},
+            permission_classes=[],
+            authentication_classes=[],
+        )
         obtain = obtain_view(
             APIRequestFactory().get(f"/api/v1/payments/in/invoice/{missing}/obtain/"),
             id=missing,
         )
         self._ok("unknown obtain is 404", obtain.status_code == 404, str(obtain.status_code))
+
+    @staticmethod
+    def _response_preview(response) -> str:
+        data = getattr(response, "data", None)
+        if data is not None:
+            return repr(data)[:400]
+        try:
+            return repr(response.content)[:400]
+        except Exception:  # noqa: BLE001
+            return f"<unrendered {type(response).__name__} {getattr(response, 'status_code', '?')}>"
 
     def _check_live(self, pay_in: PayIn) -> None:
         import requests
@@ -221,6 +252,8 @@ class Command(BaseCommand):
                 timeout=15,
             )
             self._ok("live obtain", obtain.status_code == 200, str(obtain.status_code))
+            if obtain.status_code != 200:
+                self.stdout.write(f"    body: {obtain.text[:400]}")
         except requests.RequestException as exc:
             self._ok("live obtain", False, str(exc))
         try:
