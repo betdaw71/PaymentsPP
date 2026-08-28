@@ -15,9 +15,10 @@ UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 TICKET_HINT_RE = re.compile(
-    r"(тикет\s*#?\s*[0-9a-fA-F]{8}|заказ\s*:|реквизиты из заявки|маска юзера)",
+    r"(тикет\s*#?\s*[0-9a-fA-F]{8}|заказ\s*:|реквизиты из заявки|маска юзера|номер в [пг]?пс)",
     re.IGNORECASE,
 )
+RECEIPT_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif")
 PENDING_TICKET_TTL_SEC = 15 * 60
 _PENDING_TICKETS: dict[int, tuple[str, float]] = {}
 _SEEN_MEDIA_GROUPS: dict[str, float] = {}
@@ -28,6 +29,17 @@ logger = logging.getLogger("appealbot")
 bot = telebot.TeleBot(TELEBOT_TOKEN)
 
 HEADERS = {"Authorization": f"Token {TGBOT_TOKEN}"}
+
+HELP_TEXT = (
+    "Бот апелляций AvaPay.\n\n"
+    "Telegram не отдаёт ботам сообщения других ботов (Mel Transaction Bot). "
+    "Тикет сам по себе бот не увидит — нужен ответ человека.\n\n"
+    "Как обработать заявку Melbet:\n"
+    "1. Ответьте на тикет чеком (фото или PDF)\n"
+    "2. Или ответьте на тикет командой /appeal, затем пришлите чек\n\n"
+    "В BotFather отключите Group Privacy, иначе бот не видит фото в группе.\n"
+    "Регистрация чата: /init <uuid контрагента>"
+)
 
 
 def _set_reaction(chat_id: int, message_id: int, emoji: str) -> None:
@@ -97,20 +109,35 @@ def backend_process_message(
     return payload
 
 
+def _audit(message: Message) -> None:
+    fu = message.from_user
+    document = getattr(message, "document", None)
+    logger.info(
+        "tg chat=%s msg=%s from_id=%s username=%s is_bot=%s has_photo=%s has_doc=%s mime=%s filename=%s reply_to=%s caption=%r text=%r",
+        message.chat.id,
+        message.message_id,
+        fu.id if fu else None,
+        (fu.username if fu else None) or "",
+        bool(fu.is_bot) if fu else None,
+        bool(message.photo),
+        bool(document),
+        (document.mime_type if document else None) or "",
+        (document.file_name if document else None) or "",
+        getattr(getattr(message, "reply_to_message", None), "message_id", None),
+        (message.caption or "")[:180],
+        (message.text or "")[:180],
+    )
+
+
 @bot.message_handler(commands=["start", "help"])
 def help_command(message: Message):
-    bot.reply_to(
-        message,
-        "Бот апелляций AvaPay.\n\n"
-        "1. В BotFather отключите Group Privacy (иначе бот не видит фото в группе)\n"
-        "2. В группе мерчанта: /init <uuid контрагента>\n"
-        "3. Отправьте фото/файл чека с ID заявки в подписи "
-        "(UUID, тикет Melbet «Заказ: …» / «Тикет #…», или ответом на такой тикет)"
-    )
+    _audit(message)
+    bot.reply_to(message, HELP_TEXT)
 
 
 @bot.message_handler(commands=["init"])
 def init_command(message: Message):
+    _audit(message)
     parts = (message.text or "").strip().split()
     if len(parts) < 2:
         bot.reply_to(message, "Использование: /init <uuid контрагента>")
@@ -127,19 +154,55 @@ def init_command(message: Message):
     bot.reply_to(message, reply)
 
 
-def _download_file(message: Message) -> tuple[bytes, str] | None:
+@bot.message_handler(commands=["appeal"])
+def appeal_command(message: Message):
+    """Bind a Melbet ticket that our bot never received (other bots' messages are invisible)."""
+    _audit(message)
+    reply = getattr(message, "reply_to_message", None)
+    ticket_text = _collect_appeal_text(message)
+    if reply is None and not _looks_like_ticket(ticket_text):
+        bot.reply_to(
+            message,
+            "Ответьте командой /appeal на тикет Melbet, затем пришлите чек. "
+            "Либо сразу ответьте на тикет фото/PDF чека.",
+        )
+        return
+    if not _looks_like_ticket(ticket_text):
+        bot.reply_to(
+            message,
+            "В сообщении, на которое вы отвечаете, нет ID заявки (Заказ / Тикет / UUID).",
+        )
+        return
+    _remember_ticket(message.chat.id, ticket_text)
+    bot.reply_to(
+        message,
+        "Тикет принят. Пришлите чек (фото или PDF) — можно следующим сообщением.",
+    )
+
+
+def _is_receipt_document(document) -> bool:
+    if document is None:
+        return False
+    mime = (document.mime_type or "").lower()
+    name = (document.file_name or "").lower()
+    if mime.startswith("image/") or mime == "application/pdf":
+        return True
+    if mime in ("application/octet-stream", "binary/octet-stream", ""):
+        return name.endswith(RECEIPT_EXTS)
+    return name.endswith(RECEIPT_EXTS)
+
+
+def _download_file(message: Message | None) -> tuple[bytes, str] | None:
+    if message is None:
+        return None
     if message.photo:
         photo = message.photo[-1]
         file_info = bot.get_file(photo.file_id)
         content = bot.download_file(file_info.file_path)
         return content, "receipt.jpg"
 
-    if message.document:
+    if message.document and _is_receipt_document(message.document):
         document = message.document
-        mime = (document.mime_type or "").lower()
-        allowed = mime.startswith("image/") or mime == "application/pdf"
-        if not allowed:
-            return None
         file_info = bot.get_file(document.file_id)
         content = bot.download_file(file_info.file_path)
         name = document.file_name or "receipt"
@@ -219,15 +282,16 @@ def _collect_appeal_text(message: Message) -> str:
 
 @bot.message_handler(content_types=["text"])
 def handle_text(message: Message):
+    _audit(message)
     if message.text and message.text.startswith("/"):
         return
-    text = message.text or ""
+    text = _collect_appeal_text(message)
     if not _looks_like_ticket(text):
         return
     _remember_ticket(message.chat.id, text)
     bot.reply_to(
         message,
-        "Тикет распознан. Прикрепите чек (фото или файл) — можно ответом на это сообщение.",
+        "Тикет распознан. Прикрепите чек (фото или файл) — можно ответом на тикет Melbet.",
     )
 
 
@@ -245,6 +309,7 @@ def handle_receipt(message: Message):
 
 
 def _handle_receipt(message: Message):
+    _audit(message)
     appeal_text = _collect_appeal_text(message)
     logger.info(
         "receipt chat_id=%s message_id=%s media_group=%s text=%r",
@@ -265,6 +330,14 @@ def _handle_receipt(message: Message):
     downloaded = _download_file(message)
     if downloaded is None:
         bot.reply_to(message, "Прикрепите чек как фото или файл (изображение/PDF).")
+        return
+
+    if not _looks_like_ticket(appeal_text):
+        bot.reply_to(
+            message,
+            "Не вижу ID заявки. Ответьте чеком на тикет Melbet "
+            "или сначала /appeal ответом на тикет, затем пришлите чек.",
+        )
         return
 
     file_bytes, filename = downloaded
@@ -313,4 +386,8 @@ if __name__ == "__main__":
     if not TGBOT_TOKEN:
         logger.warning("TGBOT_TOKEN is empty — API calls will fail")
     logger.info("Appeal bot starting, backend=%s", BACKEND_URL)
-    bot.infinity_polling(timeout=30, long_polling_timeout=30)
+    bot.infinity_polling(
+        timeout=30,
+        long_polling_timeout=30,
+        allowed_updates=["message", "edited_message"],
+    )

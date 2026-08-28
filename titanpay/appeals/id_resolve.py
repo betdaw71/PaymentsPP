@@ -24,7 +24,7 @@ TICKET_LABEL_RE = re.compile(
     re.IGNORECASE,
 )
 PSP_NUMBER_RE = re.compile(
-    r"(?:Номер в ПС|PSP(?:\s*ID)?|provider[_ ]?(?:id|order))\s*[:：]\s*([A-Za-z0-9._-]{3,64})",
+    r"(?:Номер в [ПГ]?ПС|PSP(?:\s*ID)?|provider[_ ]?(?:id|order))\s*[:：]\s*([A-Za-z0-9._-]{3,64})",
     re.IGNORECASE,
 )
 
@@ -143,6 +143,16 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
     session = PayplatPayInSession.objects.filter(provider_order_id=str(parsed)).select_related("pay_in").first()
     if session and session.pay_in_id:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
+
+    from payments.integrations.melbet.models import MelbetTransactionSession
+
+    session = (
+        MelbetTransactionSession.objects.filter(id=parsed, pay_in__isnull=False)
+        .select_related("pay_in", "pay_in__merchant", "pay_in__order")
+        .first()
+    )
+    if session and session.pay_in:
+        return session.pay_in
 
     return None
 

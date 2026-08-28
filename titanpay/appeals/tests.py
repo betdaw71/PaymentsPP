@@ -82,3 +82,29 @@ class MelbetTicketResolveTest(TestCase):
         self.assertFalse(result.ok)
         self.assertFalse(result.recognized)
         self.assertEqual(result.error_code, "no_id")
+
+    def test_screenshot_ticket_with_psp_uuid(self):
+        ticket = """
+🎟 Тикет #02f6868c
+💰 Депозит
+📜 Заказ: 23199289573
+👤 Юзер: 1669608479
+💰 Сумма: 15 000 KZT
+📅 Дата: 28.08.2026 18:49:42
+🔗 Номер в ПС: 77334ffa-2b2d-4509-aedc-d9437076efcf
+💡 Маска юзера:
+🎯 Реквизиты из заявки:
+Статус: 🆕 Создан
+💬 Комментарий: Не пришел депозит
+""".strip()
+        self.pay_in.merchant_order_id = "23199289573"
+        self.pay_in.save(update_fields=["merchant_order_id"])
+        result = resolve_pay_in_from_message(ticket)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+    def test_gps_label_is_parsed(self):
+        from appeals.id_resolve import parse_appeal_ticket
+
+        hints = parse_appeal_ticket("🔗 Номер в ГПС: abc-123-xyz")
+        self.assertEqual(hints.psp_ids, ["abc-123-xyz"])

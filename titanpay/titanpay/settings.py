@@ -267,6 +267,13 @@ ARBITRAGE_BLOCK_PAYMENT_GROUP = os.getenv('ARBITRAGE_BLOCK_PAYMENT_GROUP', 'fals
     '1',
     'yes',
 )
+# Block a second pay-in while the client still has one In Progress.
+# Off by default: Melbet (and others) may send a new deposit while the previous is open.
+ENFORCE_PENDING_PAYIN = os.getenv('ENFORCE_PENDING_PAYIN', 'false').lower() in (
+    'true',
+    '1',
+    'yes',
+)
 RATE_UPD_TIME = 60
 LOW_DEPOSIT_LEVEL = 1000
 SBER_NAME = "Sber"
