@@ -31,6 +31,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=project_network"
+      - "--providers.docker.constraints=!LabelRegex(`com.docker.compose.oneoff`, `(?i)true`)"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"

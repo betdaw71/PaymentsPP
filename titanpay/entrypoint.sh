@@ -11,6 +11,14 @@ for i in {1..30}; do
     sleep 2
 done
 
+# docker compose run app <cmd> must not start a second gunicorn.
+# Traefik copies service labels onto run containers, so a leftover
+# `project-app-run-*` would share api.avapay.net with titanpay_app.
+if [ "$#" -gt 0 ]; then
+    echo "=== One-off command: $* ==="
+    exec "$@"
+fi
+
 echo "=== Running migrations ==="
 python manage.py migrate --no-input
 
