@@ -259,8 +259,8 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.ERROR(
                     f"  первый слот каскада = {first_trader}, а не payplat1/gipay1 "
-                    f"(до фикса: не-PSP группа сбрасывала sort в current_volume, "
-                    f"expayone1 с отрицательным vol обгонял приоритет)"
+                    f"(sort по volume ИЛИ payplat/gipay выпали из queryset из-за "
+                    f"team/allowed_traffic — PSP больше не режутся по traffic/team)"
                 )
             )
         if merchant_http is not None:
@@ -404,9 +404,13 @@ class Command(BaseCommand):
         traffic = pay_in.order.solution.traffic if pay_in.order and pay_in.order.solution else None
         focus = (gipay_trader_username(), payplat_trader_username())
         self.stdout.write(self.style.HTTP_INFO(f"\n=== PSP группы на {ps.name} (gipay/payplat) ==="))
-        for username in focus:
-            from django.contrib.auth.models import User
+        if traffic is not None:
+            self.stdout.write(f"  solution.traffic={traffic.name} id={traffic.id}")
+        from django.contrib.auth.models import User
+        from trade.routing.routeutils import get_teams_for_ps
 
+        teams = get_teams_for_ps(ps)
+        for username in focus:
             user = User.objects.filter(username=username).first()
             if user is None:
                 self.stdout.write(f"  {username}: user not found")
@@ -426,6 +430,8 @@ class Command(BaseCommand):
                 sbp_enabled=False,
             ).exists()
             traffics = list(group.allowed_traffic.values_list("name", flat=True))
+            traffic_ids = list(group.allowed_traffic.values_list("id", flat=True))
+            in_team = teams.filter(pk=group.trader.team_id).exists()
             in_cascade = (
                 group.status == 1
                 and group.in_active
@@ -437,7 +443,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 tag(
                     f"  {username}: group={group.id} status={group.status} in_active={group.in_active} "
-                    f"card_ok={has_card} traffic={traffics}"
+                    f"card_ok={has_card} traffic={traffics} in_team={in_team}"
                 )
             )
             if not in_cascade:
@@ -447,8 +453,20 @@ class Command(BaseCommand):
                         "(включите shell_setup_pandapay_gipay_payplat_prod_routing.py)"
                     )
                 )
-            elif traffic and traffic.name not in traffics:
-                self.stdout.write(self.style.WARNING(f"    → traffic «{traffic.name}» не в allowed_traffic"))
+            if traffic and traffic.id not in traffic_ids:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"    → traffic «{traffic.name}» id={traffic.id} не в allowed_traffic "
+                        f"(по имени={traffic.name in traffics}; PSP больше не режутся по traffic)"
+                    )
+                )
+            if not in_team:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "    → команда трейдера без TraderTeamRates на эту PS "
+                        "(PSP больше не режутся по team)"
+                    )
+                )
 
         active_psp = PaymentDetailsGroup.objects.filter(
             payment_system=ps,

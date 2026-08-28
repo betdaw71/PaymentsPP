@@ -277,6 +277,12 @@ def _psp_routing_priority_map() -> dict[str, int]:
             out[name] = int(val)
         except (TypeError, ValueError):
             continue
+    from payments.gipay_client import gipay_trader_username
+    from payments.payplat_client import payplat_trader_username
+
+    # Даже если .env пустой/битый — payplat и gipay остаются первыми в каскаде.
+    out.setdefault(payplat_trader_username(), 1)
+    out.setdefault(gipay_trader_username(), 2)
     return out
 
 
@@ -592,21 +598,22 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
     from basics.models import PaymentDetails, PaymentDetailsGroup
 
     order = pay_in.order
-    if order is None or order.solution is None:
+    if order is None:
         return
     ps = pay_in.payment_system
-    traffic = order.solution.traffic
     amount = pay_in.amount
+    # Не фильтруем по MerchantSolution.traffic: виртуальные группы payplat/gipay
+    # часто только Standard, а solution может ссылаться на другой TrafficType.
     groups = list(
         PaymentDetailsGroup.objects.filter(
             payment_system=ps,
             status=1,
             in_active=True,
             work_type="by_card",
-            allowed_traffic=traffic,
             trader__blocked=False,
+            trader__user__username__in=psp_trader_usernames(),
         )
-        .select_related("trader", "trader__user")
+        .select_related("trader", "trader__user", "trader__team")
     )
     seen_trader_ids: set[int] = set()
     for group in sort_groups_for_routing(groups, amount):

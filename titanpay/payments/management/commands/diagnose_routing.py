@@ -69,7 +69,7 @@ class Command(BaseCommand):
             raise CommandError(f"route() failed: {exc}") from exc
 
         from basics.models import TraderTeamRates
-        from payments.psp_payin import psp_routing_priority_for_trader, sort_groups_for_routing
+        from payments.psp_payin import is_psp_trader, psp_routing_priority_for_trader, sort_groups_for_routing
 
         options_qs = router.get_possible_options_in(None, ps, amount, traffic, usd_amount)
         self.stdout.write(f"\nгрупп после фильтра: {options_qs.count()}")
@@ -127,6 +127,7 @@ class Command(BaseCommand):
                     group=g, status=1, card_number__isnull=False, sberpay_enabled=False, sbp_enabled=False
                 ).count()
                 issues = []
+                psp = is_psp_trader(t)
                 if g.status != 1:
                     issues.append(f"status={g.status}")
                 if not g.in_active:
@@ -135,19 +136,17 @@ class Command(BaseCommand):
                     issues.append(f"work_type={g.work_type!r}")
                 if t.blocked:
                     issues.append("trader blocked")
-                if not in_team:
+                if not psp and not in_team:
                     issues.append("team без TraderTeamRates на PS")
-                if not has_rate:
+                if not psp and not has_rate:
                     issues.append("нет TraderTeamRates")
-                if traffic.name not in traffics:
+                if not psp and traffic.name not in traffics:
                     issues.append(f"traffic «{traffic.name}» не в allowed_traffic {traffics}")
                 if bal is not None and bal <= 0:
                     issues.append(f"balance_usdt={bal}")
                 if cards == 0:
                     issues.append("нет карт")
-                if g.current_volume + amount > g.limit_per_period and t.user.username not in (
-                    "protocol1", "expayone1", "fairpay_agg"
-                ):
+                if not psp and g.current_volume + amount > g.limit_per_period:
                     issues.append(f"limit {g.current_volume}+{amount}>{g.limit_per_period}")
                 mark = "✗" if issues else "?"
                 self.stdout.write(

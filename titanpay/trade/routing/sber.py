@@ -14,23 +14,26 @@ class SberRouting:
     def get_possible_options_in(self, risk_cluster, payment_system: PaymentSystem, amount, traffic_type: TrafficType, usd_amount):
         teams = get_teams_for_ps(payment_system)
         psp_users = psp_trader_usernames()
-        groups_base = PaymentDetailsGroup.objects.filter(work_type="by_card", trader__team__in=teams)
-        # PSP и обычные трейдеры: available >= usd_amount (freeze при создании InOrder).
+        # PSP-виртуальные группы: не режем по team/traffic — иначе payplat1/gipay1
+        # выпадают из каскада, если MerchantSolution.traffic ≠ Standard.
         balance_ok = Q(trader__balance_usdt__amount__gte=usd_amount)
-        possible_options = groups_base.filter(balance_ok).filter(
+        base = PaymentDetailsGroup.objects.filter(
+            work_type="by_card",
             status=1,
             payment_system=payment_system,
-            allowed_traffic=traffic_type,
             in_active=True,
             trader__blocked=False,
-        )
+        ).filter(balance_ok)
+        psp_q = Q(trader__user__username__in=psp_users)
+        regular_q = Q(trader__team__in=teams, allowed_traffic=traffic_type)
+        possible_options = base.filter(psp_q | regular_q).distinct()
 
         filtered_options = possible_options.annotate(
             total_value=ExpressionWrapper(
                 F("current_volume") + amount,
                 output_field=DecimalField(max_digits=32, decimal_places=2),
             )
-        ).filter(Q(total_value__lte=F("limit_per_period")) | Q(trader__user__username__in=psp_users))
+        ).filter(Q(total_value__lte=F("limit_per_period")) | psp_q)
         return filtered_options
     
     def get_details(self, possible_options, active_orders, amount, merchant=None):
@@ -71,7 +74,7 @@ class SberRouting:
     def check_cluster(self, risk_cluster, payment_system, amount, active_orders, traffic_type, usd_amount):
         options = self.get_possible_options_in(risk_cluster, payment_system, amount, traffic_type, usd_amount)
 
-        chosen_detail = self.get_details(options, active_orders, amount, merchant=merchant)
+        chosen_detail = self.get_details(options, active_orders, amount)
 
         if chosen_detail is not None:
             return chosen_detail
