@@ -371,7 +371,7 @@ PAYPLAT_WEBHOOK_SKIP_VERIFY = os.getenv('PAYPLAT_WEBHOOK_SKIP_VERIFY', 'false').
 # JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
 PSP_ROUTING_PRIORITY_MAP = os.getenv(
     'PSP_ROUTING_PRIORITY_MAP',
-    '{"payplat1": 1, "gipay1": 2}',
+    '{"payplat1": 1, "gipay1": 2, "bitzone1": 3}',
 )
 
 # Protocol PSP (prot0col.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/protocol/)

@@ -133,7 +133,7 @@ class PayInInvoiceViewset(viewsets.ModelViewSet):  # for redirect
         if not PayIn.objects.filter(id=id).exists():
             return Response(status=status.HTTP_404_NOT_FOUND, data={'details': 'Order not found'})
         pay_in = PayIn.objects.select_related(
-            "order__status", "currency", "payment_system"
+            "order__status", "currency", "payment_system", "merchant__user", "melbet_session"
         ).get(id=id)
 
         from payments.receipt_policy import has_receipt_for_payin, receipt_required_for_payin
@@ -241,7 +241,7 @@ class PayInInvoiceViewset(viewsets.ModelViewSet):  # for redirect
         if not PayIn.objects.filter(id=id).exists():
             return Response(status=status.HTTP_404_NOT_FOUND, data={'details': 'Order not found'})
         pay_in = PayIn.objects.select_related(
-            "status", "currency", "payment_system", "order__status", "melbet_session"
+            "status", "currency", "payment_system", "order__status", "melbet_session", "merchant__user"
         ).get(id=id)
 
         from payments.invoice_obtain import payin_invoice_obtain_serializer

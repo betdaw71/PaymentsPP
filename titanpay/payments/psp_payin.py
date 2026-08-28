@@ -277,12 +277,15 @@ def _psp_routing_priority_map() -> dict[str, int]:
             out[name] = int(val)
         except (TypeError, ValueError):
             continue
+    from payments.bitzone_client import bitzone_trader_username
     from payments.gipay_client import gipay_trader_username
     from payments.payplat_client import payplat_trader_username
 
-    # Даже если .env пустой/битый — payplat и gipay остаются первыми в каскаде.
+    # Даже если .env пустой/битый — payplat, gipay и bitzone остаются в начале каскада.
     out.setdefault(payplat_trader_username(), 1)
     out.setdefault(gipay_trader_username(), 2)
+    out.setdefault(bitzone_trader_username(), 3)
+    out.setdefault("bitzone1", 3)
     return out
 
 
