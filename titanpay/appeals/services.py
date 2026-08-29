@@ -16,6 +16,12 @@ from appeals.models import (
     PayInAppealSource,
     PayInAppealStatus,
 )
+from appeals.provider_privacy import (
+    extract_pdf_text,
+    is_merchant_ticket_file,
+    provider_safe_caption,
+    provider_safe_filename,
+)
 from payments.psp_payin import _psp_provider_for_trader, psp_external_reference
 from payments.utils import upload_receipt_storage
 
@@ -25,7 +31,7 @@ class AppealProcessResult:
     ok: bool
     message: str
     recognized: bool = False
-    outcome: str = "rejected"  # success | rejected | partial | pending
+    outcome: str = "rejected"  # success | rejected | partial | pending | await_receipt
 
 
 def _reject(message: str, *, recognized: bool = False) -> AppealProcessResult:
@@ -42,6 +48,10 @@ def _partial(message: str, *, recognized: bool = True) -> AppealProcessResult:
 
 def _pending(message: str, *, recognized: bool = True) -> AppealProcessResult:
     return AppealProcessResult(ok=True, message=message, recognized=recognized, outcome="pending")
+
+
+def _await_receipt(message: str, *, recognized: bool = True) -> AppealProcessResult:
+    return AppealProcessResult(ok=False, message=message, recognized=recognized, outcome="await_receipt")
 
 
 def get_chat_counterparty(chat_id: int) -> AppealTelegramChat | None:
@@ -209,15 +219,30 @@ def _forward_appeal_to_provider(
 
     from appeals.telegram_out import send_receipt_to_provider_chat
 
-    caption = _provider_caption(
+    if is_merchant_ticket_file(filename=filename, file_bytes=file_bytes):
+        appeal.status = PayInAppealStatus.FAILED
+        appeal.error_message = "Отклонён тикет мерчанта: провайдеру отправляется только чек"
+        appeal.save(update_fields=["status", "error_message"])
+        return _reject(
+            "Это тикет мерчанта, а не чек. Пришлите фото или PDF квитанции из банка.",
+            recognized=True,
+        )
+
+    raw_caption = _provider_caption(
         pay_in=pay_in,
         psp_provider=psp_provider,
         provider_external_id=provider_external_id,
     )
+    caption = provider_safe_caption(
+        raw_caption,
+        fallback=str(pay_in.id),
+        pay_in=pay_in,
+    )
+    safe_name = provider_safe_filename(filename, file_bytes)
     sent = send_receipt_to_provider_chat(
         chat_id=provider_chat.telegram_chat_id,
         file_bytes=file_bytes,
-        filename=filename or "receipt",
+        filename=safe_name,
         caption=caption,
     )
     if not sent.ok:
@@ -280,11 +305,33 @@ def process_payment_page_receipt(
         appeal=appeal,
         pay_in=pay_in,
         file_bytes=file_bytes,
-        filename=filename or "receipt",
+        filename=provider_safe_filename(filename, file_bytes),
         psp_provider=psp_provider,
         provider_external_id=provider_external_id,
         trader_username=trader_username,
     )
+
+
+def _combined_ticket_text(
+    text: str,
+    *,
+    file_bytes: bytes,
+    filename: str,
+    ticket_file_bytes: bytes | None,
+) -> tuple[str, bool]:
+    """Merge captions with PDF ticket text. Returns (text, uploaded_file_is_ticket)."""
+    parts = [text or ""]
+    file_is_ticket = is_merchant_ticket_file(filename=filename, file_bytes=file_bytes)
+    if ticket_file_bytes:
+        extracted = extract_pdf_text(ticket_file_bytes)
+        if extracted:
+            parts.append(extracted)
+    if file_is_ticket and file_bytes.startswith(b"%PDF"):
+        extracted = extract_pdf_text(file_bytes)
+        if extracted:
+            parts.append(extracted)
+    combined = "\n".join(part.strip() for part in parts if part and part.strip())
+    return combined, file_is_ticket
 
 
 @transaction.atomic
@@ -295,6 +342,7 @@ def process_merchant_appeal_message(
     text: str,
     file_bytes: bytes,
     filename: str,
+    ticket_file_bytes: bytes | None = None,
 ) -> AppealProcessResult:
     chat = get_chat_counterparty(chat_id)
     if chat is None:
@@ -306,7 +354,27 @@ def process_merchant_appeal_message(
     if not file_bytes:
         return _reject("Прикрепите чек (фото или файл).")
 
-    resolved = resolve_pay_in_from_message(text or "")
+    combined_text, file_is_ticket = _combined_ticket_text(
+        text,
+        file_bytes=file_bytes,
+        filename=filename,
+        ticket_file_bytes=ticket_file_bytes,
+    )
+    if file_is_ticket:
+        resolved_ticket = resolve_pay_in_from_message(combined_text)
+        if resolved_ticket.ok:
+            return _await_receipt(
+                "Тикет распознан. Пришлите чек (фото квитанции из банка). "
+                "Сам тикет провайдеру не отправляется."
+            )
+        if resolved_ticket.recognized:
+            return _reject(resolved_ticket.error_message, recognized=True)
+        return _await_receipt(
+            "Похоже на тикет мерчанта, а не на чек. Ответьте на тикет фото квитанции "
+            "или отправьте /appeal ответом на тикет, затем чек."
+        )
+
+    resolved = resolve_pay_in_from_message(combined_text)
     if not resolved.ok:
         return _reject(resolved.error_message, recognized=resolved.recognized)
 
@@ -352,7 +420,7 @@ def process_merchant_appeal_message(
         appeal=appeal,
         pay_in=pay_in,
         file_bytes=file_bytes,
-        filename=filename or "receipt",
+        filename=provider_safe_filename(filename, file_bytes),
         psp_provider=psp_provider,
         provider_external_id=provider_external_id,
         trader_username=trader_username,
