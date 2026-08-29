@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from io import BytesIO
@@ -24,6 +25,8 @@ from appeals.provider_privacy import (
 )
 from payments.psp_payin import _psp_provider_for_trader, psp_external_reference
 from payments.utils import upload_receipt_storage
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -84,7 +87,7 @@ def init_telegram_chat(
     try:
         counterparty = AppealCounterparty.objects.get(id=counterparty_id, is_active=True)
     except AppealCounterparty.DoesNotExist:
-        return False, "Контрагент с таким UUID не найден или неактивен."
+        return False, "Чат не зарегистрирован."
 
     chat, created = AppealTelegramChat.objects.update_or_create(
         telegram_chat_id=chat_id,
@@ -95,9 +98,9 @@ def init_telegram_chat(
             "is_active": True,
         },
     )
-    action = "зарегистрирован" if created else "обновлён"
-    role_label = "мерчант" if counterparty.role == AppealCounterpartyRole.MERCHANT else "провайдер"
-    return True, f"Чат {action} как {role_label}: {counterparty.name} ({counterparty.id})."
+    if created:
+        return True, "Чат зарегистрирован."
+    return True, "Чат обновлён."
 
 
 def _trader_for_order(order):
@@ -224,21 +227,9 @@ def _forward_appeal_to_provider(
             f"trader={trader_username or '—'}"
         )
         appeal.save(update_fields=["status", "error_message"])
-        return _partial(
-            f"Апелляция создана (ID {appeal.id}), но чат провайдера не настроен "
-            f"({psp_provider or trader_username or 'локальный трейдер'})."
-        )
+        return _partial("")
 
-    from appeals.telegram_out import send_receipt_to_provider_chat
-
-    if is_merchant_ticket_file(filename=filename, file_bytes=file_bytes):
-        appeal.status = PayInAppealStatus.FAILED
-        appeal.error_message = "Отклонён тикет мерчанта: провайдеру отправляется только чек"
-        appeal.save(update_fields=["status", "error_message"])
-        return _reject(
-            "Это тикет мерчанта, а не чек. Пришлите фото или PDF квитанции из банка.",
-            recognized=True,
-        )
+    from appeals.telegram_out import send_receipt_to_provider_chat, send_text_to_provider_chat
 
     raw_caption = _provider_caption(
         pay_in=pay_in,
@@ -250,24 +241,27 @@ def _forward_appeal_to_provider(
         fallback=str(pay_in.id),
         pay_in=pay_in,
     )
-    safe_name = provider_safe_filename(filename, file_bytes)
-    sent = send_receipt_to_provider_chat(
-        chat_id=provider_chat.telegram_chat_id,
-        file_bytes=file_bytes,
-        filename=safe_name,
-        caption=caption,
-    )
+    ticket_file = bool(file_bytes) and is_merchant_ticket_file(filename=filename, file_bytes=file_bytes)
+    if not file_bytes or ticket_file:
+        sent = send_text_to_provider_chat(chat_id=provider_chat.telegram_chat_id, text=caption)
+    else:
+        sent = send_receipt_to_provider_chat(
+            chat_id=provider_chat.telegram_chat_id,
+            file_bytes=file_bytes,
+            filename=provider_safe_filename(filename, file_bytes),
+            caption=caption,
+        )
     if not sent.ok:
         appeal.status = PayInAppealStatus.FAILED
         appeal.error_message = sent.error or "Не удалось отправить в чат провайдера"
         appeal.save(update_fields=["status", "error_message"])
-        return _partial(f"Апелляция создана, но не отправлена провайдеру: {sent.error}")
+        return _partial("")
 
     appeal.status = PayInAppealStatus.SENT_TO_PROVIDER
     appeal.provider_chat_id = provider_chat.telegram_chat_id
     appeal.provider_message_id = sent.message_id
     appeal.save(update_fields=["status", "provider_chat_id", "provider_message_id"])
-    return _pending("Апелляция принята, ожидаем подтверждения.")
+    return _pending("")
 
 
 @transaction.atomic
@@ -358,13 +352,14 @@ def process_merchant_appeal_message(
 ) -> AppealProcessResult:
     chat = get_chat_counterparty(chat_id)
     if chat is None:
-        return _reject("Чат не зарегистрирован. Выполните /init <uuid контрагента>.")
+        return _reject("", recognized=False)
     counterparty = chat.counterparty
     if counterparty.role != AppealCounterpartyRole.MERCHANT:
         return _skip()
 
     if not file_bytes:
-        return _reject("Прикрепите чек (фото или файл).")
+        file_bytes = b""
+        filename = filename or ""
 
     combined_text, file_is_ticket = _combined_ticket_text(
         text,
@@ -372,27 +367,16 @@ def process_merchant_appeal_message(
         filename=filename,
         ticket_file_bytes=ticket_file_bytes,
     )
-    if file_is_ticket:
-        resolved_ticket = resolve_pay_in_from_message(combined_text)
-        if resolved_ticket.ok:
-            return _await_receipt(
-                "Тикет распознан. Пришлите чек (фото квитанции из банка). "
-                "Сам тикет провайдеру не отправляется."
-            )
-        if resolved_ticket.recognized:
-            return _reject(resolved_ticket.error_message, recognized=True)
-        return _await_receipt(
-            "Похоже на тикет мерчанта, а не на чек. Ответьте на тикет фото квитанции "
-            "или отправьте /appeal ответом на тикет, затем чек."
-        )
+    receipt_bytes = b"" if file_is_ticket else file_bytes
+    receipt_name = "" if file_is_ticket else filename
 
     resolved = resolve_pay_in_from_message(combined_text)
     if not resolved.ok:
-        return _reject(resolved.error_message, recognized=resolved.recognized)
+        return _reject("", recognized=resolved.recognized)
 
     pay_in = resolved.pay_in
     if counterparty.merchant_id and pay_in.merchant_id != counterparty.merchant_id:
-        return _reject("Заявка не относится к этому мерчанту.", recognized=True)
+        return _reject("", recognized=True)
 
     if PayInAppeal.objects.filter(
         pay_in=pay_in,
@@ -401,15 +385,19 @@ def process_merchant_appeal_message(
             PayInAppealStatus.SENT_TO_PROVIDER,
         ],
     ).exists():
-        return _reject("Апелляция по этой заявке уже создана.", recognized=True)
+        return _reject("", recognized=True)
 
-    try:
-        receipt_url = _upload_receipt(file_bytes, str(pay_in.id), filename or "receipt")
-    except Exception as exc:
-        return _reject(f"Не удалось сохранить чек: {exc}", recognized=True)
+    receipt_url = ""
+    if receipt_bytes:
+        try:
+            receipt_url = _upload_receipt(receipt_bytes, str(pay_in.id), receipt_name or "receipt")
+        except Exception:
+            logger.exception("receipt upload failed")
+            return _reject("", recognized=True)
 
     order = pay_in.order
-    _save_order_pic(order, receipt_url)
+    if receipt_url:
+        _save_order_pic(order, receipt_url)
 
     _try_order_arbitrage(order)
 
@@ -431,8 +419,8 @@ def process_merchant_appeal_message(
     return _forward_appeal_to_provider(
         appeal=appeal,
         pay_in=pay_in,
-        file_bytes=file_bytes,
-        filename=provider_safe_filename(filename, file_bytes),
+        file_bytes=receipt_bytes,
+        filename=provider_safe_filename(receipt_name, receipt_bytes) if receipt_bytes else "",
         psp_provider=psp_provider,
         provider_external_id=provider_external_id,
         trader_username=trader_username,

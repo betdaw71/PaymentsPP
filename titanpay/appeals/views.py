@@ -62,16 +62,14 @@ def process_message(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if uploaded is None:
-        return Response(
-            {"ok": False, "skip": True, "message": "", "recognized": False, "outcome": "skip"},
-            status=status.HTTP_200_OK,
-        )
-
-    file_bytes = uploaded.read()
-    filename = uploaded.name or "receipt"
     ticket_uploaded = request.FILES.get("ticket_file")
     ticket_file_bytes = ticket_uploaded.read() if ticket_uploaded else None
+    if uploaded is None:
+        file_bytes = b""
+        filename = ""
+    else:
+        file_bytes = uploaded.read()
+        filename = uploaded.name or "receipt"
 
     try:
         result = process_merchant_appeal_message(
@@ -86,7 +84,7 @@ def process_message(request):
         return Response(
             {
                 "ok": False,
-                "message": f"Ошибка сервера: {exc}",
+                "message": "",
                 "recognized": False,
                 "outcome": "rejected",
             },
