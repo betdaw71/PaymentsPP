@@ -205,6 +205,22 @@ class MerchantAppealForwardTest(TestCase):
             is_active=True,
         )
 
+    def test_provider_chat_is_skipped_without_reply_text(self):
+        from appeals.services import chat_role_for_telegram, process_merchant_appeal_message
+
+        self.assertEqual(chat_role_for_telegram(111), "merchant")
+        self.assertEqual(chat_role_for_telegram(222), "provider")
+        self.assertEqual(chat_role_for_telegram(999), "unknown")
+        result = process_merchant_appeal_message(
+            chat_id=222,
+            message_id=1,
+            text="ответьте на тикет Melbet",
+            file_bytes=b"\xff\xd8\xff" + b"\x00" * 16,
+            filename="receipt.jpg",
+        )
+        self.assertEqual(result.outcome, "skip")
+        self.assertEqual(result.message, "")
+
     def test_ticket_pdf_is_not_forwarded_to_provider(self):
         from unittest.mock import patch
 

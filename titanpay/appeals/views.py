@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes, parser_class
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
-from appeals.services import init_telegram_chat, process_merchant_appeal_message
+from appeals.services import chat_role_for_telegram, init_telegram_chat, process_merchant_appeal_message
 from basics.permissions import TgBotPermission
 
 
@@ -26,6 +26,25 @@ def init_chat(request):
     )
     code = status.HTTP_200_OK if ok else status.HTTP_400_BAD_REQUEST
     return Response({"ok": ok, "message": message}, status=code)
+
+
+@api_view(["POST"])
+@permission_classes([TgBotPermission])
+def chat_role(request):
+    chat_id = request.data.get("chat_id")
+    if chat_id is None:
+        return Response(
+            {"ok": False, "role": "unknown", "message": "Нужен chat_id."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        role = chat_role_for_telegram(int(chat_id))
+    except (TypeError, ValueError):
+        return Response(
+            {"ok": False, "role": "unknown", "message": "Некорректный chat_id."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return Response({"ok": True, "role": role})
 
 
 @api_view(["POST"])
@@ -72,6 +91,12 @@ def process_message(request):
                 "outcome": "rejected",
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    if result.outcome == "skip":
+        return Response(
+            {"ok": False, "skip": True, "message": "", "recognized": False, "outcome": "skip"},
+            status=status.HTTP_200_OK,
         )
 
     code = status.HTTP_200_OK if result.ok or result.outcome == "await_receipt" else status.HTTP_400_BAD_REQUEST
