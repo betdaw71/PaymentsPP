@@ -54,6 +54,18 @@ def _await_receipt(message: str, *, recognized: bool = True) -> AppealProcessRes
     return AppealProcessResult(ok=False, message=message, recognized=recognized, outcome="await_receipt")
 
 
+def _skip() -> AppealProcessResult:
+    return AppealProcessResult(ok=False, message="", recognized=False, outcome="skip")
+
+
+def chat_role_for_telegram(chat_id: int) -> str:
+    """merchant | provider | unknown — for the appeal bot inbound filter."""
+    chat = get_chat_counterparty(chat_id)
+    if chat is None:
+        return "unknown"
+    return chat.counterparty.role or "unknown"
+
+
 def get_chat_counterparty(chat_id: int) -> AppealTelegramChat | None:
     return (
         AppealTelegramChat.objects.filter(telegram_chat_id=chat_id, is_active=True)
@@ -349,7 +361,7 @@ def process_merchant_appeal_message(
         return _reject("Чат не зарегистрирован. Выполните /init <uuid контрагента>.")
     counterparty = chat.counterparty
     if counterparty.role != AppealCounterpartyRole.MERCHANT:
-        return _reject("Этот чат зарегистрирован как провайдерский. Апелляции принимаются только из чата мерчанта.")
+        return _skip()
 
     if not file_bytes:
         return _reject("Прикрепите чек (фото или файл).")

@@ -31,15 +31,16 @@ logger = logging.getLogger("appealbot")
 bot = telebot.TeleBot(TELEBOT_TOKEN)
 
 HEADERS = {"Authorization": f"Token {TGBOT_TOKEN}"}
+CHAT_ROLE_TTL_SEC = 5 * 60
+_CHAT_ROLES: dict[int, tuple[str, float]] = {}
 
 HELP_TEXT = (
-    "Бот апелляций AvaPay.\n\n"
-    "Telegram не отдаёт ботам сообщения других ботов (Mel Transaction Bot). "
+    "Бот апелляций.\n\n"
+    "Telegram не отдаёт ботам сообщения других ботов. "
     "Тикет сам по себе бот не увидит — нужен ответ человека или /appeal.\n\n"
     "Как обработать заявку:\n"
     "1. Ответьте на тикет чеком (фото квитанции из банка)\n"
-    "2. Или ответьте на тикет командой /appeal, затем пришлите чек\n"
-    "3. Тикет-PDF бот читает из ответа; сам тикет провайдеру не уходит\n\n"
+    "2. Или ответьте на тикет командой /appeal, затем пришлите чек\n\n"
     "В BotFather отключите Group Privacy, иначе бот не видит фото в группе.\n"
     "Регистрация чата: /init <uuid контрагента>"
 )
@@ -88,6 +89,40 @@ def backend_init_chat(chat_id: int, counterparty_id: str, title: str, username: 
     )
     payload = _api_json(response)
     return payload.get("ok", False), payload.get("message", "Ошибка API")
+
+
+def backend_chat_role(chat_id: int) -> str:
+    now = time.time()
+    cached = _CHAT_ROLES.get(chat_id)
+    if cached and now - cached[1] < CHAT_ROLE_TTL_SEC:
+        return cached[0]
+    role = "unknown"
+    try:
+        response = requests.post(
+            f"{BACKEND_URL}/chat_role/",
+            json={"chat_id": chat_id},
+            headers=HEADERS,
+            timeout=15,
+        )
+        payload = _api_json(response)
+        if payload.get("ok"):
+            role = (payload.get("role") or "unknown").strip().lower() or "unknown"
+    except requests.RequestException:
+        logger.warning("chat_role lookup failed chat_id=%s", chat_id, exc_info=True)
+    _CHAT_ROLES[chat_id] = (role, now)
+    return role
+
+
+def _forget_chat_role(chat_id: int) -> None:
+    _CHAT_ROLES.pop(chat_id, None)
+
+
+def _is_merchant_chat(chat_id: int) -> bool:
+    role = backend_chat_role(chat_id)
+    if role == "merchant":
+        return True
+    logger.info("ignore inbound chat_id=%s role=%s", chat_id, role)
+    return False
 
 
 def backend_process_message(
@@ -143,6 +178,8 @@ def _audit(message: Message) -> None:
 @bot.channel_post_handler(commands=["start", "help"])
 def help_command(message: Message):
     _audit(message)
+    if not _is_merchant_chat(message.chat.id):
+        return
     bot.reply_to(message, HELP_TEXT)
 
 
@@ -163,6 +200,7 @@ def init_command(message: Message):
         title=chat.title or "",
         username=(message.from_user.username if message.from_user else "") or "",
     )
+    _forget_chat_role(chat.id)
     bot.reply_to(message, reply)
 
 
@@ -171,6 +209,8 @@ def init_command(message: Message):
 def appeal_command(message: Message):
     """Bind a ticket that our bot never received (other bots' messages are invisible)."""
     _audit(message)
+    if not _is_merchant_chat(message.chat.id):
+        return
     reply = getattr(message, "reply_to_message", None)
     ticket_text = _collect_appeal_text(message)
     ticket_file_id = _ticket_file_id_from_message(message)
@@ -395,6 +435,8 @@ def handle_text(message: Message):
     _audit(message)
     if message.text and message.text.startswith("/"):
         return
+    if not _is_merchant_chat(message.chat.id):
+        return
     text = _collect_appeal_text(message)
     if not _looks_like_ticket(text):
         return
@@ -422,6 +464,8 @@ def handle_receipt(message: Message):
 
 def _handle_receipt(message: Message):
     _audit(message)
+    if not _is_merchant_chat(message.chat.id):
+        return
     appeal_text = _collect_appeal_text(message)
     logger.info(
         "receipt chat_id=%s message_id=%s media_group=%s text=%r",
