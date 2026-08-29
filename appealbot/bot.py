@@ -15,12 +15,14 @@ UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 TICKET_HINT_RE = re.compile(
-    r"(тикет\s*#?\s*[0-9a-fA-F]{8}|заказ\s*:|реквизиты из заявки|маска юзера|номер в [пг]?пс)",
+    r"(тикет\s*[#№n]?\s*[:：]?\s*[0-9a-fA-F]{8}|заказ\s*[:：]|id\s*заказа|номер заказа|"
+    r"реквизиты из заявки|маска юзера|номер в [пг]?пс|order\s*id\s*[:：])",
     re.IGNORECASE,
 )
 RECEIPT_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif")
+TICKET_NAME_HINTS = ("melbet", "мелбет", "ticket", "тикет", "avapay")
 PENDING_TICKET_TTL_SEC = 15 * 60
-_PENDING_TICKETS: dict[int, tuple[str, float]] = {}
+_PENDING_TICKETS: dict[int, dict] = {}
 _SEEN_MEDIA_GROUPS: dict[str, float] = {}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -33,10 +35,11 @@ HEADERS = {"Authorization": f"Token {TGBOT_TOKEN}"}
 HELP_TEXT = (
     "Бот апелляций AvaPay.\n\n"
     "Telegram не отдаёт ботам сообщения других ботов (Mel Transaction Bot). "
-    "Тикет сам по себе бот не увидит — нужен ответ человека.\n\n"
-    "Как обработать заявку Melbet:\n"
-    "1. Ответьте на тикет чеком (фото или PDF)\n"
-    "2. Или ответьте на тикет командой /appeal, затем пришлите чек\n\n"
+    "Тикет сам по себе бот не увидит — нужен ответ человека или /appeal.\n\n"
+    "Как обработать заявку:\n"
+    "1. Ответьте на тикет чеком (фото квитанции из банка)\n"
+    "2. Или ответьте на тикет командой /appeal, затем пришлите чек\n"
+    "3. Тикет-PDF бот читает из ответа; сам тикет провайдеру не уходит\n\n"
     "В BotFather отключите Group Privacy, иначе бот не видит фото в группе.\n"
     "Регистрация чата: /init <uuid контрагента>"
 )
@@ -88,9 +91,16 @@ def backend_init_chat(chat_id: int, counterparty_id: str, title: str, username: 
 
 
 def backend_process_message(
-    chat_id: int, message_id: int, text: str, file_bytes: bytes, filename: str
+    chat_id: int,
+    message_id: int,
+    text: str,
+    file_bytes: bytes,
+    filename: str,
+    ticket_file_bytes: bytes | None = None,
 ) -> dict:
     files = {"file": (filename, file_bytes)}
+    if ticket_file_bytes:
+        files["ticket_file"] = ("ticket.pdf", ticket_file_bytes)
     data = {
         "chat_id": str(chat_id),
         "message_id": str(message_id),
@@ -130,12 +140,14 @@ def _audit(message: Message) -> None:
 
 
 @bot.message_handler(commands=["start", "help"])
+@bot.channel_post_handler(commands=["start", "help"])
 def help_command(message: Message):
     _audit(message)
     bot.reply_to(message, HELP_TEXT)
 
 
 @bot.message_handler(commands=["init"])
+@bot.channel_post_handler(commands=["init"])
 def init_command(message: Message):
     _audit(message)
     parts = (message.text or "").strip().split()
@@ -155,29 +167,45 @@ def init_command(message: Message):
 
 
 @bot.message_handler(commands=["appeal"])
+@bot.channel_post_handler(commands=["appeal"])
 def appeal_command(message: Message):
-    """Bind a Melbet ticket that our bot never received (other bots' messages are invisible)."""
+    """Bind a ticket that our bot never received (other bots' messages are invisible)."""
     _audit(message)
     reply = getattr(message, "reply_to_message", None)
     ticket_text = _collect_appeal_text(message)
-    if reply is None and not _looks_like_ticket(ticket_text):
+    ticket_file_id = _ticket_file_id_from_message(message)
+    if reply is None and not _looks_like_ticket(ticket_text) and not ticket_file_id:
         bot.reply_to(
             message,
-            "Ответьте командой /appeal на тикет Melbet, затем пришлите чек. "
-            "Либо сразу ответьте на тикет фото/PDF чека.",
+            "Ответьте командой /appeal на тикет, затем пришлите чек. "
+            "Либо сразу ответьте на тикет фото квитанции из банка.",
         )
         return
-    if not _looks_like_ticket(ticket_text):
+    if not _looks_like_ticket(ticket_text) and not ticket_file_id:
         bot.reply_to(
             message,
             "В сообщении, на которое вы отвечаете, нет ID заявки (Заказ / Тикет / UUID).",
         )
         return
-    _remember_ticket(message.chat.id, ticket_text)
+    _remember_ticket(message.chat.id, ticket_text, ticket_file_id=ticket_file_id)
     bot.reply_to(
         message,
-        "Тикет принят. Пришлите чек (фото или PDF) — можно следующим сообщением.",
+        "Тикет принят. Пришлите чек (фото квитанции из банка) — можно следующим сообщением.",
     )
+
+
+def _is_pdf_document(document) -> bool:
+    if document is None:
+        return False
+    mime = (document.mime_type or "").lower()
+    name = (document.file_name or "").lower()
+    if mime in ("application/pdf", "application/x-pdf"):
+        return True
+    if name.endswith(".pdf"):
+        return True
+    if mime in ("application/octet-stream", "binary/octet-stream", "") and name.endswith(".pdf"):
+        return True
+    return False
 
 
 def _is_receipt_document(document) -> bool:
@@ -185,11 +213,55 @@ def _is_receipt_document(document) -> bool:
         return False
     mime = (document.mime_type or "").lower()
     name = (document.file_name or "").lower()
-    if mime.startswith("image/") or mime == "application/pdf":
+    if mime.startswith("image/") or mime in ("application/pdf", "application/x-pdf"):
         return True
     if mime in ("application/octet-stream", "binary/octet-stream", ""):
         return name.endswith(RECEIPT_EXTS)
     return name.endswith(RECEIPT_EXTS)
+
+
+def _filename_looks_like_ticket(name: str | None) -> bool:
+    lowered = (name or "").lower()
+    return any(hint in lowered for hint in TICKET_NAME_HINTS)
+
+
+def _looks_like_ticket_document(document, caption: str | None) -> bool:
+    if document is None:
+        return False
+    if _filename_looks_like_ticket(getattr(document, "file_name", None)):
+        return True
+    if _is_pdf_document(document) and _looks_like_ticket(caption or ""):
+        return True
+    return False
+
+
+def _generic_receipt_name(filename: str | None, content: bytes) -> str:
+    if content.startswith(b"\xff\xd8\xff"):
+        return "receipt.jpg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "receipt.png"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "receipt.webp"
+    if content.startswith(b"%PDF"):
+        return "receipt.pdf"
+    if content.startswith(b"GIF8"):
+        return "receipt.gif"
+    name = (filename or "").lower()
+    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf", ".heic", ".heif"):
+        if name.endswith(ext):
+            if ext in {".jpeg", ".heic", ".heif"}:
+                return "receipt.jpg"
+            return f"receipt{ext}"
+    return "receipt.bin"
+
+
+def _download_by_file_id(file_id: str) -> bytes | None:
+    try:
+        file_info = bot.get_file(file_id)
+        return bot.download_file(file_info.file_path)
+    except Exception:
+        logger.warning("download file_id=%s failed", file_id, exc_info=True)
+        return None
 
 
 def _download_file(message: Message | None) -> tuple[bytes, str] | None:
@@ -197,16 +269,17 @@ def _download_file(message: Message | None) -> tuple[bytes, str] | None:
         return None
     if message.photo:
         photo = message.photo[-1]
-        file_info = bot.get_file(photo.file_id)
-        content = bot.download_file(file_info.file_path)
+        content = _download_by_file_id(photo.file_id)
+        if content is None:
+            return None
         return content, "receipt.jpg"
 
     if message.document and _is_receipt_document(message.document):
         document = message.document
-        file_info = bot.get_file(document.file_id)
-        content = bot.download_file(file_info.file_path)
-        name = document.file_name or "receipt"
-        return content, name
+        content = _download_by_file_id(document.file_id)
+        if content is None:
+            return None
+        return content, _generic_receipt_name(document.file_name, content)
 
     return None
 
@@ -219,19 +292,34 @@ def _looks_like_ticket(text: str) -> bool:
     return bool(TICKET_HINT_RE.search(text))
 
 
-def _remember_ticket(chat_id: int, text: str) -> None:
-    _PENDING_TICKETS[chat_id] = (text, time.time())
+def _remember_ticket(chat_id: int, text: str, ticket_file_id: str | None = None) -> None:
+    prev = _PENDING_TICKETS.get(chat_id) or {}
+    file_id = ticket_file_id or prev.get("ticket_file_id")
+    _PENDING_TICKETS[chat_id] = {
+        "text": text or prev.get("text") or "",
+        "ts": time.time(),
+        "ticket_file_id": file_id,
+    }
 
 
 def _peek_ticket(chat_id: int) -> str:
     item = _PENDING_TICKETS.get(chat_id)
     if not item:
         return ""
-    text, ts = item
-    if time.time() - ts > PENDING_TICKET_TTL_SEC:
+    if time.time() - item["ts"] > PENDING_TICKET_TTL_SEC:
         _PENDING_TICKETS.pop(chat_id, None)
         return ""
-    return text
+    return item.get("text") or ""
+
+
+def _peek_ticket_file_id(chat_id: int) -> str:
+    item = _PENDING_TICKETS.get(chat_id)
+    if not item:
+        return ""
+    if time.time() - item["ts"] > PENDING_TICKET_TTL_SEC:
+        _PENDING_TICKETS.pop(chat_id, None)
+        return ""
+    return item.get("ticket_file_id") or ""
 
 
 def _clear_ticket(chat_id: int) -> None:
@@ -263,6 +351,18 @@ def _message_body(message: Message | None) -> str:
     return "\n".join(parts)
 
 
+def _ticket_file_id_from_message(message: Message) -> str | None:
+    reply = getattr(message, "reply_to_message", None)
+    if reply and reply.document and _is_pdf_document(reply.document):
+        return reply.document.file_id
+    if message.document and _is_pdf_document(message.document):
+        caption = _message_body(message)
+        if _looks_like_ticket_document(message.document, caption) or _looks_like_ticket(caption):
+            return message.document.file_id
+    pending = _peek_ticket_file_id(message.chat.id)
+    return pending or None
+
+
 def _collect_appeal_text(message: Message) -> str:
     parts = []
     own = _message_body(message)
@@ -280,7 +380,17 @@ def _collect_appeal_text(message: Message) -> str:
     return combined
 
 
+def _download_ticket_pdf(message: Message, receipt_file_id: str | None) -> bytes | None:
+    file_id = _ticket_file_id_from_message(message)
+    if not file_id or file_id == receipt_file_id:
+        file_id = _peek_ticket_file_id(message.chat.id) or None
+    if not file_id or file_id == receipt_file_id:
+        return None
+    return _download_by_file_id(file_id)
+
+
 @bot.message_handler(content_types=["text"])
+@bot.channel_post_handler(content_types=["text"])
 def handle_text(message: Message):
     _audit(message)
     if message.text and message.text.startswith("/"):
@@ -288,14 +398,16 @@ def handle_text(message: Message):
     text = _collect_appeal_text(message)
     if not _looks_like_ticket(text):
         return
-    _remember_ticket(message.chat.id, text)
+    _remember_ticket(message.chat.id, text, ticket_file_id=_ticket_file_id_from_message(message))
     bot.reply_to(
         message,
-        "Тикет распознан. Прикрепите чек (фото или файл) — можно ответом на тикет Melbet.",
+        "Тикет распознан. Прикрепите чек (фото квитанции из банка) ответом на тикет.",
     )
 
 
 @bot.message_handler(content_types=["photo", "document"])
+@bot.edited_message_handler(content_types=["photo", "document"])
+@bot.channel_post_handler(content_types=["photo", "document"])
 def handle_receipt(message: Message):
     try:
         _handle_receipt(message)
@@ -332,15 +444,24 @@ def _handle_receipt(message: Message):
         bot.reply_to(message, "Прикрепите чек как фото или файл (изображение/PDF).")
         return
 
-    if not _looks_like_ticket(appeal_text):
+    file_bytes, filename = downloaded
+    current_file_id = None
+    if message.document:
+        current_file_id = message.document.file_id
+    elif message.photo:
+        current_file_id = message.photo[-1].file_id
+
+    ticket_file_bytes = _download_ticket_pdf(message, current_file_id)
+    current_is_ticket = _looks_like_ticket_document(message.document, _message_body(message))
+
+    if not _looks_like_ticket(appeal_text) and not ticket_file_bytes and not current_is_ticket:
         bot.reply_to(
             message,
-            "Не вижу ID заявки. Ответьте чеком на тикет Melbet "
+            "Не вижу ID заявки. Ответьте чеком на тикет "
             "или сначала /appeal ответом на тикет, затем пришлите чек.",
         )
         return
 
-    file_bytes, filename = downloaded
     try:
         payload = backend_process_message(
             chat_id=message.chat.id,
@@ -348,6 +469,7 @@ def _handle_receipt(message: Message):
             text=appeal_text,
             file_bytes=file_bytes,
             filename=filename,
+            ticket_file_bytes=ticket_file_bytes,
         )
     except requests.RequestException as exc:
         logger.exception("backend request failed")
@@ -358,13 +480,26 @@ def _handle_receipt(message: Message):
     if payload.get("skip"):
         return
 
+    outcome = payload.get("outcome") or "rejected"
+    reply_text = payload.get("message") or ""
+
+    if outcome == "await_receipt":
+        _remember_ticket(
+            message.chat.id,
+            appeal_text,
+            ticket_file_id=_ticket_file_id_from_message(message) or current_file_id,
+        )
+        bot.reply_to(
+            message,
+            reply_text
+            or "Тикет распознан. Пришлите чек (фото квитанции из банка).",
+        )
+        return
+
     if payload.get("recognized") or payload.get("ok"):
         _clear_ticket(message.chat.id)
 
     recognized = bool(payload.get("recognized"))
-    outcome = payload.get("outcome") or "rejected"
-    reply_text = payload.get("message") or ""
-
     if recognized:
         _set_reaction(message.chat.id, message.message_id, "👀")
 
@@ -389,5 +524,5 @@ if __name__ == "__main__":
     bot.infinity_polling(
         timeout=30,
         long_polling_timeout=30,
-        allowed_updates=["message", "edited_message"],
+        allowed_updates=["message", "edited_message", "channel_post", "edited_channel_post"],
     )

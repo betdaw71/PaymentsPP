@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import requests
 from django.conf import settings
 
+from appeals.provider_privacy import provider_safe_caption, provider_safe_filename
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,19 +46,21 @@ def send_receipt_to_provider_chat(
         return SendResult(ok=False, error="APPEAL_TELEGRAM_BOT_TOKEN не задан")
 
     base = f"https://api.telegram.org/bot{token}"
-    lower_name = (filename or "").lower()
+    safe_name = provider_safe_filename(filename, file_bytes)
+    safe_caption = provider_safe_caption(caption, fallback="appeal")
+    lower_name = safe_name.lower()
     is_image = lower_name.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"))
 
     if is_image:
         url = f"{base}/sendPhoto"
-        files = {"photo": (filename or "receipt.jpg", file_bytes)}
+        files = {"photo": (safe_name, file_bytes)}
     else:
         url = f"{base}/sendDocument"
-        files = {"document": (filename or "receipt", file_bytes)}
+        files = {"document": (safe_name, file_bytes)}
 
     data = {"chat_id": str(chat_id)}
-    if caption:
-        data["caption"] = caption
+    if safe_caption:
+        data["caption"] = safe_caption
 
     try:
         response = requests.post(url, data=data, files=files, timeout=30)

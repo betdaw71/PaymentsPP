@@ -51,6 +51,8 @@ def process_message(request):
 
     file_bytes = uploaded.read()
     filename = uploaded.name or "receipt"
+    ticket_uploaded = request.FILES.get("ticket_file")
+    ticket_file_bytes = ticket_uploaded.read() if ticket_uploaded else None
 
     try:
         result = process_merchant_appeal_message(
@@ -59,6 +61,7 @@ def process_message(request):
             text=text,
             file_bytes=file_bytes,
             filename=filename,
+            ticket_file_bytes=ticket_file_bytes,
         )
     except Exception as exc:
         return Response(
@@ -71,7 +74,7 @@ def process_message(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    code = status.HTTP_200_OK if result.ok else status.HTTP_400_BAD_REQUEST
+    code = status.HTTP_200_OK if result.ok or result.outcome == "await_receipt" else status.HTTP_400_BAD_REQUEST
     return Response(
         {
             "ok": result.ok,

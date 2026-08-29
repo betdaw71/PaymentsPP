@@ -13,18 +13,20 @@ UUID_RE = re.compile(
 )
 COMPACT_HEX8_RE = re.compile(r"^[0-9a-fA-F]{8}$")
 
-# Melbet / merchant ticket: "📜 Заказ: 22924514129"
+# Melbet / merchant ticket: "📜 Заказ: 22924514129" (ID may wrap to the next line)
 ORDER_LABEL_RE = re.compile(
-    r"(?:Заказ|Order(?:\s*ID)?|merchant[_ ]?order(?:[ _]?id)?)\s*[:：]\s*([A-Za-z0-9._-]{3,64})",
+    r"(?:Заказ|Order(?:\s*ID)?|ID\s*заказа|номер заказа|merchant[_ ]?order(?:[ _]?id)?)\s*[:：]\s*"
+    r"[\r\n\s]*([A-Za-z0-9._-]{3,64})",
     re.IGNORECASE,
 )
-# "🎟 Тикет #6620b1cb"
+# "🎟 Тикет #6620b1cb" / "Тикет №6620b1cb" / "Ticket: 6620b1cb"
 TICKET_LABEL_RE = re.compile(
-    r"Тикет\s*#?\s*([0-9a-fA-F]{8})\b",
+    r"(?:Тикет|Ticket)\s*[#№n]?\s*[:：]?\s*([0-9a-fA-F]{8})\b",
     re.IGNORECASE,
 )
 PSP_NUMBER_RE = re.compile(
-    r"(?:Номер в [ПГ]?ПС|PSP(?:\s*ID)?|provider[_ ]?(?:id|order))\s*[:：]\s*([A-Za-z0-9._-]{3,64})",
+    r"(?:Номер в [ПГ]?ПС|PSP(?:\s*ID)?|provider[_ ]?(?:id|order))\s*[:：]\s*"
+    r"[\r\n\s]*([A-Za-z0-9._-]{3,64})",
     re.IGNORECASE,
 )
 
