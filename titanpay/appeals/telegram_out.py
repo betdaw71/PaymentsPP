@@ -76,6 +76,18 @@ def send_receipt_to_provider_chat(
     return SendResult(ok=True, message_id=message_id)
 
 
+def send_text_to_provider_chat(*, chat_id: int, text: str) -> SendResult:
+    caption = provider_safe_caption(text, fallback="appeal")
+    result = _api_post(
+        "sendMessage",
+        {"chat_id": chat_id, "text": caption},
+    )
+    if not result.get("ok"):
+        return SendResult(ok=False, error=result.get("description") or "sendMessage failed")
+    message_id = (result.get("result") or {}).get("message_id")
+    return SendResult(ok=True, message_id=message_id)
+
+
 def notify_merchant_appeal_message(
     *,
     chat_id: int | None,

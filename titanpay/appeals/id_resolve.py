@@ -81,6 +81,7 @@ def parse_appeal_ticket(text: str) -> TicketHints:
     """Extract IDs from Melbet-style tickets and other labelled merchant messages."""
     if not text:
         return TicketHints()
+    text = text.replace("\u00a0", " ").replace("\u202f", " ")
     order_ids = [m.group(1).strip() for m in ORDER_LABEL_RE.finditer(text)]
     ticket_hexes = [m.group(1).lower() for m in TICKET_LABEL_RE.finditer(text)]
     psp_ids = [m.group(1).strip() for m in PSP_NUMBER_RE.finditer(text)]
@@ -266,7 +267,7 @@ def _unique_pay_ins(pay_ins: list[PayIn]) -> list[PayIn]:
 
 
 def resolve_pay_in_from_message(text: str) -> ResolveResult:
-    raw = text or ""
+    raw = (text or "").replace("\u00a0", " ").replace("\u202f", " ")
     uuids = extract_uuids(raw)
     hints = parse_appeal_ticket(raw)
     recognized = bool(uuids or hints.has_ids or is_merchant_appeal_ticket(raw))

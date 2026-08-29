@@ -34,17 +34,6 @@ HEADERS = {"Authorization": f"Token {TGBOT_TOKEN}"}
 CHAT_ROLE_TTL_SEC = 5 * 60
 _CHAT_ROLES: dict[int, tuple[str, float]] = {}
 
-HELP_TEXT = (
-    "Бот апелляций.\n\n"
-    "Telegram не отдаёт ботам сообщения других ботов. "
-    "Тикет сам по себе бот не увидит — нужен ответ человека или /appeal.\n\n"
-    "Как обработать заявку:\n"
-    "1. Ответьте на тикет чеком (фото квитанции из банка)\n"
-    "2. Или ответьте на тикет командой /appeal, затем пришлите чек\n\n"
-    "В BotFather отключите Group Privacy, иначе бот не видит фото в группе.\n"
-    "Регистрация чата: /init <uuid контрагента>"
-)
-
 
 def _set_reaction(chat_id: int, message_id: int, emoji: str) -> None:
     try:
@@ -117,11 +106,11 @@ def _forget_chat_role(chat_id: int) -> None:
     _CHAT_ROLES.pop(chat_id, None)
 
 
-def _is_merchant_chat(chat_id: int) -> bool:
+def _skip_provider_chat(chat_id: int) -> bool:
     role = backend_chat_role(chat_id)
-    if role == "merchant":
+    if role == "provider":
+        logger.info("ignore provider chat_id=%s", chat_id)
         return True
-    logger.info("ignore inbound chat_id=%s role=%s", chat_id, role)
     return False
 
 
@@ -133,7 +122,9 @@ def backend_process_message(
     filename: str,
     ticket_file_bytes: bytes | None = None,
 ) -> dict:
-    files = {"file": (filename, file_bytes)}
+    files = {}
+    if file_bytes:
+        files["file"] = (filename or "receipt.bin", file_bytes)
     if ticket_file_bytes:
         files["ticket_file"] = ("ticket.pdf", ticket_file_bytes)
     data = {
@@ -141,13 +132,11 @@ def backend_process_message(
         "message_id": str(message_id),
         "text": text or "",
     }
-    response = requests.post(
-        f"{BACKEND_URL}/process_message/",
-        data=data,
-        files=files,
-        headers=HEADERS,
-        timeout=60,
-    )
+    url = f"{BACKEND_URL}/process_message/"
+    if files:
+        response = requests.post(url, data=data, files=files, headers=HEADERS, timeout=60)
+    else:
+        response = requests.post(url, data=data, headers=HEADERS, timeout=60)
     payload = _api_json(response)
     payload.setdefault("recognized", False)
     payload.setdefault("outcome", "rejected")
@@ -178,9 +167,6 @@ def _audit(message: Message) -> None:
 @bot.channel_post_handler(commands=["start", "help"])
 def help_command(message: Message):
     _audit(message)
-    if not _is_merchant_chat(message.chat.id):
-        return
-    bot.reply_to(message, HELP_TEXT)
 
 
 @bot.message_handler(commands=["init"])
@@ -189,7 +175,7 @@ def init_command(message: Message):
     _audit(message)
     parts = (message.text or "").strip().split()
     if len(parts) < 2:
-        bot.reply_to(message, "Использование: /init <uuid контрагента>")
+        bot.reply_to(message, "Использование: /init <uuid>")
         return
 
     counterparty_id = parts[1].strip()
@@ -201,37 +187,22 @@ def init_command(message: Message):
         username=(message.from_user.username if message.from_user else "") or "",
     )
     _forget_chat_role(chat.id)
-    bot.reply_to(message, reply)
+    bot.reply_to(message, reply or ("Ок" if ok else "Ошибка"))
 
 
 @bot.message_handler(commands=["appeal"])
 @bot.channel_post_handler(commands=["appeal"])
 def appeal_command(message: Message):
-    """Bind a ticket that our bot never received (other bots' messages are invisible)."""
     _audit(message)
-    if not _is_merchant_chat(message.chat.id):
+    if _skip_provider_chat(message.chat.id):
         return
-    reply = getattr(message, "reply_to_message", None)
     ticket_text = _collect_appeal_text(message)
     ticket_file_id = _ticket_file_id_from_message(message)
-    if reply is None and not _looks_like_ticket(ticket_text) and not ticket_file_id:
-        bot.reply_to(
-            message,
-            "Ответьте командой /appeal на тикет, затем пришлите чек. "
-            "Либо сразу ответьте на тикет фото квитанции из банка.",
-        )
-        return
     if not _looks_like_ticket(ticket_text) and not ticket_file_id:
-        bot.reply_to(
-            message,
-            "В сообщении, на которое вы отвечаете, нет ID заявки (Заказ / Тикет / UUID).",
-        )
         return
     _remember_ticket(message.chat.id, ticket_text, ticket_file_id=ticket_file_id)
-    bot.reply_to(
-        message,
-        "Тикет принят. Пришлите чек (фото квитанции из банка) — можно следующим сообщением.",
-    )
+    if _looks_like_ticket(ticket_text):
+        _submit_appeal(message, ticket_text, b"", "")
 
 
 def _is_pdf_document(document) -> bool:
@@ -430,21 +401,19 @@ def _download_ticket_pdf(message: Message, receipt_file_id: str | None) -> bytes
 
 
 @bot.message_handler(content_types=["text"])
+@bot.edited_message_handler(content_types=["text"])
 @bot.channel_post_handler(content_types=["text"])
 def handle_text(message: Message):
     _audit(message)
     if message.text and message.text.startswith("/"):
         return
-    if not _is_merchant_chat(message.chat.id):
+    if _skip_provider_chat(message.chat.id):
         return
     text = _collect_appeal_text(message)
     if not _looks_like_ticket(text):
         return
     _remember_ticket(message.chat.id, text, ticket_file_id=_ticket_file_id_from_message(message))
-    bot.reply_to(
-        message,
-        "Тикет распознан. Прикрепите чек (фото квитанции из банка) ответом на тикет.",
-    )
+    _submit_appeal(message, text, b"", "")
 
 
 @bot.message_handler(content_types=["photo", "document"])
@@ -457,14 +426,58 @@ def handle_receipt(message: Message):
         logger.exception("handle_receipt failed")
         try:
             _set_reaction(message.chat.id, message.message_id, "👎")
-            bot.reply_to(message, "Отклонена: внутренняя ошибка бота")
         except Exception:
             pass
 
 
+def _submit_appeal(
+    message: Message,
+    text: str,
+    file_bytes: bytes,
+    filename: str,
+    ticket_file_bytes: bytes | None = None,
+) -> None:
+    try:
+        payload = backend_process_message(
+            chat_id=message.chat.id,
+            message_id=message.message_id,
+            text=text,
+            file_bytes=file_bytes,
+            filename=filename,
+            ticket_file_bytes=ticket_file_bytes,
+        )
+    except requests.RequestException:
+        logger.exception("backend request failed")
+        _set_reaction(message.chat.id, message.message_id, "👎")
+        return
+    _apply_outcome(message, payload, text)
+
+
+def _apply_outcome(message: Message, payload: dict, appeal_text: str) -> None:
+    if payload.get("skip"):
+        return
+    outcome = payload.get("outcome") or "rejected"
+    if outcome == "await_receipt":
+        _remember_ticket(
+            message.chat.id,
+            appeal_text,
+            ticket_file_id=_ticket_file_id_from_message(message),
+        )
+        _set_reaction(message.chat.id, message.message_id, "👀")
+        return
+    if payload.get("recognized") or payload.get("ok"):
+        _clear_ticket(message.chat.id)
+        _set_reaction(message.chat.id, message.message_id, "👀")
+    if outcome in {"success", "pending", "partial"}:
+        if outcome == "success":
+            _set_reaction(message.chat.id, message.message_id, "👍")
+        return
+    _set_reaction(message.chat.id, message.message_id, "👎")
+
+
 def _handle_receipt(message: Message):
     _audit(message)
-    if not _is_merchant_chat(message.chat.id):
+    if _skip_provider_chat(message.chat.id):
         return
     appeal_text = _collect_appeal_text(message)
     logger.info(
@@ -476,19 +489,13 @@ def _handle_receipt(message: Message):
     )
 
     if not _claim_media_group(message.chat.id, getattr(message, "media_group_id", None)):
-        logger.info(
-            "skip extra album item chat_id=%s media_group=%s",
-            message.chat.id,
-            message.media_group_id,
-        )
         return
 
     downloaded = _download_file(message)
-    if downloaded is None:
-        bot.reply_to(message, "Прикрепите чек как фото или файл (изображение/PDF).")
-        return
+    file_bytes, filename = (b"", "")
+    if downloaded is not None:
+        file_bytes, filename = downloaded
 
-    file_bytes, filename = downloaded
     current_file_id = None
     if message.document:
         current_file_id = message.document.file_id
@@ -499,64 +506,9 @@ def _handle_receipt(message: Message):
     current_is_ticket = _looks_like_ticket_document(message.document, _message_body(message))
 
     if not _looks_like_ticket(appeal_text) and not ticket_file_bytes and not current_is_ticket:
-        bot.reply_to(
-            message,
-            "Не вижу ID заявки. Ответьте чеком на тикет "
-            "или сначала /appeal ответом на тикет, затем пришлите чек.",
-        )
         return
 
-    try:
-        payload = backend_process_message(
-            chat_id=message.chat.id,
-            message_id=message.message_id,
-            text=appeal_text,
-            file_bytes=file_bytes,
-            filename=filename,
-            ticket_file_bytes=ticket_file_bytes,
-        )
-    except requests.RequestException as exc:
-        logger.exception("backend request failed")
-        _set_reaction(message.chat.id, message.message_id, "👎")
-        bot.reply_to(message, f"Отклонена: нет связи с API ({exc})")
-        return
-
-    if payload.get("skip"):
-        return
-
-    outcome = payload.get("outcome") or "rejected"
-    reply_text = payload.get("message") or ""
-
-    if outcome == "await_receipt":
-        _remember_ticket(
-            message.chat.id,
-            appeal_text,
-            ticket_file_id=_ticket_file_id_from_message(message) or current_file_id,
-        )
-        bot.reply_to(
-            message,
-            reply_text
-            or "Тикет распознан. Пришлите чек (фото квитанции из банка).",
-        )
-        return
-
-    if payload.get("recognized") or payload.get("ok"):
-        _clear_ticket(message.chat.id)
-
-    recognized = bool(payload.get("recognized"))
-    if recognized:
-        _set_reaction(message.chat.id, message.message_id, "👀")
-
-    if outcome == "success":
-        _set_reaction(message.chat.id, message.message_id, "👍")
-        bot.reply_to(message, reply_text or "Успех")
-    elif outcome == "pending":
-        bot.reply_to(message, reply_text or "Апелляция принята, ожидаем подтверждения.")
-    elif outcome == "partial":
-        bot.reply_to(message, reply_text)
-    else:
-        _set_reaction(message.chat.id, message.message_id, "👎")
-        bot.reply_to(message, reply_text or "Отклонена")
+    _submit_appeal(message, appeal_text, file_bytes, filename, ticket_file_bytes)
 
 
 if __name__ == "__main__":

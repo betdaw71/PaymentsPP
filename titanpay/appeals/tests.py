@@ -39,6 +39,27 @@ class MelbetTicketParseTest(SimpleTestCase):
         self.assertFalse(is_merchant_appeal_ticket("привет, чек во вложении"))
         self.assertFalse(parse_appeal_ticket("привет").has_ids)
 
+    def test_live_melbet_ticket_with_nbsp_amount(self):
+        ticket = (
+            "🎟 Тикет #15b236c8\n"
+            "💰 Депозит\n"
+            "📜 Заказ: 23213959707\n"
+            "👤 Юзер: 1784701431\n"
+            "💰 Сумма: 11\u00a0431 KZT\n"
+            "📅 Дата: 29.08.2026 14:51:55\n"
+            "🔗 Номер в ПС: 6f705f1b-229b-4539-9c1c-966199da2567\n"
+            "💡 Маска юзера:\n"
+            "🎯 Реквизиты из заявки:\n"
+            "\n"
+            "Статус: 🆕 Создан\n"
+            "💬 Комментарий: Не пришел депозит"
+        )
+        hints = parse_appeal_ticket(ticket)
+        self.assertEqual(hints.merchant_order_ids, ["23213959707"])
+        self.assertEqual(hints.ticket_hexes, ["15b236c8"])
+        self.assertEqual(hints.psp_ids, ["6f705f1b-229b-4539-9c1c-966199da2567"])
+        self.assertTrue(is_merchant_appeal_ticket(ticket))
+
 
 class MelbetTicketResolveTest(TestCase):
     def setUp(self):
@@ -189,6 +210,7 @@ class MerchantAppealForwardTest(TestCase):
             role=AppealCounterpartyRole.MERCHANT,
             merchant=self.merchant,
         )
+        self.merchant_cp = merchant_cp
         provider_cp = AppealCounterparty.objects.create(
             name="PayPlat",
             role=AppealCounterpartyRole.PROVIDER,
@@ -221,13 +243,24 @@ class MerchantAppealForwardTest(TestCase):
         self.assertEqual(result.outcome, "skip")
         self.assertEqual(result.message, "")
 
-    def test_ticket_pdf_is_not_forwarded_to_provider(self):
+    def test_ticket_pdf_sends_provider_id_not_the_ticket(self):
         from unittest.mock import patch
 
         from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
 
         pdf = _ticket_pdf_bytes(MELBET_TICKET)
-        with patch("appeals.telegram_out.send_receipt_to_provider_chat") as mock_send:
+        with (
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(self.pay_in.id)),
+            ),
+            patch("appeals.telegram_out.send_receipt_to_provider_chat") as mock_file,
+            patch(
+                "appeals.telegram_out.send_text_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=88),
+            ) as mock_text,
+        ):
             result = process_merchant_appeal_message(
                 chat_id=111,
                 message_id=10,
@@ -235,9 +268,55 @@ class MerchantAppealForwardTest(TestCase):
                 file_bytes=pdf,
                 filename="Melbet_ticket.pdf",
             )
-        self.assertEqual(result.outcome, "await_receipt")
-        self.assertTrue(result.recognized)
-        mock_send.assert_not_called()
+        self.assertEqual(result.outcome, "pending")
+        self.assertEqual(result.message, "")
+        mock_file.assert_not_called()
+        kwargs = mock_text.call_args.kwargs
+        self.assertEqual(kwargs["text"], str(self.pay_in.id))
+        self.assertNotRegex(kwargs["text"], r"(?i)melbet|тикет|заказ")
+
+    def test_text_only_ticket_goes_to_provider_without_merchant_name(self):
+        from unittest.mock import patch
+
+        from appeals.services import init_telegram_chat, process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        ok, msg = init_telegram_chat(counterparty_id=str(self.merchant_cp.id), chat_id=333)
+        self.assertTrue(ok)
+        self.assertNotRegex(msg, r"(?i)melbet")
+
+        live = (
+            "🎟 Тикет #15b236c8\n"
+            "📜 Заказ: 23213959707\n"
+            "🔗 Номер в ПС: 6f705f1b-229b-4539-9c1c-966199da2567\n"
+            "🎯 Реквизиты из заявки:\n"
+            "💬 Комментарий: Не пришел депозит"
+        )
+        self.pay_in.merchant_order_id = "23213959707"
+        self.pay_in.save(update_fields=["merchant_order_id"])
+        with (
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(self.pay_in.id)),
+            ),
+            patch("appeals.telegram_out.send_receipt_to_provider_chat") as mock_file,
+            patch(
+                "appeals.telegram_out.send_text_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=77),
+            ) as mock_text,
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=12,
+                text=live,
+                file_bytes=b"",
+                filename="",
+            )
+        self.assertEqual(result.outcome, "pending")
+        self.assertEqual(result.message, "")
+        mock_file.assert_not_called()
+        self.assertEqual(mock_text.call_args.kwargs["text"], str(self.pay_in.id))
+        self.assertNotRegex(mock_text.call_args.kwargs["text"], r"(?i)melbet|payplat")
 
     def test_receipt_plus_ticket_pdf_forwards_only_safe_payload(self):
         from unittest.mock import patch
