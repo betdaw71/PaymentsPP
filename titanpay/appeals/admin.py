@@ -27,8 +27,9 @@ class PayInAppealAdmin(admin.ModelAdmin):
         "psp_provider",
         "provider_external_id",
         "source",
+        "merchant_inline_clicked",
         "created_at",
     )
-    list_filter = ("status", "source", "psp_provider")
+    list_filter = ("status", "source", "psp_provider", "merchant_inline_clicked")
     search_fields = ("id", "pay_in__id", "provider_external_id")
     readonly_fields = ("id", "created_at")

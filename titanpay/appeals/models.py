@@ -104,6 +104,10 @@ class PayInAppeal(models.Model):
     provider_message_id = models.BigIntegerField(null=True, blank=True)
     source_telegram_chat_id = models.BigIntegerField(null=True, blank=True)
     source_telegram_message_id = models.BigIntegerField(null=True, blank=True)
+    merchant_inline_clicked = models.BooleanField(
+        default=False,
+        help_text="Userbot already pressed Mel Transaction Bot confirm/reject on the source message",
+    )
     error_message = models.CharField(max_length=512, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 

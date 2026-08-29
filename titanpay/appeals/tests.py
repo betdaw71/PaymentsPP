@@ -374,3 +374,71 @@ class MerchantAppealForwardTest(TestCase):
         kwargs = mock_post.call_args.kwargs
         self.assertEqual(kwargs["files"]["document"][0], "receipt.pdf")
         self.assertNotRegex(kwargs["data"]["caption"], r"(?i)melbet|avapay")
+
+
+class MerchantInlineClickApiTest(TestCase):
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        from rest_framework.test import APIClient
+
+        from appeals.models import AppealCounterparty, AppealCounterpartyRole, PayInAppeal, PayInAppealStatus
+        from bots.models import TGBot
+
+        bot_user = User.objects.create_user(username="appeal_bot_user", password="x")
+        TGBot.objects.create(user=bot_user)
+        token = Token.objects.create(user=bot_user)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+        merchant_user = User.objects.create_user(username="melbet_inline", password="x")
+        merchant = Merchant.objects.create(user=merchant_user)
+        currency = Currency.objects.create(symbol="KZT", name="Tenge")
+        ps = PaymentSystem.objects.create(name="C2CKZT", currency=currency, required_fields={})
+        status = PayInStatus.objects.create(name="Failed")
+        pay_in = PayIn.objects.create(
+            amount=Decimal("50000"),
+            currency=currency,
+            payment_system=ps,
+            merchant_order_id="23213959707",
+            callback_url="https://example.com/cb",
+            merchant=merchant,
+            status=status,
+        )
+        counterparty = AppealCounterparty.objects.create(
+            name="Melbet",
+            role=AppealCounterpartyRole.MERCHANT,
+            merchant=merchant,
+        )
+        self.appeal = PayInAppeal.objects.create(
+            pay_in=pay_in,
+            source_counterparty=counterparty,
+            source="telegram_merchant",
+            status=PayInAppealStatus.APPROVED,
+            source_telegram_chat_id=-100111,
+            source_telegram_message_id=42,
+        )
+
+    def test_pending_then_mark_clicked(self):
+        from appeals.models import PayInAppeal
+
+        listed = self.client.get("/api/v1/bot/appeals/pending_inline_clicks/")
+        self.assertEqual(listed.status_code, 200)
+        items = listed.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["id"], str(self.appeal.id))
+        self.assertEqual(items[0]["chat_id"], -100111)
+        self.assertEqual(items[0]["message_id"], 42)
+        self.assertTrue(items[0]["approved"])
+
+        marked = self.client.post(
+            "/api/v1/bot/appeals/mark_inline_clicked/",
+            {"id": str(self.appeal.id)},
+            format="json",
+        )
+        self.assertEqual(marked.status_code, 200)
+        self.assertTrue(marked.json()["ok"])
+        self.appeal.refresh_from_db()
+        self.assertTrue(self.appeal.merchant_inline_clicked)
+        empty = self.client.get("/api/v1/bot/appeals/pending_inline_clicks/")
+        self.assertEqual(empty.json()["items"], [])
+        self.assertFalse(PayInAppeal.objects.filter(merchant_inline_clicked=False).exists())
