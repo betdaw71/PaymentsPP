@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes, parser_class
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from appeals.models import PayInAppeal, PayInAppealStatus
 from appeals.services import chat_role_for_telegram, init_telegram_chat, process_merchant_appeal_message
 from basics.permissions import TgBotPermission
 
@@ -107,3 +108,39 @@ def process_message(request):
         },
         status=code,
     )
+
+
+@api_view(["GET"])
+@permission_classes([TgBotPermission])
+def pending_inline_clicks(request):
+    appeals = (
+        PayInAppeal.objects.filter(
+            merchant_inline_clicked=False,
+            source_telegram_chat_id__isnull=False,
+            source_telegram_message_id__isnull=False,
+            status__in=[PayInAppealStatus.APPROVED, PayInAppealStatus.REJECTED],
+        )
+        .order_by("created_at")[:50]
+    )
+    items = [
+        {
+            "id": str(appeal.id),
+            "chat_id": appeal.source_telegram_chat_id,
+            "message_id": appeal.source_telegram_message_id,
+            "approved": appeal.status == PayInAppealStatus.APPROVED,
+        }
+        for appeal in appeals
+    ]
+    return Response({"ok": True, "items": items})
+
+
+@api_view(["POST"])
+@permission_classes([TgBotPermission])
+def mark_inline_clicked(request):
+    appeal_id = (request.data.get("id") or "").strip()
+    if not appeal_id:
+        return Response({"ok": False, "message": "Нужен id."}, status=status.HTTP_400_BAD_REQUEST)
+    updated = PayInAppeal.objects.filter(id=appeal_id).update(merchant_inline_clicked=True)
+    if not updated:
+        return Response({"ok": False, "message": "Не найдено."}, status=status.HTTP_404_NOT_FOUND)
+    return Response({"ok": True})

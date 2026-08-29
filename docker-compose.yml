@@ -291,6 +291,28 @@ services:
     networks:
       - project_network
 
+  # User account (not BotFather). Sees Mel Transaction Bot tickets. See appealbot/USERBOT.txt
+  appeal-userbot:
+    build: ./appealbot
+    container_name: titanpay_appeal_userbot
+    restart: on-failure
+    profiles:
+      - userbot
+    command: ["python", "userbot.py"]
+    environment:
+      BACKEND_URL: http://app:8080/api/v1/bot/appeals
+      TGBOT_TOKEN: ${APPEAL_BOT_API_TOKEN}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
+      USERBOT_WATCH_CHAT_IDS: ${USERBOT_WATCH_CHAT_IDS:-}
+      USERBOT_SOURCE_USERNAMES: ${USERBOT_SOURCE_USERNAMES:-}
+      USERBOT_CLICK_INLINE: ${USERBOT_CLICK_INLINE:-0}
+    depends_on:
+      - app
+    networks:
+      - project_network
+
   autosms:
     build: ./autosms
     container_name: titanpay_autosms

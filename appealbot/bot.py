@@ -1,26 +1,23 @@
 import logging
 import os
-import re
 import time
 
 import requests
 import telebot
 from telebot.types import Message, ReactionTypeEmoji
 
+from ticket_detect import (
+    generic_receipt_name,
+    is_pdf_document as _is_pdf_meta,
+    is_receipt_document as _is_receipt_meta,
+    looks_like_ticket,
+    looks_like_ticket_document as _looks_like_ticket_document_meta,
+)
+
 BACKEND_URL = os.getenv("BACKEND_URL", "http://app:8080/api/v1/bot/appeals")
 TGBOT_TOKEN = os.getenv("TGBOT_TOKEN", "")
 TELEBOT_TOKEN = os.getenv("TELEBOT_TOKEN", "")
 
-UUID_RE = re.compile(
-    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-)
-TICKET_HINT_RE = re.compile(
-    r"(тикет\s*[#№n]?\s*[:：]?\s*[0-9a-fA-F]{8}|заказ\s*[:：]|id\s*заказа|номер заказа|"
-    r"реквизиты из заявки|маска юзера|номер в [пг]?пс|order\s*id\s*[:：])",
-    re.IGNORECASE,
-)
-RECEIPT_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif")
-TICKET_NAME_HINTS = ("melbet", "мелбет", "ticket", "тикет", "avapay")
 PENDING_TICKET_TTL_SEC = 15 * 60
 _PENDING_TICKETS: dict[int, dict] = {}
 _SEEN_MEDIA_GROUPS: dict[str, float] = {}
@@ -208,62 +205,27 @@ def appeal_command(message: Message):
 def _is_pdf_document(document) -> bool:
     if document is None:
         return False
-    mime = (document.mime_type or "").lower()
-    name = (document.file_name or "").lower()
-    if mime in ("application/pdf", "application/x-pdf"):
-        return True
-    if name.endswith(".pdf"):
-        return True
-    if mime in ("application/octet-stream", "binary/octet-stream", "") and name.endswith(".pdf"):
-        return True
-    return False
+    return _is_pdf_meta(document.mime_type, document.file_name)
 
 
 def _is_receipt_document(document) -> bool:
     if document is None:
         return False
-    mime = (document.mime_type or "").lower()
-    name = (document.file_name or "").lower()
-    if mime.startswith("image/") or mime in ("application/pdf", "application/x-pdf"):
-        return True
-    if mime in ("application/octet-stream", "binary/octet-stream", ""):
-        return name.endswith(RECEIPT_EXTS)
-    return name.endswith(RECEIPT_EXTS)
-
-
-def _filename_looks_like_ticket(name: str | None) -> bool:
-    lowered = (name or "").lower()
-    return any(hint in lowered for hint in TICKET_NAME_HINTS)
+    return _is_receipt_meta(document.mime_type, document.file_name)
 
 
 def _looks_like_ticket_document(document, caption: str | None) -> bool:
     if document is None:
         return False
-    if _filename_looks_like_ticket(getattr(document, "file_name", None)):
-        return True
-    if _is_pdf_document(document) and _looks_like_ticket(caption or ""):
-        return True
-    return False
+    return _looks_like_ticket_document_meta(document.mime_type, document.file_name, caption)
 
 
 def _generic_receipt_name(filename: str | None, content: bytes) -> str:
-    if content.startswith(b"\xff\xd8\xff"):
-        return "receipt.jpg"
-    if content.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "receipt.png"
-    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
-        return "receipt.webp"
-    if content.startswith(b"%PDF"):
-        return "receipt.pdf"
-    if content.startswith(b"GIF8"):
-        return "receipt.gif"
-    name = (filename or "").lower()
-    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf", ".heic", ".heif"):
-        if name.endswith(ext):
-            if ext in {".jpeg", ".heic", ".heif"}:
-                return "receipt.jpg"
-            return f"receipt{ext}"
-    return "receipt.bin"
+    return generic_receipt_name(filename, content)
+
+
+def _looks_like_ticket(text: str) -> bool:
+    return looks_like_ticket(text)
 
 
 def _download_by_file_id(file_id: str) -> bytes | None:
@@ -293,14 +255,6 @@ def _download_file(message: Message | None) -> tuple[bytes, str] | None:
         return content, _generic_receipt_name(document.file_name, content)
 
     return None
-
-
-def _looks_like_ticket(text: str) -> bool:
-    if not text:
-        return False
-    if UUID_RE.search(text):
-        return True
-    return bool(TICKET_HINT_RE.search(text))
 
 
 def _remember_ticket(chat_id: int, text: str, ticket_file_id: str | None = None) -> None:
