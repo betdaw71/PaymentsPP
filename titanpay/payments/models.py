@@ -5,13 +5,10 @@ from django.db import models
 from basics.models import Currency, PaymentSystem
 from trade.models import InOrder, OutOrder
 from merchant.models import Merchant
-import json
-import hashlib
 import requests
 from django.utils import timezone
 import uuid
 from django.core.validators import MinValueValidator
-from payments.utils import UUIDEncoder
 
 
 class PayInStatus(models.Model):
@@ -41,8 +38,9 @@ class APIKeys(models.Model):
         return obj
 
     def sign_data(self, data):
-        sorted_data = json.dumps(data, sort_keys=True, separators=(',', ':'), cls=UUIDEncoder).encode()
-        signature = hashlib.sha256(sorted_data + str(self.private_key).encode()).hexdigest()
+        from payments.signing import sign_canonical
+
+        signature, _body = sign_canonical(data, self.private_key)
         return signature
 
     def update_whitelist(self, whitelist_on, whitelist):
@@ -102,14 +100,18 @@ class PayIn(models.Model):
         data["payment_system"] = self.payment_system.name
         data["recalculated"] = self.order.recalculated
         data["timestamp"] = int(timezone.now().timestamp())
-        signature = self.merchant.api_keys.get(active=True).sign_data(data)
+        api_key = self.merchant.api_keys.get(active=True)
+        from payments.signing import signed_json_headers
 
-        headers = {"Signature": signature, "Content-Type": "application/json"}
+        headers, body_bytes = signed_json_headers(data, api_key.private_key)
+        canonical_body = body_bytes.decode()
 
         status_code = 500
         response_text = ""
         try:
-            r = requests.post(self.callback_url, json=data, headers=headers)
+            # Тело HTTP = та же строка, что ушла в SHA256. Иначе requests.json
+            # добавит пробелы и другой порядок ключей — мерчант не сойдётся.
+            r = requests.post(self.callback_url, data=body_bytes, headers=headers)
             status_code = r.status_code
             response_text = (r.text or "")[:2000]
         except Exception as exc:
@@ -121,7 +123,11 @@ class PayIn(models.Model):
         trace_log(
             pay_in=self,
             direction=Direction.MERCHANT_CALLBACK,
-            body={"request": data, "response_preview": response_text},
+            body={
+                "request": data,
+                "canonical_body": canonical_body,
+                "response_preview": response_text,
+            },
             http_method="POST",
             url=self.callback_url,
             status_code=status_code,
@@ -434,13 +440,14 @@ class PayOut(models.Model):
         data["payment_system"] = self.payment_system.name
         data["recalculated"] = self.order.recalculated
         data["timestamp"] = int(timezone.now().timestamp())
-        signature = self.merchant.api_keys.get(active=True).sign_data(data)
+        api_key = self.merchant.api_keys.get(active=True)
+        from payments.signing import signed_json_headers
 
-        headers = {"Signature": signature, "Content-Type": "application/json"}
+        headers, body_bytes = signed_json_headers(data, api_key.private_key)
 
         status_code = 500
         try:
-            r = requests.post(self.callback_url, json=data, headers=headers)
+            r = requests.post(self.callback_url, data=body_bytes, headers=headers)
             status_code = r.status_code
         except Exception:
             logging.error(f"Callback to {self.callback_url} failed")

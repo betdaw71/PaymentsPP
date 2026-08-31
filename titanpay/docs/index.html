@@ -462,9 +462,34 @@ headers = {
 }</code></pre>
 
         <div class="alert alert-warn">
-          Подписывайте <strong>точно то тело</strong>, которое отправляете в запросе.
-          Любое изменение полей или формата суммы потребует пересчёта подписи.
+          Подписывайте <strong>канонический JSON</strong>: ключи отсортированы, без пробелов
+          (<code>separators=(",", ":")</code>, <code>sort_keys=True</code>).
+          Не хешируйте «как отправили в HTTP», если сериализатор ставит пробелы или другой порядок ключей.
+          <code>amount</code> как число <code>10800</code> и как <code>10800.0</code> — это <strong>разные</strong> строки.
+          В PHP: <code>JSON_UNESCAPED_SLASHES</code> (иначе <code>/</code> станет <code>\/</code>) и рекурсивный <code>ksort</code>.
+          <code>json_encode(10800.0)</code> в PHP даёт <code>10800</code> без <code>.0</code> — для callback не перекодируйте тело, берите RAW body.
         </div>
+        <h3>Пример (PHP / Yii2)</h3>
+        <pre><code>function avapay_ksort($data) {
+    if (!is_array($data)) {
+        return $data;
+    }
+    foreach ($data as $k => $v) {
+        $data[$k] = avapay_ksort($v);
+    }
+    $isList = $data !== [] && array_keys($data) === range(0, count($data) - 1);
+    if (!$isList) {
+        ksort($data);
+    }
+    return $data;
+}
+
+$canonical = json_encode(avapay_ksort($payload), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+$signature = hash('sha256', $canonical . $privateKey); // UUID с дефисами
+
+// Callback: не используйте тело create. Хешируйте сырое тело HTTP:
+// $signature = hash('sha256', $rawCallbackBody . $privateKey);
+</code></pre>
       </section>
 
       <section id="callbacks">
@@ -487,6 +512,13 @@ headers = {
         <h3>Заголовок</h3>
         <pre><code>Signature: &lt;sha256 подпись тела callback + private_key&gt;</code></pre>
         <p>Алгоритм тот же, что для исходящих запросов. Всегда проверяйте подпись на своей стороне.</p>
+        <div class="alert alert-warn">
+          Тело callback <strong>не совпадает</strong> с телом create: другие поля
+          (<code>id</code>, <code>order_id</code>, <code>status</code>, <code>timestamp</code>),
+          <code>amount</code> приходит как float (<code>27000.0</code>, не <code>27000</code> и не <code>"27000.00"</code>).
+          Считайте SHA256 от канонического JSON callback (или от RAW body — оно совпадает с каноническим)
+          плюс <code>private_key</code> с дефисами.
+        </div>
         <div class="alert alert-info">
           Ответьте HTTP <code>2xx</code> в разумные сроки. При ошибке доставки возможны повторные попытки.
         </div>
