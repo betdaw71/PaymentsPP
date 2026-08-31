@@ -110,8 +110,8 @@ class Command(BaseCommand):
             if share_map:
                 self.stdout.write(
                     self.style.HTTP_INFO(
-                        f"\nдоли трафика PSP_ROUTING_SHARE_MAP окно={get_share_window_hours()}ч "
-                        f"(нормализация среди тех, кто сейчас в каскаде):"
+                        f"\nдоли трафика PSP_ROUTING_SHARE_MAP (первый слот = взвешенный random, "
+                        f"окно {get_share_window_hours()}ч только для отчёта actual, не крутит каскад):"
                     )
                 )
                 for uname, row in share_rows.items():

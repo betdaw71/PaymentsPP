@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
+import random
 
 from django.db import transaction
 from django.utils import timezone
@@ -408,7 +409,8 @@ def share_metrics_for_groups(groups, *, share_volumes=None) -> dict[str, dict]:
     Метрики доли среди PSP, которые есть в текущей выборке и имеют вес > 0.
 
     target/actual — доли 0..1 от суммы весов/объёма присутствующих.
-    deficit = target - actual: больше = сильнее отстаёт = раньше в каскаде.
+    deficit = target - actual. Только для diagnose/trace; роутинг выбирает
+    взвешенно-случайно, без догона этого дефицита.
     """
     shares = get_routing_share_map()
     if not shares:
@@ -450,18 +452,51 @@ def share_metrics_for_groups(groups, *, share_volumes=None) -> dict[str, dict]:
     return metrics
 
 
-def sort_groups_for_routing(groups, amount=None, *, share_volumes=None):
+def _weight_for_group(group, shares: dict[str, Decimal]) -> Decimal:
+    return shares.get(_group_username(group).lower(), Decimal("0"))
+
+
+def _weighted_shuffle(groups, shares: dict[str, Decimal], *, rng=None):
+    """
+    Выбор без возвращения: вероятность первого слота = доля из SHARE_MAP.
+
+    Не догоняем историю за 24ч — иначе payplat с большим окном отдаёт 100% gipay,
+    пока тот не наберёт целевой %. Нужен % от текущего потока заявок.
+    """
+    remaining = list(groups)
+    ordered = []
+    rng = rng or random
+    while remaining:
+        total = sum(_weight_for_group(g, shares) for g in remaining)
+        if total <= 0:
+            ordered.extend(remaining)
+            break
+        draw = Decimal(str(rng.random())) * total
+        acc = Decimal("0")
+        idx = len(remaining) - 1
+        for i, group in enumerate(remaining):
+            acc += _weight_for_group(group, shares)
+            if draw <= acc:
+                idx = i
+                break
+        ordered.append(remaining.pop(idx))
+    return ordered
+
+
+def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None):
     """
     Порядок выбора группы.
 
     PSP всегда первыми. Если задан PSP_ROUTING_SHARE_MAP — среди провайдеров
-    с долей > 0 сначала тот, кто сильнее отстаёт от целевого % за окно
-    (deficit = target - actual), затем каскад PSP_ROUTING_PRIORITY_MAP.
+    с долей > 0 порядок взвешенно-случайный (70/30 значит ~70% заявок
+    первым слотом payplat). Не используем объём за окно для выбора:
+    догон истории отдаёт весь поток отстающему.
+
     Провайдеры без доли (0 / не указаны) — после weighted, по приоритету.
     Обычные трейдеры — после всех PSP, по current_volume.
 
-    share_volumes: опционально username → объём, чтобы не ходить в БД (тесты).
-    None = взять сумму PayIn за окно. {} = окно пустое (каскад среди weighted).
+    share_volumes оставлен для совместимости (диагностика), на порядок не влияет.
+    rng — random.Random для тестов.
     """
     groups = list(groups)
     if not groups:
@@ -488,17 +523,17 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None):
         unweighted = [
             g for g in psp if shares.get(_group_username(g).lower(), Decimal("0")) <= 0
         ]
-        metrics = share_metrics_for_groups(weighted, share_volumes=share_volumes)
-        window_total = next(iter(metrics.values()), {}).get("window_total", Decimal("0"))
-
-        def weighted_key(group):
-            if window_total > 0:
-                row = metrics.get(_group_username(group).lower()) or {}
-                deficit = row.get("deficit", Decimal("0"))
-                return (-deficit, *cascade_key(group))
-            return cascade_key(group)
-
-        psp_sorted = sorted(weighted, key=weighted_key) + sorted(unweighted, key=cascade_key)
+        picked = _weighted_shuffle(weighted, shares, rng=rng)
+        try:
+            names = [_group_username(g) for g in picked]
+            logger.info(
+                "PSP_SHARE_PICK order=%s weights=%s",
+                names,
+                {k: str(v) for k, v in shares.items() if k in {n.lower() for n in names}},
+            )
+        except Exception:
+            pass
+        psp_sorted = picked + sorted(unweighted, key=cascade_key)
     else:
         psp_sorted = sorted(psp, key=cascade_key)
     rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))

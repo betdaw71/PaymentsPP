@@ -12,6 +12,16 @@ from payments.psp_payin import (
 )
 
 
+class _ScriptedRng:
+    def __init__(self, values):
+        self.values = list(values)
+
+    def random(self):
+        if not self.values:
+            return 0.0
+        return self.values.pop(0)
+
+
 def _group(username, pk, *, volume="0", team_id=1, ps_id=1):
     trader = SimpleNamespace(
         team_id=team_id,
@@ -71,15 +81,31 @@ class SortGroupsForRoutingShareTest(SimpleTestCase):
         )
 
     @override_settings(PSP_ROUTING_SHARE_MAP={"payplat1": 70, "gipay1": 30})
-    def test_behind_share_is_picked_first(self, _mdr):
+    def test_share_roll_low_picks_payplat_first(self, _mdr):
         groups = [
             _group("payplat1", 1),
             _group("gipay1", 2),
             _group("bitzone1", 3),
         ]
+        rng = _ScriptedRng([0.0, 0.0])
+        ordered = sort_groups_for_routing(groups, rng=rng)
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            ["payplat1", "gipay1", "bitzone1"],
+        )
+
+    @override_settings(PSP_ROUTING_SHARE_MAP={"payplat1": 70, "gipay1": 30})
+    def test_share_roll_high_picks_gipay_first_not_catchup(self, _mdr):
+        groups = [
+            _group("payplat1", 1),
+            _group("gipay1", 2),
+            _group("bitzone1", 3),
+        ]
+        rng = _ScriptedRng([0.99, 0.0])
         ordered = sort_groups_for_routing(
             groups,
             share_volumes={"payplat1": 90, "gipay1": 10},
+            rng=rng,
         )
         self.assertEqual(
             [g.trader.user.username for g in ordered],
@@ -87,21 +113,20 @@ class SortGroupsForRoutingShareTest(SimpleTestCase):
         )
 
     @override_settings(PSP_ROUTING_SHARE_MAP={"payplat1": 70, "gipay1": 30})
-    def test_empty_window_falls_back_to_priority(self, _mdr):
-        groups = [_group("gipay1", 2), _group("payplat1", 1), _group("bitzone1", 3)]
-        ordered = sort_groups_for_routing(groups, share_volumes={})
-        self.assertEqual(
-            [g.trader.user.username for g in ordered],
-            ["payplat1", "gipay1", "bitzone1"],
+    def test_history_volume_does_not_force_gipay(self, _mdr):
+        groups = [_group("payplat1", 1), _group("gipay1", 2), _group("bitzone1", 3)]
+        rng = _ScriptedRng([0.0, 0.0])
+        ordered = sort_groups_for_routing(
+            groups,
+            share_volumes={"payplat1": 10_000_000, "gipay1": 1},
+            rng=rng,
         )
+        self.assertEqual(ordered[0].trader.user.username, "payplat1")
 
     @override_settings(PSP_ROUTING_SHARE_MAP={"payplat1": 70, "gipay1": 30})
     def test_missing_provider_share_is_renormalized(self, _mdr):
         groups = [_group("payplat1", 1), _group("bitzone1", 3)]
-        ordered = sort_groups_for_routing(
-            groups,
-            share_volumes={"payplat1": 1000000},
-        )
+        ordered = sort_groups_for_routing(groups, rng=_ScriptedRng([0.0]))
         self.assertEqual(
             [g.trader.user.username for g in ordered],
             ["payplat1", "bitzone1"],
@@ -110,13 +135,11 @@ class SortGroupsForRoutingShareTest(SimpleTestCase):
     @override_settings(PSP_ROUTING_SHARE_MAP={"payplat1": 50, "gipay1": 50})
     def test_unweighted_psp_stays_after_weighted(self, _mdr):
         groups = [_group("bitzone1", 3), _group("gipay1", 2), _group("payplat1", 1)]
-        ordered = sort_groups_for_routing(
-            groups,
-            share_volumes={"payplat1": 80, "gipay1": 20},
-        )
+        rng = _ScriptedRng([0.99, 0.0])
+        ordered = sort_groups_for_routing(groups, rng=rng)
         self.assertEqual(
             [g.trader.user.username for g in ordered],
-            ["gipay1", "payplat1", "bitzone1"],
+            ["payplat1", "gipay1", "bitzone1"],
         )
 
 
