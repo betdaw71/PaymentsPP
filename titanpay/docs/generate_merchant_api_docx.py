@@ -191,12 +191,7 @@ headers = {
     "Signature": signature,
 }""",
     )
-    add_para(
-        doc,
-        "Подписывайте канонический JSON: ключи отсортированы, без пробелов. "
-        "amount 10800 и 10800.0 — разные строки. В PHP: JSON_UNESCAPED_SLASHES и рекурсивный ksort; "
-        "json_encode(10800.0) даёт 10800 без .0. Для callback хешируйте RAW body, не тело create.",
-    )
+    add_para(doc, "Подписывайте точно то тело, которое отправляете в запросе.")
 
     add_heading(doc, "4.3. Подпись ответов API", level=2)
     add_para(
@@ -229,11 +224,7 @@ headers = {
     add_para(doc, "Поле order_id — это ваш merchant_order_id.")
     add_heading(doc, "5.2. Заголовок", level=2)
     add_code(doc, "Signature: <sha256 подпись тела callback + private_key>")
-    add_para(
-        doc,
-        "Тело callback не совпадает с телом create. amount — float 2000.0, не 2000 и не строка. "
-        "SHA256(canonical_json(callback) + private_key с дефисами). Ответьте HTTP 2xx.",
-    )
+    add_para(doc, "Ответьте HTTP 2xx. При ошибке доставки возможны повторные попытки.")
 
     # 6. API Keys
     add_heading(doc, "6. API Keys")

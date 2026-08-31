@@ -142,25 +142,11 @@ def run(password: str = DEFAULT_PASSWORD) -> dict:
         api_key = APIKeys.create(merchant=merchant)
         Token.objects.filter(user=user).delete()
         token = Token.objects.create(user=user)
-        print("  + API keys created")
-    elif os.environ.get("ALEMKREDIT_ROTATE_KEYS", "").strip().lower() in ("1", "true", "yes"):
+    else:
         api_key = APIKeys.create(merchant=merchant)
         Token.objects.filter(user=user).delete()
         token = Token.objects.create(user=user)
-        print("  ~ API keys re-issued (ALEMKREDIT_ROTATE_KEYS=1)")
-    else:
-        api_key = APIKeys.objects.filter(merchant=merchant, active=True).order_by("-created_at").first()
-        token = Token.objects.filter(user=user).first()
-        if api_key is None or token is None:
-            api_key = APIKeys.create(merchant=merchant)
-            Token.objects.filter(user=user).delete()
-            token = Token.objects.create(user=user)
-            print("  + API keys created (missing active pair)")
-        else:
-            print(
-                f"  ~ keep API keys created_at={api_key.created_at} "
-                "(set ALEMKREDIT_ROTATE_KEYS=1 to issue a new pair)"
-            )
+        print("  ~ API keys re-issued")
 
     result = {
         "merchant_id": str(merchant.id),

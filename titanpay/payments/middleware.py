@@ -2,6 +2,7 @@ import logging
 import os
 from django.http import HttpResponseForbidden
 from rest_framework.authtoken.models import Token
+import hashlib
 import json
 from .models import APIKeys
 
@@ -69,12 +70,8 @@ class SignatureVerificationMiddleware:
                 if api_key_instance.whitelist_on and user_ip not in api_key_instance.whitelist_ips:
                     return HttpResponseForbidden("This IP is not in whitelist")
 
-                from payments.signing import sign_canonical
-
-                expected_signature, _canonical = sign_canonical(
-                    json.loads(request.body),
-                    api_key_instance.private_key,
-                )
+                sorted_data = json.dumps(json.loads(request.body), sort_keys=True, separators=(',', ':')).encode()
+                expected_signature = hashlib.sha256(sorted_data + str(api_key_instance.private_key).encode()).hexdigest()
 
                 if expected_signature != signature:
                     return HttpResponseForbidden("Invalid signature")
