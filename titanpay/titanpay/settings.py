@@ -380,6 +380,16 @@ PSP_ROUTING_PRIORITY_MAP = os.getenv(
     'PSP_ROUTING_PRIORITY_MAP',
     '{"payplat1": 1, "gipay1": 2, "bitzone1": 3}',
 )
+# JSON: доля трафика PSP в % за скользящее окно. Пустой {} = только каскад по приоритету.
+# Пример: {"payplat1": 70, "gipay1": 30}. Доли нормализуются среди провайдеров,
+# которые сейчас в каскаде (выключенный PSP не занимает %). 0 или отсутствие username —
+# этот PSP только как fallback после weighted. Не lifetime current_volume: иначе
+# провайдер с маленькой историей заберёт 100% надолго.
+PSP_ROUTING_SHARE_MAP = os.getenv('PSP_ROUTING_SHARE_MAP', '{}')
+try:
+    PSP_ROUTING_SHARE_WINDOW_HOURS = int(os.getenv('PSP_ROUTING_SHARE_WINDOW_HOURS', '24') or '24')
+except (TypeError, ValueError):
+    PSP_ROUTING_SHARE_WINDOW_HOURS = 24
 
 # Protocol PSP (prot0col.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/protocol/)
 PROTOCOL_API_BASE = os.getenv('PROTOCOL_API_BASE', 'https://prot0col.com').rstrip('/')

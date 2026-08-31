@@ -303,15 +303,165 @@ def psp_routing_priority_for_trader(trader) -> int:
     return lower.get(username.lower(), 100)
 
 
-def sort_groups_for_routing(groups, amount=None):
+def _trader_username(trader) -> str:
+    if trader is None or not getattr(trader, "user", None):
+        return ""
+    return (trader.user.username or "").strip()
+
+
+def _group_username(group) -> str:
+    return _trader_username(getattr(group, "trader", None))
+
+
+def parse_routing_share_map(raw=None) -> dict[str, Decimal]:
+    """username (lower) → вес доли. 0 и отрицательные отбрасываются."""
+    from django.conf import settings
+
+    if raw is None:
+        raw = getattr(settings, "PSP_ROUTING_SHARE_MAP", None)
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        import json
+
+        try:
+            data = json.loads(str(raw or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            data = {}
+    out: dict[str, Decimal] = {}
+    for key, val in (data or {}).items():
+        name = str(key).strip().lower()
+        if not name:
+            continue
+        try:
+            weight = Decimal(str(val))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        if weight > 0:
+            out[name] = weight
+    return out
+
+
+def get_routing_share_map() -> dict[str, Decimal]:
+    return parse_routing_share_map()
+
+
+def psp_routing_share_enabled() -> bool:
+    return bool(get_routing_share_map())
+
+
+def get_share_window_hours() -> int:
+    from django.conf import settings
+
+    raw = getattr(settings, "PSP_ROUTING_SHARE_WINDOW_HOURS", 24)
+    try:
+        hours = int(raw)
+    except (TypeError, ValueError):
+        hours = 24
+    return max(1, min(hours, 24 * 14))
+
+
+def fetch_psp_share_volumes(
+    usernames,
+    *,
+    payment_system_ids=None,
+    window_hours: int | None = None,
+) -> dict[str, Decimal]:
+    """
+    Сумма PayIn.amount, назначенная каждому PSP за скользящее окно.
+
+    Declined не считаем (заявка не ушла провайдеру / create fail).
+    Не lifetime current_volume: иначе PSP с маленькой историей заберёт весь поток.
+    """
+    from datetime import timedelta
+
+    from django.db.models import Sum
+
+    from payments.models import PayIn
+
+    names = [str(u).strip() for u in usernames if str(u or "").strip()]
+    if not names:
+        return {}
+    hours = window_hours if window_hours is not None else get_share_window_hours()
+    since = timezone.now() - timedelta(hours=hours)
+    qs = PayIn.objects.filter(
+        created_at__gte=since,
+        order__payment_details__group__trader__user__username__in=names,
+    ).exclude(status__name="Declined")
+    if payment_system_ids:
+        qs = qs.filter(payment_system_id__in=list(payment_system_ids))
+    rows = qs.values("order__payment_details__group__trader__user__username").annotate(
+        total=Sum("amount")
+    )
+    out = {n.lower(): Decimal("0") for n in names}
+    for row in rows:
+        uname = (
+            row.get("order__payment_details__group__trader__user__username") or ""
+        ).strip().lower()
+        if uname in out:
+            out[uname] = row["total"] or Decimal("0")
+    return out
+
+
+def share_metrics_for_groups(groups, *, share_volumes=None) -> dict[str, dict]:
+    """
+    Метрики доли среди PSP, которые есть в текущей выборке и имеют вес > 0.
+
+    target/actual — доли 0..1 от суммы весов/объёма присутствующих.
+    deficit = target - actual: больше = сильнее отстаёт = раньше в каскаде.
+    """
+    shares = get_routing_share_map()
+    if not shares:
+        return {}
+    seen: list[str] = []
+    for group in groups:
+        uname = _group_username(group).lower()
+        if uname and shares.get(uname, Decimal("0")) > 0 and uname not in seen:
+            seen.append(uname)
+    if not seen:
+        return {}
+    total_weight = sum(shares[u] for u in seen)
+    if total_weight <= 0:
+        return {}
+    if share_volumes is None:
+        ps_ids = {getattr(group, "payment_system_id", None) for group in groups}
+        ps_ids.discard(None)
+        volumes = fetch_psp_share_volumes(seen, payment_system_ids=ps_ids)
+    else:
+        volumes = {
+            str(key).strip().lower(): Decimal(str(val or 0))
+            for key, val in share_volumes.items()
+        }
+    window_total = sum(volumes.get(u, Decimal("0")) for u in seen)
+    metrics: dict[str, dict] = {}
+    for uname in seen:
+        weight = shares[uname]
+        target = weight / total_weight
+        volume = volumes.get(uname, Decimal("0"))
+        actual = (volume / window_total) if window_total > 0 else Decimal("0")
+        metrics[uname] = {
+            "weight": weight,
+            "target": target,
+            "actual": actual,
+            "deficit": target - actual,
+            "volume": volume,
+            "window_total": window_total,
+        }
+    return metrics
+
+
+def sort_groups_for_routing(groups, amount=None, *, share_volumes=None):
     """
     Порядок выбора группы.
 
-    PSP всегда первыми: PSP_ROUTING_PRIORITY_MAP (меньше = раньше), затем mdr_in,
-    current_volume. Обычные трейдеры — после всех PSP, по current_volume.
+    PSP всегда первыми. Если задан PSP_ROUTING_SHARE_MAP — среди провайдеров
+    с долей > 0 сначала тот, кто сильнее отстаёт от целевого % за окно
+    (deficit = target - actual), затем каскад PSP_ROUTING_PRIORITY_MAP.
+    Провайдеры без доли (0 / не указаны) — после weighted, по приоритету.
+    Обычные трейдеры — после всех PSP, по current_volume.
 
-    Раньше одна не-PSP группа сбрасывала весь каскад в sort по volume, и
-    expayone1 с отрицательным current_volume обгонял payplat1/gipay1.
+    share_volumes: опционально username → объём, чтобы не ходить в БД (тесты).
+    None = взять сумму PayIn за окно. {} = окно пустое (каскад среди weighted).
     """
     groups = list(groups)
     if not groups:
@@ -319,15 +469,38 @@ def sort_groups_for_routing(groups, amount=None):
     psp = [g for g in groups if is_psp_trader(g.trader) or is_preferred_payin_psp(g.trader)]
     rest = [g for g in groups if g not in psp]
     mdr_map = _team_mdr_in_map(psp) if psp else {}
-    psp_sorted = sorted(
-        psp,
-        key=lambda g: (
-            psp_routing_priority_for_trader(g.trader),
-            mdr_map.get((g.trader.team_id, g.payment_system_id), Decimal("999")),
-            g.current_volume or Decimal(0),
-            g.trader.user.username if g.trader and g.trader.user else "",
-        ),
-    )
+
+    def cascade_key(group):
+        trader = group.trader
+        team_id = getattr(trader, "team_id", None) if trader else None
+        return (
+            psp_routing_priority_for_trader(trader),
+            mdr_map.get((team_id, group.payment_system_id), Decimal("999")),
+            group.current_volume or Decimal(0),
+            _group_username(group),
+        )
+
+    shares = get_routing_share_map()
+    weighted = [
+        g for g in psp if shares.get(_group_username(g).lower(), Decimal("0")) > 0
+    ]
+    if shares and weighted:
+        unweighted = [
+            g for g in psp if shares.get(_group_username(g).lower(), Decimal("0")) <= 0
+        ]
+        metrics = share_metrics_for_groups(weighted, share_volumes=share_volumes)
+        window_total = next(iter(metrics.values()), {}).get("window_total", Decimal("0"))
+
+        def weighted_key(group):
+            if window_total > 0:
+                row = metrics.get(_group_username(group).lower()) or {}
+                deficit = row.get("deficit", Decimal("0"))
+                return (-deficit, *cascade_key(group))
+            return cascade_key(group)
+
+        psp_sorted = sorted(weighted, key=weighted_key) + sorted(unweighted, key=cascade_key)
+    else:
+        psp_sorted = sorted(psp, key=cascade_key)
     rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))
     return psp_sorted + rest_sorted
 
@@ -357,6 +530,29 @@ def is_preferred_payin_psp(trader) -> bool:
     if not actual:
         return False
     return actual in {n.lower() for n in preferred_payin_psp_usernames()}
+
+
+def apply_preferred_psp_order(groups):
+    """
+    payplat затем gipay всегда раньше остальных preferred.
+
+    Если включён PSP_ROUTING_SHARE_MAP — не переставляем: иначе доли
+    из sort_groups_for_routing сбросятся в payplat-first.
+    """
+    groups = list(groups)
+    if not groups or psp_routing_share_enabled():
+        return groups
+    pref_order = {n.lower(): i for i, n in enumerate(preferred_payin_psp_usernames())}
+    preferred = []
+    other = []
+    for group in groups:
+        uname = _group_username(group).lower()
+        if uname in pref_order:
+            preferred.append(group)
+        else:
+            other.append(group)
+    preferred.sort(key=lambda g: pref_order.get(_group_username(g).lower(), 99))
+    return preferred + other
 
 
 def psp_trader_usernames() -> frozenset[str]:

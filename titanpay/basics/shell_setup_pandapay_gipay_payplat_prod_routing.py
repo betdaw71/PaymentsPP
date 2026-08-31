@@ -12,6 +12,7 @@ Prod pandapay KZT: gipay1 + payplat1 активны и первые в каск�
 
 .env (приоритет, меньше = раньше):
   PSP_ROUTING_PRIORITY_MAP={"payplat1": 1, "gipay1": 2}
+  PSP_ROUTING_SHARE_MAP={"payplat1": 70, "gipay1": 30}  # опционально, % трафика за окно
 
 Проверка:
   docker compose exec -T app python manage.py diagnose_routing pandapay --ps C2CKZT --amount 7010 --ftd false
@@ -125,6 +126,7 @@ def run() -> None:
     print("\nDone. mdr_in и balance_usdt не изменялись.")
     print("  Приоритет каскада: PSP_ROUTING_PRIORITY_MAP в .env")
     print('  {"payplat1": 1, "gipay1": 2}')
+    print("  Доли трафика (опционально): PSP_ROUTING_SHARE_MAP, например {\"payplat1\": 70, \"gipay1\": 30}")
     print("  diagnose_routing pandapay --ps C2CKZT --amount 7010 --ftd false")
 
 

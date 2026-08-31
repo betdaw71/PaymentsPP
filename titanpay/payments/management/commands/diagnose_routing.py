@@ -69,7 +69,14 @@ class Command(BaseCommand):
             raise CommandError(f"route() failed: {exc}") from exc
 
         from basics.models import TraderTeamRates
-        from payments.psp_payin import is_psp_trader, psp_routing_priority_for_trader, sort_groups_for_routing
+        from payments.psp_payin import (
+            get_routing_share_map,
+            get_share_window_hours,
+            is_psp_trader,
+            psp_routing_priority_for_trader,
+            share_metrics_for_groups,
+            sort_groups_for_routing,
+        )
 
         options_qs = router.get_possible_options_in(None, ps, amount, traffic, usd_amount)
         self.stdout.write(f"\nгрупп после фильтра: {options_qs.count()}")
@@ -98,6 +105,32 @@ class Command(BaseCommand):
                         f"  не-PSP в выборке ({non_psp[:5]}): идут ПОСЛЕ всех PSP, приоритет payplat/gipay не сбрасывается"
                     )
                 )
+            share_map = get_routing_share_map()
+            share_rows = share_metrics_for_groups(sorted_groups) if share_map else {}
+            if share_map:
+                self.stdout.write(
+                    self.style.HTTP_INFO(
+                        f"\nдоли трафика PSP_ROUTING_SHARE_MAP окно={get_share_window_hours()}ч "
+                        f"(нормализация среди тех, кто сейчас в каскаде):"
+                    )
+                )
+                for uname, row in share_rows.items():
+                    target_pct = (row["target"] * 100).quantize(Decimal("0.1"))
+                    actual_pct = (row["actual"] * 100).quantize(Decimal("0.1"))
+                    deficit_pct = (row["deficit"] * 100).quantize(Decimal("0.1"))
+                    self.stdout.write(
+                        f"  {uname}: target={target_pct}% actual={actual_pct}% "
+                        f"deficit={deficit_pct}% window_vol={row['volume']}"
+                    )
+                missing_shares = [
+                    name for name in share_map if name not in share_rows
+                ]
+                if missing_shares:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"  нет в текущем каскаде (доля перераспределена): {missing_shares}"
+                        )
+                    )
             self.stdout.write(self.style.HTTP_INFO("\nпорядок каскада (первый = будет выбран):"))
             for i, g in enumerate(sorted_groups[:15], 1):
                 t = g.trader
@@ -109,8 +142,17 @@ class Command(BaseCommand):
                 mdr = mdr_map.get((t.team_id, ps.id))
                 mdr_s = f" mdr_in={mdr}%" if mdr is not None else ""
                 prio = psp_routing_priority_for_trader(t)
+                share = share_rows.get((t.user.username or "").strip().lower()) if t.user else None
+                share_s = ""
+                if share:
+                    target_pct = (share["target"] * 100).quantize(Decimal("0.1"))
+                    actual_pct = (share["actual"] * 100).quantize(Decimal("0.1"))
+                    deficit_pct = (share["deficit"] * 100).quantize(Decimal("0.1"))
+                    share_s = (
+                        f" share={target_pct}% actual={actual_pct}% deficit={deficit_pct}%"
+                    )
                 self.stdout.write(
-                    f"  {i}. group {g.id} trader={t.user.username} cascade_priority={prio}{mdr_s} cards={cards} "
+                    f"  {i}. group {g.id} trader={t.user.username} cascade_priority={prio}{mdr_s}{share_s} cards={cards} "
                     f"vol={g.current_volume}/{g.limit_per_period} balance_usdt={bal} traffic={traffics}"
                 )
 

@@ -204,13 +204,18 @@ def _log_preferred_psp_status(included_psp, excluded_psp, amount, usd_amount) ->
 
 
 def record_in_sort_and_pick(*, sorted_groups, skipped: list, chosen_detail) -> None:
-    from payments.psp_payin import is_psp_trader, psp_routing_priority_for_trader
+    from payments.psp_payin import is_psp_trader, psp_routing_priority_for_trader, share_metrics_for_groups
 
     snap = get_routing_snap()
+    try:
+        share_rows = share_metrics_for_groups(sorted_groups)
+    except Exception:
+        share_rows = {}
     sort_rows = []
     for i, group in enumerate(sorted_groups[:25], 1):
         trader = group.trader
         uname = trader.user.username if trader and getattr(trader, "user", None) else "?"
+        share = share_rows.get((uname or "").strip().lower()) or {}
         sort_rows.append({
             "n": i,
             "trader": uname,
@@ -218,6 +223,10 @@ def record_in_sort_and_pick(*, sorted_groups, skipped: list, chosen_detail) -> N
             "psp": is_psp_trader(trader),
             "priority": psp_routing_priority_for_trader(trader),
             "volume": str(group.current_volume),
+            "share_target": str(share["target"]) if share else None,
+            "share_actual": str(share["actual"]) if share else None,
+            "share_deficit": str(share["deficit"]) if share else None,
+            "share_window_volume": str(share["volume"]) if share else None,
             "balance_usdt": str(_balance_amount(trader)) if trader else None,
         })
     snap["sort"] = sort_rows
@@ -225,12 +234,16 @@ def record_in_sort_and_pick(*, sorted_groups, skipped: list, chosen_detail) -> N
     if chosen_detail is not None and chosen_detail.group:
         trader = chosen_detail.group.trader
         uname = trader.user.username if trader and getattr(trader, "user", None) else None
+        share = share_rows.get((uname or "").strip().lower()) or {}
         snap["chosen"] = {
             "trader": uname,
             "group_id": str(chosen_detail.group_id),
             "payment_details_id": str(chosen_detail.id),
             "psp": is_psp_trader(trader),
             "priority": psp_routing_priority_for_trader(trader),
+            "share_target": str(share["target"]) if share else None,
+            "share_actual": str(share["actual"]) if share else None,
+            "share_deficit": str(share["deficit"]) if share else None,
             "balance_usdt": str(_balance_amount(trader)) if trader else None,
         }
     else:
