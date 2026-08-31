@@ -532,6 +532,11 @@ CORS_ALLOWED_ORIGINS = [
     'https://pay.avapay771.cc',
     'https://payment.avapay771.cc',
     'https://payments.avapay771.cc',
+    'https://avapay812.cc',
+    'https://www.avapay812.cc',
+    'https://pay.avapay812.cc',
+    'https://payment.avapay812.cc',
+    'https://payments.avapay812.cc',
 ]
 
 CORS_ALLOW_HEADERS = ('content-disposition', 'accept-encoding', 'access-control-allow-origin',
@@ -571,6 +576,11 @@ CSRF_TRUSTED_ORIGINS = [
     'https://pay.avapay771.cc',
     'https://payment.avapay771.cc',
     'https://payments.avapay771.cc',
+    'https://avapay812.cc',
+    'https://www.avapay812.cc',
+    'https://pay.avapay812.cc',
+    'https://payment.avapay812.cc',
+    'https://payments.avapay812.cc',
 ]
 
 ADMINS = [
