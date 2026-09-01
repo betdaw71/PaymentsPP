@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- pay-page: receipt-upload + kaspi-guide v2 -->
+<!-- pay-page: receipt-upload + kaspi-universal-link v3 -->
 <html lang="{{ default_locale|default:'ru' }}">
 <head>
   <meta charset="utf-8">
@@ -52,6 +52,7 @@
       padding: 8px 12px; font-size: 13px; cursor: pointer; white-space: nowrap;
     }
     .bank-btn { background: #0ea5e9; width: 100%; margin-top: 8px; padding: 12px; font-size: 15px; }
+    a.bank-btn { display: block; text-align: center; text-decoration: none; box-sizing: border-box; }
     .bank-btn.secondary { background: #334155; }
     .bank-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
     .hint { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 16px 0; }
@@ -350,32 +351,73 @@
       });
     }
 
+    function isAndroid() {
+      return /android/i.test(navigator.userAgent || "");
+    }
+
+    function copyClipboardQuiet(text) {
+      if (!text || !navigator.clipboard) return;
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+
     function renderBankActions(data) {
       const box = document.getElementById("bank-actions");
       box.innerHTML = "";
       const actions = data.bank_actions || [];
       if (!actions.length && !data.clipboard_text) return;
 
-      let html = `<div class="label">${t("bankSection")}</div>`;
-      if (data.clipboard_text) {
-        html += `<button type="button" class="bank-btn" id="btn-copy-all">${t("copyAll")}</button>`;
-      }
-      actions.forEach((a) => {
-        html += `<button type="button" class="bank-btn secondary" data-bank-url="${a.url}">${a.label}</button>`;
-        if (a.hint) html += `<div class="bank-hint">${a.hint}</div>`;
-      });
-      box.innerHTML = html;
+      const label = document.createElement("div");
+      label.className = "label";
+      label.textContent = t("bankSection");
+      box.appendChild(label);
 
-      document.getElementById("btn-copy-all")?.addEventListener("click", () => {
-        navigator.clipboard.writeText(data.clipboard_text).then(() => alert(t("copied")));
-      });
-      box.querySelectorAll("[data-bank-url]").forEach(btn => {
-        btn.onclick = async () => {
-          if (data.clipboard_text) {
-            try { await navigator.clipboard.writeText(data.clipboard_text); } catch (_) {}
-          }
-          window.location.href = btn.dataset.bankUrl;
-        };
+      if (data.clipboard_text) {
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "bank-btn";
+        copyBtn.id = "btn-copy-all";
+        copyBtn.textContent = t("copyAll");
+        copyBtn.addEventListener("click", () => {
+          navigator.clipboard.writeText(data.clipboard_text).then(() => alert(t("copied")));
+        });
+        box.appendChild(copyBtn);
+      }
+
+      actions.forEach((a) => {
+        const httpsUrl = a.url || "";
+        const androidUrl = a.android_url || "";
+        const useAndroidIntent = isAndroid() && androidUrl;
+        const useNativeLink = !useAndroidIntent && /^https:\/\//i.test(httpsUrl);
+
+        if (useNativeLink) {
+          // iOS Universal Links: must be a real user tap on <a href="https://kaspi.kz/...">.
+          // Do not preventDefault, do not await clipboard, do not use location.href.
+          const el = document.createElement("a");
+          el.className = "bank-btn secondary";
+          el.href = httpsUrl;
+          el.textContent = a.label || "";
+          el.addEventListener("pointerdown", () => copyClipboardQuiet(data.clipboard_text));
+          box.appendChild(el);
+        } else {
+          const el = document.createElement("button");
+          el.type = "button";
+          el.className = "bank-btn secondary";
+          el.textContent = a.label || "";
+          el.addEventListener("click", async () => {
+            if (data.clipboard_text) {
+              try { await navigator.clipboard.writeText(data.clipboard_text); } catch (_) {}
+            }
+            window.location.href = useAndroidIntent ? androidUrl : httpsUrl;
+          });
+          box.appendChild(el);
+        }
+
+        if (a.hint) {
+          const hint = document.createElement("div");
+          hint.className = "bank-hint";
+          hint.textContent = a.hint;
+          box.appendChild(hint);
+        }
       });
     }
 
