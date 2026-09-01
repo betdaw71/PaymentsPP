@@ -33,6 +33,7 @@ KZT_METHOD_MAP = {
     "default_kzt": {"payment_system": "C2CKZT", "currency": "KZT"},
     "card2card_kzt": {"payment_system": "C2CKZT", "currency": "KZT"},
     "card2card_kzt_kaspi": {"payment_system": "C2CKZT", "currency": "KZT"},
+    "card2card_kzt_halyk": {"payment_system": "C2CKZT", "currency": "KZT"},
     "default": {"payment_system": "C2CKZT", "currency": "KZT"},
 }
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- pay-page: receipt-upload + kaspi-universal-link v3 -->
+<!-- pay-page: receipt-upload + kaspi-universal-link + halyk-foreign v4 -->
 <html lang="{{ default_locale|default:'ru' }}">
 <head>
   <meta charset="utf-8">
@@ -332,21 +332,31 @@
       if (!guides.length) return;
 
       guides.forEach((guide) => {
-        const imgSrc = guideImageSrc(guide);
         const block = document.createElement("div");
         block.className = "bank-guide";
-        block.innerHTML = `
-          <div class="bank-guide-title">${guide.title || ""}</div>
-          <div class="bank-guide-caption">${guide.caption || ""}</div>
-          <img class="bank-guide-image" src="${imgSrc}" alt="${guide.title || ""}" loading="lazy">
-        `;
-        const img = block.querySelector("img");
-        img.addEventListener("error", () => {
-          if (img.dataset.fallback) return;
-          img.dataset.fallback = "1";
-          const apiBase = API_BASE.replace(/\/$/, "");
-          img.src = apiBase + "/payment-page-assets/kaspi-international-transfers-guide.png";
-        });
+        const title = document.createElement("div");
+        title.className = "bank-guide-title";
+        title.textContent = guide.title || "";
+        const caption = document.createElement("div");
+        caption.className = "bank-guide-caption";
+        caption.textContent = guide.caption || "";
+        block.appendChild(title);
+        block.appendChild(caption);
+        if (guide.image_url) {
+          const imgSrc = guideImageSrc(guide);
+          const img = document.createElement("img");
+          img.className = "bank-guide-image";
+          img.src = imgSrc;
+          img.alt = guide.title || "";
+          img.loading = "lazy";
+          img.addEventListener("error", () => {
+            if (img.dataset.fallback) return;
+            img.dataset.fallback = "1";
+            const apiBase = API_BASE.replace(/\/$/, "");
+            img.src = apiBase + "/payment-page-assets/kaspi-international-transfers-guide.png";
+          });
+          block.appendChild(img);
+        }
         box.appendChild(block);
       });
     }

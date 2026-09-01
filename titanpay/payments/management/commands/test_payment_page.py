@@ -253,17 +253,48 @@ class Command(BaseCommand):
             self._ok("obtain receipt_required=false", data.get("receipt_required") is False)
             actions = data.get("bank_actions") or []
             if order_status in {"New", "In Progress", "Money sent by user"}:
-                self._ok(
-                    "obtain Kaspi button not Homebank",
-                    any((a.get("id") or "").startswith("kaspi") for a in actions)
-                    and not any((a.get("id") or "") == "halyk" for a in actions),
-                    str([a.get("id") for a in actions]),
-                )
-                guides = data.get("bank_guides") or []
-                self._ok(
-                    "obtain Kaspi guide image",
-                    bool(guides) and "kaspi-international-transfers-guide" in str(guides[0].get("image_url") or ""),
-                )
+                from payments.integrations.melbet.mapping import sender_bank_for_melbet_method
+
+                method = ""
+                try:
+                    session = pay_in.melbet_session
+                    method = (session.melbet_method if session is not None else "") or ""
+                except Exception:
+                    method = ""
+                sender = sender_bank_for_melbet_method(method)
+                if sender == "halyk":
+                    self._ok(
+                        "obtain Homebank button not Kaspi",
+                        any((a.get("id") or "") == "halyk" for a in actions)
+                        and not any((a.get("id") or "").startswith("kaspi") for a in actions),
+                        str([a.get("id") for a in actions]),
+                    )
+                    url = (actions[0].get("url") if actions else "") or ""
+                    self._ok(
+                        "obtain Homebank foreign-card link",
+                        url.startswith("https://homebank.kz/transfers/foreign_card"),
+                        url,
+                    )
+                    guides = data.get("bank_guides") or []
+                    self._ok(
+                        "obtain Homebank guide without Kaspi image",
+                        bool(guides)
+                        and guides[0].get("id") == "halyk_foreign"
+                        and "kaspi-international-transfers-guide" not in str(guides[0].get("image_url") or ""),
+                    )
+                else:
+                    self._ok(
+                        "obtain Kaspi button not Homebank",
+                        any((a.get("id") or "").startswith("kaspi") for a in actions)
+                        and not any((a.get("id") or "") == "halyk" for a in actions),
+                        str([a.get("id") for a in actions]),
+                    )
+                    guides = data.get("bank_guides") or []
+                    self._ok(
+                        "obtain Kaspi guide image",
+                        bool(guides)
+                        and "kaspi-international-transfers-guide" in str(guides[0].get("image_url") or ""),
+                    )
         self._ok("obtain has amount", data.get("amount") is not None, str(data.get("amount")))
         self._ok("obtain has currency", bool(data.get("currency")), str(data.get("currency")))
         self._ok(

@@ -25,16 +25,16 @@ def sender_bank_for_melbet_method(melbet_method: str | None) -> str | None:
     """
     Банк отправителя на платёжной странице Melbet KZT.
 
-    Клиент переводит через Kaspi («Халықаралық аударымдар») на карту другого банка.
-    Homebank для card2card_kzt путал UX и прятал инструкцию Kaspi.
+    card2card_kzt_kaspi / *kaspi* — Kaspi, международные переводы.
+    card2card_kzt / *halyk* / *homebank* — Homebank, перевод на зарубежную карту.
     """
     method = (melbet_method or "").strip().lower()
     if not method:
         return None
-    if "kaspi" in method or method in {"card2card_kzt", "card2card_kzt_kaspi", "c2ckzt"}:
+    if "kaspi" in method:
         return "kaspi"
-    if "halyk" in method or "homebank" in method:
-        return "kaspi"
+    if "halyk" in method or "homebank" in method or method in {"card2card_kzt", "c2ckzt"}:
+        return "halyk"
     return None
 
 
