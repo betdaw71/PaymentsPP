@@ -10,14 +10,14 @@ services:
       - project_network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.wellknown.rule=(Host(`avapay.net`) || Host(`api.avapay.net`) || Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`) || Host(`doc.avapay.net`) || Host(`promo.avapay.net`) || Host(`traefik.avapay.net`) || Host(`pgadmin.avapay.net`) || Host(`avapay.su`) || Host(`www.avapay.su`) || Host(`pay.avapay.su`) || Host(`avapay771.cc`) || Host(`www.avapay771.cc`) || Host(`pay.avapay771.cc`) || Host(`payment.avapay771.cc`) || Host(`payments.avapay771.cc`) || Host(`avapay812.cc`) || Host(`www.avapay812.cc`) || Host(`pay.avapay812.cc`) || Host(`payment.avapay812.cc`) || Host(`payments.avapay812.cc`)) && (Path(`/.well-known/security.txt`) || Path(`/security.txt`))"
+      - "traefik.http.routers.wellknown.rule=(Host(`avapay.net`) || Host(`api.avapay.net`) || Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`) || Host(`doc.avapay.net`) || Host(`promo.avapay.net`) || Host(`traefik.avapay.net`) || Host(`pgadmin.avapay.net`) || Host(`avapay.su`) || Host(`www.avapay.su`) || Host(`pay.avapay.su`) || Host(`avapay.cc`) || Host(`www.avapay.cc`) || Host(`avapay771.cc`) || Host(`www.avapay771.cc`) || Host(`pay.avapay771.cc`) || Host(`payment.avapay771.cc`) || Host(`payments.avapay771.cc`) || Host(`avapay812.cc`) || Host(`www.avapay812.cc`) || Host(`pay.avapay812.cc`) || Host(`payment.avapay812.cc`) || Host(`payments.avapay812.cc`)) && (Path(`/.well-known/security.txt`) || Path(`/security.txt`))"
       - "traefik.http.routers.wellknown.entrypoints=websecure"
       - "traefik.http.routers.wellknown.tls=true"
       - "traefik.http.routers.wellknown.tls.certresolver=letsencrypt"
       - "traefik.http.routers.wellknown.priority=200"
       - "traefik.http.routers.wellknown.service=wellknown"
       - "traefik.http.services.wellknown.loadbalancer.server.port=80"
-      - "traefik.http.routers.wellknown-http.rule=(Host(`avapay.net`) || Host(`api.avapay.net`) || Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`) || Host(`doc.avapay.net`) || Host(`promo.avapay.net`) || Host(`traefik.avapay.net`) || Host(`pgadmin.avapay.net`) || Host(`avapay.su`) || Host(`www.avapay.su`) || Host(`pay.avapay.su`) || Host(`avapay771.cc`) || Host(`www.avapay771.cc`) || Host(`pay.avapay771.cc`) || Host(`payment.avapay771.cc`) || Host(`payments.avapay771.cc`) || Host(`avapay812.cc`) || Host(`www.avapay812.cc`) || Host(`pay.avapay812.cc`) || Host(`payment.avapay812.cc`) || Host(`payments.avapay812.cc`)) && (Path(`/.well-known/security.txt`) || Path(`/security.txt`))"
+      - "traefik.http.routers.wellknown-http.rule=(Host(`avapay.net`) || Host(`api.avapay.net`) || Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`) || Host(`doc.avapay.net`) || Host(`promo.avapay.net`) || Host(`traefik.avapay.net`) || Host(`pgadmin.avapay.net`) || Host(`avapay.su`) || Host(`www.avapay.su`) || Host(`pay.avapay.su`) || Host(`avapay.cc`) || Host(`www.avapay.cc`) || Host(`avapay771.cc`) || Host(`www.avapay771.cc`) || Host(`pay.avapay771.cc`) || Host(`payment.avapay771.cc`) || Host(`payments.avapay771.cc`) || Host(`avapay812.cc`) || Host(`www.avapay812.cc`) || Host(`pay.avapay812.cc`) || Host(`payment.avapay812.cc`) || Host(`payments.avapay812.cc`)) && (Path(`/.well-known/security.txt`) || Path(`/security.txt`))"
       - "traefik.http.routers.wellknown-http.entrypoints=web"
       - "traefik.http.routers.wellknown-http.priority=200"
       - "traefik.http.routers.wellknown-http.service=wellknown"
@@ -259,6 +259,25 @@ services:
       - "traefik.http.routers.frontend-http.middlewares=frontend-redirect@docker"
       - "traefik.http.middlewares.frontend-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.frontend-redirect.redirectscheme.permanent=true"
+      # Mirror platform frontend on avapay.cc (old avapay.net stays)
+      - "traefik.http.routers.frontend-cc.rule=Host(`avapay.cc`)"
+      - "traefik.http.routers.frontend-cc.entrypoints=websecure"
+      - "traefik.http.routers.frontend-cc.tls=true"
+      - "traefik.http.routers.frontend-cc.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.frontend-cc.tls.domains[0].main=avapay.cc"
+      - "traefik.http.routers.frontend-cc.tls.domains[0].sans=www.avapay.cc"
+      - "traefik.http.routers.frontend-cc.service=frontend"
+      - "traefik.http.routers.frontend-cc-http.rule=Host(`avapay.cc`)"
+      - "traefik.http.routers.frontend-cc-http.entrypoints=web"
+      - "traefik.http.routers.frontend-cc-http.middlewares=frontend-redirect@docker"
+      - "traefik.http.routers.frontend-cc-www.rule=Host(`www.avapay.cc`)"
+      - "traefik.http.routers.frontend-cc-www.entrypoints=websecure"
+      - "traefik.http.routers.frontend-cc-www.tls=true"
+      - "traefik.http.routers.frontend-cc-www.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.frontend-cc-www.service=frontend"
+      - "traefik.http.routers.frontend-cc-www-http.rule=Host(`www.avapay.cc`)"
+      - "traefik.http.routers.frontend-cc-www-http.entrypoints=web"
+      - "traefik.http.routers.frontend-cc-www-http.middlewares=frontend-redirect@docker"
 
   crypto:
     build: ./crypto
