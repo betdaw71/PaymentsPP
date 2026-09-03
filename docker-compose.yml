@@ -237,7 +237,8 @@ services:
     build:
       context: ./taserPayFrontend
       args:
-        VITE_API_URL: ${VITE_API_URL}
+        # Keep production API host if .env omits VITE_API_URL (avoids hang on rebuild)
+        VITE_API_URL: ${VITE_API_URL:-https://api.avapay.net/api/v1}
         VITE_AUTHORIZATION_HEADER: Bearer
         VITE_ASSETS_URL: /
     container_name: titanpay_frontend
