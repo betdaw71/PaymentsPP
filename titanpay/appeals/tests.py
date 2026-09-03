@@ -97,12 +97,24 @@ class MelbetTicketResolveTest(TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(result.recognized)
         self.assertEqual(result.error_code, "not_found")
+        self.assertIn("ID не распознан", result.error_message)
 
     def test_unrelated_text_has_no_id(self):
         result = resolve_pay_in_from_message("отправьте чек пожалуйста")
         self.assertFalse(result.ok)
         self.assertFalse(result.recognized)
         self.assertEqual(result.error_code, "no_id")
+
+    def test_compact_uuid_without_dashes(self):
+        compact = str(self.pay_in.id).replace("-", "")
+        result = resolve_pay_in_from_message(compact)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+    def test_bare_merchant_order_id_in_caption(self):
+        result = resolve_pay_in_from_message("22924514129")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
 
     def test_screenshot_ticket_with_psp_uuid(self):
         ticket = """
@@ -268,12 +280,10 @@ class MerchantAppealForwardTest(TestCase):
                 file_bytes=pdf,
                 filename="Melbet_ticket.pdf",
             )
-        self.assertEqual(result.outcome, "pending")
-        self.assertEqual(result.message, "")
+        self.assertEqual(result.outcome, "await_receipt")
+        self.assertIn("чек", result.message.lower())
         mock_file.assert_not_called()
-        kwargs = mock_text.call_args.kwargs
-        self.assertEqual(kwargs["text"], str(self.pay_in.id))
-        self.assertNotRegex(kwargs["text"], r"(?i)melbet|тикет|заказ")
+        mock_text.assert_not_called()
 
     def test_text_only_ticket_goes_to_provider_without_merchant_name(self):
         from unittest.mock import patch
@@ -312,11 +322,10 @@ class MerchantAppealForwardTest(TestCase):
                 file_bytes=b"",
                 filename="",
             )
-        self.assertEqual(result.outcome, "pending")
-        self.assertEqual(result.message, "")
+        self.assertEqual(result.outcome, "await_receipt")
+        self.assertIn("чек", result.message.lower())
         mock_file.assert_not_called()
-        self.assertEqual(mock_text.call_args.kwargs["text"], str(self.pay_in.id))
-        self.assertNotRegex(mock_text.call_args.kwargs["text"], r"(?i)melbet|payplat")
+        mock_text.assert_not_called()
 
     def test_receipt_plus_ticket_pdf_forwards_only_safe_payload(self):
         from unittest.mock import patch
@@ -352,6 +361,150 @@ class MerchantAppealForwardTest(TestCase):
         self.assertEqual(kwargs["file_bytes"], jpeg)
         self.assertNotRegex(kwargs["caption"], r"(?i)melbet|avapay|тикет|заказ")
         self.assertEqual(kwargs["caption"], str(self.pay_in.id))
+
+    def test_receipt_plus_id_from_other_merchant_is_accepted(self):
+        from unittest.mock import patch
+
+        from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        other_user = User.objects.create_user(username="alemkredit", password="x")
+        other_merchant = Merchant.objects.create(user=other_user)
+        other = PayIn.objects.create(
+            amount=Decimal("10000"),
+            currency=self.pay_in.currency,
+            payment_system=self.pay_in.payment_system,
+            merchant_order_id="alem-order-99",
+            callback_url="https://example.com/cb",
+            merchant=other_merchant,
+            status=self.pay_in.status,
+        )
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        with (
+            patch("appeals.services.upload_receipt_storage", return_value="https://s3/r.jpg"),
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(other.id)),
+            ),
+            patch(
+                "appeals.telegram_out.send_receipt_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=101),
+            ) as mock_send,
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=20,
+                text=str(other.id),
+                file_bytes=jpeg,
+                filename="receipt.jpg",
+            )
+        self.assertEqual(result.outcome, "pending")
+        self.assertTrue(result.ok)
+        self.assertEqual(mock_send.call_args.kwargs["caption"], str(other.id))
+
+    def test_duplicate_appeal_is_explained(self):
+        from unittest.mock import patch
+
+        from appeals.models import PayInAppeal, PayInAppealSource, PayInAppealStatus
+        from appeals.services import process_merchant_appeal_message
+
+        PayInAppeal.objects.create(
+            pay_in=self.pay_in,
+            source_counterparty=self.merchant_cp,
+            source=PayInAppealSource.TELEGRAM_MERCHANT,
+            status=PayInAppealStatus.SENT_TO_PROVIDER,
+            source_telegram_chat_id=111,
+            source_telegram_message_id=1,
+        )
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        with patch("appeals.telegram_out.send_receipt_to_provider_chat") as mock_send:
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=21,
+                text="22924514129",
+                file_bytes=jpeg,
+                filename="receipt.jpg",
+            )
+        self.assertEqual(result.outcome, "duplicate")
+        self.assertIn("уже существует", result.message)
+        mock_send.assert_not_called()
+
+    def test_receipt_without_known_id_is_rejected_with_message(self):
+        from appeals.services import process_merchant_appeal_message
+
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        result = process_merchant_appeal_message(
+            chat_id=111,
+            message_id=22,
+            text="чето непонятное",
+            file_bytes=jpeg,
+            filename="receipt.jpg",
+        )
+        self.assertEqual(result.outcome, "rejected")
+        self.assertIn("ID не распознан", result.message)
+
+
+class ProviderNudgeTest(TestCase):
+    def setUp(self):
+        from appeals.models import AppealCounterparty, AppealCounterpartyRole, PayInAppeal, PayInAppealStatus
+
+        user = User.objects.create_user(username="nudge_m", password="x")
+        merchant = Merchant.objects.create(user=user)
+        currency = Currency.objects.create(symbol="KZT", name="Tenge")
+        ps = PaymentSystem.objects.create(name="C2CKZT", currency=currency, required_fields={})
+        status = PayInStatus.objects.create(name="Failed")
+        pay_in = PayIn.objects.create(
+            amount=Decimal("1000"),
+            currency=currency,
+            payment_system=ps,
+            merchant_order_id="nudge-1",
+            callback_url="https://example.com/cb",
+            merchant=merchant,
+            status=status,
+        )
+        self.appeal = PayInAppeal.objects.create(
+            pay_in=pay_in,
+            source="telegram_merchant",
+            status=PayInAppealStatus.SENT_TO_PROVIDER,
+            provider_chat_id=222,
+            provider_message_id=55,
+        )
+
+    def test_nudge_at_one_and_three_hours(self):
+        from datetime import timedelta
+        from unittest.mock import patch
+
+        from django.utils import timezone
+
+        from appeals.notify import nudge_unanswered_provider_appeals
+        from appeals.telegram_out import SendResult
+
+        now = timezone.now()
+        self.appeal.created_at = now - timedelta(hours=1, minutes=2)
+        self.appeal.save(update_fields=["created_at"])
+        with patch(
+            "appeals.notify.send_text_to_provider_chat",
+            return_value=SendResult(ok=True, message_id=70),
+        ) as mock_send:
+            sent = nudge_unanswered_provider_appeals()
+        self.assertEqual(sent, 1)
+        self.appeal.refresh_from_db()
+        self.assertIsNotNone(self.appeal.provider_nudge_1h_at)
+        self.assertIsNone(self.appeal.provider_nudge_3h_at)
+        self.assertEqual(mock_send.call_args.kwargs["text"], "?")
+        self.assertEqual(mock_send.call_args.kwargs["reply_to_message_id"], 55)
+
+        self.appeal.created_at = now - timedelta(hours=3, minutes=2)
+        self.appeal.save(update_fields=["created_at"])
+        with patch(
+            "appeals.notify.send_text_to_provider_chat",
+            return_value=SendResult(ok=True, message_id=71),
+        ) as mock_send:
+            sent = nudge_unanswered_provider_appeals()
+        self.assertEqual(sent, 1)
+        self.appeal.refresh_from_db()
+        self.assertIsNotNone(self.appeal.provider_nudge_3h_at)
+        self.assertEqual(mock_send.call_args.kwargs["text"], "?")
 
     def test_send_receipt_rewrites_leaking_filename_and_caption(self):
         from unittest.mock import MagicMock, patch

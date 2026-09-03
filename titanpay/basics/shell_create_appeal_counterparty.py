@@ -26,8 +26,13 @@ from bots.models import TGBot
 from merchant.models import Merchant
 from payments.psp_payin import _psp_provider_for_trader
 
-MERCHANT_USERNAME = os.environ.get("MERCHANT_USERNAME", "lunatrixpay")
-MERCHANT_COUNTERPARTY_NAME = os.environ.get("MERCHANT_COUNTERPARTY_NAME", "LunatrixPay")
+MERCHANT_USERNAME = os.environ.get("MERCHANT_USERNAME", "").strip()
+MERCHANT_COUNTERPARTY_NAME = os.environ.get("MERCHANT_COUNTERPARTY_NAME", "").strip()
+DEFAULT_MERCHANTS = [
+    ("pandapay", "PandaPay"),
+    ("alemkredit", "Alemkredit"),
+    ("lunatrixpay", "LunatrixPay"),
+]
 TEST_TRADER_USERNAME = os.environ.get("TEST_TRADER_USERNAME", "kzt_c2c_test")
 TEST_TRADER_COUNTERPARTY_NAME = os.environ.get(
     "TEST_TRADER_COUNTERPARTY_NAME",
@@ -56,16 +61,20 @@ def ensure_appeal_bot_user():
     return token.key
 
 
-def ensure_merchant_counterparty():
-    merchant = Merchant.objects.filter(user__username=MERCHANT_USERNAME).first()
+def ensure_merchant_counterparty(username: str | None = None, name: str | None = None):
+    username = (username or MERCHANT_USERNAME or "").strip()
+    if not username:
+        return None
+    merchant = Merchant.objects.filter(user__username=username).first()
     if merchant is None:
-        print(f"ERROR: merchant {MERCHANT_USERNAME!r} not found")
+        print(f"WARN: merchant {username!r} not found — пропускаем")
         return None
 
+    display = (name or MERCHANT_COUNTERPARTY_NAME or username).strip()
     cp, created = AppealCounterparty.objects.get_or_create(
         merchant=merchant,
         role=AppealCounterpartyRole.MERCHANT,
-        defaults={"name": MERCHANT_COUNTERPARTY_NAME},
+        defaults={"name": display},
     )
     print(f"Merchant {cp.name}: uuid={cp.id}")
     print(f"  → в группе мерчанта: /init {cp.id}")
@@ -111,7 +120,11 @@ def ensure_provider_counterparties():
 
 print("=== Appeal bot setup ===")
 ensure_appeal_bot_user()
-ensure_merchant_counterparty()
+if MERCHANT_USERNAME:
+    ensure_merchant_counterparty(MERCHANT_USERNAME, MERCHANT_COUNTERPARTY_NAME)
+else:
+    for username, display in DEFAULT_MERCHANTS:
+        ensure_merchant_counterparty(username, display)
 ensure_test_trader_counterparty()
 print("\n--- Все PSP-провайдеры (если нужны prod-группы) ---")
 ensure_provider_counterparties()

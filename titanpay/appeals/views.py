@@ -169,7 +169,11 @@ def process_message(request):
             status=status.HTTP_200_OK,
         )
 
-    code = status.HTTP_200_OK if result.ok or result.outcome == "await_receipt" else status.HTTP_400_BAD_REQUEST
+    code = (
+        status.HTTP_200_OK
+        if result.ok or result.outcome in {"await_receipt", "duplicate"}
+        else status.HTTP_400_BAD_REQUEST
+    )
     return Response(
         {
             "ok": result.ok,

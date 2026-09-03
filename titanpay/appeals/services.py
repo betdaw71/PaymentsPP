@@ -57,8 +57,17 @@ def _await_receipt(message: str, *, recognized: bool = True) -> AppealProcessRes
     return AppealProcessResult(ok=False, message=message, recognized=recognized, outcome="await_receipt")
 
 
+def _duplicate(message: str = "Апелляция уже существует.") -> AppealProcessResult:
+    return AppealProcessResult(ok=False, message=message, recognized=True, outcome="duplicate")
+
+
 def _skip() -> AppealProcessResult:
     return AppealProcessResult(ok=False, message="", recognized=False, outcome="skip")
+
+
+ID_NOT_RECOGNIZED = "Апелляция не принята: ID не распознан."
+APPEAL_ALREADY_EXISTS = "Апелляция уже существует."
+NEED_RECEIPT = "Пришлите чек (фото или файл) вместе с ID заявки."
 
 
 def chat_role_for_telegram(chat_id: int) -> str:
@@ -128,8 +137,22 @@ def _psp_provider_for_pay_in(pay_in) -> str:
 
 
 def _provider_chat(*, psp_provider: str, trader_username: str = "") -> AppealTelegramChat | None:
-    if trader_username:
+    if psp_provider:
         chat = (
+            AppealTelegramChat.objects.filter(
+                is_active=True,
+                counterparty__role=AppealCounterpartyRole.PROVIDER,
+                counterparty__psp_provider=psp_provider,
+                counterparty__is_active=True,
+            )
+            .select_related("counterparty")
+            .first()
+        )
+        if chat:
+            return chat
+
+    if trader_username:
+        return (
             AppealTelegramChat.objects.filter(
                 is_active=True,
                 counterparty__role=AppealCounterpartyRole.PROVIDER,
@@ -139,21 +162,7 @@ def _provider_chat(*, psp_provider: str, trader_username: str = "") -> AppealTel
             .select_related("counterparty")
             .first()
         )
-        if chat:
-            return chat
-
-    if not psp_provider:
-        return None
-    return (
-        AppealTelegramChat.objects.filter(
-            is_active=True,
-            counterparty__role=AppealCounterpartyRole.PROVIDER,
-            counterparty__psp_provider=psp_provider,
-            counterparty__is_active=True,
-        )
-        .select_related("counterparty")
-        .first()
-    )
+    return None
 
 
 def _provider_caption(*, pay_in, psp_provider: str, provider_external_id: str) -> str:
@@ -352,7 +361,7 @@ def process_merchant_appeal_message(
 ) -> AppealProcessResult:
     chat = get_chat_counterparty(chat_id)
     if chat is None:
-        return _reject("", recognized=False)
+        return _skip()
     counterparty = chat.counterparty
     if counterparty.role != AppealCounterpartyRole.MERCHANT:
         return _skip()
@@ -367,25 +376,43 @@ def process_merchant_appeal_message(
         filename=filename,
         ticket_file_bytes=ticket_file_bytes,
     )
+    if filename:
+        combined_text = f"{combined_text}\n{filename}".strip()
+
     receipt_bytes = b"" if file_is_ticket else file_bytes
     receipt_name = "" if file_is_ticket else filename
+    has_receipt = bool(receipt_bytes)
 
     resolved = resolve_pay_in_from_message(combined_text)
-    if not resolved.ok:
-        return _reject("", recognized=resolved.recognized)
+    if not has_receipt:
+        if resolved.ok or resolved.recognized:
+            return _await_receipt(NEED_RECEIPT, recognized=True)
+        return _skip()
+
+    if not resolved.ok or resolved.pay_in is None:
+        message = ID_NOT_RECOGNIZED
+        if resolved.error_code == "ambiguous_id" and resolved.error_message:
+            message = resolved.error_message
+        return _reject(message, recognized=True)
 
     pay_in = resolved.pay_in
     if counterparty.merchant_id and pay_in.merchant_id != counterparty.merchant_id:
-        return _reject("", recognized=True)
+        logger.info(
+            "appeal merchant mismatch chat_merchant=%s pay_in_merchant=%s pay_in=%s — accepting shared ops chat",
+            counterparty.merchant_id,
+            pay_in.merchant_id,
+            pay_in.id,
+        )
 
-    if PayInAppeal.objects.filter(
-        pay_in=pay_in,
+    existing = PayInAppeal.objects.filter(pay_in=pay_in).exclude(
         status__in=[
-            PayInAppealStatus.CREATED,
-            PayInAppealStatus.SENT_TO_PROVIDER,
-        ],
-    ).exists():
-        return _reject("", recognized=True)
+            PayInAppealStatus.FAILED,
+            PayInAppealStatus.NO_PROVIDER_CHAT,
+            PayInAppealStatus.DUPLICATE,
+        ]
+    )
+    if existing.exists():
+        return _duplicate(APPEAL_ALREADY_EXISTS)
 
     receipt_url = ""
     if receipt_bytes:
@@ -393,7 +420,7 @@ def process_merchant_appeal_message(
             receipt_url = _upload_receipt(receipt_bytes, str(pay_in.id), receipt_name or "receipt")
         except Exception:
             logger.exception("receipt upload failed")
-            return _reject("", recognized=True)
+            return _reject("Апелляция не принята: не удалось сохранить чек.", recognized=True)
 
     order = pay_in.order
     if receipt_url:

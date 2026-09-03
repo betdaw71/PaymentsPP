@@ -11,7 +11,13 @@ if TYPE_CHECKING:
 UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+COMPACT_UUID32_RE = re.compile(r"\b[0-9a-fA-F]{32}\b")
 COMPACT_HEX8_RE = re.compile(r"^[0-9a-fA-F]{8}$")
+GENERIC_ID_LABEL_RE = re.compile(
+    r"(?:^|[\s])(?:ID|uuid|pay[_-]?in|invoice|deal)\s*[:：#]?\s*([A-Za-z0-9._-]{6,64})",
+    re.IGNORECASE | re.MULTILINE,
+)
+BARE_ID_TOKEN_RE = re.compile(r"[A-Za-z0-9._-]{6,64}")
 
 # Melbet / merchant ticket: "📜 Заказ: 22924514129" (ID may wrap to the next line)
 ORDER_LABEL_RE = re.compile(
@@ -61,6 +67,14 @@ def extract_uuids(text: str) -> list[str]:
         if normalized not in seen:
             seen.add(normalized)
             out.append(normalized)
+    for compact in COMPACT_UUID32_RE.findall(text):
+        dashed = (
+            f"{compact[0:8]}-{compact[8:12]}-{compact[12:16]}-"
+            f"{compact[16:20]}-{compact[20:32]}"
+        ).lower()
+        if dashed not in seen:
+            seen.add(dashed)
+            out.append(dashed)
     return out
 
 
@@ -83,6 +97,7 @@ def parse_appeal_ticket(text: str) -> TicketHints:
         return TicketHints()
     text = text.replace("\u00a0", " ").replace("\u202f", " ")
     order_ids = [m.group(1).strip() for m in ORDER_LABEL_RE.finditer(text)]
+    order_ids.extend(m.group(1).strip() for m in GENERIC_ID_LABEL_RE.finditer(text))
     ticket_hexes = [m.group(1).lower() for m in TICKET_LABEL_RE.finditer(text)]
     psp_ids = [m.group(1).strip() for m in PSP_NUMBER_RE.finditer(text)]
     return TicketHints(
@@ -223,12 +238,31 @@ def _pay_in_for_compact_prefix(hex8: str) -> PayIn | None:
     return None
 
 
+def _session_pay_in(session) -> PayIn | None:
+    from payments.models import PayIn
+
+    if session is None:
+        return None
+    pay_in_id = getattr(session, "pay_in_id", None)
+    if not pay_in_id:
+        return None
+    return PayIn.objects.filter(id=pay_in_id).select_related("merchant", "order").first()
+
+
 def _pay_in_for_psp_id(value: str) -> PayIn | None:
     from payments.models import (
+        BitzonePayInSession,
         BotonpayPayInSession,
+        ConcoredPayInSession,
+        ExpayonePayInSession,
+        FairpayPayInSession,
         GipayPayInSession,
-        PayIn,
+        PaymapPayInSession,
         PayplatPayInSession,
+        PlaymentsPayInSession,
+        PlutusPayInSession,
+        ProtocolPayInSession,
+        SyndicatePayInSession,
         VisionxPayInSession,
     )
 
@@ -236,26 +270,42 @@ def _pay_in_for_psp_id(value: str) -> PayIn | None:
     if not candidate:
         return None
 
-    session = BotonpayPayInSession.objects.filter(provider_deal_uuid=candidate).select_related("pay_in").first()
-    if session and session.pay_in_id:
-        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
+    lookups: list[tuple[object, dict]] = [
+        (BotonpayPayInSession, {"provider_deal_uuid": candidate}),
+        (BotonpayPayInSession, {"external_id": candidate}),
+        (GipayPayInSession, {"provider_payment_id": candidate}),
+        (GipayPayInSession, {"external_id": candidate}),
+        (VisionxPayInSession, {"provider_invoice_id": candidate}),
+        (VisionxPayInSession, {"provider_deal_id": candidate}),
+        (VisionxPayInSession, {"external_id": candidate}),
+        (PayplatPayInSession, {"provider_order_id": candidate}),
+        (PayplatPayInSession, {"external_id": candidate}),
+        (BitzonePayInSession, {"provider_transaction_id": candidate}),
+        (BitzonePayInSession, {"external_id": candidate}),
+        (ProtocolPayInSession, {"provider_payment_id": candidate}),
+        (ProtocolPayInSession, {"external_id": candidate}),
+        (ExpayonePayInSession, {"provider_order_id": candidate}),
+        (ExpayonePayInSession, {"external_id": candidate}),
+        (SyndicatePayInSession, {"provider_order_id": candidate}),
+        (SyndicatePayInSession, {"external_id": candidate}),
+        (PlutusPayInSession, {"provider_trade_uuid": candidate}),
+        (PlutusPayInSession, {"external_id": candidate}),
+        (PaymapPayInSession, {"provider_invoice_id": candidate}),
+        (PaymapPayInSession, {"external_id": candidate}),
+        (ConcoredPayInSession, {"provider_payment_id": candidate}),
+        (ConcoredPayInSession, {"external_id": candidate}),
+        (PlaymentsPayInSession, {"external_id": candidate}),
+        (PlaymentsPayInSession, {"provider_deposit_id": candidate}),
+    ]
+    if candidate.isdigit():
+        lookups.append((FairpayPayInSession, {"provider_order_id": int(candidate)}))
+    lookups.append((FairpayPayInSession, {"external_id": candidate}))
 
-    session = GipayPayInSession.objects.filter(provider_payment_id=candidate).select_related("pay_in").first()
-    if session and session.pay_in_id:
-        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
-
-    session = VisionxPayInSession.objects.filter(provider_invoice_id=candidate).select_related("pay_in").first()
-    if session and session.pay_in_id:
-        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
-
-    session = VisionxPayInSession.objects.filter(provider_deal_id=candidate).select_related("pay_in").first()
-    if session and session.pay_in_id:
-        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
-
-    session = PayplatPayInSession.objects.filter(provider_order_id=candidate).select_related("pay_in").first()
-    if session and session.pay_in_id:
-        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
-
+    for model, filters in lookups:
+        session = model.objects.filter(**filters).select_related("pay_in").first()
+        pay_in = _session_pay_in(session)
+        if pay_in:
+            return pay_in
     return None
 
 
@@ -264,6 +314,34 @@ def _unique_pay_ins(pay_ins: list[PayIn]) -> list[PayIn]:
     for pay_in in pay_ins:
         unique[str(pay_in.id)] = pay_in
     return list(unique.values())
+
+
+def _looks_like_loose_id_token(value: str) -> bool:
+    token = (value or "").strip()
+    if len(token) < 6 or len(token) > 64:
+        return False
+    if token.isdigit():
+        return 6 <= len(token) <= 24
+    if UUID_RE.fullmatch(token) or COMPACT_UUID32_RE.fullmatch(token) or COMPACT_HEX8_RE.fullmatch(token):
+        return True
+    if "-" in token or "_" in token:
+        return True
+    return False
+
+
+def _pay_in_for_any_id(value: str) -> PayIn | None:
+    pay_in = _pay_in_for_uuid(value)
+    if pay_in:
+        return pay_in
+    pay_in = _pay_in_for_merchant_order_id(value)
+    if pay_in:
+        return pay_in
+    pay_in = _pay_in_for_psp_id(value)
+    if pay_in:
+        return pay_in
+    if COMPACT_HEX8_RE.fullmatch((value or "").strip()):
+        return _pay_in_for_compact_prefix(value)
+    return None
 
 
 def resolve_pay_in_from_message(text: str) -> ResolveResult:
@@ -277,15 +355,19 @@ def resolve_pay_in_from_message(text: str) -> ResolveResult:
         pay_in = _pay_in_for_uuid(value)
         if pay_in:
             pay_ins.append(pay_in)
+        else:
+            pay_in = _pay_in_for_psp_id(value)
+            if pay_in:
+                pay_ins.append(pay_in)
 
     for order_id in hints.merchant_order_ids:
-        pay_in = _pay_in_for_merchant_order_id(order_id)
+        pay_in = _pay_in_for_any_id(order_id)
         if pay_in:
             pay_ins.append(pay_in)
 
     if not pay_ins:
         for psp_id in hints.psp_ids:
-            pay_in = _pay_in_for_psp_id(psp_id)
+            pay_in = _pay_in_for_any_id(psp_id)
             if pay_in:
                 pay_ins.append(pay_in)
 
@@ -297,10 +379,20 @@ def resolve_pay_in_from_message(text: str) -> ResolveResult:
 
     if not pay_ins:
         for line in raw.splitlines():
-            candidate = line.strip()
-            if not candidate or UUID_RE.search(candidate) or ORDER_LABEL_RE.search(candidate):
+            candidate = line.strip().strip(".,;#")
+            if not candidate:
                 continue
-            pay_in = _pay_in_for_merchant_order_id(candidate)
+            if not _looks_like_loose_id_token(candidate) and not UUID_RE.search(candidate):
+                continue
+            pay_in = _pay_in_for_any_id(candidate)
+            if pay_in:
+                pay_ins.append(pay_in)
+
+    if not pay_ins:
+        for token in BARE_ID_TOKEN_RE.findall(raw):
+            if not _looks_like_loose_id_token(token):
+                continue
+            pay_in = _pay_in_for_any_id(token)
             if pay_in:
                 pay_ins.append(pay_in)
 
@@ -310,13 +402,13 @@ def resolve_pay_in_from_message(text: str) -> ResolveResult:
             return ResolveResult(
                 ok=False,
                 error_code="not_found",
-                error_message="Заявка с указанным ID не найдена в системе.",
+                error_message="Апелляция не принята: ID не распознан.",
                 recognized=True,
             )
         return ResolveResult(
             ok=False,
             error_code="no_id",
-            error_message="Не удалось определить заявку: в сообщении нет ID.",
+            error_message="Апелляция не принята: ID не распознан.",
             recognized=False,
         )
 

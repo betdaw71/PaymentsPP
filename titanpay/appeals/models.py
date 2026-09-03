@@ -102,6 +102,8 @@ class PayInAppeal(models.Model):
     provider_external_id = models.CharField(max_length=255, blank=True, default="")
     provider_chat_id = models.BigIntegerField(null=True, blank=True)
     provider_message_id = models.BigIntegerField(null=True, blank=True)
+    provider_nudge_1h_at = models.DateTimeField(null=True, blank=True)
+    provider_nudge_3h_at = models.DateTimeField(null=True, blank=True)
     source_telegram_chat_id = models.BigIntegerField(null=True, blank=True)
     source_telegram_message_id = models.BigIntegerField(null=True, blank=True)
     merchant_inline_clicked = models.BooleanField(

@@ -37,3 +37,11 @@ def update_all():
     except Exception as e:
         logging.error(f"update_ps failed: {e}")
 
+    logging.debug("provider appeal nudges")
+    try:
+        from appeals.notify import nudge_unanswered_provider_appeals
+
+        nudge_unanswered_provider_appeals()
+    except Exception as e:
+        logging.error("provider appeal nudges failed: %s", e)
+

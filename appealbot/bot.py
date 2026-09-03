@@ -35,13 +35,13 @@ HELP_TEXT = (
     "Бот апелляций AvaPay.\n\n"
     "Telegram не отдаёт ботам сообщения других ботов (Mel Transaction Bot). "
     "Тикет сам по себе бот не увидит — нужен ответ человека.\n\n"
-    "Как обработать заявку Melbet:\n"
-    "1. Ответьте на тикет чеком (фото или PDF)\n"
-    "2. Или ответьте на тикет командой /appeal, затем пришлите чек\n\n"
+    "Как обработать заявку:\n"
+    "1. Пришлите ID заявки и чек одним сообщением (фото или файл)\n"
+    "2. Или сначала ID / тикет, затем чек\n\n"
     "Команды:\n"
     "/init <uuid контрагента> — регистрация чата\n"
     "/lookup <ID заявки> — все ID по сделке (PayIn, InOrder, PSP, Melbet)\n"
-    "/appeal — привязать тикет\n\n"
+    "/appeal — запомнить тикет и ждать чек\n\n"
     "В BotFather отключите Group Privacy, иначе бот не видит фото в группе."
 )
 
@@ -178,6 +178,7 @@ def _audit(message: Message) -> None:
 @bot.channel_post_handler(commands=["start", "help"])
 def help_command(message: Message):
     _audit(message)
+    bot.reply_to(message, HELP_TEXT)
 
 
 def backend_lookup(query: str) -> tuple[bool, dict | str]:
@@ -236,6 +237,7 @@ def _format_lookup(data: dict) -> str:
 
 
 @bot.message_handler(commands=["lookup"])
+@bot.channel_post_handler(commands=["lookup"])
 def lookup_command(message: Message):
     """Lookup all IDs for a deal by any known ID."""
     _audit(message)
@@ -285,8 +287,7 @@ def appeal_command(message: Message):
     if not _looks_like_ticket(ticket_text) and not ticket_file_id:
         return
     _remember_ticket(message.chat.id, ticket_text, ticket_file_id=ticket_file_id)
-    if _looks_like_ticket(ticket_text):
-        _submit_appeal(message, ticket_text, b"", "")
+    bot.reply_to(message, "Пришлите чек (фото или файл) вместе с ID заявки.")
 
 
 def _is_pdf_document(document) -> bool:
@@ -454,7 +455,6 @@ def handle_text(message: Message):
     if not _looks_like_ticket(text):
         return
     _remember_ticket(message.chat.id, text, ticket_file_id=_ticket_file_id_from_message(message))
-    _submit_appeal(message, text, b"", "")
 
 
 @bot.message_handler(content_types=["photo", "document"])
@@ -498,6 +498,7 @@ def _apply_outcome(message: Message, payload: dict, appeal_text: str) -> None:
     if payload.get("skip"):
         return
     outcome = payload.get("outcome") or "rejected"
+    reply_text = (payload.get("message") or "").strip()
     if outcome == "await_receipt":
         _remember_ticket(
             message.chat.id,
@@ -505,6 +506,12 @@ def _apply_outcome(message: Message, payload: dict, appeal_text: str) -> None:
             ticket_file_id=_ticket_file_id_from_message(message),
         )
         _set_reaction(message.chat.id, message.message_id, "👀")
+        if reply_text:
+            bot.reply_to(message, reply_text)
+        return
+    if outcome == "duplicate":
+        _set_reaction(message.chat.id, message.message_id, "👎")
+        bot.reply_to(message, reply_text or "Апелляция уже существует.")
         return
     if payload.get("recognized") or payload.get("ok"):
         _clear_ticket(message.chat.id)
@@ -512,8 +519,11 @@ def _apply_outcome(message: Message, payload: dict, appeal_text: str) -> None:
     if outcome in {"success", "pending", "partial"}:
         if outcome == "success":
             _set_reaction(message.chat.id, message.message_id, "👍")
+        if reply_text:
+            bot.reply_to(message, reply_text)
         return
     _set_reaction(message.chat.id, message.message_id, "👎")
+    bot.reply_to(message, reply_text or "Апелляция не принята: ID не распознан.")
 
 
 def _handle_receipt(message: Message):
@@ -545,8 +555,16 @@ def _handle_receipt(message: Message):
 
     ticket_file_bytes = _download_ticket_pdf(message, current_file_id)
     current_is_ticket = _looks_like_ticket_document(message.document, _message_body(message))
-
-    if not _looks_like_ticket(appeal_text) and not ticket_file_bytes and not current_is_ticket:
+    has_id_context = bool(
+        _message_body(message)
+        or _message_body(getattr(message, "reply_to_message", None))
+        or _peek_ticket(message.chat.id)
+        or ticket_file_bytes
+        or current_is_ticket
+    )
+    if not file_bytes:
+        return
+    if not has_id_context:
         return
 
     _submit_appeal(message, appeal_text, file_bytes, filename, ticket_file_bytes)

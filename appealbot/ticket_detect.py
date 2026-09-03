@@ -9,7 +9,9 @@ UUID_RE = re.compile(
 )
 TICKET_HINT_RE = re.compile(
     r"(тикет\s*[#№n]?\s*[:：]?\s*[0-9a-fA-F]{8}|заказ\s*[:：]|id\s*заказа|номер заказа|"
-    r"реквизиты из заявки|маска юзера|номер в [пг]?пс|order\s*id\s*[:：])",
+    r"реквизиты из заявки|маска юзера|номер в [пг]?пс|order\s*id\s*[:：]|"
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|"
+    r"\b[0-9a-fA-F]{32}\b|\b\d{8,}\b)",
     re.IGNORECASE,
 )
 RECEIPT_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif")

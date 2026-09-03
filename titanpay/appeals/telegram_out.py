@@ -76,12 +76,17 @@ def send_receipt_to_provider_chat(
     return SendResult(ok=True, message_id=message_id)
 
 
-def send_text_to_provider_chat(*, chat_id: int, text: str) -> SendResult:
+def send_text_to_provider_chat(
+    *,
+    chat_id: int,
+    text: str,
+    reply_to_message_id: int | None = None,
+) -> SendResult:
     caption = provider_safe_caption(text, fallback="appeal")
-    result = _api_post(
-        "sendMessage",
-        {"chat_id": chat_id, "text": caption},
-    )
+    payload = {"chat_id": chat_id, "text": caption}
+    if reply_to_message_id:
+        payload["reply_to_message_id"] = reply_to_message_id
+    result = _api_post("sendMessage", payload)
     if not result.get("ok"):
         return SendResult(ok=False, error=result.get("description") or "sendMessage failed")
     message_id = (result.get("result") or {}).get("message_id")
