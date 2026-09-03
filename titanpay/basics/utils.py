@@ -162,6 +162,46 @@ def get_binance_kzt_halyk_rate():
         return None
 
 
+def get_xe_kzt_rate(markup: Decimal = Decimal("1.05")):
+    """
+    Курс USDT/KZT через xe.com: USD/KZT + наценка (по умолчанию +5%).
+    USDT ≈ 1 USD, поэтому берём USD/KZT напрямую.
+    Наценку можно переопределить в settings.XE_KZT_MARKUP (например "1.05").
+    """
+    from django.conf import settings
+
+    markup_override = getattr(settings, "XE_KZT_MARKUP", None)
+    if markup_override:
+        try:
+            markup = Decimal(str(markup_override))
+        except Exception:
+            pass
+
+    try:
+        response = requests.get(
+            "https://www.xe.com/api/protected/midmarket-converter/",
+            headers={
+                "Authorization": "Basic bG9kZXN0YXI6cHVnc25heA==",
+                "User-Agent": "Mozilla/5.0",
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+        rates = data.get("rates", {})
+        kzt = rates.get("KZT")
+        if kzt is None:
+            logging.error("XE KZT rate: KZT not found in response keys=%s", list(rates.keys())[:10])
+            return None
+        base_rate = Decimal(str(kzt))
+        result = (base_rate * markup).quantize(Decimal("0.001"))
+        logging.info("KZT rate XE.com (USD/KZT + %s%%): base=%s result=%s", (markup - 1) * 100, base_rate, result)
+        return result
+    except Exception as exc:
+        logging.error("XE KZT rate failed: %s", exc)
+        return None
+
+
 
 
 def get_bybit_kzt_rate():
