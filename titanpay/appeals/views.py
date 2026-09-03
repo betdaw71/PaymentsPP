@@ -8,6 +8,77 @@ from appeals.services import chat_role_for_telegram, init_telegram_chat, process
 from basics.permissions import TgBotPermission
 
 
+def _collect_deal_ids(pay_in) -> dict:
+    """Собрать все ID по сделке: PayIn, InOrder, merchant_order_id, PSP-сессии."""
+    from payments.models import (
+        BotonpayPayInSession,
+        BitzonePayInSession,
+        FairpayPayInSession,
+        GipayPayInSession,
+        PayplatPayInSession,
+        VisionxPayInSession,
+        ExpayonePayInSession,
+        ProtocolPayInSession,
+        SyndicatePayInSession,
+    )
+
+    result = {
+        "pay_in_id": str(pay_in.id),
+        "merchant_order_id": pay_in.merchant_order_id or "",
+        "in_order_id": str(pay_in.order_id) if pay_in.order_id else "",
+        "status": pay_in.status.name if pay_in.status else "",
+        "amount": str(pay_in.amount),
+        "merchant": (pay_in.merchant.user.username if pay_in.merchant and pay_in.merchant.user else ""),
+    }
+
+    if pay_in.order:
+        order = pay_in.order
+        result["in_order_status"] = order.status.name if order.status else ""
+
+    # PSP sessions
+    psp_sessions = [
+        ("payplat", PayplatPayInSession, "external_id", "provider_order_id"),
+        ("gipay", GipayPayInSession, "external_id", "provider_payment_id"),
+        ("botonpay", BotonpayPayInSession, "external_id", "provider_deal_uuid"),
+        ("bitzone", BitzonePayInSession, "external_id", "provider_transaction_id"),
+        ("fairpay", FairpayPayInSession, "external_id", "provider_order_id"),
+        ("visionx", VisionxPayInSession, "external_id", "provider_invoice_id"),
+        ("expayone", ExpayonePayInSession, "external_id", "provider_order_id"),
+        ("protocol", ProtocolPayInSession, "external_id", "provider_payment_id"),
+        ("syndicate", SyndicatePayInSession, "external_id", "provider_order_id"),
+    ]
+
+    for psp_name, model, ext_field, prov_field in psp_sessions:
+        try:
+            session = model.objects.get(pay_in=pay_in)
+            result[f"{psp_name}_external_id"] = getattr(session, ext_field, "") or ""
+            result[f"{psp_name}_provider_id"] = getattr(session, prov_field, "") or ""
+            result[f"{psp_name}_last_status"] = getattr(session, "last_notified_state", "") or getattr(session, "last_notified_status", "") or ""
+        except model.DoesNotExist:
+            pass
+
+    # Melbet session
+    try:
+        from payments.integrations.melbet.models import MelbetTransactionSession
+        msession = MelbetTransactionSession.objects.filter(pay_in=pay_in).first()
+        if msession:
+            result["melbet_session_id"] = str(msession.id)
+            result["melbet_order_id"] = msession.order_id or ""
+    except Exception:
+        pass
+
+    # Appeals
+    from appeals.models import PayInAppeal
+    appeals = PayInAppeal.objects.filter(pay_in=pay_in).order_by("-created_at")[:5]
+    if appeals:
+        result["appeals"] = [
+            {"id": str(a.id), "status": a.status, "created_at": str(a.created_at)}
+            for a in appeals
+        ]
+
+    return result
+
+
 @api_view(["POST"])
 @permission_classes([TgBotPermission])
 def init_chat(request):
@@ -144,3 +215,27 @@ def mark_inline_clicked(request):
     if not updated:
         return Response({"ok": False, "message": "Не найдено."}, status=status.HTTP_404_NOT_FOUND)
     return Response({"ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([TgBotPermission])
+def lookup_deal(request):
+    """GET /api/v1/bot/appeals/lookup/?q=<any_id> — все ID по сделке."""
+    from appeals.id_resolve import resolve_pay_in_from_message
+
+    query = (request.query_params.get("q") or "").strip()
+    if not query:
+        return Response(
+            {"ok": False, "message": "Параметр q обязателен."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    resolved = resolve_pay_in_from_message(query)
+    if not resolved.ok or resolved.pay_in is None:
+        return Response(
+            {"ok": False, "message": resolved.error_message or "Заявка не найдена."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    data = _collect_deal_ids(resolved.pay_in)
+    return Response({"ok": True, "data": data})

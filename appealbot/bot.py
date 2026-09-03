@@ -31,6 +31,20 @@ HEADERS = {"Authorization": f"Token {TGBOT_TOKEN}"}
 CHAT_ROLE_TTL_SEC = 5 * 60
 _CHAT_ROLES: dict[int, tuple[str, float]] = {}
 
+HELP_TEXT = (
+    "Бот апелляций AvaPay.\n\n"
+    "Telegram не отдаёт ботам сообщения других ботов (Mel Transaction Bot). "
+    "Тикет сам по себе бот не увидит — нужен ответ человека.\n\n"
+    "Как обработать заявку Melbet:\n"
+    "1. Ответьте на тикет чеком (фото или PDF)\n"
+    "2. Или ответьте на тикет командой /appeal, затем пришлите чек\n\n"
+    "Команды:\n"
+    "/init <uuid контрагента> — регистрация чата\n"
+    "/lookup <ID заявки> — все ID по сделке (PayIn, InOrder, PSP, Melbet)\n"
+    "/appeal — привязать тикет\n\n"
+    "В BotFather отключите Group Privacy, иначе бот не видит фото в группе."
+)
+
 
 def _set_reaction(chat_id: int, message_id: int, emoji: str) -> None:
     try:
@@ -164,6 +178,79 @@ def _audit(message: Message) -> None:
 @bot.channel_post_handler(commands=["start", "help"])
 def help_command(message: Message):
     _audit(message)
+
+
+def backend_lookup(query: str) -> tuple[bool, dict | str]:
+    response = requests.get(
+        f"{BACKEND_URL}/lookup/",
+        params={"q": query},
+        headers=HEADERS,
+        timeout=30,
+    )
+    payload = _api_json(response)
+    if payload.get("ok"):
+        return True, payload.get("data", {})
+    return False, payload.get("message", "Заявка не найдена.")
+
+
+def _format_lookup(data: dict) -> str:
+    lines = ["📋 Все ID по сделке:\n"]
+    field_labels = [
+        ("pay_in_id", "PayIn ID"),
+        ("merchant_order_id", "Merchant Order ID"),
+        ("in_order_id", "InOrder ID"),
+        ("status", "PayIn Status"),
+        ("in_order_status", "InOrder Status"),
+        ("amount", "Amount"),
+        ("merchant", "Merchant"),
+        ("melbet_session_id", "Melbet Session ID"),
+        ("melbet_order_id", "Melbet Order ID"),
+    ]
+    for key, label in field_labels:
+        val = data.get(key)
+        if val:
+            lines.append(f"  {label}: {val}")
+
+    # PSP sessions
+    psp_names = ["payplat", "gipay", "botonpay", "bitzone", "fairpay", "visionx", "expayone", "protocol", "syndicate"]
+    for psp in psp_names:
+        ext = data.get(f"{psp}_external_id")
+        prov = data.get(f"{psp}_provider_id")
+        last_st = data.get(f"{psp}_last_status")
+        if ext or prov:
+            lines.append(f"\n🔗 {psp.upper()}:")
+            if ext:
+                lines.append(f"  external_id: {ext}")
+            if prov:
+                lines.append(f"  provider_id: {prov}")
+            if last_st:
+                lines.append(f"  last_status: {last_st}")
+
+    appeals = data.get("appeals")
+    if appeals:
+        lines.append(f"\n📝 Апелляции ({len(appeals)}):")
+        for a in appeals:
+            lines.append(f"  {a['id']} — {a['status']} ({a['created_at'][:19]})")
+
+    return "\n".join(lines)
+
+
+@bot.message_handler(commands=["lookup"])
+def lookup_command(message: Message):
+    """Lookup all IDs for a deal by any known ID."""
+    _audit(message)
+    parts = (message.text or "").strip().split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.reply_to(message, "Использование: /lookup <ID заявки>\nID может быть PayIn UUID, merchant_order_id, provider ID и т.д.")
+        return
+
+    query = parts[1].strip()
+    ok, result = backend_lookup(query)
+    if not ok:
+        bot.reply_to(message, f"❌ {result}")
+        return
+
+    bot.reply_to(message, _format_lookup(result))
 
 
 @bot.message_handler(commands=["init"])

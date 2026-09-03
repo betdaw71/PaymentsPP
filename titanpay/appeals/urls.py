@@ -10,4 +10,5 @@ urlpatterns = [
     path("process_message/", views.process_message),
     path("pending_inline_clicks/", views.pending_inline_clicks),
     path("mark_inline_clicked/", views.mark_inline_clicked),
+    path("lookup/", views.lookup_deal),
 ]
