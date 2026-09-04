@@ -108,6 +108,39 @@ def credit_melbet_crypto_deposit(merchant: Merchant, usdt_amount: Decimal) -> bo
     return True
 
 
+def debit_melbet_crypto_prepaid(
+    merchant: Merchant,
+    *,
+    usdt_amount: Decimal,
+    rate: Decimal,
+    comment: str | None = None,
+):
+    """Melbet prepaid USDT → debit balance_kzt (further into minus) at the agreed KZT rate.
+
+    Do not use credit_melbet_crypto_deposit for prepaid: that credits ₸.
+    """
+    from trade.models import Transaction, TransactionType
+
+    usdt = Decimal(str(usdt_amount))
+    rate_d = Decimal(str(rate))
+    kzt_amount = (usdt * rate_d).quantize(Decimal("0.01"))
+    if usdt <= 0 or rate_d <= 0 or kzt_amount <= 0:
+        raise ValueError(f"Invalid prepaid usdt={usdt} rate={rate_d} kzt={kzt_amount}")
+
+    ensure_kzt_balances(merchant)
+    merchant.refresh_from_db()
+    blockchain = Balance.objects.get(type=3)
+    tx_type = TransactionType.objects.get(name="Deposit")
+    text = comment or f"Manual crypto prepaid {usdt} USDT @ {rate_d} = {kzt_amount} KZT"
+    return Transaction.create(
+        merchant.balance_kzt,
+        blockchain,
+        _transaction_type=tx_type,
+        value=kzt_amount,
+        _comment=text,
+    )
+
+
 def melbet_kzt_test_trader_username(merchant: Merchant | None) -> str | None:
     """Тестовый трейдер в роутинге — только для melbet KZT мерчантов (не для всех C2CKZT)."""
     if not is_melbet_merchant(merchant):
