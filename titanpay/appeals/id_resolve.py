@@ -11,6 +11,12 @@ if TYPE_CHECKING:
 UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+# Telegram captions sometimes wrap a UUID mid-token across lines.
+WRAPPED_UUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}\s*-\s*[0-9a-fA-F]{4}\s*-\s*[0-9a-fA-F]{4}\s*-\s*"
+    r"[0-9a-fA-F]{4}\s*-\s*[0-9a-fA-F]{12}",
+    re.MULTILINE,
+)
 COMPACT_UUID32_RE = re.compile(r"\b[0-9a-fA-F]{32}\b")
 COMPACT_HEX8_RE = re.compile(r"^[0-9a-fA-F]{8}$")
 GENERIC_ID_LABEL_RE = re.compile(
@@ -62,20 +68,40 @@ def extract_uuids(text: str) -> list[str]:
         return []
     seen: set[str] = set()
     out: list[str] = []
-    for match in UUID_RE.findall(text):
-        normalized = match.lower()
+
+    def _add(value: str) -> None:
+        normalized = value.lower()
         if normalized not in seen:
             seen.add(normalized)
             out.append(normalized)
+
+    for match in UUID_RE.findall(text):
+        _add(match)
+    for match in WRAPPED_UUID_RE.findall(text):
+        compacted = re.sub(r"\s+", "", match)
+        if UUID_RE.fullmatch(compacted):
+            _add(compacted)
     for compact in COMPACT_UUID32_RE.findall(text):
         dashed = (
             f"{compact[0:8]}-{compact[8:12]}-{compact[12:16]}-"
             f"{compact[16:20]}-{compact[20:32]}"
-        ).lower()
-        if dashed not in seen:
-            seen.add(dashed)
-            out.append(dashed)
+        )
+        _add(dashed)
     return out
+
+
+def normalize_appeal_text(text: str) -> str:
+    """Flatten Telegram wrapping so wrapped UUIDs / IDs resolve like /lookup one-liners."""
+    raw = (text or "").replace("\u00a0", " ").replace("\u202f", " ")
+    # Join hyphen-broken UUID fragments: "...a1b2-\n3c4d-..." -> "...a1b2-3c4d-..."
+    raw = re.sub(r"-\s*\n\s*", "-", raw)
+    # Also collapse lone newlines inside hex runs without losing intentional paragraphs.
+    raw = re.sub(
+        r"([0-9a-fA-F]{4,})\s*\n\s*([0-9a-fA-F-]{4,})",
+        r"\1\2",
+        raw,
+    )
+    return raw
 
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -95,7 +121,7 @@ def parse_appeal_ticket(text: str) -> TicketHints:
     """Extract IDs from Melbet-style tickets and other labelled merchant messages."""
     if not text:
         return TicketHints()
-    text = text.replace("\u00a0", " ").replace("\u202f", " ")
+    text = normalize_appeal_text(text)
     order_ids = [m.group(1).strip() for m in ORDER_LABEL_RE.finditer(text)]
     order_ids.extend(m.group(1).strip() for m in GENERIC_ID_LABEL_RE.finditer(text))
     ticket_hexes = [m.group(1).lower() for m in TICKET_LABEL_RE.finditer(text)]
@@ -345,7 +371,7 @@ def _pay_in_for_any_id(value: str) -> PayIn | None:
 
 
 def resolve_pay_in_from_message(text: str) -> ResolveResult:
-    raw = (text or "").replace("\u00a0", " ").replace("\u202f", " ")
+    raw = normalize_appeal_text(text)
     uuids = extract_uuids(raw)
     hints = parse_appeal_ticket(raw)
     recognized = bool(uuids or hints.has_ids or is_merchant_appeal_ticket(raw))

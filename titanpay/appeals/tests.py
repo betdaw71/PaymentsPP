@@ -116,6 +116,16 @@ class MelbetTicketResolveTest(TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.pay_in.id, self.pay_in.id)
 
+    def test_uuid_wrapped_across_lines(self):
+        from appeals.id_resolve import extract_uuids
+
+        uid = str(self.pay_in.id)
+        wrapped = f"{uid[:18]}\n{uid[18:]}"
+        self.assertEqual(extract_uuids(wrapped), [uid])
+        result = resolve_pay_in_from_message(f"ID:\n{wrapped}")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
     def test_screenshot_ticket_with_psp_uuid(self):
         ticket = """
 🎟 Тикет #02f6868c
