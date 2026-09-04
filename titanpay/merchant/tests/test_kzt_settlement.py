@@ -110,6 +110,24 @@ class KztTransactionNegativeBalanceTest(TestCase):
         merchant.balance_kzt.refresh_from_db()
         self.assertEqual(merchant.balance_kzt.amount, Decimal("-400"))
 
+    def test_debit_melbet_crypto_prepaid_goes_further_into_minus(self):
+        from merchant.kzt_settlement import debit_melbet_crypto_prepaid
+
+        user = User.objects.create_user(username=MELBET_USERNAME, password="x")
+        merchant = Merchant.objects.create(user=user)
+        ensure_kzt_balances(merchant)
+        merchant.refresh_from_db()
+        merchant.balance_kzt.amount = Decimal("-1000")
+        merchant.balance_kzt.save(update_fields=["amount"])
+        Balance.objects.get_or_create(type=3, defaults={"amount": Decimal("0")})
+        debit_melbet_crypto_prepaid(
+            merchant,
+            usdt_amount=Decimal("6000"),
+            rate=Decimal("475.851"),
+        )
+        merchant.balance_kzt.refresh_from_db()
+        self.assertEqual(merchant.balance_kzt.amount, Decimal("-2856106.00"))
+
     def test_debit_below_zero_blocked_on_regular_balance(self):
         user = User.objects.create_user(username="regular_m", password="x")
         balance = Balance.objects.create(type=0, amount=Decimal("100"))
