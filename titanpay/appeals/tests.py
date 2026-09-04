@@ -209,6 +209,17 @@ def _ticket_pdf_bytes(text: str) -> bytes:
     return data
 
 
+def _plain_pdf_bytes(text: str) -> bytes:
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((36, 72), text[:800])
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
 class MerchantAppealForwardTest(TestCase):
     def setUp(self):
         from appeals.models import AppealCounterparty, AppealCounterpartyRole, AppealTelegramChat
@@ -449,6 +460,50 @@ class MerchantAppealForwardTest(TestCase):
             text="чето непонятное",
             file_bytes=jpeg,
             filename="receipt.jpg",
+        )
+        self.assertEqual(result.outcome, "rejected")
+        self.assertIn("ID не распознан", result.message)
+
+    def test_bank_receipt_pdf_id_mined_from_bytes(self):
+        """PDF bank receipt with order id in body should resolve without caption."""
+        from unittest.mock import patch
+
+        from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        pdf = _plain_pdf_bytes(f"Payment receipt\nOrder: {self.pay_in.merchant_order_id}\nAmount: 50000")
+        with (
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(self.pay_in.id)),
+            ),
+            patch("appeals.services._upload_receipt", return_value="https://cdn.example/r.pdf"),
+            patch(
+                "appeals.telegram_out.send_receipt_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=77),
+            ) as mock_send,
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=30,
+                text="",
+                file_bytes=pdf,
+                filename="receipt.pdf",
+            )
+        self.assertIn(result.outcome, {"success", "pending", "partial"})
+        self.assertTrue(result.ok)
+        mock_send.assert_called_once()
+
+    def test_ticket_pdf_without_id_is_rejected_not_silent(self):
+        from appeals.services import process_merchant_appeal_message
+
+        pdf = _plain_pdf_bytes("Melbet ticket without any order number")
+        result = process_merchant_appeal_message(
+            chat_id=111,
+            message_id=31,
+            text="",
+            file_bytes=pdf,
+            filename="Melbet_empty.pdf",
         )
         self.assertEqual(result.outcome, "rejected")
         self.assertIn("ID не распознан", result.message)

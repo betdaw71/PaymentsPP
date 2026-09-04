@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import time
 
 import requests
@@ -19,8 +20,11 @@ TGBOT_TOKEN = os.getenv("TGBOT_TOKEN", "")
 TELEBOT_TOKEN = os.getenv("TELEBOT_TOKEN", "")
 
 PENDING_TICKET_TTL_SEC = 15 * 60
+# Telegram delivers album items as separate updates; wait briefly so caption+files land together.
+MEDIA_GROUP_FLUSH_SEC = float(os.getenv("APPEAL_MEDIA_GROUP_FLUSH_SEC", "1.8"))
 _PENDING_TICKETS: dict[int, dict] = {}
-_SEEN_MEDIA_GROUPS: dict[str, float] = {}
+_MEDIA_ALBUMS: dict[str, dict] = {}
+_MEDIA_ALBUMS_LOCK = threading.Lock()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("appealbot")
@@ -326,6 +330,7 @@ def _download_by_file_id(file_id: str) -> bytes | None:
 
 
 def _download_file(message: Message | None) -> tuple[bytes, str] | None:
+    """Download attachment. Keep original document name for ID mining; provider sanitizes later."""
     if message is None:
         return None
     if message.photo:
@@ -340,7 +345,9 @@ def _download_file(message: Message | None) -> tuple[bytes, str] | None:
         content = _download_by_file_id(document.file_id)
         if content is None:
             return None
-        return content, _generic_receipt_name(document.file_name, content)
+        original = (document.file_name or "").strip()
+        # Prefer original name (may contain order id); fall back to magic-based generic.
+        return content, original or _generic_receipt_name(document.file_name, content)
 
     return None
 
@@ -348,8 +355,13 @@ def _download_file(message: Message | None) -> tuple[bytes, str] | None:
 def _remember_ticket(chat_id: int, text: str, ticket_file_id: str | None = None) -> None:
     prev = _PENDING_TICKETS.get(chat_id) or {}
     file_id = ticket_file_id or prev.get("ticket_file_id")
+    merged_text = text or prev.get("text") or ""
+    if text and prev.get("text") and text.strip() != (prev.get("text") or "").strip():
+        # Keep earlier ticket lines if a later caption is only a short add-on.
+        if (prev.get("text") or "") not in text:
+            merged_text = f"{prev.get('text')}\n{text}".strip()
     _PENDING_TICKETS[chat_id] = {
-        "text": text or prev.get("text") or "",
+        "text": merged_text,
         "ts": time.time(),
         "ticket_file_id": file_id,
     }
@@ -379,21 +391,6 @@ def _clear_ticket(chat_id: int) -> None:
     _PENDING_TICKETS.pop(chat_id, None)
 
 
-def _claim_media_group(chat_id: int, media_group_id: str | None) -> bool:
-    """Process only the first item of a Telegram album."""
-    if not media_group_id:
-        return True
-    now = time.time()
-    stale = [key for key, ts in _SEEN_MEDIA_GROUPS.items() if now - ts > PENDING_TICKET_TTL_SEC]
-    for key in stale:
-        _SEEN_MEDIA_GROUPS.pop(key, None)
-    key = f"{chat_id}:{media_group_id}"
-    if key in _SEEN_MEDIA_GROUPS:
-        return False
-    _SEEN_MEDIA_GROUPS[key] = now
-    return True
-
-
 def _message_body(message: Message | None) -> str:
     if message is None:
         return ""
@@ -416,21 +413,31 @@ def _ticket_file_id_from_message(message: Message) -> str | None:
     return pending or None
 
 
-def _collect_appeal_text(message: Message) -> str:
-    parts = []
-    own = _message_body(message)
-    if own:
-        parts.append(own)
-    reply = _message_body(getattr(message, "reply_to_message", None))
-    if reply and reply not in parts:
-        parts.append(reply)
+def _collect_appeal_text_from_messages(messages: list[Message], chat_id: int) -> str:
+    parts: list[str] = []
+    for message in messages:
+        own = _message_body(message)
+        if own and own not in parts:
+            parts.append(own)
+        reply = _message_body(getattr(message, "reply_to_message", None))
+        if reply and reply not in parts:
+            parts.append(reply)
+        # Document filenames sometimes carry the merchant order id.
+        document = getattr(message, "document", None)
+        name = (getattr(document, "file_name", None) or "").strip()
+        if name and name not in parts and looks_like_ticket(name):
+            parts.append(name)
     combined = "\n".join(parts)
-    if not _looks_like_ticket(combined):
-        pending = _peek_ticket(message.chat.id)
-        if pending and pending not in parts:
-            parts.append(pending)
-            combined = "\n".join(parts)
+    pending = _peek_ticket(chat_id)
+    if pending and pending not in parts:
+        # Always merge pending context for albums/retries (caption may land on a later item).
+        parts.append(pending)
+        combined = "\n".join(parts)
     return combined
+
+
+def _collect_appeal_text(message: Message) -> str:
+    return _collect_appeal_text_from_messages([message], message.chat.id)
 
 
 def _download_ticket_pdf(message: Message, receipt_file_id: str | None) -> bytes | None:
@@ -440,6 +447,110 @@ def _download_ticket_pdf(message: Message, receipt_file_id: str | None) -> bytes
     if not file_id or file_id == receipt_file_id:
         return None
     return _download_by_file_id(file_id)
+
+
+def _file_id_of(message: Message) -> str | None:
+    if message.document:
+        return message.document.file_id
+    if message.photo:
+        return message.photo[-1].file_id
+    return None
+
+
+def _enqueue_media_group(message: Message) -> bool:
+    """Buffer album items. Returns True when the caller should process this message now."""
+    media_group_id = getattr(message, "media_group_id", None)
+    if not media_group_id:
+        return True
+    key = f"{message.chat.id}:{media_group_id}"
+    with _MEDIA_ALBUMS_LOCK:
+        stale = [
+            album_key
+            for album_key, bucket in _MEDIA_ALBUMS.items()
+            if time.time() - bucket.get("ts", 0) > PENDING_TICKET_TTL_SEC
+        ]
+        for album_key in stale:
+            old = _MEDIA_ALBUMS.pop(album_key, None)
+            timer = (old or {}).get("timer")
+            if timer is not None:
+                try:
+                    timer.cancel()
+                except Exception:
+                    pass
+        bucket = _MEDIA_ALBUMS.get(key)
+        if bucket is None:
+            bucket = {"messages": [], "ts": time.time(), "timer": None}
+            _MEDIA_ALBUMS[key] = bucket
+            timer = threading.Timer(MEDIA_GROUP_FLUSH_SEC, _flush_media_group, args=(key,))
+            timer.daemon = True
+            bucket["timer"] = timer
+            timer.start()
+        bucket["messages"].append(message)
+        bucket["ts"] = time.time()
+    return False
+
+
+def _flush_media_group(key: str) -> None:
+    with _MEDIA_ALBUMS_LOCK:
+        bucket = _MEDIA_ALBUMS.pop(key, None)
+    if not bucket:
+        return
+    messages = list(bucket.get("messages") or [])
+    if not messages:
+        return
+    messages.sort(key=lambda item: item.message_id)
+    try:
+        _handle_receipt_album(messages)
+    except Exception:
+        logger.exception("media group flush failed key=%s", key)
+        try:
+            anchor = messages[0]
+            _set_reaction(anchor.chat.id, anchor.message_id, "👎")
+        except Exception:
+            pass
+
+
+def _pick_album_payload(messages: list[Message]) -> tuple[bytes, str, bytes | None, Message]:
+    """Choose receipt + optional ticket PDF from an album. Prefer photo receipt over documents."""
+    anchor = messages[0]
+    ticket_bytes: bytes | None = None
+    photo_receipt: tuple[bytes, str, Message] | None = None
+    doc_receipt: tuple[bytes, str, Message] | None = None
+
+    for message in messages:
+        document = message.document
+        caption = _message_body(message)
+        is_ticket = bool(
+            document
+            and _is_pdf_document(document)
+            and (_looks_like_ticket_document(document, caption) or _looks_like_ticket(caption))
+        )
+        if is_ticket:
+            data = _download_by_file_id(document.file_id)
+            if data:
+                ticket_bytes = ticket_bytes or data
+                if caption or _peek_ticket(message.chat.id):
+                    _remember_ticket(
+                        message.chat.id,
+                        caption or _peek_ticket(message.chat.id),
+                        ticket_file_id=document.file_id,
+                    )
+            continue
+
+        downloaded = _download_file(message)
+        if downloaded is None:
+            continue
+        file_bytes, filename = downloaded
+        if message.photo:
+            photo_receipt = (file_bytes, filename, message)
+        elif doc_receipt is None:
+            doc_receipt = (file_bytes, filename, message)
+
+    chosen = photo_receipt or doc_receipt
+    if chosen is None:
+        return b"", "", ticket_bytes, anchor
+    file_bytes, filename, anchor = chosen
+    return file_bytes, filename, ticket_bytes, anchor
 
 
 @bot.message_handler(content_types=["text"])
@@ -510,26 +621,73 @@ def _apply_outcome(message: Message, payload: dict, appeal_text: str) -> None:
             bot.reply_to(message, reply_text)
         return
     if outcome == "duplicate":
+        _clear_ticket(message.chat.id)
         _set_reaction(message.chat.id, message.message_id, "👎")
         bot.reply_to(message, reply_text or "Апелляция уже существует.")
         return
-    if payload.get("recognized") or payload.get("ok"):
-        _clear_ticket(message.chat.id)
-        _set_reaction(message.chat.id, message.message_id, "👀")
     if outcome in {"success", "pending", "partial"}:
+        _clear_ticket(message.chat.id)
         if outcome == "success":
             _set_reaction(message.chat.id, message.message_id, "👍")
+        else:
+            _set_reaction(message.chat.id, message.message_id, "👀")
         if reply_text:
             bot.reply_to(message, reply_text)
         return
+    # Rejected (often first album item / PDF without extractable ID) — keep ticket context for retry.
+    if appeal_text:
+        _remember_ticket(
+            message.chat.id,
+            appeal_text,
+            ticket_file_id=_ticket_file_id_from_message(message),
+        )
     _set_reaction(message.chat.id, message.message_id, "👎")
     bot.reply_to(message, reply_text or "Апелляция не принята: ID не распознан.")
+
+
+def _handle_receipt_album(messages: list[Message]) -> None:
+    if not messages:
+        return
+    chat_id = messages[0].chat.id
+    if _skip_provider_chat(chat_id):
+        return
+    appeal_text = _collect_appeal_text_from_messages(messages, chat_id)
+    file_bytes, filename, ticket_file_bytes, anchor = _pick_album_payload(messages)
+    logger.info(
+        "receipt album chat_id=%s messages=%s media_group=%s text=%r filename=%r has_ticket_pdf=%s",
+        chat_id,
+        [m.message_id for m in messages],
+        getattr(messages[0], "media_group_id", None),
+        (appeal_text or "")[:240],
+        filename,
+        bool(ticket_file_bytes),
+    )
+    has_id_context = bool(
+        appeal_text
+        or ticket_file_bytes
+        or any(
+            _looks_like_ticket_document(m.document, _message_body(m))
+            for m in messages
+            if m.document
+        )
+    )
+    if not file_bytes and not ticket_file_bytes:
+        return
+    if not has_id_context:
+        return
+    # Ticket-only album (PDF без фото-чека) — still submit so backend can await_receipt / reject clearly.
+    _submit_appeal(anchor, appeal_text, file_bytes, filename, ticket_file_bytes)
 
 
 def _handle_receipt(message: Message):
     _audit(message)
     if _skip_provider_chat(message.chat.id):
         return
+
+    if not _enqueue_media_group(message):
+        # Album item buffered; flush timer will process the whole group.
+        return
+
     appeal_text = _collect_appeal_text(message)
     logger.info(
         "receipt chat_id=%s message_id=%s media_group=%s text=%r",
@@ -539,20 +697,12 @@ def _handle_receipt(message: Message):
         (appeal_text or "")[:240],
     )
 
-    if not _claim_media_group(message.chat.id, getattr(message, "media_group_id", None)):
-        return
-
     downloaded = _download_file(message)
     file_bytes, filename = (b"", "")
     if downloaded is not None:
         file_bytes, filename = downloaded
 
-    current_file_id = None
-    if message.document:
-        current_file_id = message.document.file_id
-    elif message.photo:
-        current_file_id = message.photo[-1].file_id
-
+    current_file_id = _file_id_of(message)
     ticket_file_bytes = _download_ticket_pdf(message, current_file_id)
     current_is_ticket = _looks_like_ticket_document(message.document, _message_body(message))
     has_id_context = bool(
@@ -561,11 +711,20 @@ def _handle_receipt(message: Message):
         or _peek_ticket(message.chat.id)
         or ticket_file_bytes
         or current_is_ticket
+        or looks_like_ticket(filename)
     )
-    if not file_bytes:
+    if not file_bytes and not ticket_file_bytes:
         return
     if not has_id_context:
         return
+
+    # When the only attachment is a ticket PDF, still forward it as ticket_file for ID mining.
+    if not file_bytes and ticket_file_bytes:
+        _submit_appeal(message, appeal_text, b"", "", ticket_file_bytes)
+        return
+    if current_is_ticket and file_bytes and not ticket_file_bytes:
+        ticket_file_bytes = file_bytes
+        # Keep file_bytes too — backend classifies ticket vs receipt from content/name.
 
     _submit_appeal(message, appeal_text, file_bytes, filename, ticket_file_bytes)
 

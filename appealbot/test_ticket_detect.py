@@ -70,6 +70,14 @@ class TicketDetectTest(unittest.TestCase):
         self.assertEqual(generic_receipt_name("Melbet_ticket.pdf", b"%PDF-1.4"), "receipt.pdf")
         self.assertEqual(generic_receipt_name("x.bin", b"\xff\xd8\xff\x00"), "receipt.jpg")
 
+    def test_album_captions_merge_for_id(self):
+        """Caption may sit on a later album item — combined text must still look like a ticket."""
+        first = "фото чека"
+        second = "Заказ: 23213959707\n6f705f1b-229b-4539-9c1c-966199da2567"
+        combined = f"{first}\n{second}"
+        self.assertTrue(looks_like_ticket(combined))
+        self.assertFalse(looks_like_ticket(first))
+
 
 if __name__ == "__main__":
     unittest.main()

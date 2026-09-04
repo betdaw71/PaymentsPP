@@ -334,17 +334,23 @@ def _combined_ticket_text(
     filename: str,
     ticket_file_bytes: bytes | None,
 ) -> tuple[str, bool]:
-    """Merge captions with PDF ticket text. Returns (text, uploaded_file_is_ticket)."""
+    """Merge captions with PDF text for ID resolve. Returns (text, uploaded_file_is_ticket)."""
     parts = [text or ""]
     file_is_ticket = is_merchant_ticket_file(filename=filename, file_bytes=file_bytes)
-    if ticket_file_bytes:
-        extracted = extract_pdf_text(ticket_file_bytes)
+
+    def _append_pdf_text(data: bytes | None) -> None:
+        if not data or not data.startswith(b"%PDF"):
+            return
+        extracted = extract_pdf_text(data)
         if extracted:
             parts.append(extracted)
-    if file_is_ticket and file_bytes.startswith(b"%PDF"):
-        extracted = extract_pdf_text(file_bytes)
-        if extracted:
-            parts.append(extracted)
+
+    # Always mine PDFs for IDs — bank receipts and Melbet tickets both may carry the order id.
+    _append_pdf_text(ticket_file_bytes)
+    _append_pdf_text(file_bytes)
+    if filename:
+        parts.append(filename)
+
     combined = "\n".join(part.strip() for part in parts if part and part.strip())
     return combined, file_is_ticket
 
@@ -376,8 +382,6 @@ def process_merchant_appeal_message(
         filename=filename,
         ticket_file_bytes=ticket_file_bytes,
     )
-    if filename:
-        combined_text = f"{combined_text}\n{filename}".strip()
 
     receipt_bytes = b"" if file_is_ticket else file_bytes
     receipt_name = "" if file_is_ticket else filename
@@ -387,6 +391,9 @@ def process_merchant_appeal_message(
     if not has_receipt:
         if resolved.ok or resolved.recognized:
             return _await_receipt(NEED_RECEIPT, recognized=True)
+        # Ticket-like PDF/file without extractable ID — ask to resend with ID + receipt.
+        if file_bytes:
+            return _reject(ID_NOT_RECOGNIZED, recognized=True)
         return _skip()
 
     if not resolved.ok or resolved.pay_in is None:

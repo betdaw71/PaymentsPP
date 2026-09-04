@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import threading
 import time
 
 import requests
@@ -43,11 +44,13 @@ SOURCE_USERNAMES = parse_usernames(os.getenv("USERBOT_SOURCE_USERNAMES") or "")
 CLICK_INLINE = env_flag(os.getenv("USERBOT_CLICK_INLINE"))
 CLICK_POLL_SEC = max(5, int((os.getenv("USERBOT_CLICK_POLL_SEC") or "8").strip() or "8"))
 PENDING_TICKET_TTL_SEC = 15 * 60
+MEDIA_GROUP_FLUSH_SEC = float(os.getenv("APPEAL_MEDIA_GROUP_FLUSH_SEC", "1.8"))
 
 HEADERS = {"Authorization": f"Token {TGBOT_TOKEN}"}
 CHAT_ROLE_TTL_SEC = 5 * 60
 _CHAT_ROLES: dict[int, tuple[str, float]] = {}
-_SEEN_MEDIA_GROUPS: dict[str, float] = {}
+_MEDIA_ALBUMS: dict[str, dict] = {}
+_MEDIA_ALBUMS_LOCK = threading.Lock()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("appeal-userbot")
@@ -146,18 +149,132 @@ def _skip_chat(chat_id: int) -> bool:
     return False
 
 
-def _claim_media_group(chat_id: int, media_group_id) -> bool:
+async def _enqueue_media_group(message, client: TelegramClient) -> bool:
+    """Buffer album items. Returns True when caller should process this message now."""
+    media_group_id = getattr(message, "grouped_id", None)
     if not media_group_id:
         return True
-    now = time.time()
-    stale = [key for key, ts in _SEEN_MEDIA_GROUPS.items() if now - ts > PENDING_TICKET_TTL_SEC]
-    for key in stale:
-        _SEEN_MEDIA_GROUPS.pop(key, None)
-    key = f"{chat_id}:{media_group_id}"
-    if key in _SEEN_MEDIA_GROUPS:
-        return False
-    _SEEN_MEDIA_GROUPS[key] = now
-    return True
+    key = f"{message.chat_id}:{media_group_id}"
+    with _MEDIA_ALBUMS_LOCK:
+        stale = [
+            album_key
+            for album_key, bucket in _MEDIA_ALBUMS.items()
+            if time.time() - bucket.get("ts", 0) > PENDING_TICKET_TTL_SEC
+        ]
+        for album_key in stale:
+            old = _MEDIA_ALBUMS.pop(album_key, None)
+            task = (old or {}).get("task")
+            if task is not None and not task.done():
+                task.cancel()
+        bucket = _MEDIA_ALBUMS.get(key)
+        if bucket is None:
+            bucket = {"messages": [], "ts": time.time(), "task": None, "client": client}
+            _MEDIA_ALBUMS[key] = bucket
+
+            async def _delayed_flush(album_key: str = key) -> None:
+                try:
+                    await asyncio.sleep(MEDIA_GROUP_FLUSH_SEC)
+                    await _flush_media_group(album_key)
+                except asyncio.CancelledError:
+                    return
+
+            bucket["task"] = asyncio.create_task(_delayed_flush())
+        bucket["messages"].append(message)
+        bucket["ts"] = time.time()
+        bucket["client"] = client
+    return False
+
+
+async def _flush_media_group(key: str) -> None:
+    with _MEDIA_ALBUMS_LOCK:
+        bucket = _MEDIA_ALBUMS.pop(key, None)
+    if not bucket:
+        return
+    messages = list(bucket.get("messages") or [])
+    client = bucket.get("client")
+    if not messages or client is None:
+        return
+    messages.sort(key=lambda item: item.id)
+    try:
+        await _process_album(client, messages)
+    except Exception:
+        logger.exception("userbot media group flush failed key=%s", key)
+
+
+async def _process_album(client: TelegramClient, messages) -> None:
+    chat_id = messages[0].chat_id
+    if chat_id is None or _skip_chat(int(chat_id)):
+        return
+    texts: list[str] = []
+    receipt_bytes = b""
+    receipt_name = ""
+    ticket_bytes = None
+    anchor = messages[0]
+    for message in messages:
+        text = (message.raw_text or "").strip()
+        if text and text not in texts:
+            texts.append(text)
+        mime, name = _document_meta(message)
+        caption = text
+        data = await client.download_media(message, file=bytes) if message.media else None
+        if not data:
+            continue
+        is_photo = isinstance(message.media, MessageMediaPhoto) or bool(getattr(message, "photo", None))
+        if looks_like_ticket_document(mime, name, caption) or (
+            is_pdf_document(mime, name) and looks_like_ticket(caption)
+        ):
+            ticket_bytes = ticket_bytes or data
+            continue
+        if is_photo:
+            receipt_bytes, receipt_name = data, generic_receipt_name(name, data)
+            anchor = message
+            # Prefer photos; keep scanning for ticket PDFs only.
+            continue
+        if not receipt_bytes and is_receipt_document(mime, name):
+            # Keep original name for ID mining when present.
+            receipt_bytes = data
+            receipt_name = (name or "").strip() or generic_receipt_name(name, data)
+            anchor = message
+    combined = "\n".join(texts)
+    if not looks_like_ticket(combined) and not ticket_bytes:
+        return
+    if not receipt_bytes and not ticket_bytes:
+        return
+    logger.info(
+        "userbot album chat=%s messages=%s text=%r",
+        chat_id,
+        [m.id for m in messages],
+        combined[:180],
+    )
+    try:
+        payload = await asyncio.to_thread(
+            backend_process_message,
+            int(chat_id),
+            int(anchor.id),
+            combined,
+            receipt_bytes,
+            receipt_name,
+            ticket_bytes,
+        )
+    except requests.RequestException:
+        logger.exception("backend request failed")
+        await _react(anchor, "👎")
+        return
+    await _apply_userbot_outcome(anchor, payload)
+
+
+async def _apply_userbot_outcome(message, payload: dict) -> None:
+    if payload.get("skip"):
+        return
+    outcome = payload.get("outcome") or "rejected"
+    if payload.get("recognized") or payload.get("ok") or outcome == "await_receipt":
+        await _react(message, "👀")
+    if outcome == "success":
+        await _react(message, "👍")
+        return
+    if outcome in {"pending", "partial", "await_receipt"}:
+        return
+    await _react(message, "👎")
 
 
 def _document_meta(message) -> tuple[str, str]:
@@ -186,7 +303,9 @@ async def _download_payload(client: TelegramClient, message) -> tuple[bytes, str
     if looks_like_ticket_document(mime, name, caption) or (is_pdf_document(mime, name) and looks_like_ticket(caption)):
         return b"", "", data
     if is_photo or is_receipt_document(mime, name):
-        return data, generic_receipt_name(name, data), None
+        # Keep original filename for backend ID mining; provider side still sanitizes.
+        safe = generic_receipt_name(name, data)
+        return data, (name or "").strip() or safe, None
     return b"", "", None
 
 
@@ -266,9 +385,15 @@ async def _on_new_message(event: events.NewMessage.Event, client: TelegramClient
         return
 
     text = (message.raw_text or "").strip()
-    if not looks_like_ticket(text):
-        return
-    if not _claim_media_group(int(chat_id), getattr(message, "grouped_id", None)):
+    mime, name = _document_meta(message)
+    has_media = bool(message.media)
+    # Albums: buffer even when caption is only on a later item.
+    if getattr(message, "grouped_id", None):
+        if not has_media and not looks_like_ticket(text):
+            return
+        if not await _enqueue_media_group(message, client):
+            return
+    elif not looks_like_ticket(text) and not looks_like_ticket_document(mime, name, text):
         return
 
     logger.info(
@@ -279,6 +404,8 @@ async def _on_new_message(event: events.NewMessage.Event, client: TelegramClient
         text[:180],
     )
     file_bytes, filename, ticket_bytes = await _download_payload(client, message)
+    if not file_bytes and not ticket_bytes and not looks_like_ticket(text):
+        return
     try:
         payload = await asyncio.to_thread(
             backend_process_message,
@@ -294,17 +421,7 @@ async def _on_new_message(event: events.NewMessage.Event, client: TelegramClient
         await _react(message, "👎")
         return
 
-    if payload.get("skip"):
-        return
-    outcome = payload.get("outcome") or "rejected"
-    if payload.get("recognized") or payload.get("ok") or outcome == "await_receipt":
-        await _react(message, "👀")
-    if outcome == "success":
-        await _react(message, "👍")
-        return
-    if outcome in {"pending", "partial", "await_receipt"}:
-        return
-    await _react(message, "👎")
+    await _apply_userbot_outcome(message, payload)
 
 
 async def _click_loop(client: TelegramClient) -> None:
