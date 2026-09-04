@@ -3,9 +3,13 @@ from rest_framework.decorators import api_view, permission_classes, parser_class
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+import logging
+
 from appeals.models import PayInAppeal, PayInAppealStatus
 from appeals.services import chat_role_for_telegram, init_telegram_chat, process_merchant_appeal_message
 from basics.permissions import TgBotPermission
+
+logger = logging.getLogger(__name__)
 
 
 def _collect_deal_ids(pay_in) -> dict:
@@ -126,6 +130,7 @@ def process_message(request):
     chat_id = request.data.get("chat_id")
     message_id = request.data.get("message_id")
     text = request.data.get("text") or ""
+    original_filename = (request.data.get("original_filename") or "").strip()
     uploaded = request.FILES.get("file")
 
     if chat_id is None or message_id is None:
@@ -138,10 +143,14 @@ def process_message(request):
     ticket_file_bytes = ticket_uploaded.read() if ticket_uploaded else None
     if uploaded is None:
         file_bytes = b""
-        filename = ""
+        filename = original_filename
     else:
         file_bytes = uploaded.read()
-        filename = uploaded.name or "receipt"
+        # Prefer explicit original_filename — multipart name may be sanitized/generic.
+        filename = original_filename or uploaded.name or "receipt"
+
+    if original_filename and original_filename not in text:
+        text = f"{text}\n{original_filename}".strip() if text else original_filename
 
     try:
         result = process_merchant_appeal_message(
@@ -152,11 +161,12 @@ def process_message(request):
             filename=filename,
             ticket_file_bytes=ticket_file_bytes,
         )
-    except Exception as exc:
+    except Exception:
+        logger.exception("process_message failed chat_id=%s message_id=%s", chat_id, message_id)
         return Response(
             {
                 "ok": False,
-                "message": "",
+                "message": "Апелляция не принята: внутренняя ошибка обработки.",
                 "recognized": False,
                 "outcome": "rejected",
             },
@@ -171,7 +181,7 @@ def process_message(request):
 
     code = (
         status.HTTP_200_OK
-        if result.ok or result.outcome in {"await_receipt", "duplicate"}
+        if result.ok or result.outcome in {"await_receipt", "await_id", "duplicate"}
         else status.HTTP_400_BAD_REQUEST
     )
     return Response(

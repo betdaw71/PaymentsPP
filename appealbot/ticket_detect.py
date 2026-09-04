@@ -54,11 +54,13 @@ def is_receipt_document(mime: str | None, name: str | None) -> bool:
 
 
 def looks_like_ticket_document(mime: str | None, name: str | None, caption: str | None) -> bool:
-    if filename_looks_like_ticket(name):
-        return True
-    if is_pdf_document(mime, name) and looks_like_ticket(caption or ""):
-        return True
-    return False
+    """True only for merchant *ticket* files (Melbet etc.), not bank receipts.
+
+    Important: a PDF/photo whose caption contains an order UUID is a normal appeal
+    (Pandapay/Melbet ops), NOT a ticket attachment. Treating UUID captions as
+    tickets dropped the receipt and made appeals fail with «ID не распознан».
+    """
+    return filename_looks_like_ticket(name)
 
 
 def generic_receipt_name(filename: str | None, content: bytes) -> str:

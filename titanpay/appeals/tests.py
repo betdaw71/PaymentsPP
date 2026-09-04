@@ -450,7 +450,7 @@ class MerchantAppealForwardTest(TestCase):
         self.assertIn("уже существует", result.message)
         mock_send.assert_not_called()
 
-    def test_receipt_without_known_id_is_rejected_with_message(self):
+    def test_receipt_without_known_id_awaits_caption_edit(self):
         from appeals.services import process_merchant_appeal_message
 
         jpeg = b"\xff\xd8\xff" + b"\x00" * 64
@@ -461,8 +461,8 @@ class MerchantAppealForwardTest(TestCase):
             file_bytes=jpeg,
             filename="receipt.jpg",
         )
-        self.assertEqual(result.outcome, "rejected")
-        self.assertIn("ID не распознан", result.message)
+        self.assertEqual(result.outcome, "await_id")
+        self.assertIn("ID", result.message)
 
     def test_bank_receipt_pdf_id_mined_from_bytes(self):
         """PDF bank receipt with order id in body should resolve without caption."""
@@ -493,6 +493,37 @@ class MerchantAppealForwardTest(TestCase):
         self.assertIn(result.outcome, {"success", "pending", "partial"})
         self.assertTrue(result.ok)
         mock_send.assert_called_once()
+
+    def test_uuid_only_in_filename_resolves_pandapay_style(self):
+        """Pandapay often names the file with merchant_order_id and leaves caption empty."""
+        from unittest.mock import patch
+
+        from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        self.pay_in.merchant_order_id = "1907326a-9c20-41e9-8a87-d59e8315da99"
+        self.pay_in.save(update_fields=["merchant_order_id"])
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        with (
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("bitzone", "", str(self.pay_in.id)),
+            ),
+            patch("appeals.services._upload_receipt", return_value="https://cdn.example/r.jpg"),
+            patch(
+                "appeals.telegram_out.send_receipt_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=88),
+            ),
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=40,
+                text="",
+                file_bytes=jpeg,
+                filename="1907326a-9c20-41e9-8a87-d59e8315da99.jpg",
+            )
+        self.assertIn(result.outcome, {"success", "pending", "partial"})
+        self.assertTrue(result.ok)
 
     def test_ticket_pdf_without_id_is_rejected_not_silent(self):
         from appeals.services import process_merchant_appeal_message

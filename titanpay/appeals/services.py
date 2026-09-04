@@ -57,6 +57,11 @@ def _await_receipt(message: str, *, recognized: bool = True) -> AppealProcessRes
     return AppealProcessResult(ok=False, message=message, recognized=recognized, outcome="await_receipt")
 
 
+def _await_id(message: str = "", *, recognized: bool = True) -> AppealProcessResult:
+    """Receipt is present but ID is missing — bot should wait for a caption edit (Pandapay)."""
+    return AppealProcessResult(ok=False, message=message, recognized=recognized, outcome="await_id")
+
+
 def _duplicate(message: str = "Апелляция уже существует.") -> AppealProcessResult:
     return AppealProcessResult(ok=False, message=message, recognized=True, outcome="duplicate")
 
@@ -68,6 +73,7 @@ def _skip() -> AppealProcessResult:
 ID_NOT_RECOGNIZED = "Апелляция не принята: ID не распознан."
 APPEAL_ALREADY_EXISTS = "Апелляция уже существует."
 NEED_RECEIPT = "Пришлите чек (фото или файл) вместе с ID заявки."
+AWAIT_ID_EDIT = "Жду ID в этом сообщении (можно отредактировать подпись)."
 
 
 def chat_role_for_telegram(chat_id: int) -> str:
@@ -397,10 +403,10 @@ def process_merchant_appeal_message(
         return _skip()
 
     if not resolved.ok or resolved.pay_in is None:
-        message = ID_NOT_RECOGNIZED
+        # Pandapay often posts the receipt first, then edits the caption to add the ID.
         if resolved.error_code == "ambiguous_id" and resolved.error_message:
-            message = resolved.error_message
-        return _reject(message, recognized=True)
+            return _reject(resolved.error_message, recognized=True)
+        return _await_id(AWAIT_ID_EDIT, recognized=True)
 
     pay_in = resolved.pay_in
     if counterparty.merchant_id and pay_in.merchant_id != counterparty.merchant_id:

@@ -99,14 +99,20 @@ def backend_process_message(
     ticket_file_bytes: bytes | None = None,
 ) -> dict:
     files = {}
+    upload_name = generic_receipt_name(filename, file_bytes) if file_bytes else (filename or "receipt.bin")
     if file_bytes:
-        files["file"] = (filename or "receipt.bin", file_bytes)
+        files["file"] = (upload_name or "receipt.bin", file_bytes)
     if ticket_file_bytes:
         files["ticket_file"] = ("ticket.pdf", ticket_file_bytes)
+    merged_text = (text or "").strip()
+    original = (filename or "").strip()
+    if original and original not in merged_text and not original.startswith("receipt."):
+        merged_text = f"{merged_text}\n{original}".strip() if merged_text else original
     data = {
         "chat_id": str(chat_id),
         "message_id": str(message_id),
-        "text": text or "",
+        "text": merged_text,
+        "original_filename": original,
     }
     url = f"{BACKEND_URL}/process_message/"
     if files:

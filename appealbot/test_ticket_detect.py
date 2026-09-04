@@ -78,6 +78,21 @@ class TicketDetectTest(unittest.TestCase):
         self.assertTrue(looks_like_ticket(combined))
         self.assertFalse(looks_like_ticket(first))
 
+    def test_pdf_with_uuid_caption_is_not_a_ticket_file(self):
+        from ticket_detect import looks_like_ticket_document
+
+        # Pandapay/ops: bank PDF + order UUID in caption must stay a receipt.
+        self.assertFalse(
+            looks_like_ticket_document(
+                "application/pdf",
+                "1907326a-9c20-41e9-8a87-d59e8315da99.pdf",
+                "1907326a-9c20-41e9-8a87-d59e8315da99",
+            )
+        )
+        self.assertTrue(
+            looks_like_ticket_document("application/pdf", "Melbet_ticket.pdf", "anything")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,9 +22,13 @@ TELEBOT_TOKEN = os.getenv("TELEBOT_TOKEN", "")
 PENDING_TICKET_TTL_SEC = 15 * 60
 # Telegram delivers album items as separate updates; wait briefly so caption+files land together.
 MEDIA_GROUP_FLUSH_SEC = float(os.getenv("APPEAL_MEDIA_GROUP_FLUSH_SEC", "1.8"))
+# Pandapay posts receipt first, then edits the caption with the ID within a few seconds.
+PENDING_ID_EDIT_SEC = float(os.getenv("APPEAL_PENDING_ID_EDIT_SEC", "8"))
 _PENDING_TICKETS: dict[int, dict] = {}
 _MEDIA_ALBUMS: dict[str, dict] = {}
 _MEDIA_ALBUMS_LOCK = threading.Lock()
+_PENDING_ID_EDITS: dict[str, dict] = {}
+_PENDING_ID_EDITS_LOCK = threading.Lock()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("appealbot")
@@ -41,7 +45,9 @@ HELP_TEXT = (
     "Тикет сам по себе бот не увидит — нужен ответ человека.\n\n"
     "Как обработать заявку:\n"
     "1. Пришлите ID заявки и чек одним сообщением (фото или файл)\n"
-    "2. Или сначала ID / тикет, затем чек\n\n"
+    "2. Или сначала ID / тикет, затем чек\n"
+    "3. Можно сначала чек, затем отредактировать сообщение и добавить ID "
+    f"(ждём до {int(PENDING_ID_EDIT_SEC)} сек)\n\n"
     "Команды:\n"
     "/init <uuid контрагента> — регистрация чата\n"
     "/lookup <ID заявки> — все ID по сделке (PayIn, InOrder, PSP, Melbet)\n"
@@ -138,14 +144,22 @@ def backend_process_message(
     ticket_file_bytes: bytes | None = None,
 ) -> dict:
     files = {}
+    # Keep a storage-safe upload name, but always pass the original name in form
+    # fields — Pandapay names the file with the merchant_order_id UUID.
+    upload_name = generic_receipt_name(filename, file_bytes) if file_bytes else (filename or "receipt.bin")
     if file_bytes:
-        files["file"] = (filename or "receipt.bin", file_bytes)
+        files["file"] = (upload_name or "receipt.bin", file_bytes)
     if ticket_file_bytes:
         files["ticket_file"] = ("ticket.pdf", ticket_file_bytes)
+    merged_text = (text or "").strip()
+    original = (filename or "").strip()
+    if original and original not in merged_text and not original.startswith("receipt."):
+        merged_text = f"{merged_text}\n{original}".strip() if merged_text else original
     data = {
         "chat_id": str(chat_id),
         "message_id": str(message_id),
-        "text": text or "",
+        "text": merged_text,
+        "original_filename": original,
     }
     url = f"{BACKEND_URL}/process_message/"
     if files:
@@ -391,6 +405,98 @@ def _clear_ticket(chat_id: int) -> None:
     _PENDING_TICKETS.pop(chat_id, None)
 
 
+def _pending_id_key(chat_id: int, message_id: int) -> str:
+    return f"{chat_id}:{message_id}"
+
+
+def _cancel_pending_id_edit(chat_id: int, message_id: int) -> dict | None:
+    key = _pending_id_key(chat_id, message_id)
+    with _PENDING_ID_EDITS_LOCK:
+        item = _PENDING_ID_EDITS.pop(key, None)
+    if not item:
+        return None
+    timer = item.get("timer")
+    if timer is not None:
+        try:
+            timer.cancel()
+        except Exception:
+            pass
+    return item
+
+
+def _expire_pending_id_edit(key: str) -> None:
+    with _PENDING_ID_EDITS_LOCK:
+        item = _PENDING_ID_EDITS.pop(key, None)
+    if not item:
+        return
+    chat_id = item["chat_id"]
+    message_id = item["message_id"]
+    logger.info("pending ID edit expired chat_id=%s message_id=%s", chat_id, message_id)
+    _set_reaction(chat_id, message_id, "👎")
+    try:
+        bot.send_message(
+            chat_id,
+            "Апелляция не принята: ID не распознан. Добавьте ID в подпись или пришлите заново.",
+            reply_to_message_id=message_id,
+        )
+    except Exception:
+        logger.warning("expire pending id reply failed chat=%s msg=%s", chat_id, message_id, exc_info=True)
+
+
+def _stash_awaiting_id_edit(
+    message: Message,
+    *,
+    file_bytes: bytes,
+    filename: str,
+    ticket_file_bytes: bytes | None,
+    text: str,
+    notify: bool = False,
+) -> None:
+    """Hold a receipt while Pandapay (etc.) edits the caption to add the deal ID."""
+    chat_id = message.chat.id
+    message_id = message.message_id
+    key = _pending_id_key(chat_id, message_id)
+    with _PENDING_ID_EDITS_LOCK:
+        prev = _PENDING_ID_EDITS.get(key)
+        if prev and prev.get("timer") is not None:
+            try:
+                prev["timer"].cancel()
+            except Exception:
+                pass
+        timer = threading.Timer(PENDING_ID_EDIT_SEC, _expire_pending_id_edit, args=(key,))
+        timer.daemon = True
+        _PENDING_ID_EDITS[key] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "file_bytes": file_bytes or (prev or {}).get("file_bytes") or b"",
+            "filename": filename or (prev or {}).get("filename") or "",
+            "ticket_file_bytes": ticket_file_bytes
+            if ticket_file_bytes is not None
+            else (prev or {}).get("ticket_file_bytes"),
+            "text": text or (prev or {}).get("text") or "",
+            "ts": time.time(),
+            "timer": timer,
+        }
+        timer.start()
+    logger.info(
+        "awaiting ID caption edit chat_id=%s message_id=%s wait=%.1fs text=%r",
+        chat_id,
+        message_id,
+        PENDING_ID_EDIT_SEC,
+        (text or "")[:120],
+    )
+    _set_reaction(chat_id, message_id, "👀")
+    if notify:
+        try:
+            bot.reply_to(
+                message,
+                f"Чек получен. Жду ID в этом сообщении до {int(PENDING_ID_EDIT_SEC)} сек "
+                "(можно отредактировать подпись).",
+            )
+        except Exception:
+            logger.warning("await_id notify failed", exc_info=True)
+
+
 def _message_body(message: Message | None) -> str:
     if message is None:
         return ""
@@ -404,10 +510,11 @@ def _message_body(message: Message | None) -> str:
 def _ticket_file_id_from_message(message: Message) -> str | None:
     reply = getattr(message, "reply_to_message", None)
     if reply and reply.document and _is_pdf_document(reply.document):
-        return reply.document.file_id
+        # Reply-to PDF is treated as ticket only when the filename looks like one.
+        if _looks_like_ticket_document(reply.document, _message_body(reply)):
+            return reply.document.file_id
     if message.document and _is_pdf_document(message.document):
-        caption = _message_body(message)
-        if _looks_like_ticket_document(message.document, caption) or _looks_like_ticket(caption):
+        if _looks_like_ticket_document(message.document, _message_body(message)):
             return message.document.file_id
     pending = _peek_ticket_file_id(message.chat.id)
     return pending or None
@@ -523,7 +630,7 @@ def _pick_album_payload(messages: list[Message]) -> tuple[bytes, str, bytes | No
         is_ticket = bool(
             document
             and _is_pdf_document(document)
-            and (_looks_like_ticket_document(document, caption) or _looks_like_ticket(caption))
+            and _looks_like_ticket_document(document, caption)
         )
         if is_ticket:
             data = _download_by_file_id(document.file_id)
@@ -553,35 +660,6 @@ def _pick_album_payload(messages: list[Message]) -> tuple[bytes, str, bytes | No
     return file_bytes, filename, ticket_bytes, anchor
 
 
-@bot.message_handler(content_types=["text"])
-@bot.edited_message_handler(content_types=["text"])
-@bot.channel_post_handler(content_types=["text"])
-def handle_text(message: Message):
-    _audit(message)
-    if message.text and message.text.startswith("/"):
-        return
-    if _skip_provider_chat(message.chat.id):
-        return
-    text = _collect_appeal_text(message)
-    if not _looks_like_ticket(text):
-        return
-    _remember_ticket(message.chat.id, text, ticket_file_id=_ticket_file_id_from_message(message))
-
-
-@bot.message_handler(content_types=["photo", "document"])
-@bot.edited_message_handler(content_types=["photo", "document"])
-@bot.channel_post_handler(content_types=["photo", "document"])
-def handle_receipt(message: Message):
-    try:
-        _handle_receipt(message)
-    except Exception:
-        logger.exception("handle_receipt failed")
-        try:
-            _set_reaction(message.chat.id, message.message_id, "👎")
-        except Exception:
-            pass
-
-
 def _submit_appeal(
     message: Message,
     text: str,
@@ -602,15 +680,41 @@ def _submit_appeal(
         logger.exception("backend request failed")
         _set_reaction(message.chat.id, message.message_id, "👎")
         return
-    _apply_outcome(message, payload, text)
+    _apply_outcome(
+        message,
+        payload,
+        text,
+        file_bytes=file_bytes,
+        filename=filename,
+        ticket_file_bytes=ticket_file_bytes,
+    )
 
 
-def _apply_outcome(message: Message, payload: dict, appeal_text: str) -> None:
+def _apply_outcome(
+    message: Message,
+    payload: dict,
+    appeal_text: str,
+    *,
+    file_bytes: bytes = b"",
+    filename: str = "",
+    ticket_file_bytes: bytes | None = None,
+) -> None:
     if payload.get("skip"):
         return
     outcome = payload.get("outcome") or "rejected"
     reply_text = (payload.get("message") or "").strip()
+    if outcome == "await_id":
+        _stash_awaiting_id_edit(
+            message,
+            file_bytes=file_bytes,
+            filename=filename,
+            ticket_file_bytes=ticket_file_bytes,
+            text=appeal_text,
+            notify=False,
+        )
+        return
     if outcome == "await_receipt":
+        _cancel_pending_id_edit(message.chat.id, message.message_id)
         _remember_ticket(
             message.chat.id,
             appeal_text,
@@ -621,11 +725,13 @@ def _apply_outcome(message: Message, payload: dict, appeal_text: str) -> None:
             bot.reply_to(message, reply_text)
         return
     if outcome == "duplicate":
+        _cancel_pending_id_edit(message.chat.id, message.message_id)
         _clear_ticket(message.chat.id)
         _set_reaction(message.chat.id, message.message_id, "👎")
         bot.reply_to(message, reply_text or "Апелляция уже существует.")
         return
     if outcome in {"success", "pending", "partial"}:
+        _cancel_pending_id_edit(message.chat.id, message.message_id)
         _clear_ticket(message.chat.id)
         if outcome == "success":
             _set_reaction(message.chat.id, message.message_id, "👍")
@@ -634,7 +740,19 @@ def _apply_outcome(message: Message, payload: dict, appeal_text: str) -> None:
         if reply_text:
             bot.reply_to(message, reply_text)
         return
-    # Rejected (often first album item / PDF without extractable ID) — keep ticket context for retry.
+    # Hard reject — but if we still have a receipt and this is the first pass, wait for caption edit.
+    is_edit = bool(getattr(message, "edit_date", None))
+    if file_bytes and not is_edit:
+        _stash_awaiting_id_edit(
+            message,
+            file_bytes=file_bytes,
+            filename=filename,
+            ticket_file_bytes=ticket_file_bytes,
+            text=appeal_text,
+            notify=False,
+        )
+        return
+    _cancel_pending_id_edit(message.chat.id, message.message_id)
     if appeal_text:
         _remember_ticket(
             message.chat.id,
@@ -674,6 +792,14 @@ def _handle_receipt_album(messages: list[Message]) -> None:
     if not file_bytes and not ticket_file_bytes:
         return
     if not has_id_context:
+        if file_bytes or ticket_file_bytes:
+            _stash_awaiting_id_edit(
+                anchor,
+                file_bytes=file_bytes,
+                filename=filename,
+                ticket_file_bytes=ticket_file_bytes,
+                text=appeal_text,
+            )
         return
     # Ticket-only album (PDF без фото-чека) — still submit so backend can await_receipt / reject clearly.
     _submit_appeal(anchor, appeal_text, file_bytes, filename, ticket_file_bytes)
@@ -684,16 +810,21 @@ def _handle_receipt(message: Message):
     if _skip_provider_chat(message.chat.id):
         return
 
-    if not _enqueue_media_group(message):
+    is_edit = bool(getattr(message, "edit_date", None))
+    # Pop early on edit so we can reuse stashed receipt bytes if needed.
+    stashed = _cancel_pending_id_edit(message.chat.id, message.message_id) if is_edit else None
+
+    if not is_edit and not _enqueue_media_group(message):
         # Album item buffered; flush timer will process the whole group.
         return
 
     appeal_text = _collect_appeal_text(message)
     logger.info(
-        "receipt chat_id=%s message_id=%s media_group=%s text=%r",
+        "receipt chat_id=%s message_id=%s media_group=%s edit=%s text=%r",
         message.chat.id,
         message.message_id,
         getattr(message, "media_group_id", None),
+        is_edit,
         (appeal_text or "")[:240],
     )
 
@@ -701,9 +832,15 @@ def _handle_receipt(message: Message):
     file_bytes, filename = (b"", "")
     if downloaded is not None:
         file_bytes, filename = downloaded
+    if not file_bytes and stashed and stashed.get("file_bytes"):
+        file_bytes = stashed["file_bytes"]
+        filename = filename or stashed.get("filename") or ""
 
     current_file_id = _file_id_of(message)
     ticket_file_bytes = _download_ticket_pdf(message, current_file_id)
+    if not ticket_file_bytes and stashed and stashed.get("ticket_file_bytes"):
+        ticket_file_bytes = stashed["ticket_file_bytes"]
+
     current_is_ticket = _looks_like_ticket_document(message.document, _message_body(message))
     has_id_context = bool(
         _message_body(message)
@@ -712,10 +849,19 @@ def _handle_receipt(message: Message):
         or ticket_file_bytes
         or current_is_ticket
         or looks_like_ticket(filename)
+        or looks_like_ticket(appeal_text)
     )
     if not file_bytes and not ticket_file_bytes:
         return
     if not has_id_context:
+        # Receipt arrived before ID (Pandapay) — wait for caption edit instead of dropping.
+        _stash_awaiting_id_edit(
+            message,
+            file_bytes=file_bytes,
+            filename=filename,
+            ticket_file_bytes=ticket_file_bytes,
+            text=appeal_text,
+        )
         return
 
     # When the only attachment is a ticket PDF, still forward it as ticket_file for ID mining.
@@ -729,12 +875,62 @@ def _handle_receipt(message: Message):
     _submit_appeal(message, appeal_text, file_bytes, filename, ticket_file_bytes)
 
 
+@bot.message_handler(content_types=["text"])
+@bot.edited_message_handler(content_types=["text"])
+@bot.channel_post_handler(content_types=["text"])
+@bot.edited_channel_post_handler(content_types=["text"])
+def handle_text(message: Message):
+    _audit(message)
+    body = message.text or message.caption or ""
+    if body.startswith("/"):
+        return
+    if _skip_provider_chat(message.chat.id):
+        return
+    text = _collect_appeal_text(message)
+    if not _looks_like_ticket(text):
+        return
+    _remember_ticket(message.chat.id, text, ticket_file_id=_ticket_file_id_from_message(message))
+    # Text-only edit that adds an ID onto a previously stashed receipt.
+    if getattr(message, "edit_date", None):
+        key = _pending_id_key(message.chat.id, message.message_id)
+        with _PENDING_ID_EDITS_LOCK:
+            stashed = _PENDING_ID_EDITS.get(key)
+        if stashed and (stashed.get("file_bytes") or stashed.get("ticket_file_bytes")):
+            _cancel_pending_id_edit(message.chat.id, message.message_id)
+            _submit_appeal(
+                message,
+                text,
+                stashed.get("file_bytes") or b"",
+                stashed.get("filename") or "",
+                stashed.get("ticket_file_bytes"),
+            )
+
+
+@bot.message_handler(content_types=["photo", "document"])
+@bot.edited_message_handler(content_types=["photo", "document"])
+@bot.channel_post_handler(content_types=["photo", "document"])
+@bot.edited_channel_post_handler(content_types=["photo", "document"])
+def handle_receipt(message: Message):
+    try:
+        _handle_receipt(message)
+    except Exception:
+        logger.exception("handle_receipt failed")
+        try:
+            _set_reaction(message.chat.id, message.message_id, "👎")
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     if not TELEBOT_TOKEN:
         raise SystemExit("TELEBOT_TOKEN is not set")
     if not TGBOT_TOKEN:
         logger.warning("TGBOT_TOKEN is empty — API calls will fail")
-    logger.info("Appeal bot starting, backend=%s", BACKEND_URL)
+    logger.info(
+        "Appeal bot starting, backend=%s pending_id_edit=%.1fs",
+        BACKEND_URL,
+        PENDING_ID_EDIT_SEC,
+    )
     bot.infinity_polling(
         timeout=30,
         long_polling_timeout=30,
