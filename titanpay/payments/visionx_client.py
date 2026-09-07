@@ -65,12 +65,23 @@ def visionx_payment_option_for(payment_system_name: str | None) -> str | None:
     return _setting_for_ps("VISIONX_PAYIN_OPTION_MAP", "VISIONX_PAYIN_OPTION", payment_system_name)
 
 
-def visionx_cross_border_currency_for(payment_system_name: str | None) -> str | None:
-    return _setting_for_ps(
+def visionx_cross_border_currency_for(
+    payment_system_name: str | None,
+    payin_currency: str | None = None,
+) -> str | None:
+    from_ps = _setting_for_ps(
         "VISIONX_CROSS_BORDER_CURRENCY_MAP",
         "VISIONX_CROSS_BORDER_CURRENCY",
         payment_system_name,
     )
+    if from_ps:
+        return from_ps
+    by_payin = _parse_json_map("VISIONX_CROSS_BORDER_CURRENCY_BY_PAYIN")
+    cur = (payin_currency or "").strip().upper()
+    if cur and cur in by_payin:
+        return _opt_str(by_payin[cur])
+    defaults = {"KZT": "VND", "RUB": "TJS"}
+    return defaults.get(cur)
 
 
 def visionx_cross_border_requisite_type_for(payment_system_name: str | None) -> str | None:
@@ -244,12 +255,14 @@ def visionx_create_invoice(
         "internalId": internal_id,
         "userId": user_id or internal_id,
         "startDeal": True,
-        "paymentOption": payment_option,
+        "strictlySingleTransfer": True,
+        "paymentOption": payment_option or "CROSS_BORDER",
         "paymentMethod": payment_method,
     }
-    if (payment_option or "").upper() == "CROSS_BORDER":
+    option = str(payload["paymentOption"] or "").upper()
+    if option == "CROSS_BORDER":
         payload["crossBorderCurrency"] = (cross_border_currency or "").upper() or None
-        payload["crossBorderRequisiteType"] = cross_border_requisite_type
+        payload["crossBorderRequisiteType"] = cross_border_requisite_type or "PHONE"
     if success_url:
         payload["successUrl"] = success_url
     if cancel_url:
@@ -406,8 +419,6 @@ def visionx_map_requisite(create_body: dict) -> dict:
     qr = ""
     if isinstance(deal, dict):
         qr = (deal.get("qrCodeLink") or "").strip()
-    if not qr:
-        qr = (body.get("invoiceUrl") or "").strip()
     if not address:
         if qr:
             return {"payment_form_url": qr, "owner": owner, "bank": bank}
@@ -419,8 +430,14 @@ def visionx_map_requisite(create_body: dict) -> dict:
         or ""
     )
     payment_option = str(payment_option).strip().upper()
-    if payment_option in ("TO_CARD", "CROSS_BORDER", "CARD") and len(digits) >= 16:
-        return {"card_number": digits[:16], "owner": owner, "bank": bank}
+    req_type = str(
+        (deal.get("crossBorderRequisiteType") if isinstance(deal, dict) else None)
+        or body.get("crossBorderRequisiteType")
+        or ""
+    ).strip().upper()
+    if req_type == "PHONE" or payment_option == "CROSS_BORDER" and len(digits) <= 12:
+        phone = address if address.startswith("+") else (f"+{digits}" if digits else address)
+        return {"phone": phone, "owner": owner, "bank": bank}
     if address.startswith("+") or (digits and len(digits) <= 12):
         return {"phone": address if address.startswith("+") else f"+{digits}", "owner": owner, "bank": bank}
     if len(digits) >= 16:
@@ -492,7 +509,7 @@ def try_attach_visionx_session(pay_in: Any) -> bool | None:
         user_id=payer_user_id,
         payment_method=visionx_payment_method_for(ps_name),
         payment_option=visionx_payment_option_for(ps_name),
-        cross_border_currency=visionx_cross_border_currency_for(ps_name),
+        cross_border_currency=visionx_cross_border_currency_for(ps_name, currency_sym),
         cross_border_requisite_type=visionx_cross_border_requisite_type_for(ps_name),
         success_url=(getattr(pay_in, "success_url", None) or None),
         cancel_url=(getattr(pay_in, "failed_url", None) or None),
