@@ -262,7 +262,7 @@ def visionx_create_invoice(
     option = str(payload["paymentOption"] or "").upper()
     if option == "CROSS_BORDER":
         payload["crossBorderCurrency"] = (cross_border_currency or "").upper() or None
-        payload["crossBorderRequisiteType"] = cross_border_requisite_type or "PHONE"
+        payload["crossBorderRequisiteType"] = cross_border_requisite_type
     if success_url:
         payload["successUrl"] = success_url
     if cancel_url:
