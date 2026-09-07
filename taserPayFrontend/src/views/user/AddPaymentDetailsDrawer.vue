@@ -220,12 +220,11 @@ watch (
   () => itemData.value.payment_system,
   () => {
     if (itemData.value.payment_system) {
-      console.log ({ itemData: itemData.value })
-      currentFields.value = structuredClone (toRaw (payment_system_options.value[itemData.value.payment_system]))
-      console.log ({ currentFields: currentFields.value })
+      const schema = payment_system_options.value[itemData.value.payment_system]
+      currentFields.value = structuredClone (toRaw (schema || {
+        card_number: { type: "number", unique: false, cash: false },
+      }))
       itemData.value.details = []
-
-      // itemData.value.details = Object.fromEntries (currentFields.value.map (field => [field, ""]))
     }
   },
   { deep: true },
@@ -246,6 +245,9 @@ const switchSelection = (values, name, key) => {
 }
 
 const addDetails = () => {
+  if (!Array.isArray (itemData.value.details)) {
+    itemData.value.details = []
+  }
   const tmpId = Math.random ().toString (36).substring (2, 15) + Math.random ().toString (36).substring (2, 15)
 
   itemData.value.details.push ({

@@ -382,6 +382,9 @@ const detailsBaseData = computed (() => {
 
 
 const addDetails = () => {
+  if (!Array.isArray (itemData.value.details)) {
+    itemData.value.details = []
+  }
   itemData.value.details.push (structuredClone (toRaw (detailsBaseData.value)))
 }
 
