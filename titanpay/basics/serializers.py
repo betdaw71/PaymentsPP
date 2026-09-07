@@ -317,7 +317,7 @@ class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PaymentDetailsGroup
-        fields = ('owner', 'currency', 'payment_system', 'min_amount_out', 'max_amount_out', 'in_active', 'out_active', 'allowed_traffic', 'details', 'deposit_number_on', 'bic', 'work_type')
+        fields = ('owner', 'currency', 'payment_system', 'min_amount_out', 'max_amount_out', 'min_amount_in', 'max_amount_in', 'in_active', 'out_active', 'allowed_traffic', 'details', 'deposit_number_on', 'bic', 'work_type')
 
     def create(self, validated_data):
         traffic_types = validated_data.pop('allowed_traffic')
@@ -467,6 +467,8 @@ class MinMaxAmountOutSerializer(serializers.Serializer):
     min_amount_out = serializers.DecimalField(max_digits=32, decimal_places=2)
     max_amount_out = serializers.DecimalField(max_digits=32, decimal_places=2)
     volume_in = serializers.DecimalField(max_digits=32, decimal_places=2)
+    min_amount_in = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
+    max_amount_in = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
 
 
 class TeamLeadSerializer(serializers.ModelSerializer):

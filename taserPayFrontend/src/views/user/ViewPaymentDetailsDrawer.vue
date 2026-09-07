@@ -443,6 +443,8 @@ const updateLimits = () => {
   baseStore.updatePaymentDetailLimitsById({
     min_amount_out: itemData.value.min_amount_out,
     max_amount_out: itemData.value.max_amount_out,
+    min_amount_in: itemData.value.min_amount_in,
+    max_amount_in: itemData.value.max_amount_in,
     volume_in: itemData.value.volume_in,
   }, itemData.value.id).then (response => {
     if (response.error) {
@@ -698,6 +700,26 @@ const switchSelection = (values, name, key) => {
                 </VCol>
                 <VCol cols="6">
                   <VTextField
+                    v-model="itemData.min_amount_in"
+                    :label="$t('min_amount_in')"
+                    :rules="[
+                      requiredValidator
+                    ]"
+                    :disabled="!authStore.is_support() && !authStore.is_trader()"
+                  />
+                </VCol>
+                <VCol cols="6">
+                  <VTextField
+                    v-model="itemData.max_amount_in"
+                    :label="$t('max_amount_in')"
+                    :rules="[
+                      requiredValidator
+                    ]"
+                    :disabled="!authStore.is_support() && !authStore.is_trader()"
+                  />
+                </VCol>
+                <VCol cols="6">
+                  <VTextField
                     v-model="itemData.min_amount_out"
                     :label="$t('min_amount_out')"
                     :rules="[
@@ -727,7 +749,7 @@ const switchSelection = (values, name, key) => {
                   />
                 </VCol>
                 <VCol
-                  v-if="authStore.is_support()"
+                  v-if="authStore.is_support() || authStore.is_trader()"
                   cols="12"
                 >
                   <VBtn

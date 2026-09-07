@@ -1,4 +1,4 @@
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Q
 from basics.models import TraderTeam, TraderTeamRates
 
 
@@ -16,3 +16,11 @@ def get_teams_for_payment_systems(payment_systems):
             payment_system__in=systems,
         ))
     )
+
+
+def in_order_amount_q(amount, *, psp_q=None):
+    """Сумма одного in-ордера в [min_amount_in, max_amount_in]. PSP не ограничиваем."""
+    in_range = Q(min_amount_in__lte=amount) & Q(max_amount_in__gte=amount)
+    if psp_q is None:
+        return in_range
+    return in_range | psp_q

@@ -2,6 +2,7 @@ from merchant.models import Merchant, MerchantSolution
 from basics.models import PaymentDetails, PaymentSystem, Trader, PaymentDetailsGroup, TrafficType
 from rest_framework.exceptions import ValidationError
 from django.db.models import F, ExpressionWrapper, DecimalField
+from trade.routing.routeutils import in_order_amount_q
 import random
 import re
 from decimal import Decimal
@@ -67,7 +68,7 @@ class SBPRouting:
         filtered_options = possible_options.annotate(
             total_value=ExpressionWrapper(F('current_volume') + amount,
                                           output_field=DecimalField(max_digits=32, decimal_places=2))
-        ).filter(total_value__lte=F('limit_per_period'))
+        ).filter(total_value__lte=F('limit_per_period')).filter(in_order_amount_q(amount))
 
         return filtered_options
 

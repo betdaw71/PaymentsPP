@@ -7,7 +7,7 @@ import re
 from decimal import Decimal
 
 from trade.routing.ps_names import routing_payment_systems
-from trade.routing.routeutils import get_teams_for_payment_systems
+from trade.routing.routeutils import get_teams_for_payment_systems, in_order_amount_q
 from payments.psp_payin import psp_trader_usernames
 
 
@@ -35,7 +35,9 @@ class SberRouting:
                 F("current_volume") + amount,
                 output_field=DecimalField(max_digits=32, decimal_places=2),
             )
-        ).filter(Q(total_value__lte=F("limit_per_period")) | psp_q)
+        ).filter(Q(total_value__lte=F("limit_per_period")) | psp_q).filter(
+            in_order_amount_q(amount, psp_q=psp_q)
+        )
         try:
             from payments.payin_trace import record_in_queryset
 

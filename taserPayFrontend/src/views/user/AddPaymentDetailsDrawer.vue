@@ -54,6 +54,8 @@ const baseData = ref ({
   owner: "",
   min_amount_out: 0,
   max_amount_out: 10000,
+  min_amount_in: 0,
+  max_amount_in: 999999999,
   allowed_traffic: [],
   in_active: false,
   out_active: false,
@@ -389,6 +391,24 @@ const updateDetail = (index, data) => {
                 <VSwitch
                   v-model="itemData.out_active"
                   :label="$t('out_active')"
+                />
+              </VCol>
+              <VCol cols="6">
+                <VTextField
+                  v-model="itemData.min_amount_in"
+                  :label="$t('min_amount_in')"
+                  :rules="[
+                    requiredValidator
+                  ]"
+                />
+              </VCol>
+              <VCol cols="6">
+                <VTextField
+                  v-model="itemData.max_amount_in"
+                  :label="$t('max_amount_in')"
+                  :rules="[
+                    requiredValidator
+                  ]"
                 />
               </VCol>
               <VCol cols="6">

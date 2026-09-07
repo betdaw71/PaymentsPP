@@ -139,6 +139,9 @@ class PaymentDetailsGroup(models.Model):
 
     min_amount_out = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     max_amount_out = models.DecimalField(default=1000000, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    # Лимит суммы одного pay-in по группе. Дефолт широкий — существующие группы и PSP не режем.
+    min_amount_in = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    max_amount_in = models.DecimalField(default=Decimal("999999999"), validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     amount = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)  # balance
     bic = models.CharField(max_length=9, blank=True, null=True, validators=[bic_validator])
     deposit_number_on = models.BooleanField(default=False)

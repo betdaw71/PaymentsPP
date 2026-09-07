@@ -100,6 +100,21 @@ class VietcombankC2cRoutingTest(TestCase):
         self.assertEqual(translate_bank("Vietcombank"), "Vietcombank")
         self.assertIsNone(translate_bank("C2CKZT"))
 
+    def test_min_max_amount_in_excludes_local_group(self):
+        self.group.min_amount_in = Decimal("1000")
+        self.group.max_amount_in = Decimal("5000")
+        self.group.save(update_fields=["min_amount_in", "max_amount_in"])
+        router = route(self.c2ckzt)
+        usd = Decimal("10000") / self.c2ckzt.get_rate()
+        too_big = router.get_possible_options_in(
+            None, self.c2ckzt, Decimal("10000"), self.traffic, usd
+        )
+        self.assertFalse(too_big.filter(id=self.group.id).exists())
+        ok = router.get_possible_options_in(
+            None, self.c2ckzt, Decimal("4000"), self.traffic, Decimal("4000") / self.c2ckzt.get_rate()
+        )
+        self.assertTrue(ok.filter(id=self.group.id).exists())
+
 
 @override_settings(XE_KZT_MARKUP="", XE_KZT_MARKUP_BY_PS='{"Vietcombank":"1.04"}')
 class XeKztMarkupTest(SimpleTestCase):

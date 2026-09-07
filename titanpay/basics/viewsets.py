@@ -671,6 +671,10 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
         group.min_amount_out = serializer_data['min_amount_out']
         group.max_amount_out = serializer_data['max_amount_out']
         group.limit_per_period = serializer_data['volume_in']
+        if 'min_amount_in' in serializer_data:
+            group.min_amount_in = serializer_data['min_amount_in']
+        if 'max_amount_in' in serializer_data:
+            group.max_amount_in = serializer_data['max_amount_in']
         group.save()
 
         return Response(status=status.HTTP_200_OK)
