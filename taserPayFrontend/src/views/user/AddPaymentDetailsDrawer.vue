@@ -247,6 +247,15 @@ const switchSelection = (values, name, key) => {
 }
 
 const addDetails = () => {
+  if (!itemData.value.payment_system) {
+    snackbar.value = {
+      enabled: true,
+      type: "error",
+      message: `${t('payment_system')}: ${t('required')}`,
+    }
+
+    return
+  }
   if (!Array.isArray (itemData.value.details)) {
     itemData.value.details = []
   }
@@ -429,11 +438,13 @@ const updateDetail = (index, data) => {
                   ]"
                 />
               </VCol>
-              <VCardText v-if="itemData.payment_system">
+              <VCol
+                cols="12"
+              >
                 <div
-                  v-for="(detail, index) in itemData.details"
+                  v-for="(detail, index) in itemData.details || []"
                   :key="detail.tmpId"
-                  class="my-4 ma-sm-4"
+                  class="my-4"
                 >
                   <PaymentDetails
                     :id="index"
@@ -446,11 +457,6 @@ const updateDetail = (index, data) => {
                     @update="updateDetail"
                   />
                 </div>
-              </VCardText>
-              <VCol
-                v-if="itemData.payment_system"
-                cols="12"
-              >
                 <VBtn
                   class="w-100"
                   variant="outlined"
