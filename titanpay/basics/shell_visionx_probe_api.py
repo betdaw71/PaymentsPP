@@ -17,7 +17,8 @@ def run():
     for currency in ("KZT", "RUB"):
         ok, data = visionx_get_payment_methods(currency=currency)
         print(f"\n--- payment-methods currency={currency} ok={ok} ---")
-        print(data)
+        items = data.get("items") if isinstance(data, dict) else data
+        print(items if items is not None else data)
 
 
 run()

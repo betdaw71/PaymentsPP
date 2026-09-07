@@ -42,25 +42,43 @@ def _parse_json_map(setting_name: str) -> dict[str, str]:
     return {str(k): str(v) for k, v in data.items()}
 
 
+def _opt_str(raw) -> str | None:
+    val = str(raw or "").strip()
+    if not val or val.lower() in ("null", "none"):
+        return None
+    return val
+
+
+def _setting_for_ps(map_name: str, default_name: str, ps_name: str | None) -> str | None:
+    ps = (ps_name or "").strip()
+    mapped = _parse_json_map(map_name)
+    if ps and ps in mapped:
+        return _opt_str(mapped[ps])
+    return _opt_str(getattr(settings, default_name, None))
+
+
 def visionx_payment_method_for(payment_system_name: str | None) -> str | None:
-    ps_name = (payment_system_name or "").strip()
-    mapped = _parse_json_map("VISIONX_PAYIN_METHOD_MAP").get(ps_name)
-    if mapped:
-        return mapped.strip()
-    default = (getattr(settings, "VISIONX_PAYIN_METHOD", None) or "").strip()
-    return default or None
+    return _setting_for_ps("VISIONX_PAYIN_METHOD_MAP", "VISIONX_PAYIN_METHOD", payment_system_name)
 
 
 def visionx_payment_option_for(payment_system_name: str | None) -> str | None:
-    ps_name = (payment_system_name or "").strip()
-    mapped = _parse_json_map("VISIONX_PAYIN_OPTION_MAP").get(ps_name)
-    if mapped:
-        val = mapped.strip()
-        return val if val.lower() not in ("null", "none", "") else None
-    default = (getattr(settings, "VISIONX_PAYIN_OPTION", None) or "").strip()
-    if default.lower() in ("null", "none", ""):
-        return None
-    return default or None
+    return _setting_for_ps("VISIONX_PAYIN_OPTION_MAP", "VISIONX_PAYIN_OPTION", payment_system_name)
+
+
+def visionx_cross_border_currency_for(payment_system_name: str | None) -> str | None:
+    return _setting_for_ps(
+        "VISIONX_CROSS_BORDER_CURRENCY_MAP",
+        "VISIONX_CROSS_BORDER_CURRENCY",
+        payment_system_name,
+    )
+
+
+def visionx_cross_border_requisite_type_for(payment_system_name: str | None) -> str | None:
+    return _setting_for_ps(
+        "VISIONX_CROSS_BORDER_REQUISITE_TYPE_MAP",
+        "VISIONX_CROSS_BORDER_REQUISITE_TYPE",
+        payment_system_name,
+    )
 
 
 def visionx_callback_url() -> str:
@@ -193,6 +211,8 @@ def _request(
     )
     if not r.ok:
         return False, resp_body if isinstance(resp_body, dict) else {"error": str(resp_body)}
+    if isinstance(resp_body, list):
+        return True, {"items": resp_body}
     invoice = _unwrap_invoice_response(resp_body)
     if invoice is None:
         return False, {"error": "unexpected_response_shape", "upstream": resp_body}
@@ -209,6 +229,10 @@ def visionx_create_invoice(
     user_id: str | None = None,
     payment_method: str | None = None,
     payment_option: str | None = None,
+    cross_border_currency: str | None = None,
+    cross_border_requisite_type: str | None = None,
+    success_url: str | None = None,
+    cancel_url: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
     payload: dict[str, Any] = {
@@ -220,15 +244,16 @@ def visionx_create_invoice(
         "internalId": internal_id,
         "userId": user_id or internal_id,
         "startDeal": True,
+        "paymentOption": payment_option,
+        "paymentMethod": payment_method,
     }
-    if payment_option is not None:
-        payload["paymentOption"] = payment_option
-    else:
-        payload["paymentOption"] = None
-    if payment_method is not None:
-        payload["paymentMethod"] = payment_method
-    else:
-        payload["paymentMethod"] = None
+    if (payment_option or "").upper() == "CROSS_BORDER":
+        payload["crossBorderCurrency"] = (cross_border_currency or "").upper() or None
+        payload["crossBorderRequisiteType"] = cross_border_requisite_type
+    if success_url:
+        payload["successUrl"] = success_url
+    if cancel_url:
+        payload["cancelUrl"] = cancel_url
     return _request("POST", "/api/merchant/invoices", json_payload=payload, pay_in=pay_in)
 
 
@@ -359,22 +384,42 @@ def _first_deal(create_body: dict) -> dict:
 
 
 def visionx_map_requisite(create_body: dict) -> dict:
-    """Маппинг deals[].requisites из POST /api/merchant/invoices."""
-    deal = _first_deal(create_body if isinstance(create_body, dict) else {})
+    """Маппинг deals[].requisites / paymentRequisites из POST /api/merchant/invoices."""
+    body = create_body if isinstance(create_body, dict) else {}
+    deal = _first_deal(body)
     requisites = deal.get("requisites") if isinstance(deal, dict) else {}
     if not isinstance(requisites, dict):
         requisites = {}
-    address = (requisites.get("requisites") or "").strip()
-    owner = requisites.get("holder") or ""
-    bank = deal.get("paymentMethod") or ""
-    qr = (deal.get("qrCodeLink") or "").strip()
+    if not requisites and isinstance(body.get("paymentRequisites"), dict):
+        requisites = body.get("paymentRequisites") or {}
+    address = (
+        (requisites.get("requisites") or requisites.get("card") or requisites.get("cardNumber") or "")
+        .strip()
+    )
+    owner = requisites.get("holder") or requisites.get("owner") or ""
+    bank = (
+        (deal.get("paymentMethod") if isinstance(deal, dict) else None)
+        or body.get("paymentMethod")
+        or requisites.get("bank")
+        or ""
+    )
+    qr = ""
+    if isinstance(deal, dict):
+        qr = (deal.get("qrCodeLink") or "").strip()
+    if not qr:
+        qr = (body.get("invoiceUrl") or "").strip()
     if not address:
         if qr:
             return {"payment_form_url": qr, "owner": owner, "bank": bank}
         return {}
     digits = "".join(c for c in address if c.isdigit())
-    payment_option = (deal.get("paymentOption") or "").strip().upper()
-    if payment_option == "TO_CARD" and len(digits) >= 16:
+    payment_option = (
+        (deal.get("paymentOption") if isinstance(deal, dict) else None)
+        or body.get("paymentOption")
+        or ""
+    )
+    payment_option = str(payment_option).strip().upper()
+    if payment_option in ("TO_CARD", "CROSS_BORDER", "CARD") and len(digits) >= 16:
         return {"card_number": digits[:16], "owner": owner, "bank": bank}
     if address.startswith("+") or (digits and len(digits) <= 12):
         return {"phone": address if address.startswith("+") else f"+{digits}", "owner": owner, "bank": bank}
@@ -447,6 +492,10 @@ def try_attach_visionx_session(pay_in: Any) -> bool | None:
         user_id=payer_user_id,
         payment_method=visionx_payment_method_for(ps_name),
         payment_option=visionx_payment_option_for(ps_name),
+        cross_border_currency=visionx_cross_border_currency_for(ps_name),
+        cross_border_requisite_type=visionx_cross_border_requisite_type_for(ps_name),
+        success_url=(getattr(pay_in, "success_url", None) or None),
+        cancel_url=(getattr(pay_in, "failed_url", None) or None),
         pay_in=pay_in,
     )
     if not ok:

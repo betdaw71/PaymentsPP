@@ -94,13 +94,23 @@ def run() -> None:
         status=PayInStatus.objects.get(name="In Progress"),
         client=client,
     )
+    from payments.psp_payin import ensure_psp_payin_requisites_or_decline, try_attach_psp_sessions
+
+    try_attach_psp_sessions(pay_in)
+    ensure_psp_payin_requisites_or_decline(pay_in)
+    pay_in.refresh_from_db()
+    in_order.refresh_from_db()
 
     pd = in_order.payment_details
     if pd:
         print("trader:", pd.group.trader.user.username)
-        print("card:", pd.card_number)
+        print("local_card:", pd.card_number)
+    from payments.psp_payin import enrich_payin_payment_details
 
+    print("psp_details:", enrich_payin_payment_details({}, pay_in).get("payment_details"))
     print("pay_in_id:", pay_in.id)
+    print("pay_in status:", pay_in.status.name if pay_in.status else None)
+    print("in_order status:", in_order.status.name if in_order.status else None)
     print("payment page:", generate_link(pay_in.id, pay_in.payment_system.name))
 
 
