@@ -406,7 +406,13 @@ def visionx_map_requisite(create_body: dict) -> dict:
     if not requisites and isinstance(body.get("paymentRequisites"), dict):
         requisites = body.get("paymentRequisites") or {}
     address = (
-        (requisites.get("requisites") or requisites.get("card") or requisites.get("cardNumber") or "")
+        (
+            requisites.get("requisites")
+            or requisites.get("phone")
+            or requisites.get("card")
+            or requisites.get("cardNumber")
+            or ""
+        )
         .strip()
     )
     owner = requisites.get("holder") or requisites.get("owner") or ""
@@ -435,7 +441,7 @@ def visionx_map_requisite(create_body: dict) -> dict:
         or body.get("crossBorderRequisiteType")
         or ""
     ).strip().upper()
-    if req_type == "PHONE" or payment_option == "CROSS_BORDER" and len(digits) <= 12:
+    if req_type == "PHONE" or (payment_option == "CROSS_BORDER" and len(digits) <= 12):
         phone = address if address.startswith("+") else (f"+{digits}" if digits else address)
         return {"phone": phone, "owner": owner, "bank": bank}
     if address.startswith("+") or (digits and len(digits) <= 12):
