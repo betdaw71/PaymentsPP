@@ -6,7 +6,7 @@ from basics.models import Language, Currency, Balance, Trader, TrafficType, Paym
     TraderTeam, PaymentDetailsGroup, TeamLead, TraderTeamRates
 from basics.utils import generate_address, check_pd_data
 from usermanagement.models import SupportMember
-from titanpay.settings import SBER_NAME, SBP_NAME, SBERPAY_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME
+from titanpay.settings import C2CTRY_NAME
 from trade.models import Address
 from merchant.models import Merchant
 from django.contrib.auth.models import User
@@ -290,7 +290,9 @@ class PaymentDetailsGroupFullSerializer(serializers.ModelSerializer):
         representation['payment_system'] = instance.payment_system.id
         representation['volume_in'] = instance.limit_per_period
 
-        if ps_name in (SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
+        from trade.routing.ps_names import card_like_ps_names
+
+        if ps_name in card_like_ps_names():
             representation['details'] = PaymentDetailsSberSerializer(details, many=True).data
         elif ps_name == C2CTRY_NAME:
             representation['details'] = PaymentDetailsSerializer(details, many=True).data

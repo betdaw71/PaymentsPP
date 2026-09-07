@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from basics.models import Language, Currency, PaymentSystem, Trader, Balance, PaymentDetails, \
     TraderTeam, TrafficType, PaymentDetailsGroup, TeamLead, TraderTeamRates
 from basics.paginators import StandardResultsSetPagination
-from titanpay.settings import SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME
+from titanpay.settings import C2CTRY_NAME
 from usermanagement.models import SupportMember
 from merchant.models import Merchant
 from trade.models import Transaction, TransactionType
@@ -527,9 +527,9 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
         data = request.data
         data['group'] = str(group.id)
 
-        if ps_name in (SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
-            serializer = PaymentDetailsSberAddSerializer(data=request.data)
-        elif ps_name == C2CTRY_NAME:
+        from trade.routing.ps_names import card_like_ps_names
+
+        if ps_name in card_like_ps_names() or ps_name == C2CTRY_NAME:
             serializer = PaymentDetailsSberAddSerializer(data=request.data)
         else:
             return Response(status=status.HTTP_400_BAD_REQUEST, data={'error': 'This payment system is not supported'})

@@ -53,6 +53,11 @@ def choose_trader_in(amount: Decimal, payment_system: PaymentSystem, traffic_typ
     if chosen_detail is None:
         return None, usd_amount, payment_system, False
 
+    group_ps = getattr(getattr(chosen_detail, "group", None), "payment_system", None)
+    group_rate = group_ps.get_rate() if group_ps else None
+    if group_rate:
+        usd_amount = amount / group_rate
+
     return chosen_detail, usd_amount, payment_system, True
 
 

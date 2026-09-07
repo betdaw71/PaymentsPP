@@ -162,21 +162,48 @@ def get_binance_kzt_halyk_rate():
         return None
 
 
-def get_xe_kzt_rate(markup: Decimal = Decimal("1.05")):
-    """
-    Курс USDT/KZT через xe.com: USD/KZT + наценка (по умолчанию +5%).
-    USDT ≈ 1 USD, поэтому берём USD/KZT напрямую.
-    Наценку можно переопределить в settings.XE_KZT_MARKUP (например "1.05").
-    """
+DEFAULT_XE_KZT_MARKUP = Decimal("1.05")
+
+
+def _xe_kzt_markup_map() -> dict[str, Decimal]:
     from django.conf import settings
 
+    raw = getattr(settings, "XE_KZT_MARKUP_BY_PS", None) or ""
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        try:
+            data = json.loads(str(raw)) if str(raw).strip() else {}
+        except Exception:
+            logging.warning("XE_KZT_MARKUP_BY_PS is not valid JSON: %s", raw)
+            return {}
+    out = {}
+    for key, val in (data or {}).items():
+        try:
+            out[str(key)] = Decimal(str(val))
+        except Exception:
+            continue
+    return out
+
+
+def xe_kzt_markup_for_ps(ps_name: str | None = None) -> Decimal:
+    """Наценка XE USD/KZT. Сначала XE_KZT_MARKUP_BY_PS, иначе XE_KZT_MARKUP, иначе +5%."""
+    from django.conf import settings
+
+    by_ps = _xe_kzt_markup_map()
+    if ps_name and ps_name in by_ps:
+        return by_ps[ps_name]
     markup_override = getattr(settings, "XE_KZT_MARKUP", None)
     if markup_override:
         try:
-            markup = Decimal(str(markup_override))
+            return Decimal(str(markup_override))
         except Exception:
             pass
+    return DEFAULT_XE_KZT_MARKUP
 
+
+def get_xe_kzt_base_rate():
+    """USD/KZT mid-market с xe.com без наценки."""
     try:
         response = requests.get(
             "https://www.xe.com/api/protected/midmarket-converter/",
@@ -193,13 +220,26 @@ def get_xe_kzt_rate(markup: Decimal = Decimal("1.05")):
         if kzt is None:
             logging.error("XE KZT rate: KZT not found in response keys=%s", list(rates.keys())[:10])
             return None
-        base_rate = Decimal(str(kzt))
-        result = (base_rate * markup).quantize(Decimal("0.001"))
-        logging.info("KZT rate XE.com (USD/KZT + %s%%): base=%s result=%s", (markup - 1) * 100, base_rate, result)
-        return result
+        return Decimal(str(kzt))
     except Exception as exc:
         logging.error("XE KZT rate failed: %s", exc)
         return None
+
+
+def get_xe_kzt_rate(markup: Decimal | None = None, ps_name: str | None = None):
+    """
+    Курс USDT/KZT через xe.com: USD/KZT + наценка (по умолчанию +5%).
+    USDT ≈ 1 USD, поэтому берём USD/KZT напрямую.
+    Наценку: xe_kzt_markup_for_ps (XE_KZT_MARKUP_BY_PS / XE_KZT_MARKUP).
+    """
+    if markup is None:
+        markup = xe_kzt_markup_for_ps(ps_name)
+    base_rate = get_xe_kzt_base_rate()
+    if base_rate is None:
+        return None
+    result = (base_rate * markup).quantize(Decimal("0.001"))
+    logging.info("KZT rate XE.com (USD/KZT + %s%%): base=%s result=%s", (markup - 1) * 100, base_rate, result)
+    return result
 
 
 

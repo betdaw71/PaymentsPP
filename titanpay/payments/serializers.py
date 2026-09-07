@@ -17,15 +17,12 @@ from payments.utils2 import (
 )
 from payments.utils import generate_link, translate_bank
 from trade.serializers import PaymentDetailsSberActionSerializer
-from titanpay.settings import SBER_NAME, SBERPAY_NAME, SBP_NAME, SBERDEP_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME, PLUTUS_TEST_PS_NAME
+from titanpay.settings import SBERPAY_NAME, SBP_NAME, SBERDEP_NAME, C2CTRY_NAME
+from trade.routing.ps_names import card_like_ps_names
 
 
 def _card_payin_ps_names():
-    names = {SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME}
-    test_ps = (PLUTUS_TEST_PS_NAME or "").strip()
-    if test_ps:
-        names.add(test_ps)
-    return names
+    return card_like_ps_names()
 
 
 def merchant_payin_payment_details(pay_in) -> dict:

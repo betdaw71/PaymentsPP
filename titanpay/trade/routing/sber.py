@@ -6,13 +6,15 @@ import random
 import re
 from decimal import Decimal
 
-from trade.routing.routeutils import get_teams_for_ps
+from trade.routing.ps_names import routing_payment_systems
+from trade.routing.routeutils import get_teams_for_payment_systems
 from payments.psp_payin import psp_trader_usernames
 
 
 class SberRouting:
     def get_possible_options_in(self, risk_cluster, payment_system: PaymentSystem, amount, traffic_type: TrafficType, usd_amount):
-        teams = get_teams_for_ps(payment_system)
+        route_ps = routing_payment_systems(payment_system)
+        teams = get_teams_for_payment_systems(route_ps)
         psp_users = psp_trader_usernames()
         # PSP-виртуальные группы: не режем по team/traffic — иначе payplat1/gipay1
         # выпадают из каскада, если MerchantSolution.traffic ≠ Standard.
@@ -20,7 +22,7 @@ class SberRouting:
         base = PaymentDetailsGroup.objects.filter(
             work_type="by_card",
             status=1,
-            payment_system=payment_system,
+            payment_system__in=route_ps,
             in_active=True,
             trader__blocked=False,
         ).filter(balance_ok)
@@ -90,6 +92,14 @@ class SberRouting:
             if not available_details.exists():
                 skipped.append({"trader": uname, "group_id": str(group.id), "skip": "no_free_card"})
                 continue
+            group_ps = group.payment_system
+            group_rate = group_ps.get_rate() if group_ps else None
+            if group_rate:
+                usd_needed = amount / group_rate
+                trader_bal = getattr(getattr(group.trader, "balance_usdt", None), "amount", None)
+                if trader_bal is not None and trader_bal < usd_needed:
+                    skipped.append({"trader": uname, "group_id": str(group.id), "skip": "usd_for_group_ps"})
+                    continue
             chosen_detail = available_details.order_by('?').first()
             try:
                 record_in_sort_and_pick(
@@ -133,7 +143,7 @@ class SberRouting:
 
     def get_possible_options_out(self, payment_system: PaymentSystem, traffic_type: TrafficType, amount, excluded):
 
-        possible_groups = PaymentDetailsGroup.objects.filter(status=1, payment_system=payment_system, out_active=True, min_amount_out__lte=amount, max_amount_out__gte=amount, amount__gte=amount, trader__blocked=False, allowed_traffic=traffic_type, deposit_number_on=False)
+        possible_groups = PaymentDetailsGroup.objects.filter(status=1, payment_system__in=routing_payment_systems(payment_system), out_active=True, min_amount_out__lte=amount, max_amount_out__gte=amount, amount__gte=amount, trader__blocked=False, allowed_traffic=traffic_type, deposit_number_on=False)
 
         possible_groups = possible_groups.exclude(trader__in=excluded)
 

@@ -12,8 +12,13 @@ from titanpay.settings import PAYMENT_PAGE_URL, S3_ENDPOINT, ACCESS_KEY, SECRET_
 def translate_bank(name):
     if name == 'Sber':
         return 'Сбербанк'
-    elif name == 'Tinkoff':
+    if name == 'Tinkoff':
         return 'Тинькофф'
+    from trade.routing.ps_names import kzt_c2c_bank_ps_names
+
+    if name in kzt_c2c_bank_ps_names():
+        return name
+    return None
 
 
 class UUIDEncoder(JSONEncoder):

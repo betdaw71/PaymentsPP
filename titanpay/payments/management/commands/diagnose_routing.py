@@ -7,7 +7,8 @@ from basics.models import PaymentDetails, PaymentDetailsGroup, PaymentSystem, Tr
 from merchant.models import Merchant, MerchantSolution
 from trade.models import InOrder
 from trade.routing.base import route
-from trade.routing.routeutils import get_teams_for_ps
+from trade.routing.ps_names import routing_payment_systems
+from trade.routing.routeutils import get_teams_for_payment_systems
 from trade.utils import choose_trader_in
 
 
@@ -56,7 +57,12 @@ class Command(BaseCommand):
                 f"✗ Сумма вне MerchantSolution [{sol.min_limit_in} .. {sol.max_limit_in}]"
             ))
 
-        teams = get_teams_for_ps(ps)
+        route_ps = routing_payment_systems(ps)
+        extra = [p.name for p in route_ps if p.id != ps.id]
+        if extra:
+            self.stdout.write(f"alias PS:     {extra} (C2C/C2CKZT → bank groups)")
+
+        teams = get_teams_for_payment_systems(route_ps)
         self.stdout.write(f"\nteams с TraderTeamRates: {[t.name for t in teams]}")
         if not teams.exists():
             self.stdout.write(self.style.ERROR(

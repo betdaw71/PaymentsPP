@@ -7,7 +7,7 @@ from trade.models import InOrder, OutOrder, InOrderStatusChange, InOrderStatus, 
 from basics.models import PaymentSystem, PaymentDetails, PaymentDetailsGroup
 import logging
 from titanpay.settings import SYSTEM_INTERVAL_VALUE
-from basics.utils import get_balances, get_binance_kzt_halyk_rate, get_bybit_rate, get_bybit_kzt_rate, get_xe_kzt_rate
+from basics.utils import get_balances, get_binance_kzt_halyk_rate, get_bybit_rate, get_bybit_kzt_rate, get_xe_kzt_base_rate, xe_kzt_markup_for_ps
 from trade.models import Address
 from django.utils import timezone
 from payments.models import PayOut, PayOutStatus
@@ -127,9 +127,9 @@ def update_ps():
 
     pss = PaymentSystem.objects.all()
     rub_rate = get_bybit_rate("Sber")
-    kzt_xe = get_xe_kzt_rate()
-    kzt_bybit_kaspi = get_bybit_kzt_rate() if kzt_xe is None else None
-    kzt_binance_halyk = get_binance_kzt_halyk_rate() if kzt_xe is None else None
+    kzt_xe_base = get_xe_kzt_base_rate()
+    kzt_bybit_kaspi = get_bybit_kzt_rate() if kzt_xe_base is None else None
+    kzt_binance_halyk = get_binance_kzt_halyk_rate() if kzt_xe_base is None else None
     playments_ps_name = getattr(settings, "PLAYMENTS_C2C_NAME", "C2CTRY")
 
     for ps in pss:
@@ -138,9 +138,10 @@ def update_ps():
             if ps.name == playments_ps_name:
                 continue
             if currency == "KZT":
-                if kzt_xe is not None:
-                    kzt_rate = kzt_xe
-                    source = "XE.com+5%"
+                if kzt_xe_base is not None:
+                    markup = xe_kzt_markup_for_ps(ps.name)
+                    kzt_rate = (kzt_xe_base * markup).quantize(Decimal("0.001"))
+                    source = f"XE.com+{(markup - 1) * 100}%"
                 elif kzt_bybit_kaspi is not None:
                     kzt_rate = kzt_bybit_kaspi
                     source = "Bybit/Kaspi (fallback)"

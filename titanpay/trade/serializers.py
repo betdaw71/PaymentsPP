@@ -5,15 +5,11 @@ from basics.serializers import PaymentDetailsSberActionSerializer, PaymentDetail
     PaymentDetailsSberPayOrderSerializer, PaymentDetailsSBPOrderSerializer, PaymentDetailsSberDepOrderSerializer
 from merchant.models import Merchant
 from titanpay.settings import (
-    SBER_NAME,
     SBERPAY_NAME,
     SBP_NAME,
     SBERDEP_NAME,
     UPI_INTENT_NAME,
-    C2C_NAME,
-    PROTOCOL_C2C_NAME,
     C2CTRY_NAME,
-    PLUTUS_TEST_PS_NAME,
     CONCORDED_KBZPAY_PS_NAME,
     CONCORDED_WAVEPAY_PS_NAME,
 )
@@ -26,10 +22,9 @@ def payment_details_payload_for_order(payment_details, payment_system_name: str)
     """Реквизит в ответе списка ордеров: имя PS из UPI_INTENT_NAME (settings) — как карта Сбера."""
     if payment_details is None:
         return {}
-    card_ps = {SBER_NAME, UPI_INTENT_NAME, C2C_NAME, PROTOCOL_C2C_NAME}
-    test_ps = (PLUTUS_TEST_PS_NAME or "").strip()
-    if test_ps:
-        card_ps.add(test_ps)
+    from trade.routing.ps_names import card_like_ps_names
+
+    card_ps = card_like_ps_names() | {UPI_INTENT_NAME}
     if payment_system_name in card_ps:
         return PaymentDetailsSberOrderSerializer(payment_details).data
     if payment_system_name in (SBERDEP_NAME, C2CTRY_NAME):

@@ -17,6 +17,7 @@ from titanpay.settings import (
     SBP_NAME,
     UPI_INTENT_NAME,
 )
+from trade.routing.ps_names import kzt_c2c_bank_ps_names
 
 sber = SberRouting()
 sberpay = SberPayRouting()
@@ -50,6 +51,7 @@ def _c2c_style_ps_names():
         CONCORDED_KBZPAY_PS_NAME,
         CONCORDED_WAVEPAY_PS_NAME,
         C2CMMK_NAME,
+        *kzt_c2c_bank_ps_names(),
     }
     test_ps = (PLUTUS_TEST_PS_NAME or "").strip()
     if test_ps:
