@@ -80,7 +80,7 @@ def visionx_cross_border_currency_for(
     cur = (payin_currency or "").strip().upper()
     if cur and cur in by_payin:
         return _opt_str(by_payin[cur])
-    defaults = {"KZT": "VND", "RUB": "TJS"}
+    defaults = {"KZT": "TJS", "RUB": "TJS"}
     return defaults.get(cur)
 
 
