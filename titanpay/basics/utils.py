@@ -95,7 +95,10 @@ import requests
 from decimal import Decimal
 
 
-def check_pd_data(data):
+import uuid
+
+
+def check_pd_data(data, *, require_deposit=False):
     if data.get('phone') == '':
         data['phone'] = None
     if data.get('card_number') == '':
@@ -105,8 +108,15 @@ def check_pd_data(data):
     if data.get('sbp_enabled') == '':
         data['sbp_enabled'] = False
 
-    if data['phone'] is None and (data['sbp_enabled'] or data['sberpay_enabled']):
+    if data.get('phone') is None and (data.get('sbp_enabled') or data.get('sberpay_enabled')):
         raise ValidationError({'details': 'Phone cannot be empty if SBP or SberPay is enabled'})
+
+    deposit = data.get('deposit_number')
+    if deposit in (None, ''):
+        if require_deposit:
+            raise ValidationError({'deposit_number': ['This field is required.']})
+        # Колонка NOT NULL + unique среди active — для карт подставляем служебный номер.
+        data['deposit_number'] = str(uuid.uuid4().int % 10**20).zfill(20)
     return data
 
 

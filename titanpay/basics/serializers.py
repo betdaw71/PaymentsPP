@@ -302,9 +302,14 @@ class PaymentDetailsGroupFullSerializer(serializers.ModelSerializer):
 
 
 class PaymentDetailsSerializer(serializers.ModelSerializer):
+    deposit_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = PaymentDetails
         fields = ['sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number']
+        extra_kwargs = {
+            'deposit_number': {'required': False, 'allow_blank': True, 'allow_null': True},
+        }
 
 
 class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
@@ -321,7 +326,10 @@ class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
             payment_details_group = PaymentDetailsGroup.objects.create(**validated_data)
             for detail_data in details_data:
                 try:
-                    data = check_pd_data(detail_data)
+                    data = check_pd_data(
+                        detail_data,
+                        require_deposit=validated_data.get('work_type') == 'by_deposit_number',
+                    )
                     details = PaymentDetails.objects.create(group=payment_details_group, **data)
                 except IntegrityError as e:
                     raise ValidationError(detail=e.args[0])
@@ -398,12 +406,17 @@ class PaymentDetailsSberActionSerializer(serializers.ModelSerializer):
 
 
 class PaymentDetailsSberAddSerializer(serializers.ModelSerializer):
+    deposit_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = PaymentDetails
         fields = ('sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number', 'group')
+        extra_kwargs = {
+            'deposit_number': {'required': False, 'allow_blank': True, 'allow_null': True},
+        }
 
     def to_internal_value(self, data):
+        data = data.copy()
         if data.get('phone') == '':
             data['phone'] = None
         if data.get('card_number') == '':
@@ -413,8 +426,17 @@ class PaymentDetailsSberAddSerializer(serializers.ModelSerializer):
         if data.get('sbp_enabled') == '':
             data['sbp_enabled'] = False
 
-        if data['phone'] is None and (data['sbp_enabled'] or data['sberpay_enabled']):
+        if data.get('phone') is None and (data.get('sbp_enabled') or data.get('sberpay_enabled')):
             raise ValidationError({'details': 'Phone cannot be empty if SBP or SberPay is enabled'})
+
+        from basics.utils import check_pd_data
+
+        group = data.get('group')
+        work_type = None
+        if group:
+            g = PaymentDetailsGroup.objects.filter(pk=group).only('work_type').first()
+            work_type = g.work_type if g else None
+        data = check_pd_data(data, require_deposit=work_type == 'by_deposit_number')
         return super().to_internal_value(data)
 
 
