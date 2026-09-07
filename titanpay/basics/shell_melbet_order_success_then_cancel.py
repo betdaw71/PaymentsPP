@@ -144,12 +144,37 @@ def _payin_qs():
 
 
 def _get_order(lookup: str) -> tuple[PayIn, InOrder]:
+    import uuid as uuid_mod
+
     lookup = str(lookup).strip()
     qs = _payin_qs()
-    pay_in = qs.filter(id=lookup).first() or qs.filter(merchant_order_id=lookup).first()
+    pay_in = None
+    try:
+        uuid_mod.UUID(lookup)
+        is_uuid = True
+    except (ValueError, AttributeError, TypeError):
+        is_uuid = False
+    if is_uuid:
+        pay_in = qs.filter(id=lookup).first()
+        if pay_in is None:
+            order = InOrder.objects.filter(id=lookup).first()
+            if order is not None:
+                pay_in = qs.filter(order_id=order.id).first()
+        if pay_in is None:
+            from payments.models import VisionxPayInSession
+
+            session = (
+                VisionxPayInSession.objects.filter(provider_invoice_id=lookup).first()
+                or VisionxPayInSession.objects.filter(external_id=lookup).first()
+                or VisionxPayInSession.objects.filter(pay_in_id=lookup).first()
+            )
+            if session is not None:
+                pay_in = qs.filter(id=session.pay_in_id).first()
+    if pay_in is None:
+        pay_in = qs.filter(merchant_order_id=lookup).first()
     if pay_in is None:
         raise PayIn.DoesNotExist(
-            f"PayIn not found by id or merchant_order_id={lookup!r}"
+            f"PayIn not found by id / in_order / merchant_order_id / visionx invoice={lookup!r}"
         )
     if pay_in.order_id is None:
         raise ValueError(f"PayIn {pay_in.id} has no linked InOrder")
