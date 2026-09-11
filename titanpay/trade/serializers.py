@@ -701,7 +701,7 @@ class WithdrawalRequestSupportSerializer(serializers.ModelSerializer):
 
 class WithdrawalRequestCreateSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=32, decimal_places=2, validators=[MinValueValidator(0)])
-    address = serializers.CharField(max_length=42)
+    address = serializers.CharField(max_length=50)
 
 
 class WithdrawalRequestApproveSerializer(serializers.Serializer):

@@ -1509,6 +1509,26 @@ class Transaction(models.Model):
             return f"{name}-available"
 
 
+def withdrawal_frozen_balance(user: User) -> Balance:
+    """Frozen USDT account for merchant / teamlead / trader withdrawals."""
+    if getattr(user, "merchant", None) is not None:
+        return user.merchant.frozen_balance
+    teamlead = getattr(user, "teamlead", None)
+    if teamlead is not None:
+        if teamlead.frozen_balance_id is None:
+            trader = getattr(user, "trader", None)
+            if trader is not None and trader.frozen_balance_usdt_id:
+                teamlead.frozen_balance = trader.frozen_balance_usdt
+            else:
+                teamlead.frozen_balance = Balance.objects.create(type=1, amount=Decimal("0"))
+            teamlead.save(update_fields=["frozen_balance"])
+        return teamlead.frozen_balance
+    trader = getattr(user, "trader", None)
+    if trader is not None:
+        return trader.frozen_balance_usdt
+    raise ValidationError({"details": "Cannot withdraw from this user"})
+
+
 class WithdrawalRequest(models.Model):
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     status = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(2)])  # 0 -requested, 1 - approved, 2 - rejected
@@ -1527,10 +1547,7 @@ class WithdrawalRequest(models.Model):
             raise ValidationError({'details': 'Not enough funds to withdraw'})
         if 0 >= amount:
             raise ValidationError({'details': 'Amount should be more than zero!'})
-        if hasattr(from_user, 'merchant'):
-            frozen_balance = from_user.merchant.frozen_balance
-        else:
-            frozen_balance = from_user.trader.frozen_balance_usdt
+        frozen_balance = withdrawal_frozen_balance(from_user)
 
         tx_type = TransactionType.objects.get(name="Freeze")
 
@@ -1546,10 +1563,7 @@ class WithdrawalRequest(models.Model):
         transfer_balance = Balance.objects.get(type=3)
         tx_type = TransactionType.objects.get(name="Withdrawal")
 
-        if hasattr(self.from_user, 'merchant'):
-            frozen_balance = self.from_user.merchant.frozen_balance
-        else:
-            frozen_balance = self.from_user.trader.frozen_balance_usdt
+        frozen_balance = withdrawal_frozen_balance(self.from_user)
 
         if self.amount > frozen_balance.amount:
             raise ValidationError({'details': 'Not enough funds to withdraw'})
@@ -1565,10 +1579,7 @@ class WithdrawalRequest(models.Model):
             raise ValidationError({'details': 'Wrong status'})
         tx_type = TransactionType.objects.get(name="Deposit")
 
-        if hasattr(self.from_user, 'merchant'):
-            frozen_balance = self.from_user.merchant.frozen_balance
-        else:
-            frozen_balance = self.from_user.trader.frozen_balance_usdt
+        frozen_balance = withdrawal_frozen_balance(self.from_user)
 
         Transaction.create(_from=frozen_balance, _to=self.balance, value=self.amount, _transaction_type=tx_type,
                            _comment="Withdrawal request declined")

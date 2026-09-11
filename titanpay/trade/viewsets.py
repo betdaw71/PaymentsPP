@@ -287,8 +287,11 @@ class TransactionViewset(viewsets.ModelViewSet):
 
         if hasattr(self.request.user, 'teamlead'):
             balance = self.request.user.teamlead.balance
-            combined_queryset = Transaction.objects.filter(Q(from_balance=balance) | Q(to_balance=balance))
-            return combined_queryset
+            frozen_balance = self.request.user.teamlead.frozen_balance
+            q = Q(from_balance=balance) | Q(to_balance=balance)
+            if frozen_balance is not None:
+                q |= Q(from_balance=frozen_balance) | Q(to_balance=frozen_balance)
+            return Transaction.objects.filter(q)
 
         if not hasattr(self.request.user, 'supportmember'):
             return Transaction.objects.none()

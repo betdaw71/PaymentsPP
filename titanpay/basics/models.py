@@ -64,6 +64,9 @@ class TeamLead(models.Model):
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     user = models.OneToOneField(to=User, on_delete=models.CASCADE)
     balance = models.ForeignKey(to=Balance, on_delete=models.DO_NOTHING, null=True, related_name="teamlead")
+    frozen_balance = models.ForeignKey(
+        to=Balance, on_delete=models.DO_NOTHING, null=True, blank=True, related_name="teamlead_frozen"
+    )
     language = models.ForeignKey(to=Language, on_delete=models.SET_NULL, null=True)
     telegram = models.CharField(max_length=64, default=None, null=True)
     phone = models.CharField(max_length=64, default=None, null=True)
