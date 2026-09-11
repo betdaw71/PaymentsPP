@@ -5,7 +5,7 @@ from basics.serializers import TraderShortSupportSerializer, TraderToTransferSer
     TraderTeamRatesSerializer
 from rest_framework import status
 from rest_framework.response import Response
-from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates
+from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates, TeamLead
 from basics.permissions import TraderPermission, DebugPermission, SupportPermission, HeadSupportPermission
 from basics.serializers import TraderShortSerializer
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
@@ -233,6 +233,8 @@ def get_user_filter_support(request, *args, **kwargs):
     if user.supportmember.is_head:
         merchants = Merchant.objects.all()
         users += [{"name": merch.user.username} for merch in merchants]
+        teamleads = TeamLead.objects.all()
+        users += [{"name": teamlead.user.username} for teamlead in teamleads]
 
     return Response(status=status.HTTP_200_OK, data={"users": users})
 

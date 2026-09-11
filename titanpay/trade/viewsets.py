@@ -6,7 +6,7 @@ import django_filters
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Q
 from rest_framework.decorators import action
-from basics.models import Trader, Balance, PaymentDetails, TraderTeam, TraderTeamRates
+from basics.models import Trader, Balance, PaymentDetails, TraderTeam, TraderTeamRates, TeamLead
 from basics.serializers import TraderTeamSerializer, TraderTeamRatesSerializer
 from payments.models import PayOut
 from trade.utils2 import send_to_fastapi, orders_excel_http_response
@@ -169,7 +169,10 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
 
         merchants = Merchant.objects.all()
         merchant_balances = Balance.objects.filter(available_merchant__in=merchants)
-        query = WithdrawalRequest.objects.filter(Q(balance__in=merchant_balances) | Q(balance__in=balances))
+        teamlead_balances = Balance.objects.filter(teamlead__in=TeamLead.objects.all())
+        query = WithdrawalRequest.objects.filter(
+            Q(balance__in=merchant_balances) | Q(balance__in=balances) | Q(balance__in=teamlead_balances)
+        )
         return query
 
     @transaction.atomic
