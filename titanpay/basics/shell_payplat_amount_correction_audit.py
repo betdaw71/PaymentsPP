@@ -9,6 +9,16 @@ amount / usd_amount. Он важен: apply_psp_completed_recalc() считае�
 usd_amount по ТЕКУЩЕМУ курсу payment_system, и при сдвиге курса USDT-плечо
 уедет сильнее, чем изменилась сумма в KZT.
 
+У melbet на C2CKZT расчёты в тенге (uses_melbet_kzt_settlement): плечо мерчанта
+идёт blockchain → balance_kzt и от курса не зависит вовсе, а от курса зависят
+только списание с payplat1, trader_fee и доля тимлида. Поэтому дельты по двум
+плечам считаются и показываются отдельно.
+
+Ещё melbet-специфика: amount probe при неудачном роутинге создаёт заявку на
+близкую сумму (±20/50/100 от запрошенной). Если сумма подменялась, скрипт
+покажет строку PROBE — тогда «корректная сумма по чеку» может быть просто
+изначальным запросом мерчанта.
+
 Запуск (только просмотр текущего состояния):
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_payplat_amount_correction_audit.py
 
@@ -28,7 +38,8 @@ import re
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
-from payments.models import PayIn, PayplatPayInSession
+from merchant.kzt_settlement import merchant_available_balance, uses_melbet_kzt_settlement
+from payments.models import PayIn, PayInTraceLog, PayplatPayInSession
 from payments.payplat_client import payplat_webhook_paid_amount
 from trade.models import InOrder
 
@@ -91,6 +102,22 @@ def resolve(order_id: str):
     return [o.pay_in.order_by("-created_at").first() or o for o in orders]
 
 
+def amount_probe(order_id: str) -> tuple[Decimal, Decimal] | None:
+    """melbet probe: при неудачном роутинге заявка создаётся на близкую сумму (±20/50/100)."""
+    log = (
+        PayInTraceLog.objects.filter(merchant_order_id=order_id, direction="routing", body__amount_probe=True)
+        .order_by("-created_at")
+        .first()
+    )
+    if log is None:
+        return None
+    body = log.body or {}
+    try:
+        return q2(body.get("requested_amount")), q2(body.get("allocated_amount"))
+    except Exception:
+        return None
+
+
 def describe(order: InOrder) -> dict:
     solution = order.solution
     ps = solution.payment_system
@@ -106,6 +133,9 @@ def describe(order: InOrder) -> dict:
     return {
         "status": order.status.name if order.status_id else "-",
         "merchant": solution.merchant.user.username,
+        "merchant_obj": solution.merchant,
+        "kzt_settlement": uses_melbet_kzt_settlement(solution.merchant, ps),
+        "credit": (Decimal(str(order.amount or 0)) - Decimal(str(order.merchant_fee or 0))).quantize(Q2),
         "ps": ps.name,
         "currency": ps.currency.symbol if ps.currency_id else "?",
         "cur_rate": Decimal(str(ps.get_rate() or 0)),
@@ -146,11 +176,17 @@ def run() -> None:
         rows.append((oid, order, describe(order), corrected.get(oid)))
 
     for oid, order, d, new_amount in rows:
+        settlement = f"KZT (blockchain → balance_kzt), зачислено {d['credit']}" if d["kzt_settlement"] else "USDT"
         head = f"{oid}  [{d['status']}]  {d['merchant']}  {d['ps']}/{d['currency']}"
         print(head)
         print(f"   сейчас:   amount={d['amount']}  usd={d['usd']}  курс(ист.)={d['hist_rate']}  курс(тек.)={d['cur_rate']}")
         print(f"   комиссии: merchant_fee={d['merchant_fee']}  trader_fee={d['trader_fee']}  "
               f"trader={d['trader']}  teamlead={d['teamlead']} ({d['tl_pct']}%)")
+        print(f"   расчёт:   {settlement}")
+        probe = amount_probe(oid)
+        if probe is not None:
+            requested, allocated = probe
+            print(f"   PROBE:    мерчант просил {requested}, создали на {allocated}")
         completed = d["completed"].astimezone(MSK).strftime("%Y-%m-%d %H:%M") if d["completed"] else "-"
         print(f"   completed={completed}  recalculated={d['recalculated']}")
 
@@ -166,7 +202,12 @@ def run() -> None:
             usd_hist = q2(delta / d["hist_rate"]) if d["hist_rate"] else None
             usd_cur = q2(delta / d["cur_rate"]) if d["cur_rate"] else None
             print(f"   ПО ЧЕКУ:  {new_amount}   дельта={delta}  "
-                  f"(USDT по ист. курсу {usd_hist} / по текущему {usd_cur})")
+                  f"(USDT с payplat1 по ист. курсу {usd_hist} / по текущему {usd_cur})")
+            if d["kzt_settlement"]:
+                fee_pct = (d["merchant_fee"] / d["amount"] * Decimal(100)) if d["amount"] else Decimal(0)
+                new_fee = q2(new_amount * fee_pct / Decimal(100))
+                print(f"   мерчанту: +{q2(new_amount - new_fee - d['credit'])} KZT "
+                      f"(новая комиссия {new_fee} при {fee_pct.quantize(Q2)}%)")
         print()
 
     print("=== СВОДКА ===")
@@ -192,6 +233,20 @@ def run() -> None:
     total_now = sum((d["amount"] for _, _, d, _ in rows), Decimal("0"))
     print(f"сумма сейчас: {q2(total_now)}")
 
+    probes = [(oid, amount_probe(oid)) for oid, _, _, _ in rows]
+    probed = [(oid, p) for oid, p in probes if p is not None]
+    if probed:
+        print(f"PROBE (сумма менялась при создании): {len(probed)}")
+        for oid, (requested, allocated) in probed:
+            print(f"  {oid}: просили {requested} → создали {allocated}")
+
+    kzt_rows = [d for _, _, d, _ in rows if d["kzt_settlement"]]
+    if kzt_rows:
+        merchant = kzt_rows[0]["merchant_obj"]
+        balance = merchant_available_balance(merchant)
+        print(f"balance_kzt {merchant.user.username}: {q2(balance.amount)} KZT "
+              f"(уход в минус разрешён, balance_allows_negative_ledger)")
+
     priced = [(d, new) for _, _, d, new in rows if new is not None]
     if priced:
         total_new = sum((new for _, new in priced), Decimal("0"))
@@ -203,9 +258,14 @@ def run() -> None:
         up = sum(1 for d, new in priced if new > d["amount"])
         down = sum(1 for d, new in priced if new < d["amount"])
         same = sum(1 for d, new in priced if new == d["amount"])
+        credit_delta = Decimal("0")
+        for d, new in priced:
+            fee_pct = (d["merchant_fee"] / d["amount"] * Decimal(100)) if d["amount"] else Decimal(0)
+            credit_delta += new - q2(new * fee_pct / Decimal(100)) - d["credit"]
         print(f"сумма по чекам: {q2(total_new)}  (передано {len(priced)} из {len(rows)})")
-        print(f"ИТОГО ДЕЛЬТА:   {total_delta}  ≈ {q2(usd_hist)} USDT по историческим курсам")
-        print(f"из них вверх={up}  вниз={down}  без изменений={same}")
+        print(f"ИТОГО ДЕЛЬТА:   {total_delta} KZT   из них вверх={up}  вниз={down}  без изменений={same}")
+        print(f"  плечо payplat1: {q2(usd_hist)} USDT по историческим курсам")
+        print(f"  плечо мерчанта: {q2(credit_delta)} KZT (за вычетом комиссии)")
         if len(priced) != len(rows):
             no_price = [oid for oid, _, _, new in rows if new is None]
             print(f"без корректной суммы: {', '.join(no_price)}")
