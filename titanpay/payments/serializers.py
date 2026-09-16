@@ -708,6 +708,7 @@ class PayOutPaymentCreateSerializer(serializers.ModelSerializer):
             pay_out.declined()
             return pay_out
 
+        from payments.astrum_client import try_create_astrum_payout
         from payments.playments_client import try_create_playments_payout
         from trade.utils import get_client_ip
 
@@ -719,6 +720,19 @@ class PayOutPaymentCreateSerializer(serializers.ModelSerializer):
                 od = OutOrder.objects.select_for_update().get(pk=out_order.pk)
                 if od.status and od.status.name == "New":
                     od.unfreeze("Playments withdrawal create failed")
+                    od.decrease_current_volume()
+                    od.status = OutOrderStatus.objects.get(name="Cannot process")
+                    od.updated_date = timezone.now()
+                    od.save(update_fields=["status", "updated_date"])
+            pay_out.declined()
+            return pay_out
+
+        astrum_ok = try_create_astrum_payout(pay_out, client_ip=client_ip)
+        if astrum_ok is False:
+            with transaction.atomic():
+                od = OutOrder.objects.select_for_update().get(pk=out_order.pk)
+                if od.status and od.status.name == "New":
+                    od.unfreeze("Astrum payout create failed")
                     od.decrease_current_volume()
                     od.status = OutOrderStatus.objects.get(name="Cannot process")
                     od.updated_date = timezone.now()
