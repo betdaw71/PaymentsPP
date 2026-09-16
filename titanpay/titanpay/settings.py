@@ -523,6 +523,19 @@ PLAYMENTS_WITHDRAWAL_CALLBACK_URL = os.getenv('PLAYMENTS_WITHDRAWAL_CALLBACK_URL
 _playments_raw_secret = os.getenv('PLAYMENTS_USE_RAW_SECRET', '').strip().lower()
 PLAYMENTS_USE_RAW_SECRET = False
 C2CTRY_NAME = os.getenv('C2CTRY_NAME', 'C2CTRY')
+
+# Astrum PSP (KZT pay-out; Fernet + Authorization API key; docs https://astrum.ac/api/redoc)
+ASTRUM_API_BASE = os.getenv('ASTRUM_API_BASE', 'https://astrum.ac/api').rstrip('/')
+ASTRUM_API_KEY = os.getenv('ASTRUM_API_KEY', '')
+ASTRUM_PRIVATE_KEY = os.getenv('ASTRUM_PRIVATE_KEY', '')
+ASTRUM_TRADER_USERNAME = os.getenv('ASTRUM_TRADER_USERNAME', 'astrum_kzt')
+ASTRUM_C2C_NAME = os.getenv('ASTRUM_C2C_NAME', 'C2CKZT')
+ASTRUM_CURRENCY = os.getenv('ASTRUM_CURRENCY', 'KZT')
+ASTRUM_METHOD_TYPE_ID = os.getenv('ASTRUM_METHOD_TYPE_ID', '')
+ASTRUM_METHOD_NAME_ID = os.getenv('ASTRUM_METHOD_NAME_ID', '')
+ASTRUM_EXPRESS = os.getenv('ASTRUM_EXPRESS', '').strip().lower() in ('1', 'true', 'yes')
+ASTRUM_CALLBACK_URL = os.getenv('ASTRUM_CALLBACK_URL', '')
+
 # Comma-separated trader usernames: skip auto liveness (status 5) in cron, like virtual PSP traders
 LIVENESS_EXEMPT_TRADER_USERNAMES = os.getenv('LIVENESS_EXEMPT_TRADER_USERNAMES', '')
 
