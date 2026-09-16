@@ -119,7 +119,7 @@ def ensure_payout_group(trader, currency, payment_system, traffic) -> PaymentDet
 
 def run():
     print("=== Astrum KZT pay-out trader ===")
-    Language.objects.first() or Language.objects.create(name="Russian")
+    lang = Language.objects.first() or Language.objects.create(name="Russian")
     kzt = Currency.objects.filter(symbol="KZT").first()
     if kzt is None:
         kzt = Currency.objects.create(symbol="KZT", name="Kazakhstani Tenge")
@@ -164,16 +164,29 @@ def run():
         fr = Balance.objects.create(type=1, amount=Decimal("0"))
         trader = Trader.objects.create(
             user=user,
+            language=lang,
             team=team,
-            balance=bal,
-            frozen_balance=fr,
-            language=Language.objects.first(),
+            balance_usdt=bal,
+            frozen_balance_usdt=fr,
+            currency=kzt,
+            is_boss=True,
+            blocked=False,
         )
         print(f"  + trader {trader.id}")
     else:
+        changed_fields = []
         if trader.team_id != team.id:
             trader.team = team
-            trader.save(update_fields=["team"])
+            changed_fields.append("team")
+        if trader.currency_id != kzt.id:
+            trader.currency = kzt
+            changed_fields.append("currency")
+        if changed_fields:
+            trader.save(update_fields=changed_fields)
+        if trader.balance_usdt and trader.balance_usdt.amount < Decimal("1000"):
+            trader.balance_usdt.amount = Decimal("100000")
+            trader.balance_usdt.save(update_fields=["amount"])
+            print("  + topped balance_usdt")
         print(f"  ~ trader {trader.id}")
 
     ensure_payout_group(trader, kzt, ps, traffic)
