@@ -36,6 +36,7 @@ def is_psp_trader(trader) -> bool:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import astrum_client as asc
     from payments import concored_client as cc
     from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
@@ -51,6 +52,7 @@ def is_psp_trader(trader) -> bool:
         or ec.is_expayone_trader(trader)
         or pc.is_protocol_trader(trader)
         or plc.is_playments_trader(trader)
+        or asc.is_astrum_trader(trader)
         or cc.is_concored_trader(trader)
         or pmc.is_paymap_trader(trader)
         or bzc.is_bitzone_trader(trader)
@@ -597,6 +599,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import astrum_client as asc
     from payments import concored_client as cc
     from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
@@ -612,6 +615,7 @@ def psp_trader_usernames() -> frozenset[str]:
         ec.expayone_trader_username(),
         pc.protocol_trader_username(),
         plc.playments_trader_username(),
+        asc.astrum_trader_username(),
         cc.concored_trader_username(),
         pmc.paymap_trader_username(),
         bzc.bitzone_trader_username(),
