@@ -234,9 +234,19 @@ def run() -> None:
     if dupes:
         print(f"ДУБЛИ id:     {len(dupes)} → {', '.join(dupes)}")
 
-    print(f"статусы:      {', '.join(sorted({d['status'] for _, _, d, _ in rows})) or '-'}")
+    from collections import Counter
+
+    status_counts = Counter(d["status"] for _, _, d, _ in rows)
+    trader_counts = Counter(d["trader"] for _, _, d, _ in rows)
+    print(
+        "статусы:      "
+        + (", ".join(f"{name}={cnt}" for name, cnt in sorted(status_counts.items())) or "-")
+    )
     print(f"мерчанты:     {', '.join(sorted({d['merchant'] for _, _, d, _ in rows})) or '-'}")
-    print(f"трейдеры:     {', '.join(sorted({d['trader'] for _, _, d, _ in rows})) or '-'}")
+    print(
+        "трейдеры:     "
+        + (", ".join(f"{name}={cnt}" for name, cnt in sorted(trader_counts.items())) or "-")
+    )
     print(f"методы:       {', '.join(sorted({d['ps'] + '/' + d['currency'] for _, _, d, _ in rows})) or '-'}")
 
     already = [oid for oid, _, d, _ in rows if d["recalculated"]]
