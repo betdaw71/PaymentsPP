@@ -23,7 +23,7 @@ from payments.fairpay_views import FairpayWebhookView
 from payments.expayone_views import ExpayoneWebhookView
 from payments.protocol_views import ProtocolWebhookView
 from payments.playments_views import PlaymentsDepositWebhookView, PlaymentsWithdrawalWebhookView
-from payments.astrum_views import AstrumPayoutWebhookView
+from payments.astrum_views import AstrumPayinWebhookView, AstrumPayoutWebhookView
 from payments.concored_views import ConcoredWebhookView
 from payments.paymap_views import PaymapWebhookView
 from payments.bitzone_views import bitzone_webhook_view
@@ -62,6 +62,7 @@ urlpatterns = [
     path('api/v1/webhooks/psp/playments/deposit/', PlaymentsDepositWebhookView.as_view(), name='webhook-playments-deposit'),
     path('api/v1/webhooks/psp/playments/withdrawal/', PlaymentsWithdrawalWebhookView.as_view(), name='webhook-playments-withdrawal'),
     path('api/v1/webhooks/psp/astrum/payout/', AstrumPayoutWebhookView.as_view(), name='webhook-astrum-payout'),
+    path('api/v1/webhooks/psp/astrum/payin/', AstrumPayinWebhookView.as_view(), name='webhook-astrum-payin'),
     path('api/v1/webhooks/psp/concored/', ConcoredWebhookView.as_view(), name='webhook-concored'),
     path('api/v1/webhooks/psp/paymap/', PaymapWebhookView.as_view(), name='webhook-paymap'),
     path('api/v1/webhooks/psp/bitzone/', bitzone_webhook_view, name='webhook-bitzone'),

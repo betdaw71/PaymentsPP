@@ -376,6 +376,20 @@ class AstrumPayOutSession(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class AstrumPayInSession(models.Model):
+    """Связка PayIn ↔ сделка Astrum (POST /source/deal, KZT)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="astrum_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_deal_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class PayInTraceLog(models.Model):
     """Audit-trail тел HTTP для pay-in: мерчант, Protocol, колбеки."""
 

@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 _PAYOUT_SUCCESS = frozenset({"paid", "corrected", "success"})
 _PAYOUT_FAIL = frozenset({"cancelled", "chargeback", "decline"})
+_PAYIN_SUCCESS = frozenset({"auto_success", "hand_success", "corrected"})
+_PAYIN_FAIL = frozenset({"auto_decline", "chargeback"})
 
 
 def astrum_trader_username() -> str:
@@ -35,12 +37,25 @@ def astrum_payment_system_name() -> str:
     return getattr(settings, "ASTRUM_C2C_NAME", "C2CKZT")
 
 
-def astrum_callback_url() -> str:
+def astrum_payout_callback_url() -> str:
     explicit = (getattr(settings, "ASTRUM_CALLBACK_URL", None) or "").strip().rstrip("/")
     if explicit:
         return f"{explicit}/"
     base = (getattr(settings, "PUBLIC_API_URL", "") or "").rstrip("/")
     return f"{base}/api/v1/webhooks/psp/astrum/payout/"
+
+
+def astrum_callback_url() -> str:
+    """Alias for payout callback (backward compatible)."""
+    return astrum_payout_callback_url()
+
+
+def astrum_payin_callback_url() -> str:
+    explicit = (getattr(settings, "ASTRUM_PAYIN_CALLBACK_URL", None) or "").strip().rstrip("/")
+    if explicit:
+        return f"{explicit}/"
+    base = (getattr(settings, "PUBLIC_API_URL", "") or "").rstrip("/")
+    return f"{base}/api/v1/webhooks/psp/astrum/payin/"
 
 
 def _api_base() -> str:
@@ -207,18 +222,30 @@ def _norm_status(raw: str | None) -> str:
     return (raw or "").strip().lower()
 
 
+def _webhook_payload(body: dict) -> dict:
+    if not isinstance(body, dict):
+        return {}
+    if isinstance(body.get("result"), dict) and "status" not in body:
+        return body["result"]
+    return body
+
+
 def astrum_payout_webhook_outcome(body: dict) -> str | None:
     """success | fail | None (ignore intermediate)."""
-    if not isinstance(body, dict):
-        return None
-    # Callback may be flat or wrapped in result
-    payload = body
-    if isinstance(body.get("result"), dict) and "status" not in body:
-        payload = body["result"]
-    status = _norm_status(payload.get("status"))
+    status = _norm_status(_webhook_payload(body).get("status"))
     if status in _PAYOUT_SUCCESS:
         return "success"
     if status in _PAYOUT_FAIL:
+        return "fail"
+    return None
+
+
+def astrum_payin_webhook_outcome(body: dict) -> str | None:
+    """success | fail | None (ignore intermediate)."""
+    status = _norm_status(_webhook_payload(body).get("status"))
+    if status in _PAYIN_SUCCESS:
+        return "success"
+    if status in _PAYIN_FAIL:
         return "fail"
     return None
 

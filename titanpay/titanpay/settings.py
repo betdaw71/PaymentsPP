@@ -535,6 +535,7 @@ ASTRUM_METHOD_TYPE_ID = os.getenv('ASTRUM_METHOD_TYPE_ID', '')
 ASTRUM_METHOD_NAME_ID = os.getenv('ASTRUM_METHOD_NAME_ID', '')
 ASTRUM_EXPRESS = os.getenv('ASTRUM_EXPRESS', '').strip().lower() in ('1', 'true', 'yes')
 ASTRUM_CALLBACK_URL = os.getenv('ASTRUM_CALLBACK_URL', '')
+ASTRUM_PAYIN_CALLBACK_URL = os.getenv('ASTRUM_PAYIN_CALLBACK_URL', '')
 
 # Comma-separated trader usernames: skip auto liveness (status 5) in cron, like virtual PSP traders
 LIVENESS_EXEMPT_TRADER_USERNAMES = os.getenv('LIVENESS_EXEMPT_TRADER_USERNAMES', '')
