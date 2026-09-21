@@ -172,6 +172,7 @@ const buildTransactionParams = (page = null) => {
 }
 
 const getTransactions = async () => {
+  normalizeAmountFilters ()
   loadMessage.value = {
     message: t ('data.loading'),
     status: 0,
@@ -205,28 +206,37 @@ const getTransactions = async () => {
 
 const exportLoading = ref (false)
 
+const normalizeAmountFilters = () => {
+  // Old UI stored 0 as "no filter"; clear it so Search/Export are not blocked.
+  if (!hasAmountFilter(filters.value.minAmount))
+    filters.value.minAmount = null
+  if (!hasAmountFilter(filters.value.maxAmount))
+    filters.value.maxAmount = null
+}
+
 const exportTransactions = async () => {
+  normalizeAmountFilters ()
   exportLoading.value = true
-  tradeStore.exportTradeTransaction (buildTransactionParams ()).then (
-    response => {
-      exportLoading.value = false
-      if (response.error)
-        throw response.error
-      snackbar.value = {
-        enabled: true,
-        type: "success",
-        message: t ('data.exported'),
-      }
-    },
-    error => {
-      exportLoading.value = false
-      snackbar.value = {
-        enabled: true,
-        type: "error",
-        message: error,
-      }
-    },
-  )
+  try {
+    const response = await tradeStore.exportTradeTransaction (buildTransactionParams ())
+    if (response.error)
+      throw response.error
+    snackbar.value = {
+      enabled: true,
+      type: total.value === 0 ? "warning" : "success",
+      message: total.value === 0
+        ? "По фильтру 0 записей. Очистите Type/Max Amount или выгрузите Orders In/Out (Completed)."
+        : t ('data.exported'),
+    }
+  } catch (error) {
+    snackbar.value = {
+      enabled: true,
+      type: "error",
+      message: typeof error === "string" ? error : (error?.message || "Export failed"),
+    }
+  } finally {
+    exportLoading.value = false
+  }
 }
 
 
@@ -244,6 +254,7 @@ watch (
 )
 onMounted(
   () => {
+    normalizeAmountFilters ()
     getTransactions ()
   },
 )
@@ -455,9 +466,9 @@ const switchSelection = (values, name, key) => {
                   </div>
                   <VBtn
                     :loading="exportLoading"
-                    variant="tonal"
-                    color="secondary"
-                    prepend-icon="tabler-screen-share"
+                    color="primary"
+                    variant="elevated"
+                    prepend-icon="tabler-download"
                     @click="exportTransactions"
                   >
                     {{ $t('export') }}
