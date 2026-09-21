@@ -346,6 +346,49 @@ def orders_excel_http_response(
     return response
 
 
+def build_transactions_excel_buffer(queryset, *, user_balance=None):
+    rows = []
+    # Caller should select_related before any slice; do not call select_related here.
+    for tx in queryset:
+        is_incoming = None
+        if user_balance is not None:
+            is_incoming = tx.is_incoming(user_balance)
+        created = tx.creation_date
+        if created is not None:
+            created = created.astimezone(pytz.utc).replace(tzinfo=None)
+        rows.append({
+            'ID': str(tx.id),
+            'Type': tx.transaction_type.name if tx.transaction_type else '',
+            'Amount (USDT)': tx.value,
+            'Direction': 'In' if is_incoming else ('Out' if is_incoming is not None else ''),
+            'Comment': tx.comment or '',
+            'Linked In Order': str(tx.linked_in_order_id) if tx.linked_in_order_id else '',
+            'Linked Out Order': str(tx.linked_out_order_id) if tx.linked_out_order_id else '',
+            'Created At (UTC)': created,
+        })
+
+    df = pd.DataFrame(rows, columns=[
+        'ID', 'Type', 'Amount (USDT)', 'Direction', 'Comment',
+        'Linked In Order', 'Linked Out Order', 'Created At (UTC)',
+    ])
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    buffer.seek(0)
+    return buffer
+
+
+def transactions_excel_http_response(queryset, *, filename_prefix: str = "transactions", user_balance=None):
+    buffer = build_transactions_excel_buffer(queryset, user_balance=user_balance)
+    filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
 def export_to_excel(queryset):
     """Legacy: upload to S3 and return public URL. Requires BUCKET_NAME in .env."""
     buffer = build_orders_excel_buffer(queryset)

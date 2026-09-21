@@ -183,6 +183,76 @@ const getFiltersOrder = async () => {
   )
 }
 
+const hasAmountFilter = value => {
+  if (value === null || value === undefined || value === "")
+    return false
+  const n = Number(value)
+
+  return !Number.isNaN(n) && n > 0
+}
+
+const buildOrderFilterParams = ({ paginate = false } = {}) => {
+  const params = {}
+
+  if (paginate) {
+    params.per_page = filters.value.rowsPerPage
+    params.page = currentPage.value
+  }
+
+  if (filters.value.ordering)
+    params.ordering = filters.value.ordering
+  if (filters.value.apply_filters) {
+    if (filters.value.searchQueryId)
+      params.id = filters.value.searchQueryId
+    if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
+      params.status__name__in = filters.value.selectedStatus.join (",")
+    if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)
+      params.payment_system__name__in = filters.value.selectedPaymentSystems.join (",")
+    if (hasAmountFilter(filters.value.minAmount))
+      params.amount__gte = filters.value.minAmount
+    if (hasAmountFilter(filters.value.maxAmount))
+      params.amount__lte = filters.value.maxAmount
+    if (hasAmountFilter(filters.value.minUSDAmount))
+      params.usd_amount__gte = filters.value.minUSDAmount
+    if (hasAmountFilter(filters.value.maxUSDAmount))
+      params.usd_amount__lte = filters.value.maxUSDAmount
+    if (filters.value.dateRange && filters.value.dateRange.includes (" to ")) {
+      const [start, end] = filters.value.dateRange.split (" to ").map (part => part.trim ())
+
+      params.creation_date__range = `${start},${end}T23:59:59`
+    }
+
+    if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
+      params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
+    if (filters.value.searchMerchantOrderId)
+      params.merchant_order_id = filters.value.searchMerchantOrderId
+
+    if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
+      params.traffic_type__name__in = filters.value.selectedTrafficTypes.join (",")
+    if (filters.value.searchPaymentDetailsId)
+      params.payment_details__id = filters.value.searchPaymentDetailsId
+    if (filters.value.searchTransactionId)
+      params.transaction_id = filters.value.searchTransactionId
+    if (filters.value.searchPaymentDetailsGroupId)
+      params.payment_details__group__id = filters.value.searchPaymentDetailsGroupId
+    if (filters.value.searchPaymentDetailsGroupOwner)
+      params.payment_details__group__owner__icontains = filters.value.searchPaymentDetailsGroupOwner
+    if (filters.value.searchCustomerId)
+      params.customer_id = filters.value.searchCustomerId
+
+    if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
+      params.trader__user__username__in = filters.value.selectedTraders.join (",")
+
+    if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
+      params.trader__team__name__in = filters.value.selectedTeams.join (",")
+
+    if (filters.value.selectedMerchants && filters.value.selectedMerchants.length > 0)
+      params.merchant__user__username__in = filters.value.selectedMerchants.join (",")
+  }
+
+  return params
+}
+
 const getOrders = async (resetInterval = false) => {
   loadMessage.value = {
     message: t ('data.loading'),
@@ -200,69 +270,7 @@ const getOrders = async (resetInterval = false) => {
   }
   autoUpdateStartTimestamp.value = filters.value.autoUpdateMode ? Date.now () : null
 
-  const params = {
-    per_page: filters.value.rowsPerPage,
-    page: currentPage.value,
-  }
-
-
-  // Base Filters
-  if (filters.value.ordering)
-    params.ordering = filters.value.ordering
-  if (filters.value.apply_filters) {
-    if (filters.value.searchQueryId)
-      params.id = filters.value.searchQueryId
-    if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
-      params.status__name__in = filters.value.selectedStatus.join (",")
-    if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)
-      params.payment_system__name__in = filters.value.selectedPaymentSystems.join (",")
-    if (filters.value.minAmount)
-      params.amount__gte = filters.value.minAmount
-    if (filters.value.maxAmount)
-      params.amount__lte = filters.value.maxAmount
-    if (filters.value.minUSDAmount)
-      params.usd_amount__gte = filters.value.minUSDAmount
-    if (filters.value.maxUSDAmount)
-      params.usd_amount__lte = filters.value.maxUSDAmount
-    if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-      params.creation_date__range = filters.value.dateRange.replace (" to ", ",").replaceAll(" ", "T")
-
-    // Merchant Filters
-    if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
-      params.currency__symbol__in = filters.value.selectedCurrencies.join (",")
-    if (filters.value.searchMerchantOrderId)
-      params.merchant_order_id = filters.value.searchMerchantOrderId
-
-    // Trader Filters
-
-    if (filters.value.selectedTrafficTypes && filters.value.selectedTrafficTypes.length > 0)
-      params.traffic_type__name__in = filters.value.selectedTrafficTypes.join (",")
-    if (filters.value.searchPaymentDetailsId)
-      params.payment_details__id = filters.value.searchPaymentDetailsId
-    if (filters.value.searchTransactionId)
-      params.transaction_id = filters.value.searchTransactionId
-    if (filters.value.searchPaymentDetailsGroupId)
-      params.payment_details__group__id = filters.value.searchPaymentDetailsGroupId
-    if (filters.value.searchPaymentDetailsGroupOwner)
-      params.payment_details__group__owner__icontains = filters.value.searchPaymentDetailsGroupOwner
-    if (filters.value.searchCustomerId)
-      params.customer_id = filters.value.searchCustomerId
-
-    // Trader Boss Filters (Only)
-    if (filters.value.selectedTraders && filters.value.selectedTraders.length > 0)
-      params.trader__user__username__in = filters.value.selectedTraders.join (",")
-
-    // Support Filters
-    if (filters.value.selectedTeams && filters.value.selectedTeams.length > 0)
-      params.trader__team__name__in = filters.value.selectedTeams.join (",")
-
-    // Head Support Filters (Only)
-    if (filters.value.selectedMerchants && filters.value.selectedMerchants.length > 0)
-      params.merchant__user__username__in = filters.value.selectedMerchants.join (",")
-  }
-
-  // END Filters
-
+  const params = buildOrderFilterParams ({ paginate: true })
 
   tradeStore.getTradeOrderOut (params).then (response => {
     if (response.error) {
@@ -406,7 +414,7 @@ const exportLoading = ref(false)
 
 const exportOrders = async () => {
   exportLoading.value = true
-  tradeStore.exportTradeOrderOut ({}).then (
+  tradeStore.exportTradeOrderOut (buildOrderFilterParams ()).then (
     response => {
       exportLoading.value = false
       if (response.error)

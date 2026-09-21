@@ -9,7 +9,7 @@ from rest_framework.decorators import action
 from basics.models import Trader, Balance, PaymentDetails, TraderTeam, TraderTeamRates, TeamLead
 from basics.serializers import TraderTeamSerializer, TraderTeamRatesSerializer
 from payments.models import PayOut
-from trade.utils2 import send_to_fastapi, orders_excel_http_response
+from trade.utils2 import send_to_fastapi, orders_excel_http_response, transactions_excel_http_response
 from usermanagement.models import SupportMember
 from trade.serializers import WithdrawalRequestSupportSerializer, WithdrawalRequestBasicSerializer, \
     WithdrawalRequestCreateSerializer, WithdrawalRequestApproveSerializer, WithdrawalRequestRejectSerializer, \
@@ -311,6 +311,29 @@ class TransactionViewset(viewsets.ModelViewSet):
 
         queryset = Transaction.objects.filter(Q(from_balance__in=balances) | Q(to_balance__in=balances))
         return queryset
+
+    def _export_user_balance(self):
+        user = self.request.user
+        if hasattr(user, 'merchant'):
+            return user.merchant.balance
+        if hasattr(user, 'submerchant'):
+            return user.submerchant.merchant.balance
+        if hasattr(user, 'teamlead'):
+            return user.teamlead.balance
+        if hasattr(user, 'trader'):
+            return user.trader.balance_usdt
+        return None
+
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
+    def export_transactions(self, request):
+        queryset = self.filter_queryset(self.get_queryset()).select_related(
+            'transaction_type', 'linked_in_order', 'linked_out_order',
+        ).order_by('-creation_date')[:10000]
+        return transactions_excel_http_response(
+            queryset,
+            filename_prefix="transactions",
+            user_balance=self._export_user_balance(),
+        )
 
 
 class InOrderFilter(django_filters.FilterSet):

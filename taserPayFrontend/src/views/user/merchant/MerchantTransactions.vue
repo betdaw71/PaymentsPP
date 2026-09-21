@@ -111,16 +111,21 @@ const orderingTypes = [
   },
 ]
 
-const getTransactions = async () => {
-  loadMessage.value = {
-    message: t ('data.loading'),
-    status: 0,
-  }
-  items.value = []
+/** Treat empty / 0 as "no amount filter" (0 is the stored default, not a real max). */
+const hasAmountFilter = value => {
+  if (value === null || value === undefined || value === "")
+    return false
+  const n = Number(value)
 
-  const params = {
-    per_page: filters.value.rowsPerPage,
-    page: currentPage.value,
+  return !Number.isNaN(n) && n > 0
+}
+
+const buildTransactionParams = (page = null) => {
+  const params = {}
+
+  if (page != null) {
+    params.per_page = filters.value.rowsPerPage
+    params.page = page
   }
 
   if (filters.value.ordering)
@@ -145,20 +150,35 @@ const getTransactions = async () => {
     params.id = filters.value.searchQueryId
   if (filters.value.selectedType && filters.value.selectedType.length > 0)
     params.transaction_type__name__in = filters.value.selectedType.join (",")
-  if (filters.value.minAmount)
+  if (hasAmountFilter(filters.value.minAmount))
     params.value__gte = filters.value.minAmount
-  if (filters.value.maxAmount)
+  if (hasAmountFilter(filters.value.maxAmount))
     params.value__lte = filters.value.maxAmount
   if (filters.value.searchQueryIn)
     params.linked_in_order = filters.value.searchQueryIn
   if (filters.value.searchQueryOut)
     params.linked_out_order = filters.value.searchQueryOut
-  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-    params.creation_date__range = filters.value.dateRange.replace (" to ", ",")
+  if (filters.value.dateRange && filters.value.dateRange.includes (" to ")) {
+    const [start, end] = filters.value.dateRange.split (" to ").map (part => part.trim ())
+    // Inclusive end-of-day so the last selected date is not truncated at 00:00.
+    params.creation_date__range = `${start},${end}T23:59:59`
+  }
   if (filters.value.direction === "outcoming")
-    params.from_balance__available___user__username__in = authStore.userData.username
+    params.from_balance__available_merchant__user__username__in = authStore.userData.username
   else if (filters.value.direction === "incoming")
     params.to_balance__available_merchant__user__username__in = authStore.userData.username
+
+  return params
+}
+
+const getTransactions = async () => {
+  loadMessage.value = {
+    message: t ('data.loading'),
+    status: 0,
+  }
+  items.value = []
+
+  const params = buildTransactionParams (currentPage.value)
   tradeStore.getTradeTransaction (params).then (response => {
     if (response.error) {
       throw response.error
@@ -181,6 +201,32 @@ const getTransactions = async () => {
       message: error,
     }
   })
+}
+
+const exportLoading = ref (false)
+
+const exportTransactions = async () => {
+  exportLoading.value = true
+  tradeStore.exportTradeTransaction (buildTransactionParams ()).then (
+    response => {
+      exportLoading.value = false
+      if (response.error)
+        throw response.error
+      snackbar.value = {
+        enabled: true,
+        type: "success",
+        message: t ('data.exported'),
+      }
+    },
+    error => {
+      exportLoading.value = false
+      snackbar.value = {
+        enabled: true,
+        type: "error",
+        message: error,
+      }
+    },
+  )
 }
 
 
@@ -408,9 +454,11 @@ const switchSelection = (values, name, key) => {
                     />
                   </div>
                   <VBtn
+                    :loading="exportLoading"
                     variant="tonal"
                     color="secondary"
                     prepend-icon="tabler-screen-share"
+                    @click="exportTransactions"
                   >
                     {{ $t('export') }}
                   </VBtn>
