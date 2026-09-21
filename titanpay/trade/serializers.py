@@ -618,9 +618,10 @@ class TransactionMerchantSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['transaction_type'] = instance.transaction_type.name
-        user = self.context['request'].user
-        user_balance = user.merchant.balance
-        representation['is_incoming'] = instance.is_incoming(user_balance)
+        merchant = self.context['request'].user.merchant
+        # Include KZT ledgers used for Melbet prepaid/settlement.
+        available = [b for b in (merchant.balance, getattr(merchant, 'balance_kzt', None)) if b is not None]
+        representation['is_incoming'] = any(instance.is_incoming(b) for b in available)
         return representation
 
 
@@ -632,9 +633,9 @@ class TransactionSubMerchantSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['transaction_type'] = instance.transaction_type.name
-        user = self.context['request'].user
-        user_balance = user.submerchant.merchant.balance
-        representation['is_incoming'] = instance.is_incoming(user_balance)
+        merchant = self.context['request'].user.submerchant.merchant
+        available = [b for b in (merchant.balance, getattr(merchant, 'balance_kzt', None)) if b is not None]
+        representation['is_incoming'] = any(instance.is_incoming(b) for b in available)
         return representation
 
 
