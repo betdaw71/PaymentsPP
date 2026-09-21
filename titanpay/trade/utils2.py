@@ -225,30 +225,49 @@ def send_to_fastapi(order: dict, file) -> dict:
     return response.json()
 
 
-def build_orders_excel_buffer(queryset):
-    data = list(queryset.values(
-        'id', 'pay_in__id', 'status__name', 'amount', 'usd_amount', 'trader_fee',
-        'payment_details__group__owner', 'solution__payment_system__name', 'creation_date',
-    ))
+def build_orders_excel_buffer(queryset, *, order_kind: str = "in"):
+    if order_kind == "out":
+        data = list(queryset.values(
+            'id', 'pay_out__id', 'merchant_order_id', 'status__name', 'amount', 'usd_amount',
+            'trader_fee', 'payment_details__group__owner', 'solution__payment_system__name',
+            'creation_date',
+        ))
+        column_mapping = {
+            'id': 'ID (OutOrder)',
+            'pay_out__id': 'PayOut ID',
+            'merchant_order_id': 'Merchant Order ID',
+            'status__name': 'Статус',
+            'amount': 'Сумма (Фиат)',
+            'usd_amount': 'Сумма (USDT)',
+            'trader_fee': 'Прибыль',
+            'payment_details__group__owner': 'ФИО',
+            'solution__payment_system__name': 'Платёжная система',
+            'creation_date': 'Дата создания',
+        }
+    else:
+        data = list(queryset.values(
+            'id', 'pay_in__id', 'merchant_order_id', 'status__name', 'amount', 'usd_amount',
+            'trader_fee', 'payment_details__group__owner', 'solution__payment_system__name',
+            'creation_date',
+        ))
+        column_mapping = {
+            'id': 'ID (InOrder)',
+            'pay_in__id': 'PayIn ID',
+            'merchant_order_id': 'Merchant Order ID',
+            'status__name': 'Статус',
+            'amount': 'Сумма (Фиат)',
+            'usd_amount': 'Сумма (USDT)',
+            'trader_fee': 'Прибыль',
+            'payment_details__group__owner': 'ФИО',
+            'solution__payment_system__name': 'Платёжная система',
+            'creation_date': 'Дата создания',
+        }
 
     for item in data:
         if item['creation_date']:
             item['creation_date'] = item['creation_date'].astimezone(pytz.utc).replace(tzinfo=None)
 
     df = pd.DataFrame(data)
-
-    column_mapping = {
-        'id': 'ID (InOrder)',
-        'pay_in__id': 'PayIn ID',
-        'status__name': 'Статус',
-        'amount': 'Сумма (Фиат)',
-        'usd_amount': 'Сумма (USDT)',
-        'trader_fee': 'Прибыль',
-        'payment_details__group__owner': 'ФИО',
-        'solution__payment_system__name': 'Платёжная система',
-        'creation_date': 'Дата создания',
-    }
-
     df.rename(columns=column_mapping, inplace=True)
 
     buffer = BytesIO()
@@ -258,8 +277,51 @@ def build_orders_excel_buffer(queryset):
     return buffer
 
 
-def orders_excel_http_response(queryset, *, filename_prefix: str = "orders"):
-    buffer = build_orders_excel_buffer(queryset)
+def orders_excel_http_response(queryset, *, filename_prefix: str = "orders", order_kind: str = "in"):
+    buffer = build_orders_excel_buffer(queryset, order_kind=order_kind)
+    filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def build_transactions_excel_buffer(queryset, *, user_balance=None):
+    rows = []
+    # Caller should select_related before any slice; do not call select_related here.
+    for tx in queryset:
+        is_incoming = None
+        if user_balance is not None:
+            is_incoming = tx.is_incoming(user_balance)
+        created = tx.creation_date
+        if created is not None:
+            created = created.astimezone(pytz.utc).replace(tzinfo=None)
+        rows.append({
+            'ID': str(tx.id),
+            'Type': tx.transaction_type.name if tx.transaction_type else '',
+            'Amount (USDT)': tx.value,
+            'Direction': 'In' if is_incoming else ('Out' if is_incoming is not None else ''),
+            'Comment': tx.comment or '',
+            'Linked In Order': str(tx.linked_in_order_id) if tx.linked_in_order_id else '',
+            'Linked Out Order': str(tx.linked_out_order_id) if tx.linked_out_order_id else '',
+            'Created At (UTC)': created,
+        })
+
+    df = pd.DataFrame(rows, columns=[
+        'ID', 'Type', 'Amount (USDT)', 'Direction', 'Comment',
+        'Linked In Order', 'Linked Out Order', 'Created At (UTC)',
+    ])
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    buffer.seek(0)
+    return buffer
+
+
+def transactions_excel_http_response(queryset, *, filename_prefix: str = "transactions", user_balance=None):
+    buffer = build_transactions_excel_buffer(queryset, user_balance=user_balance)
     filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     response = HttpResponse(
         buffer.getvalue(),
