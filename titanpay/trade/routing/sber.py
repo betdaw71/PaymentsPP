@@ -144,8 +144,18 @@ class SberRouting:
         return None
 
     def get_possible_options_out(self, payment_system: PaymentSystem, traffic_type: TrafficType, amount, excluded):
-
-        possible_groups = PaymentDetailsGroup.objects.filter(status=1, payment_system__in=routing_payment_systems(payment_system), out_active=True, min_amount_out__lte=amount, max_amount_out__gte=amount, amount__gte=amount, trader__blocked=False, allowed_traffic=traffic_type, deposit_number_on=False)
+        psp_users = psp_trader_usernames()
+        psp_q = Q(trader__user__username__in=psp_users)
+        possible_groups = PaymentDetailsGroup.objects.filter(
+            status=1,
+            payment_system__in=routing_payment_systems(payment_system),
+            out_active=True,
+            min_amount_out__lte=amount,
+            max_amount_out__gte=amount,
+            amount__gte=amount,
+            trader__blocked=False,
+            deposit_number_on=False,
+        ).filter(Q(allowed_traffic=traffic_type) | psp_q).distinct()
 
         possible_groups = possible_groups.exclude(trader__in=excluded)
 
@@ -160,13 +170,16 @@ class SberRouting:
             return None
 
         groups = list(possible_options)
-        from merchant.kzt_settlement import melbet_kzt_test_trader_username
+        from trade.routing.preferred import preferred_payout_trader_username
 
-        preferred = melbet_kzt_test_trader_username(merchant)
+        preferred = preferred_payout_trader_username(merchant)
         if preferred:
-            pref = [g for g in groups if g.trader.user.username == preferred]
+            pref = [
+                g for g in groups
+                if g.trader and g.trader.user and g.trader.user.username == preferred
+            ]
             if pref:
-                groups = pref + [g for g in groups if g.trader.user.username != preferred]
+                groups = pref + [g for g in groups if g not in pref]
 
         for group in groups:
             chosen_detail = PaymentDetails.objects.filter(group=group, status=1, sberpay_enabled=False, sbp_enabled=False, card_number__isnull=False).order_by('?').first()

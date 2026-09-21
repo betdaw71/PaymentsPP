@@ -76,21 +76,12 @@ def choose_trader_out(amount: Decimal, payment_system: PaymentSystem, traffic_ty
 
 def check_details(payment_system: PaymentSystem, details):
     required_fields = payment_system.required_fields
-
-    required_keys = set(payment_system.required_fields.keys())
-    detail_keys = set(details.keys())
-
-    missing_keys = required_keys - detail_keys
-    extra_keys = detail_keys - required_keys
+    required_keys = set(required_fields.keys())
+    missing_keys = required_keys - set(details.keys())
 
     if missing_keys:
         raise ValidationError({
             'details': f"Missing required fields for {payment_system.name}: {', '.join(missing_keys)}."
-        })
-
-    if extra_keys:
-        raise ValidationError({
-            'details': f"Extra fields present: {', '.join(extra_keys)}."
         })
 
     for key in required_keys:

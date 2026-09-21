@@ -5,6 +5,7 @@ from trade.routing.sberdep import SberDepRouting
 from rest_framework.exceptions import ValidationError
 from titanpay.settings import (
     C2C_NAME,
+    C2CKZT_NAME,
     C2CMMK_NAME,
     C2CTRY_NAME,
     CONCORDED_KBZPAY_PS_NAME,
@@ -46,6 +47,7 @@ def route(payment_system):
 def _c2c_style_ps_names():
     names = {
         C2C_NAME,
+        C2CKZT_NAME,
         PROTOCOL_C2C_NAME,
         C2CTRY_NAME,
         CONCORDED_KBZPAY_PS_NAME,
