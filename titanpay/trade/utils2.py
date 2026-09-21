@@ -325,6 +325,16 @@ def build_orders_excel_buffer(queryset, *, for_merchant: bool = False, payment_f
     return buffer
 
 
+def _excel_http_response(buffer, filename_prefix: str):
+    filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
 def orders_excel_http_response(
     queryset,
     *,
@@ -337,50 +347,86 @@ def orders_excel_http_response(
         for_merchant=for_merchant,
         payment_fk_id_field=payment_fk_id_field,
     )
-    filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    response = HttpResponse(
-        buffer.getvalue(),
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    return _excel_http_response(buffer, filename_prefix)
+
+
+def build_transactions_excel_buffer(queryset, *, user=None):
+    """Выгрузка проводок: статус и комиссия подтягиваются из связанной заявки.
+
+    Валюта считается по балансу: движения по KZT-балансам мерчанта — в тенге,
+    остальные — в USDT.
+    """
+    from trade.ledger import kzt_balance_ids, user_balance_ids
+
+    own_ids = {str(balance_id) for balance_id in user_balance_ids(user)}
+    kzt_ids = {str(balance_id) for balance_id in kzt_balance_ids()}
+    merchant_side = user is not None and (
+        hasattr(user, 'merchant') or hasattr(user, 'submerchant')
     )
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
+    fee_field = 'merchant_fee' if merchant_side else 'trader_fee'
 
+    value_fields = ['id', 'transaction_type__name', 'value', 'comment', 'creation_date',
+                    'from_balance_id', 'to_balance_id']
+    for prefix in ('linked_in_order__', 'linked_out_order__'):
+        value_fields.extend([
+            f'{prefix}id',
+            f'{prefix}status__name',
+            f'{prefix}{fee_field}',
+            f'{prefix}merchant_order_id',
+            f'{prefix}solution__payment_system__name',
+        ])
 
-def build_transactions_excel_buffer(queryset, *, user_balance=None, owned_balances=None):
     rows = []
-    owned_ids = {b.id for b in (owned_balances or []) if b is not None}
-    if user_balance is not None:
-        owned_ids.add(user_balance.id)
+    for item in queryset.values(*value_fields):
+        in_order_id = item.get('linked_in_order__id')
+        out_order_id = item.get('linked_out_order__id')
+        prefix = 'linked_in_order__' if in_order_id else 'linked_out_order__'
+        from_id = str(item.get('from_balance_id') or '')
+        to_id = str(item.get('to_balance_id') or '')
+        created = item.get('creation_date')
 
-    for tx in queryset:
-        is_incoming = None
-        if owned_ids:
-            to_owned = tx.to_balance_id in owned_ids
-            from_owned = tx.from_balance_id in owned_ids
-            if to_owned and not from_owned:
-                is_incoming = True
-            elif from_owned and not to_owned:
-                is_incoming = False
-            else:
-                is_incoming = to_owned
-        created = tx.creation_date
-        if created is not None:
-            created = created.astimezone(pytz.utc).replace(tzinfo=None)
+        if to_id in own_ids:
+            direction = 'Incoming'
+        elif from_id in own_ids:
+            direction = 'Outcoming'
+        else:
+            direction = ''
+
         rows.append({
-            'ID': str(tx.id),
-            'Type': tx.transaction_type.name if tx.transaction_type else '',
-            'Amount': tx.value,
-            'Direction': 'In' if is_incoming else ('Out' if is_incoming is not None else ''),
-            'Comment': tx.comment or '',
-            'Linked In Order': str(tx.linked_in_order_id) if tx.linked_in_order_id else '',
-            'Linked Out Order': str(tx.linked_out_order_id) if tx.linked_out_order_id else '',
-            'Created At (UTC)': created,
+            'id': item.get('id'),
+            'direction': direction,
+            'transaction_type': item.get('transaction_type__name'),
+            'value': item.get('value'),
+            'currency': 'KZT' if from_id in kzt_ids or to_id in kzt_ids else 'USDT',
+            'fee': item.get(f'{prefix}{fee_field}'),
+            'order_status': item.get(f'{prefix}status__name'),
+            'order_kind': 'Deposit' if in_order_id else ('Withdrawal' if out_order_id else ''),
+            'order_id': in_order_id or out_order_id,
+            'merchant_order_id': item.get(f'{prefix}merchant_order_id'),
+            'payment_system': item.get(f'{prefix}solution__payment_system__name'),
+            'comment': item.get('comment'),
+            'creation_date': created.astimezone(pytz.utc).replace(tzinfo=None) if created else None,
         })
 
-    df = pd.DataFrame(rows, columns=[
-        'ID', 'Type', 'Amount', 'Direction', 'Comment',
-        'Linked In Order', 'Linked Out Order', 'Created At (UTC)',
-    ])
+    column_mapping = {
+        'id': 'ID (транзакции)',
+        'direction': 'Направление',
+        'transaction_type': 'Тип',
+        'value': 'Сумма',
+        'currency': 'Валюта',
+        'fee': 'Комиссия мерчанта' if merchant_side else 'Комиссия трейдера',
+        'order_status': 'Статус заявки',
+        'order_kind': 'Тип заявки',
+        'order_id': 'ID заявки',
+        'merchant_order_id': 'Merchant order ID',
+        'payment_system': 'Платёжная система',
+        'comment': 'Комментарий',
+        'creation_date': 'Дата',
+    }
+
+    df = pd.DataFrame(rows, columns=list(column_mapping))
+    df.rename(columns=column_mapping, inplace=True)
+
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df.to_excel(writer, index=False)
@@ -388,25 +434,9 @@ def build_transactions_excel_buffer(queryset, *, user_balance=None, owned_balanc
     return buffer
 
 
-def transactions_excel_http_response(
-    queryset,
-    *,
-    filename_prefix: str = "transactions",
-    user_balance=None,
-    owned_balances=None,
-):
-    buffer = build_transactions_excel_buffer(
-        queryset,
-        user_balance=user_balance,
-        owned_balances=owned_balances,
-    )
-    filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    response = HttpResponse(
-        buffer.getvalue(),
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
+def transactions_excel_http_response(queryset, *, user=None, filename_prefix: str = "transactions"):
+    buffer = build_transactions_excel_buffer(queryset, user=user)
+    return _excel_http_response(buffer, filename_prefix)
 
 
 def export_to_excel(queryset):

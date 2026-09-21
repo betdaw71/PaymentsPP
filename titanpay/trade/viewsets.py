@@ -9,6 +9,7 @@ from rest_framework.decorators import action
 from basics.models import Trader, Balance, PaymentDetails, TraderTeam, TraderTeamRates, TeamLead
 from basics.serializers import TraderTeamSerializer, TraderTeamRatesSerializer
 from payments.models import PayOut
+from trade.ledger import user_balance_ids
 from trade.utils2 import send_to_fastapi, orders_excel_http_response, transactions_excel_http_response
 from usermanagement.models import SupportMember
 from trade.serializers import WithdrawalRequestSupportSerializer, WithdrawalRequestBasicSerializer, \
@@ -226,6 +227,8 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
 
 
 class TransactionFilter(django_filters.FilterSet):
+    direction = django_filters.CharFilter(method='filter_direction')
+
     class Meta:
         model = Transaction
         fields = {
@@ -247,6 +250,23 @@ class TransactionFilter(django_filters.FilterSet):
             'from_balance__type': ['in'],  # to: (2 or 3) for internal Balances
         }
 
+    def filter_direction(self, queryset, name, value):
+        """incoming/outcoming относительно балансов запросившего, включая KZT-балансы мерчанта."""
+        value = (value or '').strip().lower()
+        if value in ('', 'all'):
+            return queryset
+
+        request = getattr(self, 'request', None)
+        balance_ids = user_balance_ids(getattr(request, 'user', None) if request is not None else None)
+        if not balance_ids:
+            return queryset
+
+        if value == 'incoming':
+            return queryset.filter(to_balance_id__in=balance_ids)
+        if value in ('outcoming', 'outgoing'):
+            return queryset.filter(from_balance_id__in=balance_ids)
+        return queryset
+
 
 class TransactionViewset(viewsets.ModelViewSet):
     lookup_field = 'id'
@@ -259,19 +279,6 @@ class TransactionViewset(viewsets.ModelViewSet):
     ordering = ['-creation_date']
     pagination_class = StandardResultsSetPagination
     http_method_names = ['get']
-
-    @staticmethod
-    def _merchant_ledger_balances(merchant):
-        """USDT + KZT available/frozen (Melbet prepaid/settlement lives on balance_kzt)."""
-        return [
-            b for b in (
-                merchant.balance,
-                merchant.frozen_balance,
-                getattr(merchant, 'balance_kzt', None),
-                getattr(merchant, 'frozen_balance_kzt', None),
-            )
-            if b is not None
-        ]
 
     def get_serializer_class(self):
         if hasattr(self.request.user, 'trader'):
@@ -289,33 +296,15 @@ class TransactionViewset(viewsets.ModelViewSet):
         return TransactionTraderSerializer
 
     def get_queryset(self):
-        if hasattr(self.request.user, 'trader'):
-            balance = self.request.user.trader.balance_usdt
-            frozen_balance = self.request.user.trader.frozen_balance_usdt
+        balance_ids = user_balance_ids(self.request.user)
+        if balance_ids:
             return Transaction.objects.filter(
-                Q(from_balance=balance) | Q(to_balance=balance)
-                | Q(from_balance=frozen_balance) | Q(to_balance=frozen_balance)
+                Q(from_balance_id__in=balance_ids) | Q(to_balance_id__in=balance_ids)
+            ).select_related(
+                'transaction_type',
+                'linked_in_order__status',
+                'linked_out_order__status',
             )
-
-        if hasattr(self.request.user, 'merchant'):
-            balances = self._merchant_ledger_balances(self.request.user.merchant)
-            return Transaction.objects.filter(
-                Q(from_balance__in=balances) | Q(to_balance__in=balances)
-            )
-
-        if hasattr(self.request.user, 'submerchant'):
-            balances = self._merchant_ledger_balances(self.request.user.submerchant.merchant)
-            return Transaction.objects.filter(
-                Q(from_balance__in=balances) | Q(to_balance__in=balances)
-            )
-
-        if hasattr(self.request.user, 'teamlead'):
-            balance = self.request.user.teamlead.balance
-            frozen_balance = self.request.user.teamlead.frozen_balance
-            q = Q(from_balance=balance) | Q(to_balance=balance)
-            if frozen_balance is not None:
-                q |= Q(from_balance=frozen_balance) | Q(to_balance=frozen_balance)
-            return Transaction.objects.filter(q)
 
         if not hasattr(self.request.user, 'supportmember'):
             return Transaction.objects.none()
@@ -340,28 +329,10 @@ class TransactionViewset(viewsets.ModelViewSet):
         queryset = Transaction.objects.filter(Q(from_balance__in=balances) | Q(to_balance__in=balances))
         return queryset
 
-    def _export_owned_balances(self):
-        user = self.request.user
-        if hasattr(user, 'merchant'):
-            return self._merchant_ledger_balances(user.merchant)
-        if hasattr(user, 'submerchant'):
-            return self._merchant_ledger_balances(user.submerchant.merchant)
-        if hasattr(user, 'teamlead'):
-            return [b for b in (user.teamlead.balance, user.teamlead.frozen_balance) if b is not None]
-        if hasattr(user, 'trader'):
-            return [b for b in (user.trader.balance_usdt, user.trader.frozen_balance_usdt) if b is not None]
-        return []
-
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
     def export_transactions(self, request):
-        queryset = self.filter_queryset(self.get_queryset()).select_related(
-            'transaction_type', 'linked_in_order', 'linked_out_order',
-        ).order_by('-creation_date')[:10000]
-        return transactions_excel_http_response(
-            queryset,
-            filename_prefix="transactions",
-            owned_balances=self._export_owned_balances(),
-        )
+        queryset = self.filter_queryset(self.get_queryset()).order_by('-creation_date')[:10000]
+        return transactions_excel_http_response(queryset, user=request.user, filename_prefix="transactions")
 
 
 class InOrderFilter(django_filters.FilterSet):

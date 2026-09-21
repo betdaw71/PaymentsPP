@@ -277,9 +277,6 @@ export const useTradeStore = defineStore ({
         error: response.data,
       }
     },
-    async exportTradeTransaction (params) {
-      return exportOrdersExcel('/trade/transaction/export/', params, 'transactions.xlsx')
-    },
     async getTradeTransactionById (params, id) {
       const response = await instance.get (`/trade/transaction/${id}/`, { params })
       if (response.status === 200) {
@@ -293,6 +290,9 @@ export const useTradeStore = defineStore ({
         data: [],
         error: response.data,
       }
+    },
+    async exportTradeTransaction (params) {
+      return exportOrdersExcel('/trade/transaction/export/', params, 'transactions.xlsx')
     },
     async getTradeWithdrawalRequest (params) {
       const response = await instance.get (`/trade/withdrawal-request/`, { params })

@@ -13,9 +13,17 @@ from titanpay.settings import (
     CONCORDED_KBZPAY_PS_NAME,
     CONCORDED_WAVEPAY_PS_NAME,
 )
+from trade.ledger import kzt_balance_ids, merchant_balance_ids
 from trade.models import TransactionType, OutOrderStatus, InOrderStatus, InOrder, Transaction, WithdrawalRequest, \
     OutOrder, InOrderStatusChange
 from rest_framework.exceptions import ValidationError
+
+
+def _transaction_currency(instance, context) -> str:
+    kzt_ids = context.setdefault('_kzt_balance_ids', kzt_balance_ids())
+    if instance.from_balance_id in kzt_ids or instance.to_balance_id in kzt_ids:
+        return 'KZT'
+    return 'USDT'
 
 
 def payment_details_payload_for_order(payment_details, payment_system_name: str) -> dict:
@@ -618,10 +626,14 @@ class TransactionMerchantSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['transaction_type'] = instance.transaction_type.name
-        merchant = self.context['request'].user.merchant
-        # Include KZT ledgers used for Melbet prepaid/settlement.
-        available = [b for b in (merchant.balance, getattr(merchant, 'balance_kzt', None)) if b is not None]
-        representation['is_incoming'] = any(instance.is_incoming(b) for b in available)
+        user = self.context['request'].user
+        representation['is_incoming'] = instance.to_balance_id in merchant_balance_ids(user.merchant)
+        representation['currency'] = _transaction_currency(instance, self.context)
+        order = instance.linked_in_order or instance.linked_out_order
+        representation['fee'] = order.merchant_fee if order is not None else None
+        representation['order_status'] = (
+            order.status.name if order is not None and order.status_id else None
+        )
         return representation
 
 
@@ -633,9 +645,14 @@ class TransactionSubMerchantSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['transaction_type'] = instance.transaction_type.name
-        merchant = self.context['request'].user.submerchant.merchant
-        available = [b for b in (merchant.balance, getattr(merchant, 'balance_kzt', None)) if b is not None]
-        representation['is_incoming'] = any(instance.is_incoming(b) for b in available)
+        user = self.context['request'].user
+        representation['is_incoming'] = instance.to_balance_id in merchant_balance_ids(user.submerchant.merchant)
+        representation['currency'] = _transaction_currency(instance, self.context)
+        order = instance.linked_in_order or instance.linked_out_order
+        representation['fee'] = order.merchant_fee if order is not None else None
+        representation['order_status'] = (
+            order.status.name if order is not None and order.status_id else None
+        )
         return representation
 
 

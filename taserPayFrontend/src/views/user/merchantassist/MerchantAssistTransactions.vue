@@ -1,5 +1,4 @@
 <script setup>
-import { useAuthStore } from "@/stores/useAuthStore"
 import { useTradeStore } from "@/stores/useTradeStore"
 import { formatUUID, resolveTransactionTypeVariantAndIcon } from "@core/utils/formatters"
 import FilterTransactions from "@/views/user/FilterTransactions.vue"
@@ -7,7 +6,6 @@ import { useBaseStore } from "@/stores/useBaseStore"
 
 const { t } = useI18n ()
 const tradeStore = useTradeStore ()
-const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
 
 const snackbar = ref ({
@@ -70,6 +68,69 @@ const loadMessage = ref ({
   status: 0,
 })
 
+const exportLoading = ref (false)
+
+const amountBound = value => {
+  if (value === null || value === undefined || value === '')
+    return null
+  const n = Number (value)
+  if (!Number.isFinite (n) || n === 0)
+    return null
+
+  return n
+}
+
+const transactionQueryParams = ({ paginate } = { paginate: true }) => {
+  const params = {}
+
+  if (paginate) {
+    params.per_page = filters.value.rowsPerPage
+    params.page = currentPage.value
+  }
+  if (filters.value.ordering)
+    params.ordering = filters.value.ordering
+  if (filters.value.from.balance__available__team__name__in && filters.value.from.balance__available__team__name__in.length > 0)
+    params.from_balance__available__team__name__in = filters.value.from.balance__available__team__name__in.join (",")
+  if (filters.value.from.balance__available__user__username__in && filters.value.from.balance__available__user__username__in.length > 0)
+    params.from_balance__available__user__username__in = filters.value.from.balance__available__user__username__in.join (",")
+  if (filters.value.from.balance__available_merchant__user__username__in && filters.value.from.balance__available_merchant__user__username__in.length > 0)
+    params.from_balance__available_merchant__user__username__in = filters.value.from.balance__available_merchant__user__username__in.join (",")
+  if (filters.value.from.balance__type__in && filters.value.from.balance__type__in.length > 0)
+    params.from_balance__type__in = filters.value.from.balance__type__in.join (",")
+  if (filters.value.to.balance__available__team__name__in && filters.value.to.balance__available__team__name__in.length > 0)
+    params.to_balance__available__team__name__in = filters.value.to.balance__available__team__name__in.join (",")
+  if (filters.value.to.balance__available__user__username__in && filters.value.to.balance__available__user__username__in.length > 0)
+    params.to_balance__available__user__username__in = filters.value.to.balance__available__user__username__in.join (",")
+  if (filters.value.to.balance__available_merchant__user__username__in && filters.value.to.balance__available_merchant__user__username__in.length > 0)
+    params.to_balance__available_merchant__user__username__in = filters.value.to.balance__available_merchant__user__username__in.join (",")
+  if (filters.value.to.balance__type__in && filters.value.to.balance__type__in.length > 0)
+    params.to_balance__type__in = filters.value.to.balance__type__in.join (",")
+  if (filters.value.searchQueryId)
+    params.id = filters.value.searchQueryId
+  if (filters.value.selectedType && filters.value.selectedType.length > 0)
+    params.transaction_type__name__in = filters.value.selectedType.join (",")
+  const minAmount = amountBound (filters.value.minAmount)
+  const maxAmount = amountBound (filters.value.maxAmount)
+  if (minAmount !== null)
+    params.value__gte = minAmount
+  if (maxAmount !== null)
+    params.value__lte = maxAmount
+  if (filters.value.searchQueryIn)
+    params.linked_in_order = filters.value.searchQueryIn
+  if (filters.value.searchQueryOut)
+    params.linked_out_order = filters.value.searchQueryOut
+  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
+    params.creation_date__range = filters.value.dateRange.replace (" to ", ",")
+  if (filters.value.direction && filters.value.direction !== "all")
+    params.direction = filters.value.direction
+
+  return params
+}
+
+const transactionAmountLabel = item => {
+  return item.currency === 'KZT' ? 'KZT' : 'USD'
+}
+
 const itemTypes = [
   { value: "Freeze", name: "Freeze" },
   { value: "Charge", name: "Charge" },
@@ -118,47 +179,7 @@ const getTransactions = async () => {
   }
   items.value = []
 
-  const params = {
-    per_page: filters.value.rowsPerPage,
-    page: currentPage.value,
-  }
-
-  if (filters.value.ordering)
-    params.ordering = filters.value.ordering
-  if (filters.value.from.balance__available__team__name__in && filters.value.from.balance__available__team__name__in.length > 0)
-    params.from_balance__available__team__name__in = filters.value.from.balance__available__team__name__in.join (",")
-  if (filters.value.from.balance__available__user__username__in && filters.value.from.balance__available__user__username__in.length > 0)
-    params.from_balance__available__user__username__in = filters.value.from.balance__available__user__username__in.join (",")
-  if (filters.value.from.balance__available_merchant__user__username__in && filters.value.from.balance__available_merchant__user__username__in.length > 0)
-    params.from_balance__available_merchant__user__username__in = filters.value.from.balance__available_merchant__user__username__in.join (",")
-  if (filters.value.from.balance__type__in && filters.value.from.balance__type__in.length > 0)
-    params.from_balance__type__in = filters.value.from.balance__type__in.join (",")
-  if (filters.value.to.balance__available__team__name__in && filters.value.to.balance__available__team__name__in.length > 0)
-    params.to_balance__available__team__name__in = filters.value.to.balance__available__team__name__in.join (",")
-  if (filters.value.to.balance__available__user__username__in && filters.value.to.balance__available__user__username__in.length > 0)
-    params.to_balance__available__user__username__in = filters.value.to.balance__available__user__username__in.join (",")
-  if (filters.value.to.balance__available_merchant__user__username__in && filters.value.to.balance__available_merchant__user__username__in.length > 0)
-    params.to_balance__available_merchant__user__username__in = filters.value.to.balance__available_merchant__user__username__in.join (",")
-  if (filters.value.to.balance__type__in && filters.value.to.balance__type__in.length > 0)
-    params.to_balance__type__in = filters.value.to.balance__type__in.join (",")
-  if (filters.value.searchQueryId)
-    params.id = filters.value.searchQueryId
-  if (filters.value.selectedType && filters.value.selectedType.length > 0)
-    params.transaction_type__name__in = filters.value.selectedType.join (",")
-  if (filters.value.minAmount)
-    params.value__gte = filters.value.minAmount
-  if (filters.value.maxAmount)
-    params.value__lte = filters.value.maxAmount
-  if (filters.value.searchQueryIn)
-    params.linked_in_order = filters.value.searchQueryIn
-  if (filters.value.searchQueryOut)
-    params.linked_out_order = filters.value.searchQueryOut
-  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-    params.creation_date__range = filters.value.dateRange.replace (" to ", ",")
-  if (filters.value.direction === "outcoming")
-    params.from_balance__available___user__username__in = authStore.userData.username
-  else if (filters.value.direction === "incoming")
-    params.to_balance__available_merchant__user__username__in = authStore.userData.username
+  const params = transactionQueryParams ({ paginate: true })
   tradeStore.getTradeTransaction (params).then (response => {
     if (response.error) {
       throw response.error
@@ -223,6 +244,28 @@ watch (
   },
   { deep: true },
 )
+
+const exportTransactions = async () => {
+  exportLoading.value = true
+  try {
+    const response = await tradeStore.exportTradeTransaction (transactionQueryParams ({ paginate: false }))
+    if (response.error)
+      throw response.error
+    snackbar.value = {
+      enabled: true,
+      type: "success",
+      message: t ('data.exported'),
+    }
+  } catch (error) {
+    snackbar.value = {
+      enabled: true,
+      type: "error",
+      message: error,
+    }
+  } finally {
+    exportLoading.value = false
+  }
+}
 
 const switchSelection = (values, name, key) => {
   if (filters.value[name].length !== 0) {
@@ -411,6 +454,8 @@ const switchSelection = (values, name, key) => {
                     variant="tonal"
                     color="secondary"
                     prepend-icon="tabler-screen-share"
+                    :loading="exportLoading"
+                    @click="exportTransactions"
                   >
                     {{ $t('export') }}
                   </VBtn>
@@ -438,6 +483,12 @@ const switchSelection = (values, name, key) => {
                     </th>
                     <th scope="col">
                       {{ $t ('total').toUpperCase () }}
+                    </th>
+                    <th scope="col">
+                      {{ $t ('merchant_fee').toUpperCase () }}
+                    </th>
+                    <th scope="col">
+                      {{ $t ('status').toUpperCase () }}
                     </th>
                     <th scope="col">
                       {{ $t ('comment').toUpperCase () }}
@@ -510,13 +561,19 @@ const switchSelection = (values, name, key) => {
                             class=""
                             :prepend-icon="item.is_incoming ? 'tabler-caret-up' : 'tabler-caret-down'"
                           >
-                            USD&nbsp;{{ item.value }}
+                            {{ transactionAmountLabel(item) }}&nbsp;{{ item.value }}
                           </VChip>
                         </template>
                         <p class="mb-0">
                           {{ item.is_incoming ? 'In': 'Out' }}
                         </p>
                       </vtooltip>
+                    </td>
+                    <td>
+                      {{ item.fee != null ? `${transactionAmountLabel(item)} ${item.fee}` : '—' }}
+                    </td>
+                    <td>
+                      {{ item.order_status || '—' }}
                     </td>
                     <td>
                       {{ item.comment }}

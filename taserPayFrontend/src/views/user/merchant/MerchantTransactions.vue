@@ -1,5 +1,4 @@
 <script setup>
-import { useAuthStore } from "@/stores/useAuthStore"
 import { useTradeStore } from "@/stores/useTradeStore"
 import { formatUUID, resolveTransactionTypeVariantAndIcon } from "@core/utils/formatters"
 import FilterTransactions from "@/views/user/FilterTransactions.vue"
@@ -7,7 +6,6 @@ import { useBaseStore } from "@/stores/useBaseStore"
 
 const { t } = useI18n ()
 const tradeStore = useTradeStore ()
-const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
 
 const snackbar = ref ({
@@ -163,12 +161,14 @@ const buildTransactionParams = (page = null) => {
     // Inclusive end-of-day so the last selected date is not truncated at 00:00.
     params.creation_date__range = `${start},${end}T23:59:59`
   }
-  if (filters.value.direction === "outcoming")
-    params.from_balance__available_merchant__user__username__in = authStore.userData.username
-  else if (filters.value.direction === "incoming")
-    params.to_balance__available_merchant__user__username__in = authStore.userData.username
+  if (filters.value.direction && filters.value.direction !== "all")
+    params.direction = filters.value.direction
 
   return params
+}
+
+const transactionAmountLabel = item => {
+  return item.currency === 'KZT' ? 'KZT' : 'USD'
 }
 
 const normalizeAmountFilters = () => {
@@ -499,6 +499,12 @@ const switchSelection = (values, name, key) => {
                       {{ $t ('total').toUpperCase () }}
                     </th>
                     <th scope="col">
+                      {{ $t ('merchant_fee').toUpperCase () }}
+                    </th>
+                    <th scope="col">
+                      {{ $t ('status').toUpperCase () }}
+                    </th>
+                    <th scope="col">
                       {{ $t ('comment').toUpperCase () }}
                     </th>
                     <th scope="col">
@@ -569,13 +575,19 @@ const switchSelection = (values, name, key) => {
                             class=""
                             :prepend-icon="item.is_incoming ? 'tabler-caret-up' : 'tabler-caret-down'"
                           >
-                            USD&nbsp;{{ item.value }}
+                            {{ transactionAmountLabel(item) }}&nbsp;{{ item.value }}
                           </VChip>
                         </template>
                         <p class="mb-0">
                           {{ item.is_incoming ? 'In': 'Out' }}
                         </p>
                       </vtooltip>
+                    </td>
+                    <td>
+                      {{ item.fee != null ? `${transactionAmountLabel(item)} ${item.fee}` : '—' }}
+                    </td>
+                    <td>
+                      {{ item.order_status || '—' }}
                     </td>
                     <td>
                       {{ item.comment }}
