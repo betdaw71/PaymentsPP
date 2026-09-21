@@ -346,20 +346,62 @@ def orders_excel_http_response(
     return response
 
 
-def build_transactions_excel_buffer(queryset, *, user_balance=None):
+def build_transactions_excel_buffer(queryset, *, user_balance=None, owned_balances=None):
     rows = []
-    # Caller should select_related before any slice; do not call select_related here.
+    owned = [b for b in (owned_balances or []) if b is not None]
+    if user_balance is not None and user_balance not in owned:
+        owned.append(user_balance)
+    owned_ids = {b.id for b in owned}
+    # Available ledgers = those not linked as frozen_* related names on Merchant/Trader.
+    available_ids = set()
+    for b in owned:
+        if (
+            getattr(b, 'frozen_merchant', None) is not None
+            or getattr(b, 'frozen_merchant_kzt', None) is not None
+            or getattr(b, 'trader_frozen', None) is not None
+        ):
+            continue
+        # Reverse OneToOne may be accessed via related manager .exists on related objects —
+        # prefer checking related_name attributes safely:
+        is_frozen = False
+        for rel in ('frozen_merchant', 'frozen_merchant_kzt', 'trader_frozen'):
+            try:
+                if getattr(b, rel).exists() if hasattr(getattr(b, rel, None), 'exists') else False:
+                    is_frozen = True
+                    break
+            except Exception:
+                pass
+        if not is_frozen:
+            # Also: related_name on FK reverse for OneToOne is the related object, not manager
+            for rel in ('frozen_merchant', 'frozen_merchant_kzt', 'trader_frozen'):
+                try:
+                    getattr(b, rel)
+                    is_frozen = True
+                    break
+                except Exception:
+                    continue
+        if is_frozen:
+            continue
+        available_ids.add(b.id)
+    if not available_ids:
+        available_ids = owned_ids
+
     for tx in queryset:
         is_incoming = None
-        if user_balance is not None:
-            is_incoming = tx.is_incoming(user_balance)
+        if owned_ids:
+            if tx.to_balance_id in available_ids and tx.from_balance_id not in owned_ids:
+                is_incoming = True
+            elif tx.from_balance_id in owned_ids and tx.to_balance_id not in owned_ids:
+                is_incoming = False
+            else:
+                is_incoming = tx.to_balance_id in available_ids
         created = tx.creation_date
         if created is not None:
             created = created.astimezone(pytz.utc).replace(tzinfo=None)
         rows.append({
             'ID': str(tx.id),
             'Type': tx.transaction_type.name if tx.transaction_type else '',
-            'Amount (USDT)': tx.value,
+            'Amount': tx.value,
             'Direction': 'In' if is_incoming else ('Out' if is_incoming is not None else ''),
             'Comment': tx.comment or '',
             'Linked In Order': str(tx.linked_in_order_id) if tx.linked_in_order_id else '',
@@ -368,7 +410,7 @@ def build_transactions_excel_buffer(queryset, *, user_balance=None):
         })
 
     df = pd.DataFrame(rows, columns=[
-        'ID', 'Type', 'Amount (USDT)', 'Direction', 'Comment',
+        'ID', 'Type', 'Amount', 'Direction', 'Comment',
         'Linked In Order', 'Linked Out Order', 'Created At (UTC)',
     ])
     buffer = BytesIO()
@@ -378,8 +420,18 @@ def build_transactions_excel_buffer(queryset, *, user_balance=None):
     return buffer
 
 
-def transactions_excel_http_response(queryset, *, filename_prefix: str = "transactions", user_balance=None):
-    buffer = build_transactions_excel_buffer(queryset, user_balance=user_balance)
+def transactions_excel_http_response(
+    queryset,
+    *,
+    filename_prefix: str = "transactions",
+    user_balance=None,
+    owned_balances=None,
+):
+    buffer = build_transactions_excel_buffer(
+        queryset,
+        user_balance=user_balance,
+        owned_balances=owned_balances,
+    )
     filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     response = HttpResponse(
         buffer.getvalue(),

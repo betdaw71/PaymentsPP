@@ -260,6 +260,19 @@ class TransactionViewset(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
     http_method_names = ['get']
 
+    @staticmethod
+    def _merchant_ledger_balances(merchant):
+        """USDT + KZT available/frozen (Melbet prepaid/settlement lives on balance_kzt)."""
+        return [
+            b for b in (
+                merchant.balance,
+                merchant.frozen_balance,
+                getattr(merchant, 'balance_kzt', None),
+                getattr(merchant, 'frozen_balance_kzt', None),
+            )
+            if b is not None
+        ]
+
     def get_serializer_class(self):
         if hasattr(self.request.user, 'trader'):
             if self.request.user.trader.is_boss:
@@ -276,17 +289,25 @@ class TransactionViewset(viewsets.ModelViewSet):
         return TransactionTraderSerializer
 
     def get_queryset(self):
-        if hasattr(self.request.user, 'trader') or hasattr(self.request.user, 'merchant'):
-            balance = self.request.user.trader.balance_usdt if hasattr(self.request.user, 'trader') else self.request.user.merchant.balance
-            frozen_balance = self.request.user.trader.frozen_balance_usdt if hasattr(self.request.user, 'trader') else self.request.user.merchant.frozen_balance
-            combined_queryset = Transaction.objects.filter(Q(from_balance=balance) | Q(to_balance=balance) | Q(from_balance=frozen_balance) | Q(to_balance=frozen_balance))
-            return combined_queryset
+        if hasattr(self.request.user, 'trader'):
+            balance = self.request.user.trader.balance_usdt
+            frozen_balance = self.request.user.trader.frozen_balance_usdt
+            return Transaction.objects.filter(
+                Q(from_balance=balance) | Q(to_balance=balance)
+                | Q(from_balance=frozen_balance) | Q(to_balance=frozen_balance)
+            )
+
+        if hasattr(self.request.user, 'merchant'):
+            balances = self._merchant_ledger_balances(self.request.user.merchant)
+            return Transaction.objects.filter(
+                Q(from_balance__in=balances) | Q(to_balance__in=balances)
+            )
 
         if hasattr(self.request.user, 'submerchant'):
-            balance = self.request.user.submerchant.merchant.balance
-            frozen_balance = self.request.user.submerchant.merchant.balance
-            combined_queryset = Transaction.objects.filter(Q(from_balance=balance) | Q(to_balance=balance) | Q(from_balance=frozen_balance) | Q(to_balance=frozen_balance))
-            return combined_queryset
+            balances = self._merchant_ledger_balances(self.request.user.submerchant.merchant)
+            return Transaction.objects.filter(
+                Q(from_balance__in=balances) | Q(to_balance__in=balances)
+            )
 
         if hasattr(self.request.user, 'teamlead'):
             balance = self.request.user.teamlead.balance
@@ -305,24 +326,31 @@ class TransactionViewset(viewsets.ModelViewSet):
 
         if support_member.is_head:
             merchants = Merchant.objects.all()
-            balances = Balance.objects.filter(Q(available__team__in=teams) | Q(trader_frozen__team__in=teams) | Q(available_merchant__in=merchants) | Q(frozen_merchant__in=merchants))
+            balances = Balance.objects.filter(
+                Q(available__team__in=teams)
+                | Q(trader_frozen__team__in=teams)
+                | Q(available_merchant__in=merchants)
+                | Q(frozen_merchant__in=merchants)
+                | Q(available_merchant_kzt__in=merchants)
+                | Q(frozen_merchant_kzt__in=merchants)
+            )
         else:
             balances = Balance.objects.filter(Q(available__team__in=teams) | Q(trader_frozen__team__in=teams))
 
         queryset = Transaction.objects.filter(Q(from_balance__in=balances) | Q(to_balance__in=balances))
         return queryset
 
-    def _export_user_balance(self):
+    def _export_owned_balances(self):
         user = self.request.user
         if hasattr(user, 'merchant'):
-            return user.merchant.balance
+            return self._merchant_ledger_balances(user.merchant)
         if hasattr(user, 'submerchant'):
-            return user.submerchant.merchant.balance
+            return self._merchant_ledger_balances(user.submerchant.merchant)
         if hasattr(user, 'teamlead'):
-            return user.teamlead.balance
+            return [b for b in (user.teamlead.balance, user.teamlead.frozen_balance) if b is not None]
         if hasattr(user, 'trader'):
-            return user.trader.balance_usdt
-        return None
+            return [b for b in (user.trader.balance_usdt, user.trader.frozen_balance_usdt) if b is not None]
+        return []
 
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
     def export_transactions(self, request):
@@ -332,7 +360,7 @@ class TransactionViewset(viewsets.ModelViewSet):
         return transactions_excel_http_response(
             queryset,
             filename_prefix="transactions",
-            user_balance=self._export_user_balance(),
+            owned_balances=self._export_owned_balances(),
         )
 
 
