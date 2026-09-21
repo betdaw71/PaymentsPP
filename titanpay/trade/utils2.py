@@ -348,53 +348,21 @@ def orders_excel_http_response(
 
 def build_transactions_excel_buffer(queryset, *, user_balance=None, owned_balances=None):
     rows = []
-    owned = [b for b in (owned_balances or []) if b is not None]
-    if user_balance is not None and user_balance not in owned:
-        owned.append(user_balance)
-    owned_ids = {b.id for b in owned}
-    # Available ledgers = those not linked as frozen_* related names on Merchant/Trader.
-    available_ids = set()
-    for b in owned:
-        if (
-            getattr(b, 'frozen_merchant', None) is not None
-            or getattr(b, 'frozen_merchant_kzt', None) is not None
-            or getattr(b, 'trader_frozen', None) is not None
-        ):
-            continue
-        # Reverse OneToOne may be accessed via related manager .exists on related objects —
-        # prefer checking related_name attributes safely:
-        is_frozen = False
-        for rel in ('frozen_merchant', 'frozen_merchant_kzt', 'trader_frozen'):
-            try:
-                if getattr(b, rel).exists() if hasattr(getattr(b, rel, None), 'exists') else False:
-                    is_frozen = True
-                    break
-            except Exception:
-                pass
-        if not is_frozen:
-            # Also: related_name on FK reverse for OneToOne is the related object, not manager
-            for rel in ('frozen_merchant', 'frozen_merchant_kzt', 'trader_frozen'):
-                try:
-                    getattr(b, rel)
-                    is_frozen = True
-                    break
-                except Exception:
-                    continue
-        if is_frozen:
-            continue
-        available_ids.add(b.id)
-    if not available_ids:
-        available_ids = owned_ids
+    owned_ids = {b.id for b in (owned_balances or []) if b is not None}
+    if user_balance is not None:
+        owned_ids.add(user_balance.id)
 
     for tx in queryset:
         is_incoming = None
         if owned_ids:
-            if tx.to_balance_id in available_ids and tx.from_balance_id not in owned_ids:
+            to_owned = tx.to_balance_id in owned_ids
+            from_owned = tx.from_balance_id in owned_ids
+            if to_owned and not from_owned:
                 is_incoming = True
-            elif tx.from_balance_id in owned_ids and tx.to_balance_id not in owned_ids:
+            elif from_owned and not to_owned:
                 is_incoming = False
             else:
-                is_incoming = tx.to_balance_id in available_ids
+                is_incoming = to_owned
         created = tx.creation_date
         if created is not None:
             created = created.astimezone(pytz.utc).replace(tzinfo=None)

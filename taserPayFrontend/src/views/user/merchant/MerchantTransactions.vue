@@ -171,6 +171,14 @@ const buildTransactionParams = (page = null) => {
   return params
 }
 
+const normalizeAmountFilters = () => {
+  // Old UI stored 0 as "no filter"; clear it so Search/Export are not blocked.
+  if (!hasAmountFilter(filters.value.minAmount))
+    filters.value.minAmount = null
+  if (!hasAmountFilter(filters.value.maxAmount))
+    filters.value.maxAmount = null
+}
+
 const getTransactions = async () => {
   normalizeAmountFilters ()
   loadMessage.value = {
@@ -205,14 +213,6 @@ const getTransactions = async () => {
 }
 
 const exportLoading = ref (false)
-
-const normalizeAmountFilters = () => {
-  // Old UI stored 0 as "no filter"; clear it so Search/Export are not blocked.
-  if (!hasAmountFilter(filters.value.minAmount))
-    filters.value.minAmount = null
-  if (!hasAmountFilter(filters.value.maxAmount))
-    filters.value.maxAmount = null
-}
 
 const exportTransactions = async () => {
   normalizeAmountFilters ()
