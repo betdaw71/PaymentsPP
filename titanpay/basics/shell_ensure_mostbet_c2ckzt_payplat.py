@@ -181,7 +181,5 @@ def run():
         print("Done. Mostbet C2C/C2CKZT payouts pin to payplat1.")
 
 
-if __name__ == "__main__":
+if not str(__name__).startswith("basics."):
     run()
-else:
-    print("Run: run()")

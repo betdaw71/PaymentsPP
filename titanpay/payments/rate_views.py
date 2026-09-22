@@ -136,6 +136,7 @@ class PayoutKztRateView(APIView):
                 {"error": "payoutkzt_rate_unavailable", "payment_system": ps_name},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        ps = PaymentSystem.objects.filter(name__iexact=ps_name, currency__symbol__iexact="KZT").first()
         return Response(
             {
                 "payment_system": ps_name,
