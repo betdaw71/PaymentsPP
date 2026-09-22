@@ -6,6 +6,7 @@ from django.test import SimpleTestCase, override_settings
 from payments.payplat_client import (
     payplat_create_payout,
     payplat_is_payout_webhook,
+    payplat_payout_create_rejected,
     payplat_webhook_outcome,
     _payout_amount_for_payplat,
 )
@@ -20,6 +21,16 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
     def test_payout_ipn_cancelled_is_fail(self):
         body = {"type": "payout", "status": "CANCELLED"}
         self.assertEqual(payplat_webhook_outcome(body), "fail")
+
+    def test_payout_ipn_amount_below_minimum_is_fail(self):
+        body = {"type": "PAYOUT", "status": "amount_below_minimum"}
+        self.assertEqual(payplat_webhook_outcome(body), "fail")
+
+    def test_create_amount_below_minimum_is_rejected(self):
+        self.assertTrue(
+            payplat_payout_create_rejected({"status": "amount_below_minimum", "order_id": 1})
+        )
+        self.assertFalse(payplat_payout_create_rejected({"status": "WAITING", "order_id": 1}))
 
     def test_payin_success_unchanged(self):
         body = {"status": "SUCCESS", "shop_internal_id": "abc"}

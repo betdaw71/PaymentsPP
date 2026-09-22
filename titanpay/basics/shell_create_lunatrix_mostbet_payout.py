@@ -5,8 +5,8 @@
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_create_lunatrix_mostbet_payout.py
 
 Опционально:
-  TEST_AMOUNT=20000
-  TEST_CARD=4400430182839018
+  TEST_AMOUNT=50000
+  TEST_CARD=4400430182839016
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from titanpay.settings import PAYPLAT_TRADER_USERNAME
 MERCHANT_USERNAME = os.environ.get("MERCHANT_USERNAME", "lunatrixpay").strip() or "lunatrixpay"
 PAYPLAT_USERNAME = PAYPLAT_TRADER_USERNAME or "payplat1"
 C2CKZT_NAME = SETTINGS_C2CKZT or "C2CKZT"
-AMOUNT = Decimal(os.environ.get("TEST_AMOUNT", "20000"))
+AMOUNT = Decimal(os.environ.get("TEST_AMOUNT", "50000"))
 # Default is Luhn-valid (4400430182839018 fails PayPlat checksum).
 CARD = "".join(c for c in os.environ.get("TEST_CARD", "4400430182839016") if c.isdigit())[:16].ljust(16, "0")
 

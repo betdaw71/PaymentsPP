@@ -401,6 +401,31 @@ def payplat_is_soft_rejection(body: dict) -> bool:
     return _norm_status(body.get("status")) == "amount_currently_unavailable"
 
 
+_PAYOUT_CREATE_FAIL_STATUSES = frozenset(
+    {
+        "amount_below_minimum",
+        "amount_currently_unavailable",
+        "rejected",
+        "declined",
+        "error",
+        "failed",
+        "failure",
+        "cancelled",
+        "canceled",
+        "timeout",
+        "expired",
+    }
+)
+
+
+def payplat_payout_create_rejected(body: dict | None) -> bool:
+    if not isinstance(body, dict):
+        return False
+    if body.get("success") is False:
+        return True
+    return _norm_status(body.get("status")) in _PAYOUT_CREATE_FAIL_STATUSES
+
+
 def resolve_payplat_webhook_session(
     *,
     shop_internal_id: str | None,
@@ -480,6 +505,8 @@ def payplat_webhook_outcome(body: dict) -> str | None:
             "error",
             "declined",
             "rejected",
+            "amount_below_minimum",
+            "amount_currently_unavailable",
         ):
             return "fail"
         return None
@@ -920,4 +947,7 @@ def try_create_payplat_payout(pay_out: Any, *, client_ip: str | None = None) -> 
     session.create_response = data if isinstance(data, dict) else {"payload": data}
     session.provider_payout_id = _provider_payout_id(session.create_response)
     session.save(update_fields=["create_response", "provider_payout_id", "updated_at"])
+    if payplat_payout_create_rejected(session.create_response):
+        logger.error("PayPlat create payout rejected PayOut=%s: %s", pay_out.id, session.create_response)
+        return False
     return True
