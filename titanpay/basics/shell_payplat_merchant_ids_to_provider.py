@@ -1,12 +1,12 @@
 """
-Melbet merchant_order_id → PayPlat order_id (то, что провайдер ищет у себя).
+Melbet merchant_order_id → PayPlat external_id (shop_internal_id = PayIn UUID).
 
 Список сапорта в AMOUNTS_FILE / AMOUNTS, формат как обычно:
   23566296459 - 10000,06
 
 Печатает:
-  1) таблицу merchant → payplat order_id
-  2) готовый список для провайдера:  {order_id} - {сумма}
+  1) таблицу merchant → payplat external_id
+  2) готовый список для провайдера:  {external_id} - {сумма}
 
 Запуск:
   docker compose cp /root/amounts.txt app:/tmp/amounts.txt
@@ -74,18 +74,12 @@ def resolve_pay_in(merchant_order_id: str) -> PayIn | None:
     return order.pay_in.order_by("-created_at").first()
 
 
-def deal_id(session: PayplatPayInSession | None) -> str:
-    if session is None:
-        return ""
-    if (session.provider_order_id or "").strip():
-        return str(session.provider_order_id).strip()
-    for blob in (session.create_response, session.last_webhook_payload):
-        if not isinstance(blob, dict):
-            continue
-        for key in ("order_id", "deal_id", "id"):
-            val = blob.get(key)
-            if val not in (None, ""):
-                return str(val)
+def payplat_external_id(session: PayplatPayInSession | None, pay_in: PayIn | None) -> str:
+    """shop_internal_id, который уходит в PayPlat (PayplatPayInSession.external_id / PayIn.id)."""
+    if session is not None and (session.external_id or "").strip():
+        return str(session.external_id).strip()
+    if pay_in is not None:
+        return str(pay_in.id)
     return ""
 
 
@@ -95,44 +89,44 @@ def run():
         print("Список пуст. Передай AMOUNTS_FILE или AMOUNTS.")
         return
 
-    print("=== MAP merchant_order_id → PayPlat order_id ===")
-    print(f"{'merchant':<14} {'payplat':<14} {'amount':<12} status")
+    print("=== MAP merchant_order_id → PayPlat external_id ===")
+    print(f"{'merchant':<14} {'external_id':<38} {'amount':<12} status")
     mapped: list[tuple[str, Decimal | None]] = []
     missing: list[str] = []
-    no_deal: list[str] = []
+    no_ext: list[str] = []
 
     for merchant_id, amount in rows:
         pay_in = resolve_pay_in(merchant_id)
         if pay_in is None:
             missing.append(merchant_id)
-            print(f"{merchant_id:<14} {'-':<14} {fmt_amount(amount) if amount is not None else '-':<12} NOT FOUND")
+            print(f"{merchant_id:<14} {'-':<38} {fmt_amount(amount) if amount is not None else '-':<12} NOT FOUND")
             continue
         session = PayplatPayInSession.objects.filter(pay_in=pay_in).first()
-        pid = deal_id(session)
+        ext = payplat_external_id(session, pay_in)
         status = pay_in.status.name if pay_in.status_id else "-"
         amt = fmt_amount(amount) if amount is not None else "-"
-        if not pid:
-            no_deal.append(merchant_id)
-            print(f"{merchant_id:<14} {'-':<14} {amt:<12} {status}  (нет PayPlat order_id, shop_internal={pay_in.id})")
+        if not ext:
+            no_ext.append(merchant_id)
+            print(f"{merchant_id:<14} {'-':<38} {amt:<12} {status}  (нет PayPlat external_id)")
             continue
-        print(f"{merchant_id:<14} {pid:<14} {amt:<12} {status}")
-        mapped.append((pid, amount))
+        print(f"{merchant_id:<14} {ext:<38} {amt:<12} {status}")
+        mapped.append((ext, amount))
 
     print()
     print("=== ДЛЯ ПРОВАЙДЕРА (вставить как есть) ===")
-    for pid, amount in mapped:
+    for ext, amount in mapped:
         if amount is None:
-            print(pid)
+            print(ext)
         else:
-            print(f"{pid} - {fmt_amount(amount)}")
+            print(f"{ext} - {fmt_amount(amount)}")
 
     print()
     print("=== СВОДКА ===")
-    print(f"в списке: {len(rows)}  с PayPlat order_id: {len(mapped)}")
+    print(f"в списке: {len(rows)}  с PayPlat external_id: {len(mapped)}")
     if missing:
         print(f"НЕ НАЙДЕНО у нас: {len(missing)} → {', '.join(missing)}")
-    if no_deal:
-        print(f"нет PayPlat order_id: {len(no_deal)} → {', '.join(no_deal)}")
+    if no_ext:
+        print(f"нет PayPlat external_id: {len(no_ext)} → {', '.join(no_ext)}")
 
 
 run()
