@@ -19,6 +19,14 @@ from trade.models import TransactionType, OutOrderStatus, InOrderStatus, InOrder
 from rest_framework.exceptions import ValidationError
 
 
+def _transaction_gross_amount(instance):
+    """Сумма заявки до комиссии; если заявки нет — сумма проводки."""
+    order = instance.linked_in_order or instance.linked_out_order
+    if order is not None and order.amount is not None:
+        return order.amount
+    return instance.value
+
+
 def _transaction_currency(instance, context) -> str:
     kzt_ids = context.setdefault('_kzt_balance_ids', kzt_balance_ids())
     if instance.from_balance_id in kzt_ids or instance.to_balance_id in kzt_ids:
@@ -630,10 +638,13 @@ class TransactionMerchantSerializer(serializers.ModelSerializer):
         representation['is_incoming'] = instance.to_balance_id in merchant_balance_ids(user.merchant)
         representation['currency'] = _transaction_currency(instance, self.context)
         order = instance.linked_in_order or instance.linked_out_order
+        representation['value'] = _transaction_gross_amount(instance)
         representation['fee'] = order.merchant_fee if order is not None else None
         representation['order_status'] = (
             order.status.name if order is not None and order.status_id else None
         )
+        if instance.linked_out_order_id and representation['transaction_type'] == 'Charge':
+            representation['transaction_type'] = 'Withdrawal'
         return representation
 
 
@@ -649,10 +660,13 @@ class TransactionSubMerchantSerializer(serializers.ModelSerializer):
         representation['is_incoming'] = instance.to_balance_id in merchant_balance_ids(user.submerchant.merchant)
         representation['currency'] = _transaction_currency(instance, self.context)
         order = instance.linked_in_order or instance.linked_out_order
+        representation['value'] = _transaction_gross_amount(instance)
         representation['fee'] = order.merchant_fee if order is not None else None
         representation['order_status'] = (
             order.status.name if order is not None and order.status_id else None
         )
+        if instance.linked_out_order_id and representation['transaction_type'] == 'Charge':
+            representation['transaction_type'] = 'Withdrawal'
         return representation
 
 

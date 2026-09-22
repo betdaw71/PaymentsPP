@@ -48,7 +48,8 @@ class PaymentSystem(models.Model):
 
     def update_rate(self, rate):
         self.usdt_exchange_rate = rate
-        self.save()
+        self.last_update = int(timezone.now().timestamp())
+        self.save(update_fields=["usdt_exchange_rate", "last_update"])
 
     def __str__(self):
         return self.name

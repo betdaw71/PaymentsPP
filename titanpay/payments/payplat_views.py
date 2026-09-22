@@ -5,21 +5,24 @@ import json
 import logging
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from payments.models import PayIn, PayplatPayInSession
+from payments.models import PayIn, PayOut, PayplatPayInSession, PayplatPayOutSession
 from payments.payin_trace import Direction, trace_log
 from payments.payplat_client import (
+    payplat_is_payout_webhook,
     payplat_webhook_outcome,
+    resolve_payplat_payout_webhook_session,
     resolve_payplat_webhook_session,
     verify_webhook_signature,
 )
 from payments.psp_payin import complete_inorder_from_psp_webhook
-from trade.models import InOrder
+from trade.models import InOrder, OutOrder, OutOrderStatus
 
 logger = logging.getLogger(__name__)
 
@@ -63,13 +66,23 @@ class PayplatWebhookView(APIView):
 
         shop_internal_id = body.get("shop_internal_id")
         order_id = body.get("order_id")
+        payout_id = body.get("payout_id") or body.get("id")
         outcome = payplat_webhook_outcome(body)
+
+        if payplat_is_payout_webhook(body):
+            return self._handle_payout(body, shop_internal_id=shop_internal_id, payout_id=payout_id, outcome=outcome)
 
         session = resolve_payplat_webhook_session(
             shop_internal_id=shop_internal_id,
             order_id=order_id,
         )
         if session is None:
+            payout_session = resolve_payplat_payout_webhook_session(
+                shop_internal_id=shop_internal_id,
+                payout_id=payout_id or order_id,
+            )
+            if payout_session is not None:
+                return self._dispatch_payout(payout_session, body, outcome)
             logger.warning(
                 "PayPlat webhook: session not found shop_internal_id=%s order_id=%s",
                 shop_internal_id,
@@ -149,5 +162,79 @@ class PayplatWebhookView(APIView):
                 and locked_pi.status.name not in ("Success", "Failed", "Declined")
             ):
                 locked_pi.failed()
+
+        return Response({"status": "ok", "message": "Webhook received successfully"})
+
+    def _handle_payout(self, body: dict, *, shop_internal_id, payout_id, outcome) -> Response:
+        session = resolve_payplat_payout_webhook_session(
+            shop_internal_id=shop_internal_id,
+            payout_id=payout_id,
+        )
+        if session is None:
+            logger.warning(
+                "PayPlat payout webhook: session not found shop_internal_id=%s payout_id=%s",
+                shop_internal_id,
+                payout_id,
+            )
+            return Response({"status": "error", "message": "unknown_order"}, status=status.HTTP_404_NOT_FOUND)
+        return self._dispatch_payout(session, body, outcome)
+
+    def _dispatch_payout(self, session: PayplatPayOutSession, body: dict, outcome: str | None) -> Response:
+        pid = body.get("payout_id") or body.get("id") or body.get("order_id")
+        session.last_webhook_payload = body
+        session.last_notified_status = _norm_status(body.get("status")) or session.last_notified_status
+        if pid and not session.provider_payout_id:
+            session.provider_payout_id = str(pid)
+        session.save()
+
+        if outcome == "success":
+            return self._handle_payout_success(session)
+        if outcome == "fail":
+            return self._handle_payout_fail(session)
+        logger.warning(
+            "PayPlat payout webhook ignored PayOut=%s status=%s",
+            session.pay_out_id,
+            body.get("status"),
+        )
+        return Response({"status": "ok", "message": "Webhook received successfully"})
+
+    def _handle_payout_success(self, session: PayplatPayOutSession) -> Response:
+        pay_out = session.pay_out
+        if not pay_out or not pay_out.order_id:
+            return Response({"status": "error", "message": "no_pay_out"}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            locked = OutOrder.objects.select_for_update().get(pk=pay_out.order_id)
+            if locked.status and locked.status.name == "Completed":
+                locked_po = PayOut.objects.select_for_update().get(pk=pay_out.pk)
+                if locked_po.status and locked_po.status.name != "Success":
+                    locked_po.success()
+                return Response({"status": "ok", "message": "Webhook received successfully"})
+            if locked.status and locked.status.name == "New":
+                locked.complete()
+            locked_po = PayOut.objects.select_for_update().get(pk=pay_out.pk)
+            if locked_po.status and locked_po.status.name not in ("Success", "Failed", "Declined"):
+                locked_po.success()
+
+        return Response({"status": "ok", "message": "Webhook received successfully"})
+
+    def _handle_payout_fail(self, session: PayplatPayOutSession) -> Response:
+        pay_out = session.pay_out
+        if not pay_out or not pay_out.order_id:
+            return Response({"status": "ok", "message": "Webhook received successfully"})
+
+        with transaction.atomic():
+            locked = OutOrder.objects.select_for_update().get(pk=pay_out.order_id)
+            if locked.status and locked.status.name == "Completed":
+                return Response({"status": "ok", "message": "Webhook received successfully"})
+            if locked.status and locked.status.name == "New":
+                locked.unfreeze("PayPlat payout failed")
+                locked.decrease_current_volume()
+                locked.status = OutOrderStatus.objects.get(name="Cannot process")
+                locked.updated_date = timezone.now()
+                locked.save(update_fields=["status", "updated_date"])
+            locked_po = PayOut.objects.select_for_update().get(pk=pay_out.pk)
+            if locked_po.status and locked_po.status.name not in ("Success", "Failed", "Declined"):
+                locked_po.failed()
 
         return Response({"status": "ok", "message": "Webhook received successfully"})

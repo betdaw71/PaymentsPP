@@ -10,7 +10,7 @@ from basics.models import Balance, Currency, PaymentSystem, TrafficType
 from merchant.kzt_settlement import ensure_kzt_balances
 from merchant.models import Merchant, MerchantSolution
 from trade.ledger import merchant_balance_ids
-from trade.models import InOrder, InOrderStatus, Transaction, TransactionType
+from trade.models import InOrder, InOrderStatus, OutOrder, OutOrderStatus, Transaction, TransactionType
 
 
 class MerchantKztTransactionsApiTest(TestCase):
@@ -88,6 +88,7 @@ class MerchantKztTransactionsApiTest(TestCase):
         self.assertEqual(rows[str(self.kzt_tx.id)]["currency"], "KZT")
         self.assertTrue(rows[str(self.kzt_tx.id)]["is_incoming"])
         self.assertEqual(Decimal(str(rows[str(self.kzt_tx.id)]["fee"])), Decimal("375.00"))
+        self.assertEqual(Decimal(str(rows[str(self.kzt_tx.id)]["value"])), Decimal("5000.00"))
         self.assertEqual(rows[str(self.kzt_tx.id)]["order_status"], "Completed")
         self.assertEqual(rows[str(self.usdt_tx.id)]["currency"], "USDT")
 
@@ -135,6 +136,7 @@ class MerchantKztTransactionsApiTest(TestCase):
         currency_idx = headers.index("Валюта")
         fee_idx = headers.index("Комиссия мерчанта")
         status_idx = headers.index("Статус заявки")
+        amount_idx = headers.index("Сумма")
         rows = {
             str(row[id_idx].value): row
             for row in sheet.iter_rows(min_row=2)
@@ -142,4 +144,37 @@ class MerchantKztTransactionsApiTest(TestCase):
         kzt_row = rows[str(self.kzt_tx.id)]
         self.assertEqual(kzt_row[currency_idx].value, "KZT")
         self.assertEqual(Decimal(str(kzt_row[fee_idx].value)), Decimal("375.00"))
+        self.assertEqual(Decimal(str(kzt_row[amount_idx].value)), Decimal("5000.00"))
         self.assertEqual(kzt_row[status_idx].value, "Completed")
+
+    def test_withdrawal_filter_includes_payout_charge(self):
+        out_status = OutOrderStatus.objects.create(name="Completed")
+        out_order = OutOrder.objects.create(
+            status=out_status,
+            amount=Decimal("20000.00"),
+            usd_amount=Decimal("40.00"),
+            solution=self.order.solution,
+            merchant_order_id="melbet-kzt-out-1",
+            merchant_fee=Decimal("1500.00"),
+            trader_fee=Decimal("1.00"),
+            pic="https://example.com/out",
+        )
+        payout_tx = Transaction.create(
+            self.merchant.frozen_balance_kzt,
+            self.blockchain,
+            value=Decimal("21500.00"),
+            _transaction_type=self.charge_type,
+            _linked_out_order=out_order,
+            _comment="Out-order completed",
+        )
+        response = self.client.get("/api/v1/trade/transaction/", {
+            "direction": "outgoing",
+            "transaction_type__name__in": "Withdrawal",
+        })
+        self.assertEqual(response.status_code, 200)
+        rows = {item["id"]: item for item in response.data["results"]}
+        self.assertIn(str(payout_tx.id), rows)
+        self.assertEqual(rows[str(payout_tx.id)]["transaction_type"], "Withdrawal")
+        self.assertEqual(Decimal(str(rows[str(payout_tx.id)]["value"])), Decimal("20000.00"))
+        self.assertEqual(Decimal(str(rows[str(payout_tx.id)]["fee"])), Decimal("1500.00"))
+        self.assertNotIn(str(self.kzt_tx.id), rows)

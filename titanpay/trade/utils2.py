@@ -124,18 +124,29 @@ def _liveness_exempt_trader_usernames() -> set[str]:
 
 def update_ps():
     from django.conf import settings
+    from payments.payoutkzt_rate import payoutkzt_ps_name, store_payoutkzt_rate
 
     pss = PaymentSystem.objects.all()
     rub_rate = get_bybit_rate("Sber")
     kzt_xe_base = get_xe_kzt_base_rate()
-    kzt_bybit_kaspi = get_bybit_kzt_rate() if kzt_xe_base is None else None
+    kzt_bybit_kaspi = get_bybit_kzt_rate()
     kzt_binance_halyk = get_binance_kzt_halyk_rate() if kzt_xe_base is None else None
     playments_ps_name = getattr(settings, "PLAYMENTS_C2C_NAME", "C2CTRY")
+    payoutkzt_name = payoutkzt_ps_name()
+
+    if kzt_bybit_kaspi is not None:
+        try:
+            store_payoutkzt_rate(kzt_bybit_kaspi)
+            logging.info("PAYOUTKZT Bybit/Kaspi rate: %s", kzt_bybit_kaspi)
+        except Exception:
+            logging.info("Updating PAYOUTKZT rate failed", exc_info=True)
 
     for ps in pss:
         try:
             currency = ps.currency.symbol if ps.currency else None
             if ps.name == playments_ps_name:
+                continue
+            if (ps.name or "").strip().upper() == payoutkzt_name.upper():
                 continue
             if currency == "KZT":
                 if kzt_xe_base is not None:
@@ -371,6 +382,7 @@ def build_transactions_excel_buffer(queryset, *, user=None):
         value_fields.extend([
             f'{prefix}id',
             f'{prefix}status__name',
+            f'{prefix}amount',
             f'{prefix}{fee_field}',
             f'{prefix}merchant_order_id',
             f'{prefix}solution__payment_system__name',
@@ -392,11 +404,16 @@ def build_transactions_excel_buffer(queryset, *, user=None):
         else:
             direction = ''
 
+        order_amount = item.get(f'{prefix}amount') if (in_order_id or out_order_id) else None
+        tx_type = item.get('transaction_type__name')
+        if merchant_side and out_order_id and tx_type == 'Charge':
+            tx_type = 'Withdrawal'
+
         rows.append({
             'id': item.get('id'),
             'direction': direction,
-            'transaction_type': item.get('transaction_type__name'),
-            'value': item.get('value'),
+            'transaction_type': tx_type,
+            'value': order_amount if order_amount is not None else item.get('value'),
             'currency': 'KZT' if from_id in kzt_ids or to_id in kzt_ids else 'USDT',
             'fee': item.get(f'{prefix}{fee_field}'),
             'order_status': item.get(f'{prefix}status__name'),

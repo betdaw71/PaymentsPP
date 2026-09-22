@@ -392,6 +392,28 @@ PAYPLAT_PAYER_MAP = os.getenv(
 PAYPLAT_PAYER = os.getenv('PAYPLAT_PAYER', 'kz')
 PAYPLAT_CONTRAGENT_FROM_CLIENT = os.getenv('PAYPLAT_CONTRAGENT_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 PAYPLAT_WEBHOOK_SKIP_VERIFY = os.getenv('PAYPLAT_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+# Payout: PayPlat asked to send C2C USD for KZT withdrawals. POST {PAYPLAT_API_BASE}/payout
+PAYPLAT_PAYOUT_PATH = os.getenv('PAYPLAT_PAYOUT_PATH', '/payout')
+PAYPLAT_PAYOUT_REQUISITE_TYPE = os.getenv('PAYPLAT_PAYOUT_REQUISITE_TYPE', 'card')
+PAYPLAT_PAYOUT_REQUISITE_TYPE_MAP = os.getenv(
+    'PAYPLAT_PAYOUT_REQUISITE_TYPE_MAP',
+    '{"C2C":"card","C2CKZT":"card","C2CKZTTEST":"card"}',
+)
+PAYPLAT_PAYOUT_TYPE = os.getenv('PAYPLAT_PAYOUT_TYPE', '')
+PAYPLAT_PAYOUT_BANK = os.getenv('PAYPLAT_PAYOUT_BANK', 'kaspi')
+PAYPLAT_PAYOUT_BANK_MAP = os.getenv('PAYPLAT_PAYOUT_BANK_MAP', '')
+# usd = KZT / PAYOUTKZT Bybit rate, fiat = pay_out.amount (KZT)
+PAYPLAT_PAYOUT_AMOUNT_MODE = os.getenv('PAYPLAT_PAYOUT_AMOUNT_MODE', 'usd')
+
+# Bybit P2P red book USDT/KZT: только выплаты PayPlat (не pay-in). Эндпоинт GET /api/v1/payments/rate/payoutkzt/
+BYBIT_KZT_AMOUNT = os.getenv('BYBIT_KZT_AMOUNT', '50000')
+BYBIT_KZT_AUTH_MAKER = os.getenv('BYBIT_KZT_AUTH_MAKER', 'true').lower() in ('true', '1', 'yes')
+BYBIT_KZT_ROWS = os.getenv('BYBIT_KZT_ROWS', '15,16')
+PAYOUTKZT_PS_NAME = os.getenv('PAYOUTKZT_PS_NAME', 'PAYOUTKZT')
+# Optional token for GET /api/v1/payments/rate/payoutkzt/. Empty = public.
+RATE_API_TOKEN = os.getenv('RATE_API_TOKEN', '')
+# Mostbet sends C2C for KZT payouts — remap to C2CKZT before routing.
+PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mostbet')
 
 # JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
 PSP_ROUTING_PRIORITY_MAP = os.getenv(
@@ -536,10 +558,10 @@ ASTRUM_METHOD_NAME_ID = os.getenv('ASTRUM_METHOD_NAME_ID', '')
 ASTRUM_EXPRESS = os.getenv('ASTRUM_EXPRESS', '').strip().lower() in ('1', 'true', 'yes')
 ASTRUM_CALLBACK_URL = os.getenv('ASTRUM_CALLBACK_URL', '')
 ASTRUM_PAYIN_CALLBACK_URL = os.getenv('ASTRUM_PAYIN_CALLBACK_URL', '')
-# JSON: merchant username → preferred pay-out trader. Mostbet C2CKZT must hit Astrum.
+# JSON: merchant username → preferred pay-out trader. Mostbet C2CKZT → PayPlat.
 PAYOUT_PREFERRED_TRADER_BY_MERCHANT = os.getenv(
     'PAYOUT_PREFERRED_TRADER_BY_MERCHANT',
-    '{"mostbet":"%s"}' % (ASTRUM_TRADER_USERNAME or 'astrum_kzt'),
+    '{"mostbet":"%s"}' % (PAYPLAT_TRADER_USERNAME or 'payplat1'),
 )
 
 # Comma-separated trader usernames: skip auto liveness (status 5) in cron, like virtual PSP traders

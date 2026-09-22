@@ -513,6 +513,11 @@ class PayOutInvoiceCreateSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         data = resolve_currency_and_payment_system_ids(data)
+        request = self.context.get("request")
+        merchant = getattr(getattr(request, "user", None), "merchant", None) if request is not None else None
+        from payments.payout_remap import remap_payout_payment_system_id
+
+        data = remap_payout_payment_system_id(data, merchant)
         return super().to_internal_value(data)
 
     def create(self, validated_data):
@@ -644,6 +649,12 @@ class PayOutPaymentCreateSerializer(serializers.ModelSerializer):
         if data.get('details') is None:
             raise serializers.ValidationError({"details": "This field is required"})
 
+        request = self.context.get("request")
+        merchant = getattr(getattr(request, "user", None), "merchant", None) if request is not None else None
+        from payments.payout_remap import remap_payout_payment_system_id
+
+        data = remap_payout_payment_system_id(data, merchant)
+
         return super().to_internal_value(data)
 
     def to_representation(self, instance):
@@ -710,16 +721,17 @@ class PayOutPaymentCreateSerializer(serializers.ModelSerializer):
 
         from payments.astrum_client import try_create_astrum_payout
         from payments.playments_client import try_create_playments_payout
+        from payments.payplat_client import try_create_payplat_payout
         from trade.utils import get_client_ip
 
         request = self.context.get("request")
         client_ip = get_client_ip(request) if request is not None else None
-        playments_ok = try_create_playments_payout(pay_out, client_ip=client_ip)
-        if playments_ok is False:
+
+        def _fail_psp_create(reason: str):
             with transaction.atomic():
                 od = OutOrder.objects.select_for_update().get(pk=out_order.pk)
                 if od.status and od.status.name == "New":
-                    od.unfreeze("Playments withdrawal create failed")
+                    od.unfreeze(reason)
                     od.decrease_current_volume()
                     od.status = OutOrderStatus.objects.get(name="Cannot process")
                     od.updated_date = timezone.now()
@@ -727,18 +739,17 @@ class PayOutPaymentCreateSerializer(serializers.ModelSerializer):
             pay_out.declined()
             return pay_out
 
+        playments_ok = try_create_playments_payout(pay_out, client_ip=client_ip)
+        if playments_ok is False:
+            return _fail_psp_create("Playments withdrawal create failed")
+
+        payplat_ok = try_create_payplat_payout(pay_out, client_ip=client_ip)
+        if payplat_ok is False:
+            return _fail_psp_create("PayPlat payout create failed")
+
         astrum_ok = try_create_astrum_payout(pay_out, client_ip=client_ip)
         if astrum_ok is False:
-            with transaction.atomic():
-                od = OutOrder.objects.select_for_update().get(pk=out_order.pk)
-                if od.status and od.status.name == "New":
-                    od.unfreeze("Astrum payout create failed")
-                    od.decrease_current_volume()
-                    od.status = OutOrderStatus.objects.get(name="Cannot process")
-                    od.updated_date = timezone.now()
-                    od.save(update_fields=["status", "updated_date"])
-            pay_out.declined()
-            return pay_out
+            return _fail_psp_create("Astrum payout create failed")
 
         pay_out.in_progress()
         return pay_out

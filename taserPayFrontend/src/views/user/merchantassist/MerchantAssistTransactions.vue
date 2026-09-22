@@ -142,7 +142,7 @@ const itemTypes = [
 const directionTypes = [
   { value: "all", name: "All" },
   { value: "incoming", name: "Incoming" },
-  { value: "outcoming", name: "Outcoming" },
+  { value: "outcoming", name: "Outgoing" },
 ]
 
 const orderingTypes = [

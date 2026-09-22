@@ -305,6 +305,7 @@ def create_melbet_withdrawal(
 
     from payments.astrum_client import try_create_astrum_payout
     from payments.playments_client import try_create_playments_payout
+    from payments.payplat_client import try_create_payplat_payout
 
     playments_ok = try_create_playments_payout(pay_out, client_ip=client_ip)
     if playments_ok is False:
@@ -312,6 +313,18 @@ def create_melbet_withdrawal(
             od = OutOrder.objects.select_for_update().get(pk=out_order.pk)
             if od.status and od.status.name == "New":
                 od.unfreeze("Playments withdrawal create failed")
+                od.decrease_current_volume()
+                od.status = OutOrderStatus.objects.get(name="Cannot process")
+                od.updated_date = timezone.now()
+                od.save(update_fields=["status", "updated_date"])
+        _fail_melbet_withdrawal(pay_out)
+
+    payplat_ok = try_create_payplat_payout(pay_out, client_ip=client_ip)
+    if payplat_ok is False:
+        with transaction.atomic():
+            od = OutOrder.objects.select_for_update().get(pk=out_order.pk)
+            if od.status and od.status.name == "New":
+                od.unfreeze("PayPlat payout create failed")
                 od.decrease_current_volume()
                 od.status = OutOrderStatus.objects.get(name="Cannot process")
                 od.updated_date = timezone.now()

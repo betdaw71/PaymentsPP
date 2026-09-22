@@ -6,7 +6,7 @@ import hmac
 import json
 import logging
 import time
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 import requests
@@ -336,6 +336,61 @@ def payplat_cancel_deal(*, shop_internal_id: str, pay_in=None) -> tuple[bool, di
     return _request("POST", f"/order/cancel/{sid}", json_payload={}, pay_in=pay_in)
 
 
+def payplat_payout_requisite_type_for(payment_system_name: str | None) -> str:
+    ps_name = (payment_system_name or "").strip()
+    mapped = _parse_json_map("PAYPLAT_PAYOUT_REQUISITE_TYPE_MAP").get(ps_name)
+    if mapped:
+        return mapped.strip().lower()
+    default = (getattr(settings, "PAYPLAT_PAYOUT_REQUISITE_TYPE", None) or "card").strip().lower()
+    return default or "card"
+
+
+def payplat_payout_bank_for(payment_system_name: str | None) -> str | None:
+    ps_name = (payment_system_name or "").strip()
+    mapped = _parse_json_map("PAYPLAT_PAYOUT_BANK_MAP").get(ps_name)
+    if mapped:
+        val = mapped.strip()
+        return val if val.lower() not in ("null", "none", "") else None
+    default = (getattr(settings, "PAYPLAT_PAYOUT_BANK", None) or "").strip()
+    return default or None
+
+
+def payplat_payout_type() -> str:
+    return (getattr(settings, "PAYPLAT_PAYOUT_TYPE", None) or "").strip().lower()
+
+
+def payplat_payout_path() -> str:
+    return (getattr(settings, "PAYPLAT_PAYOUT_PATH", None) or "/payout").strip() or "/payout"
+
+
+def payplat_create_payout(
+    *,
+    amount: Decimal,
+    shop_internal_id: str,
+    card_number: str,
+    requisite_type: str | None = None,
+    payout_type: str | None = None,
+    bank: str | None = None,
+) -> tuple[bool, dict[str, Any] | str]:
+    payload: dict[str, Any] = {
+        "shop_internal_id": shop_internal_id,
+        "shop_id": _shop_id(),
+        "amount": _format_amount(amount),
+        "card_number": card_number,
+    }
+    req_type = (requisite_type or payplat_payout_requisite_type_for(None)).strip().lower()
+    if req_type:
+        payload["requisite_type"] = req_type
+    ptype = (payout_type if payout_type is not None else payplat_payout_type()).strip().lower()
+    if not ptype:
+        ptype = "standard" if bank else "mobile"
+    if ptype:
+        payload["payout_type"] = ptype
+    if bank:
+        payload["bank"] = bank
+    return _request("POST", payplat_payout_path(), json_payload=payload)
+
+
 def _norm_status(raw: str | None) -> str:
     return (raw or "").strip().lower()
 
@@ -402,9 +457,32 @@ def resolve_payplat_webhook_session(
     return session
 
 
+def payplat_is_payout_webhook(body: dict | None) -> bool:
+    if not isinstance(body, dict):
+        return False
+    ipn_type = _norm_status(body.get("type") or body.get("ipn_type") or body.get("event"))
+    return ipn_type == "payout"
+
+
 def payplat_webhook_outcome(body: dict) -> str | None:
     """success | fail | None (ignore intermediate)."""
     status = _norm_status(body.get("status"))
+    if payplat_is_payout_webhook(body):
+        if status in ("paid", "success"):
+            return "success"
+        if status in (
+            "timeout",
+            "expired",
+            "failure",
+            "failed",
+            "cancelled",
+            "canceled",
+            "error",
+            "declined",
+            "rejected",
+        ):
+            return "fail"
+        return None
     if status == "success":
         return "success"
     if status in ("timeout", "expired", "failure", "cancelled", "error"):
@@ -413,6 +491,62 @@ def payplat_webhook_outcome(body: dict) -> str | None:
     if dispute_status == "accepted" and status == "success":
         return "success"
     return None
+
+
+def resolve_payplat_payout_webhook_session(
+    *,
+    shop_internal_id: str | None,
+    payout_id: str | int | None = None,
+) -> PayplatPayOutSession | None:
+    from payments.models import PayOut, PayplatPayOutSession
+
+    sid = (shop_internal_id or "").strip()
+    pid = str(payout_id).strip() if payout_id not in (None, "") else ""
+
+    if sid:
+        session = (
+            PayplatPayOutSession.objects.filter(external_id=sid)
+            .select_related("pay_out", "pay_out__order")
+            .first()
+        )
+        if session is not None:
+            return session
+
+    if pid:
+        session = (
+            PayplatPayOutSession.objects.filter(provider_payout_id=pid)
+            .select_related("pay_out", "pay_out__order")
+            .first()
+        )
+        if session is not None:
+            return session
+
+    if not sid:
+        return None
+
+    pay_out = PayOut.objects.filter(pk=sid).select_related("order__payment_details__group__trader").first()
+    if pay_out is None or pay_out.order is None or pay_out.order.payment_details is None:
+        return None
+    if not is_payplat_trader(pay_out.order.payment_details.group.trader):
+        return None
+
+    session, created = PayplatPayOutSession.objects.get_or_create(
+        pay_out=pay_out,
+        defaults={"external_id": str(pay_out.id), "create_response": {}, "last_webhook_payload": {}},
+    )
+    updates: list[str] = []
+    if str(session.external_id) != str(pay_out.id):
+        session.external_id = str(pay_out.id)
+        updates.append("external_id")
+    if pid and not session.provider_payout_id:
+        session.provider_payout_id = pid
+        updates.append("provider_payout_id")
+    if updates:
+        updates.append("updated_at")
+        session.save(update_fields=updates)
+    if created:
+        logger.info("PayPlat payout webhook: recovered session for PayOut=%s shop_internal_id=%s", pay_out.id, sid)
+    return session
 
 
 def payplat_is_webhook_body(body: dict | None) -> bool:
@@ -685,3 +819,105 @@ def payplat_cancel_if_linked(pay_in: Any) -> None:
     ok, data = payplat_cancel_deal(shop_internal_id=s.external_id, pay_in=pay_in)
     if not ok:
         logger.warning("PayPlat cancel failed PayIn=%s: %s", pay_in.id, data)
+
+
+def _card_from_payout(pay_out: Any) -> str | None:
+    details = pay_out.details if isinstance(pay_out.details, dict) else {}
+    for key in ("card_number", "requisite", "card"):
+        raw = details.get(key)
+        if raw is None:
+            continue
+        digits = "".join(c for c in str(raw) if c.isdigit())
+        if digits:
+            return digits
+    return None
+
+
+def _bank_from_payout(pay_out: Any, ps_name: str | None) -> str | None:
+    details = pay_out.details if isinstance(pay_out.details, dict) else {}
+    for key in ("bank", "bank_name"):
+        raw = (details.get(key) or "").strip()
+        if raw:
+            return raw
+    return payplat_payout_bank_for(ps_name)
+
+
+def _payout_amount_for_payplat(pay_out: Any) -> Decimal:
+    mode = (getattr(settings, "PAYPLAT_PAYOUT_AMOUNT_MODE", None) or "usd").strip().lower()
+    if mode in ("fiat", "kzt", "amount"):
+        return Decimal(str(pay_out.amount))
+    from payments.payoutkzt_rate import get_payoutkzt_rate
+
+    rate = get_payoutkzt_rate(live=False)
+    kzt_amount = Decimal(str(pay_out.amount))
+    if rate and rate > 0 and kzt_amount > 0:
+        usd = (kzt_amount / rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if usd > 0:
+            return usd
+    order = getattr(pay_out, "order", None)
+    usd = getattr(order, "usd_amount", None) if order is not None else None
+    if usd not in (None, ""):
+        val = Decimal(str(usd))
+        if val > 0:
+            logger.warning(
+                "PayPlat payout: PAYOUTKZT rate missing, fallback order.usd_amount=%s PayOut=%s",
+                val,
+                getattr(pay_out, "id", None),
+            )
+            return val
+    return kzt_amount
+
+
+def _provider_payout_id(body: dict | None) -> str:
+    if not isinstance(body, dict):
+        return ""
+    for key in ("payout_id", "id", "order_id"):
+        val = body.get(key)
+        if val not in (None, ""):
+            return str(val)
+    return ""
+
+
+def try_create_payplat_payout(pay_out: Any, *, client_ip: str | None = None) -> bool | None:
+    """Create PayPlat payout after OutOrder for payplat1. USD = KZT / PAYOUTKZT Bybit rate."""
+    del client_ip
+    from payments.models import PayplatPayOutSession
+
+    order = getattr(pay_out, "order", None)
+    if order is None or order.payment_details is None:
+        return None
+    trader = order.payment_details.group.trader
+    if not is_payplat_trader(trader):
+        return None
+
+    card_number = _card_from_payout(pay_out)
+    if not card_number:
+        logger.error("PayPlat payout: missing card_number PayOut=%s", pay_out.id)
+        return False
+
+    ps_name = pay_out.payment_system.name if pay_out.payment_system else None
+    external_id = str(pay_out.id)
+    session, _ = PayplatPayOutSession.objects.get_or_create(
+        pay_out=pay_out,
+        defaults={"external_id": external_id, "create_response": {}, "last_webhook_payload": {}},
+    )
+    session.external_id = external_id
+    session.save(update_fields=["external_id", "updated_at"])
+
+    ok, data = payplat_create_payout(
+        amount=_payout_amount_for_payplat(pay_out),
+        shop_internal_id=external_id,
+        card_number=card_number,
+        requisite_type=payplat_payout_requisite_type_for(ps_name),
+        bank=_bank_from_payout(pay_out, ps_name),
+    )
+    if not ok:
+        session.create_response = data if isinstance(data, dict) else {"error": str(data)}
+        session.save(update_fields=["create_response", "updated_at"])
+        logger.error("PayPlat create payout failed PayOut=%s: %s", pay_out.id, data)
+        return False
+
+    session.create_response = data if isinstance(data, dict) else {"payload": data}
+    session.provider_payout_id = _provider_payout_id(session.create_response)
+    session.save(update_fields=["create_response", "provider_payout_id", "updated_at"])
+    return True

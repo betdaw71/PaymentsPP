@@ -26,7 +26,7 @@ def parse_preferred_trader_map(raw=None) -> dict[str, str]:
 
 
 def preferred_payout_trader_username(merchant) -> str | None:
-    """Melbet staging pin first, then PAYOUT_PREFERRED_TRADER_BY_MERCHANT (mostbet → astrum_kzt)."""
+    """Melbet staging pin first, then PAYOUT_PREFERRED_TRADER_BY_MERCHANT (mostbet → payplat1)."""
     from merchant.kzt_settlement import melbet_kzt_test_trader_username
 
     test = melbet_kzt_test_trader_username(merchant)

@@ -226,14 +226,18 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
         return Response(status=status.HTTP_201_CREATED)
 
 
+class CharInFilter(django_filters.BaseInFilter, django_filters.CharFilter):
+    pass
+
+
 class TransactionFilter(django_filters.FilterSet):
     direction = django_filters.CharFilter(method='filter_direction')
+    transaction_type__name__in = CharInFilter(method='filter_transaction_types')
 
     class Meta:
         model = Transaction
         fields = {
             'id': ['exact'],
-            'transaction_type__name': ['in'],  # Transaction Type Name
             'value': ['gte', 'lte'],
             'creation_date': ['range'],
             'linked_in_order': ['exact'],
@@ -266,6 +270,16 @@ class TransactionFilter(django_filters.FilterSet):
         if value in ('outcoming', 'outgoing'):
             return queryset.filter(from_balance_id__in=balance_ids)
         return queryset
+
+    def filter_transaction_types(self, queryset, name, value):
+        names = [str(part).strip() for part in (value or []) if str(part).strip()]
+        if not names:
+            return queryset
+        q = Q(transaction_type__name__in=names)
+        # Merchant payouts are Charge (frozen → aggregator), not crypto Withdrawal.
+        if any(part.lower() == 'withdrawal' for part in names):
+            q |= Q(transaction_type__name='Charge', linked_out_order__isnull=False)
+        return queryset.filter(q)
 
 
 class TransactionViewset(viewsets.ModelViewSet):
