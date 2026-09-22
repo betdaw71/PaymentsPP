@@ -32,7 +32,8 @@ MERCHANT_USERNAME = os.environ.get("MERCHANT_USERNAME", "lunatrixpay").strip() o
 PAYPLAT_USERNAME = PAYPLAT_TRADER_USERNAME or "payplat1"
 C2CKZT_NAME = SETTINGS_C2CKZT or "C2CKZT"
 AMOUNT = Decimal(os.environ.get("TEST_AMOUNT", "20000"))
-CARD = "".join(c for c in os.environ.get("TEST_CARD", "4400430182839018") if c.isdigit())[:16].ljust(16, "0")
+# Default is Luhn-valid (4400430182839018 fails PayPlat checksum).
+CARD = "".join(c for c in os.environ.get("TEST_CARD", "4400430182839016") if c.isdigit())[:16].ljust(16, "0")
 
 
 def _print_sol(label, sol):
@@ -230,8 +231,19 @@ def run():
     print(f"  POST /api/v1/payments/out/h2h/")
     print(f"  Authorization: Token {token.key}")
     print(f"  body payment_system=C2C currency=KZT amount={AMOUNT} details.card_number={CARD}")
-    if trader_name == PAYPLAT_USERNAME and pay_out.payment_system and pay_out.payment_system.name == C2CKZT_NAME:
+    remapped = (
+        trader_name == PAYPLAT_USERNAME
+        and pay_out.payment_system
+        and pay_out.payment_system.name == C2CKZT_NAME
+    )
+    accepted = pay_out.status and pay_out.status.name not in ("Declined", "Cancelled")
+    if remapped and accepted:
         print("Done. C2C remapped to C2CKZT and sent to PayPlat.")
+    elif remapped:
+        print(
+            "  ! remapped to C2CKZT/payplat1 but PayPlat did not accept the payout "
+            f"(status={pay_out.status.name if pay_out.status else None})."
+        )
     else:
         print(
             f"  ! expected trader={PAYPLAT_USERNAME} and PS={C2CKZT_NAME}. "
