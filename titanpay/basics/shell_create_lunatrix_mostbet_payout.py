@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIRequestFactory
@@ -200,7 +201,8 @@ def run():
     request.user = user
     serializer = PayOutPaymentCreateSerializer(data=payload, context={"request": request})
     serializer.is_valid(raise_exception=True)
-    pay_out = serializer.save()
+    with transaction.atomic():
+        pay_out = serializer.save()
     pay_out.refresh_from_db()
     order = pay_out.order
     trader_name = None
