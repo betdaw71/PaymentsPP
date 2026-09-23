@@ -182,7 +182,8 @@ def run() -> None:
         pid, provid, moid, status, merchant, old_amount, new_amount, delta, was_recalc, session, body = row
         try:
             with transaction.atomic():
-                locked = InOrder.objects.select_for_update().select_related("status").get(pk=session.pay_in.order_id)
+                # Без select_related: FOR UPDATE + outer join по status падает на Postgres.
+                locked = InOrder.objects.select_for_update().get(pk=session.pay_in.order_id)
                 outcome = handle_psp_success_webhook(locked, body)
                 locked.refresh_from_db()
                 session.pay_in.refresh_from_db()
