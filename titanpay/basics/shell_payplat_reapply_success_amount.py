@@ -26,6 +26,8 @@ handle_psp_success_webhook; при равных суммах outcome=idempotent)
   docker compose exec -T \\
     -e PAY_IN_ID=36ac9db1-b99c-4ca1-8e8e-1a810cbb59b4 -e DRY_RUN=1 app \\
     python manage.py shell < titanpay/basics/shell_payplat_reapply_success_amount.py
+
+Массово за неделю — shell_payplat_reapply_missed_corrections.py
 """
 from __future__ import annotations
 
