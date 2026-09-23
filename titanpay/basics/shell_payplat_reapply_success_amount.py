@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import os
 
+from django.db import transaction
+
 from payments.models import PayIn, PayplatPayInSession
 from payments.payplat_client import payplat_webhook_paid_amount
 from payments.psp_payin import handle_psp_success_webhook
@@ -122,10 +124,11 @@ def run() -> None:
             print("OK: сумма уже равна quote_amount")
         return
 
-    order = InOrder.objects.get(pk=pay_in.order_id)
-    outcome = handle_psp_success_webhook(order, body)
-    pay_in.refresh_from_db()
-    order.refresh_from_db()
+    with transaction.atomic():
+        order = InOrder.objects.select_for_update().get(pk=pay_in.order_id)
+        outcome = handle_psp_success_webhook(order, body)
+        order.refresh_from_db()
+        pay_in.refresh_from_db()
     print(f"outcome: {outcome}")
     print(f"PayIn amount after: {pay_in.amount}")
     print(f"InOrder amount after: {order.amount} recalculated={order.recalculated}")
