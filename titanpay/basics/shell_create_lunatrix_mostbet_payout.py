@@ -191,6 +191,8 @@ def run():
         },
         "details": {
             "card_number": CARD,
+            "name": os.environ.get("TEST_NAME", "IVAN"),
+            "surname": os.environ.get("TEST_SURNAME", "PETROV"),
             "owner": "TEST MOSTBET",
             "bank": "Kaspi",
         },

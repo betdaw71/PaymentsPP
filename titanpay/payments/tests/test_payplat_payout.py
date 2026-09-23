@@ -37,7 +37,16 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         self.assertFalse(payplat_is_payout_webhook(body))
         self.assertEqual(payplat_webhook_outcome(body), "success")
 
-    @override_settings(PAYPLAT_PAYOUT_AMOUNT_MODE="usd")
+    @override_settings(PAYPLAT_PAYOUT_CURRENCY="KZT")
+    def test_amount_uses_kzt_when_currency_kzt(self):
+        pay_out = type(
+            "P",
+            (),
+            {"amount": Decimal("50000"), "order": type("O", (), {"usd_amount": Decimal("106.47")})()},
+        )()
+        self.assertEqual(_payout_amount_for_payplat(pay_out), Decimal("50000"))
+
+    @override_settings(PAYPLAT_PAYOUT_CURRENCY="", PAYPLAT_PAYOUT_AMOUNT_MODE="usd")
     @patch("payments.payoutkzt_rate.get_payoutkzt_rate", return_value=Decimal("500"))
     def test_amount_uses_payoutkzt_bybit_rate(self, _rate):
         pay_out = type(
@@ -47,7 +56,7 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         )()
         self.assertEqual(_payout_amount_for_payplat(pay_out), Decimal("40.00"))
 
-    @override_settings(PAYPLAT_PAYOUT_AMOUNT_MODE="usd")
+    @override_settings(PAYPLAT_PAYOUT_CURRENCY="", PAYPLAT_PAYOUT_AMOUNT_MODE="usd")
     @patch("payments.payoutkzt_rate.get_payoutkzt_rate", return_value=None)
     def test_amount_falls_back_to_order_usd_without_payoutkzt(self, _rate):
         pay_out = type(
@@ -57,7 +66,7 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         )()
         self.assertEqual(_payout_amount_for_payplat(pay_out), Decimal("41.23"))
 
-    @override_settings(PAYPLAT_PAYOUT_AMOUNT_MODE="fiat")
+    @override_settings(PAYPLAT_PAYOUT_CURRENCY="", PAYPLAT_PAYOUT_AMOUNT_MODE="fiat")
     def test_amount_fiat_mode_uses_kzt(self):
         pay_out = type("P", (), {"amount": Decimal("20000"), "order": type("O", (), {"usd_amount": Decimal("41.23")})()})()
         self.assertEqual(_payout_amount_for_payplat(pay_out), Decimal("20000"))
@@ -67,16 +76,22 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         PAYPLAT_SECRET_KEY="secret",
         PAYPLAT_API_BASE="https://payplat.su/test/api",
         PAYPLAT_PAYOUT_REQUISITE_TYPE="card",
-        PAYPLAT_PAYOUT_TYPE="",
+        PAYPLAT_PAYOUT_TYPE="kzt",
+        PAYPLAT_PAYOUT_CURRENCY="KZT",
+        PAYPLAT_PAYOUT_NAME="IVAN",
+        PAYPLAT_PAYOUT_SURNAME="PETROV",
         PAYPLAT_PAYOUT_BANK="kaspi",
+        PAYPLAT_TARIFF="PRIMARY",
     )
     @patch("payments.payplat_client._request", return_value=(True, {"payout_id": "p1", "status": "WAITING"}))
-    def test_create_payout_sends_card_and_usd_fields(self, req):
+    def test_create_payout_sends_kzt_currency(self, req):
         ok, data = payplat_create_payout(
-            amount=Decimal("41.23"),
+            amount=Decimal("50000"),
             shop_internal_id="po-1",
             card_number="4111111111111111",
             bank="kaspi",
+            name="IVAN",
+            surname="PETROV",
         )
         self.assertTrue(ok)
         self.assertEqual(data["payout_id"], "p1")
@@ -84,8 +99,13 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         self.assertEqual(method, "POST")
         self.assertEqual(path, "/payout")
         payload = req.call_args.kwargs["json_payload"]
-        self.assertEqual(payload["amount"], 41.23)
+        self.assertEqual(payload["amount"], 50000)
+        self.assertEqual(payload["currency"], "KZT")
+        self.assertEqual(payload["payout_type"], "kzt")
         self.assertEqual(payload["card_number"], "4111111111111111")
         self.assertEqual(payload["requisite_type"], "card")
         self.assertEqual(payload["bank"], "kaspi")
+        self.assertEqual(payload["name"], "IVAN")
+        self.assertEqual(payload["surname"], "PETROV")
         self.assertEqual(payload["shop_internal_id"], "po-1")
+        self.assertEqual(payload["tariff"], "PRIMARY")

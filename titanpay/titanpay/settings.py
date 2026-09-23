@@ -392,17 +392,20 @@ PAYPLAT_PAYER_MAP = os.getenv(
 PAYPLAT_PAYER = os.getenv('PAYPLAT_PAYER', 'kz')
 PAYPLAT_CONTRAGENT_FROM_CLIENT = os.getenv('PAYPLAT_CONTRAGENT_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 PAYPLAT_WEBHOOK_SKIP_VERIFY = os.getenv('PAYPLAT_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
-# Payout: PayPlat asked to send C2C USD for KZT withdrawals. POST {PAYPLAT_API_BASE}/payout
+# Payout: PayPlat KZT corridor. currency=KZT only with payout_type=kzt; amount then in tenge.
 PAYPLAT_PAYOUT_PATH = os.getenv('PAYPLAT_PAYOUT_PATH', '/payout')
 PAYPLAT_PAYOUT_REQUISITE_TYPE = os.getenv('PAYPLAT_PAYOUT_REQUISITE_TYPE', 'card')
 PAYPLAT_PAYOUT_REQUISITE_TYPE_MAP = os.getenv(
     'PAYPLAT_PAYOUT_REQUISITE_TYPE_MAP',
     '{"C2C":"card","C2CKZT":"card","C2CKZTTEST":"card"}',
 )
-PAYPLAT_PAYOUT_TYPE = os.getenv('PAYPLAT_PAYOUT_TYPE', '')
+PAYPLAT_PAYOUT_TYPE = os.getenv('PAYPLAT_PAYOUT_TYPE', 'kzt')
+PAYPLAT_PAYOUT_CURRENCY = os.getenv('PAYPLAT_PAYOUT_CURRENCY', 'KZT')
+PAYPLAT_PAYOUT_NAME = os.getenv('PAYPLAT_PAYOUT_NAME', 'IVAN')
+PAYPLAT_PAYOUT_SURNAME = os.getenv('PAYPLAT_PAYOUT_SURNAME', 'PETROV')
 PAYPLAT_PAYOUT_BANK = os.getenv('PAYPLAT_PAYOUT_BANK', 'kaspi')
 PAYPLAT_PAYOUT_BANK_MAP = os.getenv('PAYPLAT_PAYOUT_BANK_MAP', '')
-# usd = KZT / PAYOUTKZT Bybit rate, fiat = pay_out.amount (KZT)
+# usd = KZT / PAYOUTKZT Bybit rate, fiat = pay_out.amount (KZT). Ignored when currency=KZT.
 PAYPLAT_PAYOUT_AMOUNT_MODE = os.getenv('PAYPLAT_PAYOUT_AMOUNT_MODE', 'usd')
 
 # Bybit P2P red book USDT/KZT: только выплаты PayPlat (не pay-in). Эндпоинт GET /api/v1/payments/rate/payoutkzt/

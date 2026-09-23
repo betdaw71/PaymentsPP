@@ -359,6 +359,18 @@ def payplat_payout_type() -> str:
     return (getattr(settings, "PAYPLAT_PAYOUT_TYPE", None) or "").strip().lower()
 
 
+def payplat_payout_currency() -> str:
+    return (getattr(settings, "PAYPLAT_PAYOUT_CURRENCY", None) or "").strip().upper()
+
+
+def payplat_payout_name() -> str:
+    return (getattr(settings, "PAYPLAT_PAYOUT_NAME", None) or "IVAN").strip() or "IVAN"
+
+
+def payplat_payout_surname() -> str:
+    return (getattr(settings, "PAYPLAT_PAYOUT_SURNAME", None) or "PETROV").strip() or "PETROV"
+
+
 def payplat_payout_path() -> str:
     return (getattr(settings, "PAYPLAT_PAYOUT_PATH", None) or "/payout").strip() or "/payout"
 
@@ -371,6 +383,10 @@ def payplat_create_payout(
     requisite_type: str | None = None,
     payout_type: str | None = None,
     bank: str | None = None,
+    currency: str | None = None,
+    name: str | None = None,
+    surname: str | None = None,
+    tariff: str | None = None,
 ) -> tuple[bool, dict[str, Any] | str]:
     payload: dict[str, Any] = {
         "shop_internal_id": shop_internal_id,
@@ -381,13 +397,28 @@ def payplat_create_payout(
     req_type = (requisite_type or payplat_payout_requisite_type_for(None)).strip().lower()
     if req_type:
         payload["requisite_type"] = req_type
+    currency_val = (currency if currency is not None else payplat_payout_currency()).strip().upper()
     ptype = (payout_type if payout_type is not None else payplat_payout_type()).strip().lower()
     if not ptype:
-        ptype = "standard" if bank else "mobile"
+        if currency_val == "KZT":
+            ptype = "kzt"
+        else:
+            ptype = "standard" if bank else "mobile"
     if ptype:
         payload["payout_type"] = ptype
+    if currency_val:
+        payload["currency"] = currency_val
+    name_val = (name if name is not None else payplat_payout_name()).strip()
+    surname_val = (surname if surname is not None else payplat_payout_surname()).strip()
+    if name_val:
+        payload["name"] = name_val
+    if surname_val:
+        payload["surname"] = surname_val
     if bank:
         payload["bank"] = bank
+    tariff_val = (tariff if tariff is not None else payplat_tariff()).strip().upper()
+    if tariff_val:
+        payload["tariff"] = tariff_val
     return _request("POST", payplat_payout_path(), json_payload=payload)
 
 
@@ -404,6 +435,7 @@ def payplat_is_soft_rejection(body: dict) -> bool:
 _PAYOUT_CREATE_FAIL_STATUSES = frozenset(
     {
         "amount_below_minimum",
+        "amount_above_maximum",
         "amount_currently_unavailable",
         "rejected",
         "declined",
@@ -506,6 +538,7 @@ def payplat_webhook_outcome(body: dict) -> str | None:
             "declined",
             "rejected",
             "amount_below_minimum",
+            "amount_above_maximum",
             "amount_currently_unavailable",
         ):
             return "fail"
@@ -869,7 +902,38 @@ def _bank_from_payout(pay_out: Any, ps_name: str | None) -> str | None:
     return payplat_payout_bank_for(ps_name)
 
 
+def _name_parts_from_payout(pay_out: Any) -> tuple[str, str]:
+    details = pay_out.details if isinstance(pay_out.details, dict) else {}
+    name = ""
+    surname = ""
+    for key in ("name", "first_name", "firstname"):
+        raw = (details.get(key) or "").strip()
+        if raw:
+            name = raw
+            break
+    for key in ("surname", "last_name", "lastname"):
+        raw = (details.get(key) or "").strip()
+        if raw:
+            surname = raw
+            break
+    if not name or not surname:
+        for key in ("owner", "cardholder", "holder_name", "card_holder"):
+            raw = (details.get(key) or "").strip()
+            if not raw:
+                continue
+            parts = raw.split()
+            if len(parts) >= 2:
+                name = name or parts[0]
+                surname = surname or parts[-1]
+            elif parts:
+                name = name or parts[0]
+            break
+    return name or payplat_payout_name(), surname or payplat_payout_surname()
+
+
 def _payout_amount_for_payplat(pay_out: Any) -> Decimal:
+    if payplat_payout_currency() == "KZT":
+        return Decimal(str(pay_out.amount))
     mode = (getattr(settings, "PAYPLAT_PAYOUT_AMOUNT_MODE", None) or "usd").strip().lower()
     if mode in ("fiat", "kzt", "amount"):
         return Decimal(str(pay_out.amount))
@@ -906,7 +970,7 @@ def _provider_payout_id(body: dict | None) -> str:
 
 
 def try_create_payplat_payout(pay_out: Any, *, client_ip: str | None = None) -> bool | None:
-    """Create PayPlat payout after OutOrder for payplat1. USD = KZT / PAYOUTKZT Bybit rate."""
+    """Create PayPlat payout after OutOrder for payplat1. currency=KZT → amount in tenge."""
     del client_ip
     from payments.models import PayplatPayOutSession
 
@@ -931,12 +995,16 @@ def try_create_payplat_payout(pay_out: Any, *, client_ip: str | None = None) -> 
     session.external_id = external_id
     session.save(update_fields=["external_id", "updated_at"])
 
+    holder_name, holder_surname = _name_parts_from_payout(pay_out)
     ok, data = payplat_create_payout(
         amount=_payout_amount_for_payplat(pay_out),
         shop_internal_id=external_id,
         card_number=card_number,
         requisite_type=payplat_payout_requisite_type_for(ps_name),
         bank=_bank_from_payout(pay_out, ps_name),
+        currency=payplat_payout_currency(),
+        name=holder_name,
+        surname=holder_surname,
     )
     if not ok:
         session.create_response = data if isinstance(data, dict) else {"error": str(data)}
