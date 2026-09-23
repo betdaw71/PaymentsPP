@@ -437,6 +437,7 @@ _PAYOUT_CREATE_FAIL_STATUSES = frozenset(
         "amount_below_minimum",
         "amount_above_maximum",
         "amount_currently_unavailable",
+        "insufficient_merchant_balance",
         "rejected",
         "declined",
         "error",
@@ -540,6 +541,7 @@ def payplat_webhook_outcome(body: dict) -> str | None:
             "amount_below_minimum",
             "amount_above_maximum",
             "amount_currently_unavailable",
+            "insufficient_merchant_balance",
         ):
             return "fail"
         return None

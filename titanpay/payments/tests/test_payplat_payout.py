@@ -26,9 +26,16 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         body = {"type": "PAYOUT", "status": "amount_below_minimum"}
         self.assertEqual(payplat_webhook_outcome(body), "fail")
 
+    def test_payout_ipn_insufficient_balance_is_fail(self):
+        body = {"type": "PAYOUT", "status": "insufficient_merchant_balance"}
+        self.assertEqual(payplat_webhook_outcome(body), "fail")
+
     def test_create_amount_below_minimum_is_rejected(self):
         self.assertTrue(
             payplat_payout_create_rejected({"status": "amount_below_minimum", "order_id": 1})
+        )
+        self.assertTrue(
+            payplat_payout_create_rejected({"status": "insufficient_merchant_balance", "order_id": 1})
         )
         self.assertFalse(payplat_payout_create_rejected({"status": "WAITING", "order_id": 1}))
 
