@@ -416,7 +416,7 @@ PAYOUTKZT_PS_NAME = os.getenv('PAYOUTKZT_PS_NAME', 'PAYOUTKZT')
 # Optional token for GET /api/v1/payments/rate/payoutkzt/. Empty = public.
 RATE_API_TOKEN = os.getenv('RATE_API_TOKEN', '')
 # Mostbet sends C2C for KZT payouts — remap to C2CKZT before routing.
-PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mostbet')
+PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mostbet,lunatrixpay')
 
 # JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
 PSP_ROUTING_PRIORITY_MAP = os.getenv(
@@ -564,7 +564,8 @@ ASTRUM_PAYIN_CALLBACK_URL = os.getenv('ASTRUM_PAYIN_CALLBACK_URL', '')
 # JSON: merchant username → preferred pay-out trader. Mostbet C2CKZT → PayPlat.
 PAYOUT_PREFERRED_TRADER_BY_MERCHANT = os.getenv(
     'PAYOUT_PREFERRED_TRADER_BY_MERCHANT',
-    '{"mostbet":"%s"}' % (PAYPLAT_TRADER_USERNAME or 'payplat1'),
+    '{"mostbet":"%s","lunatrixpay":"%s"}'
+    % (PAYPLAT_TRADER_USERNAME or 'payplat1', PAYPLAT_TRADER_USERNAME or 'payplat1'),
 )
 
 # Comma-separated trader usernames: skip auto liveness (status 5) in cron, like virtual PSP traders

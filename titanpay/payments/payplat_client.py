@@ -919,7 +919,7 @@ def _name_parts_from_payout(pay_out: Any) -> tuple[str, str]:
             surname = raw
             break
     if not name or not surname:
-        for key in ("owner", "cardholder", "holder_name", "card_holder"):
+        for key in ("recipient_name", "owner", "cardholder", "holder_name", "card_holder"):
             raw = (details.get(key) or "").strip()
             if not raw:
                 continue
