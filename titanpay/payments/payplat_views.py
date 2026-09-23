@@ -82,7 +82,9 @@ class PayplatWebhookView(APIView):
                 payout_id=payout_id or order_id,
             )
             if payout_session is not None:
-                return self._dispatch_payout(payout_session, body, outcome)
+                return self._dispatch_payout(
+                    payout_session, body, payplat_webhook_outcome(body, payout=True)
+                )
             logger.warning(
                 "PayPlat webhook: session not found shop_internal_id=%s order_id=%s",
                 shop_internal_id,
@@ -177,7 +179,7 @@ class PayplatWebhookView(APIView):
                 payout_id,
             )
             return Response({"status": "error", "message": "unknown_order"}, status=status.HTTP_404_NOT_FOUND)
-        return self._dispatch_payout(session, body, outcome)
+        return self._dispatch_payout(session, body, payplat_webhook_outcome(body, payout=True))
 
     def _dispatch_payout(self, session: PayplatPayOutSession, body: dict, outcome: str | None) -> Response:
         pid = body.get("payout_id") or body.get("id") or body.get("order_id")

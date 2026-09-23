@@ -522,32 +522,45 @@ def payplat_is_payout_webhook(body: dict | None) -> bool:
     return ipn_type == "payout"
 
 
-def payplat_webhook_outcome(body: dict) -> str | None:
-    """success | fail | None (ignore intermediate)."""
+_PAYOUT_WEBHOOK_FAIL_STATUSES = frozenset(
+    {
+        "timeout",
+        "expired",
+        "failure",
+        "failed",
+        "cancel",
+        "cancelled",
+        "canceled",
+        "error",
+        "declined",
+        "rejected",
+        "void",
+        "revoked",
+        "annulled",
+        "closed",
+        "not_paid",
+        "unpaid",
+        "amount_below_minimum",
+        "amount_above_maximum",
+        "amount_currently_unavailable",
+        "insufficient_merchant_balance",
+    }
+)
+
+
+def payplat_webhook_outcome(body: dict, *, payout: bool | None = None) -> str | None:
+    """success | fail | None (ignore intermediate). payout=True — заявка уже payout-сессия."""
     status = _norm_status(body.get("status"))
-    if payplat_is_payout_webhook(body):
+    is_payout = payplat_is_payout_webhook(body) if payout is None else payout
+    if is_payout:
         if status in ("paid", "success"):
             return "success"
-        if status in (
-            "timeout",
-            "expired",
-            "failure",
-            "failed",
-            "cancelled",
-            "canceled",
-            "error",
-            "declined",
-            "rejected",
-            "amount_below_minimum",
-            "amount_above_maximum",
-            "amount_currently_unavailable",
-            "insufficient_merchant_balance",
-        ):
+        if status in _PAYOUT_WEBHOOK_FAIL_STATUSES:
             return "fail"
         return None
     if status == "success":
         return "success"
-    if status in ("timeout", "expired", "failure", "cancelled", "error"):
+    if status in _PAYOUT_WEBHOOK_FAIL_STATUSES:
         return "fail"
     dispute_status = _norm_status(body.get("dispute_status"))
     if dispute_status == "accepted" and status == "success":

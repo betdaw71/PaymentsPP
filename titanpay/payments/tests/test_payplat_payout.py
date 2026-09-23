@@ -22,6 +22,17 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         body = {"type": "payout", "status": "CANCELLED"}
         self.assertEqual(payplat_webhook_outcome(body), "fail")
 
+    def test_payout_cancel_without_type_is_fail_when_forced(self):
+        body = {"status": "CANCELED", "shop_internal_id": "abc", "order_id": 503}
+        self.assertFalse(payplat_is_payout_webhook(body))
+        self.assertEqual(payplat_webhook_outcome(body, payout=True), "fail")
+        self.assertEqual(payplat_webhook_outcome(body), "fail")
+
+    def test_waiting_for_payer_is_ignored(self):
+        body = {"type": "PAYOUT", "status": "WAITING_FOR_PAYER"}
+        self.assertIsNone(payplat_webhook_outcome(body))
+        self.assertIsNone(payplat_webhook_outcome(body, payout=True))
+
     def test_payout_ipn_amount_below_minimum_is_fail(self):
         body = {"type": "PAYOUT", "status": "amount_below_minimum"}
         self.assertEqual(payplat_webhook_outcome(body), "fail")
