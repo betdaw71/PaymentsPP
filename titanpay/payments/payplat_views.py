@@ -21,7 +21,7 @@ from payments.payplat_client import (
     resolve_payplat_webhook_session,
     verify_webhook_signature,
 )
-from payments.psp_payin import complete_inorder_from_psp_webhook
+from payments.psp_payin import handle_psp_success_webhook
 from trade.models import InOrder, OutOrder, OutOrderStatus
 
 logger = logging.getLogger(__name__)
@@ -126,9 +126,14 @@ class PayplatWebhookView(APIView):
         try:
             with transaction.atomic():
                 locked = InOrder.objects.select_for_update().get(pk=pay_in.order_id)
-                if locked.status and locked.status.name == "Completed":
-                    return Response({"status": "ok", "message": "Webhook received successfully"})
-                complete_inorder_from_psp_webhook(locked, body)
+                # Не early-return на Completed: PayPlat шлёт повторный SUCCESS
+                # с новым quote_amount после корректировки суммы — нужен recalc.
+                outcome_kind = handle_psp_success_webhook(locked, body)
+                if outcome_kind == "recalculated":
+                    logger.info(
+                        "PayPlat success webhook recalculated PayIn=%s quote_amount applied",
+                        pay_in.id,
+                    )
         except ValidationError as exc:
             state = pay_in.order.status.name if pay_in.order and pay_in.order.status else None
             logger.warning(
