@@ -121,7 +121,18 @@ class ProtocolWebhookView(APIView):
             if locked.status and locked.status.name == "Completed":
                 return Response({"ok": True, "idempotent": True})
             locked_pi = PayIn.objects.select_for_update().get(pk=pay_in.pk)
-            if locked_pi.status and locked_pi.status.name not in ("Success", "Failed", "Declined"):
+            inorder_closed = False
+            if locked.status and locked.status.name in ("New", "Money sent by user"):
+                try:
+                    locked.deal_time_expired()
+                    inorder_closed = True
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Protocol webhook deal_time_expired: %s", exc)
+            if (
+                not inorder_closed
+                and locked_pi.status
+                and locked_pi.status.name not in ("Success", "Failed", "Declined")
+            ):
                 locked_pi.failed()
 
         return Response({"ok": True})

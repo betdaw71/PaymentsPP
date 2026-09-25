@@ -1,0 +1,426 @@
+"""
+Resend merchant callbacks by Melbet order_id (PayIn.merchant_order_id).
+
+Melbet typical callback is POST {"order_id": "..."} with x-api-key / x-signature.
+send_callback() skips non-terminal statuses — this script force-pings Melbet anyway
+so they re-fetch status. Does not change PayIn/InOrder status.
+
+On server:
+  1) Inspect only:
+       docker compose exec -T -e DRY_RUN=1 app python manage.py shell < titanpay/basics/shell_resend_melbet_callbacks.py
+     or from container cwd /app:
+       python manage.py shell < basics/shell_resend_melbet_callbacks.py
+       (set DRY_RUN=1 in env)
+
+  2) Send:
+       docker compose exec -T -e DRY_RUN=0 app python manage.py shell < titanpay/basics/shell_resend_melbet_callbacks.py
+"""
+from __future__ import annotations
+
+import os
+import time
+
+from payments.integrations.melbet.callbacks import _post_melbet_callback
+from payments.integrations.melbet.models import MelbetTransactionSession
+from payments.models import PayIn
+
+DRY_RUN = os.environ.get("DRY_RUN", "1").strip().lower() not in ("0", "false", "no")
+SLEEP_SEC = float(os.environ.get("CB_SLEEP", "0.2"))
+
+ORDER_IDS = """
+23202619559
+23202619335
+23202614019
+23202611279
+23202608359
+23202602921
+23202598265
+23202597849
+23202564197
+23202561913
+23202548259
+23202546005
+23202495927
+23202494387
+23202494433
+23202490611
+23202489081
+23202488249
+23202481559
+23202472069
+23202471391
+23202468339
+23202464485
+23202456487
+23202451121
+23202431253
+23202429271
+23202103355
+23202018561
+23201988491
+23201980543
+23201979863
+23201969143
+23201964817
+23201958713
+23201951357
+23201930293
+23201929153
+23201925507
+23201923489
+23201922865
+23201923117
+23201922359
+23201917239
+23201916803
+23201916223
+23201909933
+23201892559
+23201885061
+23201884537
+23201869087
+23201868547
+23201857495
+23201846781
+23201833263
+23201808565
+23201805383
+23201802203
+23201800093
+23201788131
+23201775537
+23201761145
+23201751533
+23201747971
+23201741647
+23201737681
+23201730619
+23201716319
+23201715549
+23201712095
+23201696165
+23201678969
+23201673973
+23201671297
+23201665167
+23201659891
+23201637349
+23201626709
+23201623701
+23201609219
+23201601481
+23201596807
+23201581437
+23201580551
+23201578745
+23201577669
+23201574117
+23201569677
+23201563391
+23201560203
+23201552553
+23201547065
+23201542069
+23201537415
+23201522101
+23201517069
+23201515607
+23201514163
+23201513291
+23201499157
+23201469257
+23201464149
+23201462285
+23201461769
+23201445077
+23201445261
+23201430193
+23201419219
+23201414931
+23201414113
+23201407595
+23201406193
+23201405141
+23201402735
+23201394395
+23201379135
+23201377967
+23201377349
+23201376183
+23201372835
+23201367001
+23201363299
+23201363179
+23201358785
+23201358081
+23201304573
+23201302285
+23201300169
+23201298575
+23201297691
+23201278689
+23201273565
+23201272479
+23201256693
+23201254355
+23201219303
+23201217565
+23201214787
+23201183675
+23201170315
+23201146627
+23201116171
+23201113003
+23201112193
+23201096415
+23201054307
+23200959007
+23200956483
+23200954357
+23200954481
+23200953039
+23200906505
+23200893785
+23200875603
+23200844531
+23200808173
+23200801995
+23200795931
+23200766453
+23200727503
+23200701821
+23200699891
+23200696561
+23200687615
+23200685915
+23200683251
+23200681621
+23200637743
+23200636087
+23200566361
+23200544341
+23200520107
+23200471761
+23200462743
+23200440293
+23200437819
+23200430581
+23200422389
+23200419151
+23200404843
+23200399075
+23200395573
+23200389149
+23200375245
+23200371779
+23200371953
+23200347235
+23200343515
+23200312705
+23200266835
+23200237561
+23200219273
+23200199491
+23200192351
+23200168515
+23200165957
+23200151401
+23200142451
+23200139573
+23200135169
+23200104073
+23200079955
+23200034903
+23200003383
+23199984345
+23199930839
+23199924029
+23199913267
+23199907767
+23199906897
+23199905049
+23199896111
+23199853051
+23199848939
+23199835989
+23199833035
+23199831895
+23199822169
+23199821493
+23199819719
+23199819209
+23199818177
+23199814205
+23199802873
+23199770797
+23199731613
+23199721807
+23199711333
+23199702123
+23199682561
+23199682163
+23199673935
+23199666351
+23199666063
+23199664413
+23199639217
+23199635433
+23199635217
+23199627533
+23199624511
+23199617703
+23199614499
+23199612067
+23199606527
+23199600041
+23199590149
+23199587813
+23199585459
+23199581955
+23199575741
+23199571913
+23199566119
+23199563175
+23199558629
+23199548315
+23199532107
+23199527961
+23199524893
+23199524399
+23199513101
+23199505535
+23199481259
+23199478381
+23199476071
+23199472687
+23199471909
+23199466015
+23199460497
+23199430727
+23199417541
+23199412275
+23199400691
+23199396879
+23199394323
+23199390419
+23199385207
+23199383847
+23199363061
+23199359671
+23199357711
+23199353305
+23199351361
+23199347937
+23199345657
+23199313333
+23199289573
+23199283703
+23199279401
+23199262973
+23199261965
+23199256115
+23199253733
+23199237423
+23199231515
+23153262965
+23153204527
+23153185077
+23153127375
+23153099669
+23152993059
+23152933317
+23152833979
+23152701453
+23152700511
+23152639447
+23152638307
+23152629281
+23152579421
+23152536477
+23152273781
+23152260371
+23152250423
+23152245301
+23152243525
+23152242439
+23152242259
+22924684663
+22924538477
+22924538609
+22923923381
+22883161551
+22652010027
+""".split()
+
+
+def _lookup(oid: str) -> tuple[PayIn | None, MelbetTransactionSession | None]:
+    pay_in = (
+        PayIn.objects.filter(merchant_order_id=oid)
+        .select_related("status", "currency", "payment_system", "merchant__user", "order")
+        .first()
+    )
+    session = (
+        MelbetTransactionSession.objects.filter(order_id=oid)
+        .select_related("pay_in", "pay_in__status", "config")
+        .first()
+    )
+    if pay_in is None and session is not None and session.pay_in_id:
+        pay_in = (
+            PayIn.objects.filter(id=session.pay_in_id)
+            .select_related("status", "currency", "payment_system", "merchant__user", "order")
+            .first()
+        )
+    if session is None and pay_in is not None:
+        session = MelbetTransactionSession.objects.filter(pay_in=pay_in).select_related("config").first()
+    return pay_in, session
+
+
+def run() -> None:
+    ids = [x.strip() for x in ORDER_IDS if x.strip()]
+    print(f"orders={len(ids)} dry_run={DRY_RUN}")
+    missing = []
+    no_url = []
+    sent = []
+    by_status: dict[str, int] = {}
+
+    for i, oid in enumerate(ids, 1):
+        pay_in, session = _lookup(oid)
+        if pay_in is None:
+            missing.append(oid)
+            print(f"[{i}/{len(ids)}] MISSING {oid}")
+            continue
+        st = pay_in.status.name if pay_in.status else "?"
+        by_status[st] = by_status.get(st, 0) + 1
+        merchant = pay_in.merchant.user.username if pay_in.merchant and pay_in.merchant.user else "?"
+        url = pay_in.callback_url or ""
+        print(
+            f"[{i}/{len(ids)}] {oid} pay_in={pay_in.id} merchant={merchant} "
+            f"status={st} amount={pay_in.amount} url={bool(url)} melbet={bool(session)}"
+        )
+        if not url:
+            no_url.append(oid)
+            continue
+        if DRY_RUN:
+            continue
+        if session is not None:
+            code = _post_melbet_callback(session, url)
+        else:
+            code = pay_in.send_callback({"status": st})
+        sent.append((oid, st, code))
+        print(f"    -> http={code}")
+        if SLEEP_SEC:
+            time.sleep(SLEEP_SEC)
+
+    print("---")
+    print("by_status", dict(sorted(by_status.items())))
+    print(f"missing={len(missing)} no_callback_url={len(no_url)} sent={len(sent)}")
+    if missing:
+        print("MISSING_IDS", " ".join(missing))
+    if no_url:
+        print("NO_URL_IDS", " ".join(no_url))
+    bad = [row for row in sent if not row[2] or int(row[2]) >= 400]
+    if bad:
+        print("BAD_HTTP", bad)
+
+
+run()

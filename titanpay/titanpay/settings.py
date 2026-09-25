@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'sms',
     'trade',
     'bots',
+    'appeals',
     'usermanagement',
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist"
@@ -259,6 +260,20 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 3 * 1024 * 1024  # 3 MB
 SYSTEM_INTERVAL_VALUE = 3 * 60 * 60  # 3 hours
 CLIENT_SUCCESS_RATE = 0.2
 ARBITRAGE_LIMIT = 3
+# При арбитраже ставить PaymentDetailsGroup.status=4 (блок роутинга на эту группу).
+# По умолчанию выключено — реквизит/PSP-группа остаётся доступной для новых заявок.
+ARBITRAGE_BLOCK_PAYMENT_GROUP = os.getenv('ARBITRAGE_BLOCK_PAYMENT_GROUP', 'false').lower() in (
+    'true',
+    '1',
+    'yes',
+)
+# Block a second pay-in while the client still has one In Progress.
+# Off by default: Melbet (and others) may send a new deposit while the previous is open.
+ENFORCE_PENDING_PAYIN = os.getenv('ENFORCE_PENDING_PAYIN', 'false').lower() in (
+    'true',
+    '1',
+    'yes',
+)
 RATE_UPD_TIME = 60
 LOW_DEPOSIT_LEVEL = 1000
 SBER_NAME = "Sber"
@@ -271,6 +286,12 @@ ALFA_NAME = "Alfa"
 INTERBANK_NAME = "Interbank"
 UPI_INTENT_NAME = os.getenv('FAIRPAY_PAYMENT_SYSTEM_NAME', 'UPI Intent')
 C2C_NAME='C2C'
+C2CKZT_NAME = os.getenv('C2CKZT_NAME', 'C2CKZT')
+# Банки-PS для KZT трансграна: мерч шлёт C2C/C2CKZT, роутинг берёт группы этих PS, имя банка в реквизитах.
+KZT_C2C_BANK_PS_NAMES = os.getenv('KZT_C2C_BANK_PS_NAMES', 'Vietcombank')
+# Глобальная наценка XE USD/KZT (пусто = +5%). Пер-PS перекрывает: XE_KZT_MARKUP_BY_PS.
+XE_KZT_MARKUP = os.getenv('XE_KZT_MARKUP', '')
+XE_KZT_MARKUP_BY_PS = os.getenv('XE_KZT_MARKUP_BY_PS', '{"Vietcombank":"1.04"}')
 
 PAYMENT_PAGE_URL = os.getenv('PAYMENT_PAGE_URL')
 SMS_ENDPOINT = os.getenv('SMS_ENDPOINT')
@@ -280,6 +301,9 @@ S3_ENDPOINT = os.getenv('S3_ENDPOINT')
 ACCESS_KEY = os.getenv('ACCESS_KEY')
 SECRET_S3_KEY = os.getenv('SECRET_S3_KEY')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
+
+# Telegram appeal bot (отправка чеков в чат провайдера)
+APPEAL_TELEGRAM_BOT_TOKEN = os.getenv('APPEAL_TELEBOT_TOKEN', '')
 
 # Публичный базовый URL API (экспорт, ссылки в логах; переопределите через PUBLIC_API_URL)
 PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'https://api.avapay.net')
@@ -303,6 +327,129 @@ EXPAYONE_GATEWAY_MAP = os.getenv('EXPAYONE_GATEWAY_MAP', '')
 # C2C/KZT: POST /api/h2h/order с currency=kzt (без payment_gateway), см. доку ExpayOne
 EXPAYONE_USE_CURRENCY_FOR_C2C = os.getenv('EXPAYONE_USE_CURRENCY_FOR_C2C', 'true').lower() in ('true', '1', 'yes')
 
+# GiPay PSP (gipay.org, Aggrepay API v2, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/gipay/)
+GIPAY_API_BASE = os.getenv('GIPAY_API_BASE', 'https://gipay.org').rstrip('/')
+GIPAY_MERCHANT_ID = os.getenv('GIPAY_MERCHANT_ID', '')
+GIPAY_SECRET_KEY = os.getenv('GIPAY_SECRET_KEY', '')
+GIPAY_API_KEY = os.getenv('GIPAY_API_KEY', '')
+GIPAY_TRADER_USERNAME = os.getenv('GIPAY_TRADER_USERNAME', 'gipay1')
+GIPAY_PAYIN_METHOD = os.getenv('GIPAY_PAYIN_METHOD', 'tgkz')
+# JSON: {"C2CKZT":"tgkz","C2C":"tgkz"} — method в POST /api/v2/payments (оба PS → tgkz)
+GIPAY_PAYIN_METHOD_MAP = os.getenv('GIPAY_PAYIN_METHOD_MAP', '{"C2CKZT":"tgkz","C2C":"tgkz"}')
+GIPAY_ASSET_OR_BANK = os.getenv('GIPAY_ASSET_OR_BANK', '')
+GIPAY_DEFAULT_PAYER_IP = os.getenv('GIPAY_DEFAULT_PAYER_IP', '127.0.0.1')
+GIPAY_PAYER_USER_ID_FROM_CLIENT = os.getenv('GIPAY_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
+GIPAY_WEBHOOK_SKIP_VERIFY = os.getenv('GIPAY_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+# Доп. ключи для проверки Signature (через запятую), если в ЛК отдельный signing secret
+GIPAY_WEBHOOK_SIGNING_KEYS = os.getenv('GIPAY_WEBHOOK_SIGNING_KEYS', '')
+
+# Layer-1 PSP (layer-1.io, Aggrepay v2, KZT трансгран tgkz)
+# Колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/layerone/
+LAYERONE_API_BASE = os.getenv('LAYERONE_API_BASE', 'https://layer-1.io').rstrip('/')
+LAYERONE_MERCHANT_ID = os.getenv('LAYERONE_MERCHANT_ID', '')
+LAYERONE_SECRET_KEY = os.getenv('LAYERONE_SECRET_KEY', '')
+LAYERONE_API_KEY = os.getenv('LAYERONE_API_KEY', '')
+LAYERONE_TRADER_USERNAME = os.getenv('LAYERONE_TRADER_USERNAME', 'layerone1')
+LAYERONE_PAYIN_METHOD = os.getenv('LAYERONE_PAYIN_METHOD', 'tgkz')
+LAYERONE_PAYIN_METHOD_MAP = os.getenv('LAYERONE_PAYIN_METHOD_MAP', '{"C2CKZT":"tgkz","C2C":"tgkz"}')
+LAYERONE_ASSET_OR_BANK = os.getenv('LAYERONE_ASSET_OR_BANK', '')
+LAYERONE_DEFAULT_PAYER_IP = os.getenv('LAYERONE_DEFAULT_PAYER_IP', '127.0.0.1')
+LAYERONE_PAYER_USER_ID_FROM_CLIENT = os.getenv('LAYERONE_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
+LAYERONE_WEBHOOK_SKIP_VERIFY = os.getenv('LAYERONE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+LAYERONE_WEBHOOK_SIGNING_KEYS = os.getenv('LAYERONE_WEBHOOK_SIGNING_KEYS', '')
+LAYERONE_CALLBACK_URL = os.getenv('LAYERONE_CALLBACK_URL', '')
+
+# VisionX Pay PSP (https://api.visionxpay.club, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/visionx/)
+VISIONX_API_BASE = os.getenv('VISIONX_API_BASE', 'https://api.visionxpay.club').rstrip('/')
+VISIONX_API_KEY = os.getenv('VISIONX_API_KEY', '')
+VISIONX_SECRET_KEY = os.getenv('VISIONX_SECRET_KEY', '')
+VISIONX_TRADER_USERNAME = os.getenv('VISIONX_TRADER_USERNAME', 'visionx1')
+# JSON: {"C2CKZT":"halyk","C2C":"halyk"} — paymentMethod (код банка), null = любой
+VISIONX_PAYIN_METHOD_MAP = os.getenv('VISIONX_PAYIN_METHOD_MAP', '')
+VISIONX_PAYIN_METHOD = os.getenv('VISIONX_PAYIN_METHOD', '')
+# JSON: {"C2CKZT":"CROSS_BORDER","C2C":"CROSS_BORDER"} — трансгран VisionX
+VISIONX_PAYIN_OPTION_MAP = os.getenv(
+    'VISIONX_PAYIN_OPTION_MAP',
+    '{"C2CKZT":"CROSS_BORDER","C2C":"CROSS_BORDER","C2CKZTTEST":"CROSS_BORDER"}',
+)
+VISIONX_PAYIN_OPTION = os.getenv('VISIONX_PAYIN_OPTION', 'CROSS_BORDER')
+VISIONX_CROSS_BORDER_CURRENCY = os.getenv('VISIONX_CROSS_BORDER_CURRENCY', '')
+VISIONX_CROSS_BORDER_CURRENCY_MAP = os.getenv('VISIONX_CROSS_BORDER_CURRENCY_MAP', '')
+# Гео: currency заявки → crossBorderCurrency (KZT трансгран → TJS, RUB → TJS)
+VISIONX_CROSS_BORDER_CURRENCY_BY_PAYIN = os.getenv(
+    'VISIONX_CROSS_BORDER_CURRENCY_BY_PAYIN',
+    '{"KZT":"TJS","RUB":"TJS"}',
+)
+VISIONX_CROSS_BORDER_REQUISITE_TYPE = os.getenv('VISIONX_CROSS_BORDER_REQUISITE_TYPE', '')
+VISIONX_CROSS_BORDER_REQUISITE_TYPE_MAP = os.getenv('VISIONX_CROSS_BORDER_REQUISITE_TYPE_MAP', '')
+VISIONX_PAYER_USER_ID_FROM_CLIENT = os.getenv('VISIONX_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
+VISIONX_WEBHOOK_SKIP_VERIFY = os.getenv('VISIONX_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+
+# PayPlat PSP (https://payplat.su, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/payplat/)
+PAYPLAT_API_BASE = os.getenv('PAYPLAT_API_BASE', 'https://payplat.su/test/api').rstrip('/')
+PAYPLAT_SHOP_ID = os.getenv('PAYPLAT_SHOP_ID', '')
+PAYPLAT_SECRET_KEY = os.getenv('PAYPLAT_SECRET_KEY', '')
+PAYPLAT_TRADER_USERNAME = os.getenv('PAYPLAT_TRADER_USERNAME', 'payplat1')
+PAYPLAT_TEST_PS_NAME = os.getenv('PAYPLAT_TEST_PS_NAME', 'C2CKZTTEST')
+# JSON: requisite_type для PayPlat (h2h + payer=kz → сумма в тенге)
+PAYPLAT_REQUISITE_TYPE_MAP = os.getenv(
+    'PAYPLAT_REQUISITE_TYPE_MAP',
+    '{"C2C":"h2h","C2CKZT":"h2h","C2CKZTTEST":"h2h"}',
+)
+PAYPLAT_REQUISITE_TYPE = os.getenv('PAYPLAT_REQUISITE_TYPE', 'h2h')
+PAYPLAT_BANK_MAP = os.getenv('PAYPLAT_BANK_MAP', '')
+PAYPLAT_BANK = os.getenv('PAYPLAT_BANK', '')
+PAYPLAT_TARIFF = os.getenv('PAYPLAT_TARIFF', 'PRIMARY')
+# JSON: коридор плательщика — kz = сумма в тенге, ru = в рублях (документация PayPlat)
+PAYPLAT_PAYER_MAP = os.getenv(
+    'PAYPLAT_PAYER_MAP',
+    '{"C2C":"kz","C2CKZT":"kz","C2CKZTTEST":"kz"}',
+)
+PAYPLAT_PAYER = os.getenv('PAYPLAT_PAYER', 'kz')
+PAYPLAT_CONTRAGENT_FROM_CLIENT = os.getenv('PAYPLAT_CONTRAGENT_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
+PAYPLAT_WEBHOOK_SKIP_VERIFY = os.getenv('PAYPLAT_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+# Payout: PayPlat KZT corridor. currency=KZT only with payout_type=kzt; amount then in tenge.
+PAYPLAT_PAYOUT_PATH = os.getenv('PAYPLAT_PAYOUT_PATH', '/payout')
+PAYPLAT_PAYOUT_REQUISITE_TYPE = os.getenv('PAYPLAT_PAYOUT_REQUISITE_TYPE', 'card')
+PAYPLAT_PAYOUT_REQUISITE_TYPE_MAP = os.getenv(
+    'PAYPLAT_PAYOUT_REQUISITE_TYPE_MAP',
+    '{"C2C":"card","C2CKZT":"card","C2CKZTTEST":"card"}',
+)
+PAYPLAT_PAYOUT_TYPE = os.getenv('PAYPLAT_PAYOUT_TYPE', 'kzt')
+PAYPLAT_PAYOUT_CURRENCY = os.getenv('PAYPLAT_PAYOUT_CURRENCY', 'KZT')
+PAYPLAT_PAYOUT_NAME = os.getenv('PAYPLAT_PAYOUT_NAME', 'IVAN')
+PAYPLAT_PAYOUT_SURNAME = os.getenv('PAYPLAT_PAYOUT_SURNAME', 'PETROV')
+PAYPLAT_PAYOUT_BANK = os.getenv('PAYPLAT_PAYOUT_BANK', 'kaspi')
+PAYPLAT_PAYOUT_BANK_MAP = os.getenv('PAYPLAT_PAYOUT_BANK_MAP', '')
+# usd = KZT / PAYOUTKZT Bybit rate, fiat = pay_out.amount (KZT). Ignored when currency=KZT.
+PAYPLAT_PAYOUT_AMOUNT_MODE = os.getenv('PAYPLAT_PAYOUT_AMOUNT_MODE', 'usd')
+
+# Bybit P2P red book USDT/KZT: только выплаты PayPlat (не pay-in). Эндпоинт GET /api/v1/payments/rate/payoutkzt/
+BYBIT_KZT_AMOUNT = os.getenv('BYBIT_KZT_AMOUNT', '50000')
+BYBIT_KZT_AUTH_MAKER = os.getenv('BYBIT_KZT_AUTH_MAKER', 'true').lower() in ('true', '1', 'yes')
+BYBIT_KZT_ROWS = os.getenv('BYBIT_KZT_ROWS', '15,16')
+PAYOUTKZT_PS_NAME = os.getenv('PAYOUTKZT_PS_NAME', 'PAYOUTKZT')
+# Optional token for GET /api/v1/payments/rate/payoutkzt/. Empty = public.
+RATE_API_TOKEN = os.getenv('RATE_API_TOKEN', '')
+# Mostbet sends C2C for KZT payouts — remap to C2CKZT before routing.
+PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mostbet,lunatrixpay')
+
+# JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
+PSP_ROUTING_PRIORITY_MAP = os.getenv(
+    'PSP_ROUTING_PRIORITY_MAP',
+    '{"payplat1": 1, "gipay1": 2, "bitzone1": 3}',
+)
+# JSON: доля трафика PSP в % за скользящее окно. Пустой {} = только каскад по приоритету.
+# Пример: {"payplat1": 70, "gipay1": 30}. Доли нормализуются среди провайдеров,
+# которые сейчас в каскаде (выключенный PSP не занимает %). 0 или отсутствие username —
+# этот PSP только как fallback после weighted. Не lifetime current_volume: иначе
+# провайдер с маленькой историей заберёт 100% надолго.
+PSP_ROUTING_SHARE_MAP = os.getenv('PSP_ROUTING_SHARE_MAP', '{}')
+try:
+    PSP_ROUTING_SHARE_WINDOW_HOURS = int(os.getenv('PSP_ROUTING_SHARE_WINDOW_HOURS', '24') or '24')
+except (TypeError, ValueError):
+    PSP_ROUTING_SHARE_WINDOW_HOURS = 24
+
 # Protocol PSP (prot0col.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/protocol/)
 PROTOCOL_API_BASE = os.getenv('PROTOCOL_API_BASE', 'https://prot0col.com').rstrip('/')
 PROTOCOL_MERCHANT_ID = os.getenv('PROTOCOL_MERCHANT_ID', '')
@@ -317,7 +464,91 @@ PROTOCOL_API_KEY = os.getenv('PROTOCOL_API_KEY', '374|NZRwEhxoiTWAhjUNx2PetIjYQe
 # Binance P2P payTypes для Halyk (см. GET /api/v2/banks?currency=KZT)
 PROTOCOL_BINANCE_PAY_TYPE = os.getenv('PROTOCOL_BINANCE_PAY_TYPE', 'HalykBank')
 
+# Bitzone PSP (колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/bitzone/)
+BITZONE_API_BASE = os.getenv('BITZONE_API_BASE', 'https://api.bitzone.space').rstrip('/')
+BITZONE_API_KEY = os.getenv('BITZONE_API_KEY', '')
+BITZONE_TRADER_USERNAME = os.getenv('BITZONE_TRADER_USERNAME', 'bitzone1')
+# method: card, sbp, cross_card, cross_sbp, … — см. https://developers.bitzone.space/docs/pay-in/
+BITZONE_PAYIN_METHOD = os.getenv('BITZONE_PAYIN_METHOD', 'cross_card')
+BITZONE_BANK = os.getenv('BITZONE_BANK', '')
+BITZONE_DEFAULT_PAYER_IP = os.getenv('BITZONE_DEFAULT_PAYER_IP', '127.0.0.1')
+BITZONE_SIGN_OUTBOUND = os.getenv('BITZONE_SIGN_OUTBOUND', 'true').lower() in ('true', '1', 'yes')
+# Опционально, если провайдер когда-либо выдаст отдельный secret (сейчас — только BITZONE_API_KEY)
+BITZONE_WEBHOOK_SECRET = os.getenv('BITZONE_WEBHOOK_SECRET', '')
+# Доп. ключи для проверки x-signature (через запятую), если в ЛК отдельный signing secret
+BITZONE_WEBHOOK_SIGNING_KEYS = os.getenv('BITZONE_WEBHOOK_SIGNING_KEYS', '')
+# Только для отладки на staging — НЕ включать на prod
+BITZONE_WEBHOOK_SKIP_VERIFY = os.getenv('BITZONE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+BITZONE_WEBHOOK_DEBUG = os.getenv('BITZONE_WEBHOOK_DEBUG', 'false').lower() in ('true', '1', 'yes')
+BITZONE_PAYER_USER_ID_FROM_CLIENT = os.getenv('BITZONE_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
 
+# PlutusPay PSP (https://plutuspay.top/docs, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/plutus/)
+PLUTUS_API_BASE = os.getenv('PLUTUS_API_BASE', 'https://plutuspay.top').rstrip('/')
+PLUTUS_API_KEY = os.getenv('PLUTUS_API_KEY', '')
+PLUTUS_TRADER_USERNAME = os.getenv('PLUTUS_TRADER_USERNAME', 'plutus1')
+PLUTUS_DEFAULT_PAYMETHOD = os.getenv('PLUTUS_DEFAULT_PAYMETHOD', 'c2c')
+# JSON: {"C2C":"c2c","C2CKZT":"c2c"} — paymethod в create pay-in
+PLUTUS_PAYMETHOD_MAP = os.getenv('PLUTUS_PAYMETHOD_MAP', '')
+PLUTUS_PAYIN_TIMEOUT = int(os.getenv('PLUTUS_PAYIN_TIMEOUT', '900') or 900)
+PLUTUS_CONTRAGENT = os.getenv('PLUTUS_CONTRAGENT', 'false').lower() in ('true', '1', 'yes')
+# Тестовая PS только Plutus (shell_setup_plutus_c2ckzttest_routing.py)
+PLUTUS_TEST_PS_NAME = os.getenv('PLUTUS_TEST_PS_NAME', 'C2CKZTTEST')
+
+# Syndicate Pay PSP (https://api.syndicate-pay.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/syndicate/)
+SYNDICATE_API_BASE = os.getenv('SYNDICATE_API_BASE', 'https://api.syndicate-pay.com').rstrip('/')
+SYNDICATE_MERCHANT_ID = os.getenv('SYNDICATE_MERCHANT_ID', '')
+SYNDICATE_MERCHANT_LOGIN = os.getenv('SYNDICATE_MERCHANT_LOGIN', '')
+SYNDICATE_API_KEY = os.getenv('SYNDICATE_API_KEY', '')
+SYNDICATE_TRADER_USERNAME = os.getenv('SYNDICATE_TRADER_USERNAME', 'syndicate1')
+# JSON: переопределения к payments/data/syndicate_banks.json (полный каталог из xlsx)
+SYNDICATE_BANK_MAP = os.getenv('SYNDICATE_BANK_MAP', '')
+SYNDICATE_DEFAULT_BANK = os.getenv('SYNDICATE_DEFAULT_BANK', 'any-bank')
+SYNDICATE_WEBHOOK_SKIP_VERIFY = os.getenv('SYNDICATE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+
+# BotonPay PSP (https://botonpay.org/api-docs) — pay-in deals, KZT transgran / multi-fiat
+BOTONPAY_API_BASE = os.getenv('BOTONPAY_API_BASE', 'https://botonpay.org/api/public/v1').rstrip('/')
+BOTONPAY_API_KEY = os.getenv('BOTONPAY_API_KEY', '')
+BOTONPAY_WEBHOOK_SECRET = os.getenv('BOTONPAY_WEBHOOK_SECRET', '')
+BOTONPAY_TRADER_USERNAME = os.getenv('BOTONPAY_TRADER_USERNAME', 'botonpay1')
+BOTONPAY_WEBHOOK_SKIP_VERIFY = os.getenv('BOTONPAY_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+BOTONPAY_TEST_PS_NAME = os.getenv('BOTONPAY_TEST_PS_NAME', 'C2CKZTTEST')
+
+# Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
+MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
+# Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)
+MELBET_KZT_TEST_TRADER_USERNAME = os.getenv('MELBET_KZT_TEST_TRADER_USERNAME', '')
+# Melbet redirect: probe nearby amounts when routing/PSP cascade fails (KZT step e.g. ±20)
+MELBET_AMOUNT_PROBE_ENABLED = os.getenv('MELBET_AMOUNT_PROBE_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+MELBET_AMOUNT_PROBE_DELTAS = os.getenv('MELBET_AMOUNT_PROBE_DELTAS', '20,-20,50,-50,100,-100')
+MELBET_AMOUNT_PROBE_MAX_EXTRA = int(os.getenv('MELBET_AMOUNT_PROBE_MAX_EXTRA', '6'))
+MELBET_AMOUNT_PROBE_RANDOMIZE = os.getenv('MELBET_AMOUNT_PROBE_RANDOMIZE', 'true').lower() in ('1', 'true', 'yes')
+
+
+
+# Concored / ProcessorCore PSP
+CONCORDED_API_BASE = os.getenv('CONCORDED_API_BASE', '').rstrip('/')
+CONCORDED_TRADER_USERNAME = os.getenv('CONCORDED_TRADER_USERNAME', 'concored_mmk')
+CONCORDED_KBZPAY_TOKEN = os.getenv('CONCORDED_KBZPAY_TOKEN', '')
+CONCORDED_WAVEPAY_TOKEN = os.getenv('CONCORDED_WAVEPAY_TOKEN', '')
+# JSON override: {"KBZPay": "jwt...", "WavePay": "jwt..."}
+CONCORDED_TOKEN_MAP = os.getenv('CONCORDED_TOKEN_MAP', '')
+# JSON: {"KBZPay": "<paymentMethod code from Concored>", "WavePay": "..."} — MID-0000011 / MID-0000012
+CONCORDED_PAYMENT_METHOD_MAP = os.getenv('CONCORDED_PAYMENT_METHOD_MAP', '')
+# Множитель суммы в minor units (MMK обычно 1)
+CONCORDED_AMOUNT_MINOR_FACTOR = int(os.getenv('CONCORDED_AMOUNT_MINOR_FACTOR', '1'))
+CONCORDED_KBZPAY_PS_NAME = os.getenv('CONCORDED_KBZPAY_PS_NAME', 'KBZPay')
+CONCORDED_WAVEPAY_PS_NAME = os.getenv('CONCORDED_WAVEPAY_PS_NAME', 'WavePay')
+C2CMMK_NAME = os.getenv('C2CMMK_NAME', 'C2CMMK')
+
+# PayMap PSP (API v2, KZT; docs http://docs.paymap.me; API host europe.paymap.me; callback /api/v1/webhooks/psp/paymap/)
+PAYMAP_API_BASE = os.getenv('PAYMAP_API_BASE', 'https://europe.paymap.me').rstrip('/')
+PAYMAP_API_KEY = os.getenv('PAYMAP_API_KEY', '')
+PAYMAP_TRADER_USERNAME = os.getenv('PAYMAP_TRADER_USERNAME', 'paymap_kzt')
+PAYMAP_DEFAULT_INVOICE_TYPE = os.getenv('PAYMAP_DEFAULT_INVOICE_TYPE', 'CARD')
+PAYMAP_INVOICE_TYPE_MAP = os.getenv('PAYMAP_INVOICE_TYPE_MAP', '')
+PAYMAP_TARGET_BANK_MAP = os.getenv('PAYMAP_TARGET_BANK_MAP', '')
+PAYMAP_INVOICE_LIFETIME_MINUTES = int(os.getenv('PAYMAP_INVOICE_LIFETIME_MINUTES', '15'))
+PAYMAP_CANCEL_ON_DECLINE = os.getenv('PAYMAP_CANCEL_ON_DECLINE', '').strip().lower() in ('1', 'true', 'yes')
 
 # Playments PSP (TRY bank transfer H2H pay-in / pay-out)
 PLAYMENTS_API_BASE = os.getenv('PLAYMENTS_API_BASE', 'https://api.playments.world').rstrip('/')
@@ -333,6 +564,28 @@ PLAYMENTS_WITHDRAWAL_CALLBACK_URL = os.getenv('PLAYMENTS_WITHDRAWAL_CALLBACK_URL
 _playments_raw_secret = os.getenv('PLAYMENTS_USE_RAW_SECRET', '').strip().lower()
 PLAYMENTS_USE_RAW_SECRET = False
 C2CTRY_NAME = os.getenv('C2CTRY_NAME', 'C2CTRY')
+
+# Astrum PSP (KZT pay-out; Fernet + Authorization API key; docs https://astrum.ac/api/redoc)
+ASTRUM_API_BASE = os.getenv('ASTRUM_API_BASE', 'https://astrum.ac/api').rstrip('/')
+ASTRUM_API_KEY = os.getenv('ASTRUM_API_KEY', '')
+ASTRUM_PRIVATE_KEY = os.getenv('ASTRUM_PRIVATE_KEY', '')
+ASTRUM_TRADER_USERNAME = os.getenv('ASTRUM_TRADER_USERNAME', 'astrum_kzt')
+ASTRUM_C2C_NAME = os.getenv('ASTRUM_C2C_NAME', 'C2CKZT')
+ASTRUM_CURRENCY = os.getenv('ASTRUM_CURRENCY', 'KZT')
+ASTRUM_METHOD_TYPE_ID = os.getenv('ASTRUM_METHOD_TYPE_ID', '')
+ASTRUM_METHOD_NAME_ID = os.getenv('ASTRUM_METHOD_NAME_ID', '')
+ASTRUM_EXPRESS = os.getenv('ASTRUM_EXPRESS', '').strip().lower() in ('1', 'true', 'yes')
+ASTRUM_CALLBACK_URL = os.getenv('ASTRUM_CALLBACK_URL', '')
+ASTRUM_PAYIN_CALLBACK_URL = os.getenv('ASTRUM_PAYIN_CALLBACK_URL', '')
+# JSON: merchant username → preferred pay-out trader. Mostbet C2CKZT → PayPlat.
+PAYOUT_PREFERRED_TRADER_BY_MERCHANT = os.getenv(
+    'PAYOUT_PREFERRED_TRADER_BY_MERCHANT',
+    '{"mostbet":"%s","lunatrixpay":"%s"}'
+    % (PAYPLAT_TRADER_USERNAME or 'payplat1', PAYPLAT_TRADER_USERNAME or 'payplat1'),
+)
+
+# Comma-separated trader usernames: skip auto liveness (status 5) in cron, like virtual PSP traders
+LIVENESS_EXEMPT_TRADER_USERNAMES = os.getenv('LIVENESS_EXEMPT_TRADER_USERNAMES', '')
 
 
 # CORS_ALLOW_ALL_ORIGINS = True
@@ -358,7 +611,23 @@ CORS_ALLOWED_ORIGINS = [
     'https://payments.safesolutions.click',
     'http://payments.safesolutions.click',
     'https://avapay.net',
-    'https://api.avapay.net'
+    'https://api.avapay.net',
+    'https://pay.avapay.net',
+    'https://avapay.cc',
+    'https://www.avapay.cc',
+    'https://avapay.su',
+    'https://www.avapay.su',
+    'https://pay.avapay.su',
+    'https://avapay771.cc',
+    'https://www.avapay771.cc',
+    'https://pay.avapay771.cc',
+    'https://payment.avapay771.cc',
+    'https://payments.avapay771.cc',
+    'https://avapay812.cc',
+    'https://www.avapay812.cc',
+    'https://pay.avapay812.cc',
+    'https://payment.avapay812.cc',
+    'https://payments.avapay812.cc',
 ]
 
 CORS_ALLOW_HEADERS = ('content-disposition', 'accept-encoding', 'access-control-allow-origin',
@@ -388,7 +657,23 @@ CSRF_TRUSTED_ORIGINS = [
     'https://gate.titanpay.me',
     'https://api2.titanpay.me',
     'https://avapay.net',
-    'https://api.avapay.net'
+    'https://api.avapay.net',
+    'https://pay.avapay.net',
+    'https://avapay.cc',
+    'https://www.avapay.cc',
+    'https://avapay.su',
+    'https://www.avapay.su',
+    'https://pay.avapay.su',
+    'https://avapay771.cc',
+    'https://www.avapay771.cc',
+    'https://pay.avapay771.cc',
+    'https://payment.avapay771.cc',
+    'https://payments.avapay771.cc',
+    'https://avapay812.cc',
+    'https://www.avapay812.cc',
+    'https://pay.avapay812.cc',
+    'https://payment.avapay812.cc',
+    'https://payments.avapay812.cc',
 ]
 
 ADMINS = [

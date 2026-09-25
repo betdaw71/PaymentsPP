@@ -23,13 +23,17 @@ def melbet_config_for_merchant(merchant) -> MelbetIntegrationConfig | None:
 
 def sender_bank_for_melbet_method(melbet_method: str | None) -> str | None:
     """
-    Банк отправителя по методу Melbet → кнопка на платёжной странице.
-    card2card_kzt_kaspi — только Kaspi; card2card_kzt — только Halyk/Homebank.
+    Банк отправителя на платёжной странице Melbet KZT.
+
+    card2card_kzt_kaspi / *kaspi* — Kaspi, международные переводы.
+    card2card_kzt / *halyk* / *homebank* — Homebank, перевод на зарубежную карту.
     """
     method = (melbet_method or "").strip().lower()
-    if method == "card2card_kzt_kaspi":
+    if not method:
+        return None
+    if "kaspi" in method:
         return "kaspi"
-    if method == "card2card_kzt":
+    if "halyk" in method or "homebank" in method or method in {"card2card_kzt", "c2ckzt"}:
         return "halyk"
     return None
 

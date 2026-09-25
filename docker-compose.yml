@@ -1,4 +1,27 @@
 services:
+  wellknown:
+    image: nginx:alpine
+    container_name: avapay_wellknown
+    restart: unless-stopped
+    volumes:
+      - ./wellknown/security.txt:/usr/share/nginx/html/security.txt:ro
+      - ./wellknown/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - project_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wellknown.rule=(Host(`avapay.net`) || Host(`api.avapay.net`) || Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`) || Host(`doc.avapay.net`) || Host(`promo.avapay.net`) || Host(`traefik.avapay.net`) || Host(`pgadmin.avapay.net`) || Host(`avapay.su`) || Host(`www.avapay.su`) || Host(`pay.avapay.su`) || Host(`avapay.cc`) || Host(`www.avapay.cc`) || Host(`avapay771.cc`) || Host(`www.avapay771.cc`) || Host(`pay.avapay771.cc`) || Host(`payment.avapay771.cc`) || Host(`payments.avapay771.cc`) || Host(`avapay812.cc`) || Host(`www.avapay812.cc`) || Host(`pay.avapay812.cc`) || Host(`payment.avapay812.cc`) || Host(`payments.avapay812.cc`)) && (Path(`/.well-known/security.txt`) || Path(`/security.txt`))"
+      - "traefik.http.routers.wellknown.entrypoints=websecure"
+      - "traefik.http.routers.wellknown.tls=true"
+      - "traefik.http.routers.wellknown.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.wellknown.priority=200"
+      - "traefik.http.routers.wellknown.service=wellknown"
+      - "traefik.http.services.wellknown.loadbalancer.server.port=80"
+      - "traefik.http.routers.wellknown-http.rule=(Host(`avapay.net`) || Host(`api.avapay.net`) || Host(`pay.avapay.net`) || Host(`payment.avapay.net`) || Host(`payments.avapay.net`) || Host(`doc.avapay.net`) || Host(`promo.avapay.net`) || Host(`traefik.avapay.net`) || Host(`pgadmin.avapay.net`) || Host(`avapay.su`) || Host(`www.avapay.su`) || Host(`pay.avapay.su`) || Host(`avapay.cc`) || Host(`www.avapay.cc`) || Host(`avapay771.cc`) || Host(`www.avapay771.cc`) || Host(`pay.avapay771.cc`) || Host(`payment.avapay771.cc`) || Host(`payments.avapay771.cc`) || Host(`avapay812.cc`) || Host(`www.avapay812.cc`) || Host(`pay.avapay812.cc`) || Host(`payment.avapay812.cc`) || Host(`payments.avapay812.cc`)) && (Path(`/.well-known/security.txt`) || Path(`/security.txt`))"
+      - "traefik.http.routers.wellknown-http.entrypoints=web"
+      - "traefik.http.routers.wellknown-http.priority=200"
+      - "traefik.http.routers.wellknown-http.service=wellknown"
+
   traefik:
     image: traefik:latest
     container_name: traefik
@@ -8,6 +31,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=project_network"
+      - "--providers.docker.constraints=!LabelRegex(`com.docker.compose.oneoff`, `(?i)true`)"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
@@ -108,6 +132,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      APPEAL_TELEBOT_TOKEN: ${APPEAL_TELEBOT_TOKEN}
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
@@ -139,12 +165,80 @@ services:
       - "traefik.http.routers.pay-http.middlewares=pay-redirect@docker"
       - "traefik.http.middlewares.pay-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.pay-redirect.redirectscheme.permanent=true"
+      - "traefik.http.routers.pay-su.rule=Host(`pay.avapay.su`)"
+      - "traefik.http.routers.pay-su.entrypoints=websecure"
+      - "traefik.http.routers.pay-su.tls=true"
+      - "traefik.http.routers.pay-su.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay-su.tls.domains[0].main=pay.avapay.su"
+      - "traefik.http.routers.pay-su.service=app"
+      - "traefik.http.routers.pay-su-http.rule=Host(`pay.avapay.su`)"
+      - "traefik.http.routers.pay-su-http.entrypoints=web"
+      - "traefik.http.routers.pay-su-http.middlewares=pay-redirect@docker"
+      - "traefik.http.routers.pay-su-apex.rule=Host(`avapay.su`) || Host(`www.avapay.su`)"
+      - "traefik.http.routers.pay-su-apex.entrypoints=websecure"
+      - "traefik.http.routers.pay-su-apex.tls=true"
+      - "traefik.http.routers.pay-su-apex.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay-su-apex.service=app"
+      - "traefik.http.routers.pay-su-apex-http.rule=Host(`avapay.su`) || Host(`www.avapay.su`)"
+      - "traefik.http.routers.pay-su-apex-http.entrypoints=web"
+      - "traefik.http.routers.pay-su-apex-http.middlewares=pay-redirect@docker"
+      - "traefik.http.routers.pay-cc.rule=Host(`pay.avapay771.cc`)"
+      - "traefik.http.routers.pay-cc.entrypoints=websecure"
+      - "traefik.http.routers.pay-cc.tls=true"
+      - "traefik.http.routers.pay-cc.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay-cc.tls.domains[0].main=pay.avapay771.cc"
+      - "traefik.http.routers.pay-cc.service=app"
+      - "traefik.http.routers.pay-cc-http.rule=Host(`pay.avapay771.cc`)"
+      - "traefik.http.routers.pay-cc-http.entrypoints=web"
+      - "traefik.http.routers.pay-cc-http.middlewares=pay-redirect@docker"
+      - "traefik.http.routers.pay-cc-alt.rule=Host(`payment.avapay771.cc`) || Host(`payments.avapay771.cc`)"
+      - "traefik.http.routers.pay-cc-alt.entrypoints=websecure"
+      - "traefik.http.routers.pay-cc-alt.tls=true"
+      - "traefik.http.routers.pay-cc-alt.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay-cc-alt.service=app"
+      - "traefik.http.routers.pay-cc-alt-http.rule=Host(`payment.avapay771.cc`) || Host(`payments.avapay771.cc`)"
+      - "traefik.http.routers.pay-cc-alt-http.entrypoints=web"
+      - "traefik.http.routers.pay-cc-alt-http.middlewares=pay-redirect@docker"
+      - "traefik.http.routers.pay-cc-apex.rule=Host(`avapay771.cc`) || Host(`www.avapay771.cc`)"
+      - "traefik.http.routers.pay-cc-apex.entrypoints=websecure"
+      - "traefik.http.routers.pay-cc-apex.tls=true"
+      - "traefik.http.routers.pay-cc-apex.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay-cc-apex.service=app"
+      - "traefik.http.routers.pay-cc-apex-http.rule=Host(`avapay771.cc`) || Host(`www.avapay771.cc`)"
+      - "traefik.http.routers.pay-cc-apex-http.entrypoints=web"
+      - "traefik.http.routers.pay-cc-apex-http.middlewares=pay-redirect@docker"
+      - "traefik.http.routers.pay-812.rule=Host(`pay.avapay812.cc`)"
+      - "traefik.http.routers.pay-812.entrypoints=websecure"
+      - "traefik.http.routers.pay-812.tls=true"
+      - "traefik.http.routers.pay-812.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay-812.tls.domains[0].main=pay.avapay812.cc"
+      - "traefik.http.routers.pay-812.service=app"
+      - "traefik.http.routers.pay-812-http.rule=Host(`pay.avapay812.cc`)"
+      - "traefik.http.routers.pay-812-http.entrypoints=web"
+      - "traefik.http.routers.pay-812-http.middlewares=pay-redirect@docker"
+      - "traefik.http.routers.pay-812-alt.rule=Host(`payment.avapay812.cc`) || Host(`payments.avapay812.cc`)"
+      - "traefik.http.routers.pay-812-alt.entrypoints=websecure"
+      - "traefik.http.routers.pay-812-alt.tls=true"
+      - "traefik.http.routers.pay-812-alt.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay-812-alt.service=app"
+      - "traefik.http.routers.pay-812-alt-http.rule=Host(`payment.avapay812.cc`) || Host(`payments.avapay812.cc`)"
+      - "traefik.http.routers.pay-812-alt-http.entrypoints=web"
+      - "traefik.http.routers.pay-812-alt-http.middlewares=pay-redirect@docker"
+      - "traefik.http.routers.pay-812-apex.rule=Host(`avapay812.cc`) || Host(`www.avapay812.cc`)"
+      - "traefik.http.routers.pay-812-apex.entrypoints=websecure"
+      - "traefik.http.routers.pay-812-apex.tls=true"
+      - "traefik.http.routers.pay-812-apex.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pay-812-apex.service=app"
+      - "traefik.http.routers.pay-812-apex-http.rule=Host(`avapay812.cc`) || Host(`www.avapay812.cc`)"
+      - "traefik.http.routers.pay-812-apex-http.entrypoints=web"
+      - "traefik.http.routers.pay-812-apex-http.middlewares=pay-redirect@docker"
 
   frontend:
     build:
       context: ./taserPayFrontend
       args:
-        VITE_API_URL: ${VITE_API_URL}
+        # Keep production API host if .env omits VITE_API_URL (avoids hang on rebuild)
+        VITE_API_URL: ${VITE_API_URL:-https://api.avapay.net/api/v1}
         VITE_AUTHORIZATION_HEADER: Bearer
         VITE_ASSETS_URL: /
     container_name: titanpay_frontend
@@ -166,6 +260,25 @@ services:
       - "traefik.http.routers.frontend-http.middlewares=frontend-redirect@docker"
       - "traefik.http.middlewares.frontend-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.frontend-redirect.redirectscheme.permanent=true"
+      # Mirror platform frontend on avapay.cc (old avapay.net stays)
+      - "traefik.http.routers.frontend-cc.rule=Host(`avapay.cc`)"
+      - "traefik.http.routers.frontend-cc.entrypoints=websecure"
+      - "traefik.http.routers.frontend-cc.tls=true"
+      - "traefik.http.routers.frontend-cc.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.frontend-cc.tls.domains[0].main=avapay.cc"
+      - "traefik.http.routers.frontend-cc.tls.domains[0].sans=www.avapay.cc"
+      - "traefik.http.routers.frontend-cc.service=frontend"
+      - "traefik.http.routers.frontend-cc-http.rule=Host(`avapay.cc`)"
+      - "traefik.http.routers.frontend-cc-http.entrypoints=web"
+      - "traefik.http.routers.frontend-cc-http.middlewares=frontend-redirect@docker"
+      - "traefik.http.routers.frontend-cc-www.rule=Host(`www.avapay.cc`)"
+      - "traefik.http.routers.frontend-cc-www.entrypoints=websecure"
+      - "traefik.http.routers.frontend-cc-www.tls=true"
+      - "traefik.http.routers.frontend-cc-www.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.frontend-cc-www.service=frontend"
+      - "traefik.http.routers.frontend-cc-www-http.rule=Host(`www.avapay.cc`)"
+      - "traefik.http.routers.frontend-cc-www-http.entrypoints=web"
+      - "traefik.http.routers.frontend-cc-www-http.middlewares=frontend-redirect@docker"
 
   crypto:
     build: ./crypto
@@ -205,6 +318,41 @@ services:
       BACKEND_URL: http://app:8080/api/v1/bot
       TGBOT_TOKEN: ${TGBOT_TOKEN}
       TELEBOT_TOKEN: ${ORDERBOT_TELEBOT_TOKEN}
+    depends_on:
+      - app
+    networks:
+      - project_network
+
+  appealbot:
+    build: ./appealbot
+    container_name: titanpay_appealbot
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://app:8080/api/v1/bot/appeals
+      TGBOT_TOKEN: ${APPEAL_BOT_API_TOKEN}
+      TELEBOT_TOKEN: ${APPEAL_TELEBOT_TOKEN}
+    depends_on:
+      - app
+    networks:
+      - project_network
+
+  # User account (not BotFather). Sees Mel Transaction Bot tickets. See appealbot/USERBOT.txt
+  appeal-userbot:
+    build: ./appealbot
+    container_name: titanpay_appeal_userbot
+    restart: on-failure
+    profiles:
+      - userbot
+    command: ["python", "userbot.py"]
+    environment:
+      BACKEND_URL: http://app:8080/api/v1/bot/appeals
+      TGBOT_TOKEN: ${APPEAL_BOT_API_TOKEN}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
+      USERBOT_WATCH_CHAT_IDS: ${USERBOT_WATCH_CHAT_IDS:-}
+      USERBOT_SOURCE_USERNAMES: ${USERBOT_SOURCE_USERNAMES:-}
+      USERBOT_CLICK_INLINE: ${USERBOT_CLICK_INLINE:-0}
     depends_on:
       - app
     networks:

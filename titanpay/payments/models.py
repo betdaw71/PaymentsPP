@@ -200,6 +200,154 @@ class ProtocolPayInSession(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class LayeronePayInSession(models.Model):
+    """Связка PayIn ↔ платёж Layer-1 (layer-1.io API v2, трансгран tgkz)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="layerone_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_payment_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_state = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class GipayPayInSession(models.Model):
+    """Связка PayIn ↔ платёж GiPay (gipay.org API v2, Aggrepay)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="gipay_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_payment_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_state = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class VisionxPayInSession(models.Model):
+    """Связка PayIn ↔ инвойс VisionX Pay (POST /api/merchant/invoices, H2H Scenario A)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="visionx_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_invoice_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    provider_deal_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    notification_token = models.CharField(max_length=128, blank=True, default="")
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_state = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PayplatPayInSession(models.Model):
+    """Связка PayIn ↔ сделка PayPlat (POST /v1/api/deals)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="payplat_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_order_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_state = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class BitzonePayInSession(models.Model):
+    """Связка PayIn ↔ сделка Bitzone (POST /payment/trading/pay-in)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="bitzone_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_transaction_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class SyndicatePayInSession(models.Model):
+    """Связка PayIn ↔ ордер Syndicate Pay (POST /api/orders/create)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="syndicate_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_order_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    payment_system_name = models.CharField(max_length=64, blank=True, default="")
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class BotonpayPayInSession(models.Model):
+    """Связка PayIn ↔ сделка BotonPay (POST /api/public/v1/deals)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="botonpay_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_deal_uuid = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    payment_system_name = models.CharField(max_length=64, blank=True, default="")
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    last_status_version = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PlutusPayInSession(models.Model):
+    """Связка PayIn ↔ сделка PlutusPay (POST /merchant/v2/incoming/payment/create/)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="plutus_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_trade_uuid = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    payment_system_name = models.CharField(max_length=64, blank=True, default="")
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class ConcoredPayInSession(models.Model):
+    """Связка PayIn ↔ платёж Concored / ProcessorCore (MMK KBZPay, WavePay)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="concored_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_payment_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    payment_system_name = models.CharField(max_length=64, blank=True, default="")
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PaymapPayInSession(models.Model):
+    """Связка PayIn ↔ PayMap (API v2 fiat invoice, KZT)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="paymap_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_invoice_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    payment_system_name = models.CharField(max_length=64, blank=True, default="")
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class PlaymentsPayInSession(models.Model):
     """Связка PayIn ↔ депозит Playments (TRY bank transfer H2H)."""
 
@@ -221,6 +369,48 @@ class PlaymentsPayOutSession(models.Model):
     pay_out = models.OneToOneField(to="PayOut", on_delete=models.CASCADE, related_name="playments_session")
     external_id = models.CharField(max_length=128, db_index=True)
     provider_withdrawal_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class AstrumPayOutSession(models.Model):
+    """Связка PayOut ↔ заявка Astrum (POST /source/v2/applications/new, KZT)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_out = models.OneToOneField(to="PayOut", on_delete=models.CASCADE, related_name="astrum_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_application_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PayplatPayOutSession(models.Model):
+    """Связка PayOut ↔ выплата PayPlat (POST /payout, C2C USD для KZT)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_out = models.OneToOneField(to="PayOut", on_delete=models.CASCADE, related_name="payplat_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_payout_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    create_response = models.JSONField(default=dict, blank=True)
+    last_webhook_payload = models.JSONField(default=dict, blank=True)
+    last_notified_status = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class AstrumPayInSession(models.Model):
+    """Связка PayIn ↔ сделка Astrum (POST /source/deal, KZT)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="astrum_session")
+    external_id = models.CharField(max_length=128, db_index=True)
+    provider_deal_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
     create_response = models.JSONField(default=dict, blank=True)
     last_webhook_payload = models.JSONField(default=dict, blank=True)
     last_notified_status = models.CharField(max_length=64, blank=True, default="")

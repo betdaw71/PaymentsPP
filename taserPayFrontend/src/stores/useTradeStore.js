@@ -21,44 +21,67 @@ function downloadExcelBlob (response, defaultName) {
 }
 
 async function exportOrdersExcel (path, params, defaultName) {
-  const response = await instance.get(path, { params, responseType: 'blob' })
-  if (response.status !== 200) {
-    return {
-      data: [],
-      error: response.data,
-    }
-  }
-
-  const contentType = response.headers['content-type'] || ''
-  if (contentType.includes('spreadsheetml') || contentType.includes('octet-stream')) {
-    downloadExcelBlob(response, defaultName)
-
-    return {
-      data: { downloaded: true },
-      error: null,
-    }
-  }
-
   try {
-    const text = await response.data.text()
-    const json = JSON.parse(text)
-    if (json.url) {
-      window.open(json.url, '_blank')
+    const response = await instance.get(path, { params, responseType: 'blob' })
+    if (response.status !== 200) {
+      return {
+        data: [],
+        error: response.data,
+      }
+    }
+
+    const contentType = response.headers['content-type'] || ''
+    if (contentType.includes('spreadsheetml') || contentType.includes('octet-stream') || contentType.includes('application/vnd.ms-excel')) {
+      downloadExcelBlob(response, defaultName)
 
       return {
-        data: json,
+        data: { downloaded: true },
         error: null,
+      }
+    }
+
+    try {
+      const text = await response.data.text()
+      const json = JSON.parse(text)
+      if (json.url) {
+        window.open(json.url, '_blank')
+
+        return {
+          data: json,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: json.detail || json.error || json,
+      }
+    } catch {
+      return {
+        data: [],
+        error: 'Export failed',
+      }
+    }
+  } catch (error) {
+    let message = error?.message || 'Export failed'
+    const data = error?.response?.data
+    if (data) {
+      try {
+        const text = typeof data.text === 'function' ? await data.text() : String(data)
+        try {
+          const json = JSON.parse(text)
+          message = json.detail || json.error || text
+        } catch {
+          message = text || message
+        }
+      } catch {
+        // keep message
       }
     }
 
     return {
       data: [],
-      error: json,
-    }
-  } catch {
-    return {
-      data: [],
-      error: 'Export failed',
+      error: message,
     }
   }
 }
@@ -267,6 +290,9 @@ export const useTradeStore = defineStore ({
         data: [],
         error: response.data,
       }
+    },
+    async exportTradeTransaction (params) {
+      return exportOrdersExcel('/trade/transaction/export/', params, 'transactions.xlsx')
     },
     async getTradeWithdrawalRequest (params) {
       const response = await instance.get (`/trade/withdrawal-request/`, { params })

@@ -7,7 +7,7 @@ from trade.models import InOrder, OutOrder, InOrderStatusChange, InOrderStatus, 
 from basics.models import PaymentSystem, PaymentDetails, PaymentDetailsGroup
 import logging
 from titanpay.settings import SYSTEM_INTERVAL_VALUE
-from basics.utils import get_balances, get_binance_kzt_halyk_rate, get_bybit_rate, get_bybit_kzt_rate
+from basics.utils import get_balances, get_binance_kzt_halyk_rate, get_bybit_rate, get_bybit_kzt_rate, get_xe_kzt_base_rate, xe_kzt_markup_for_ps
 from trade.models import Address
 from django.utils import timezone
 from payments.models import PayOut, PayOutStatus
@@ -64,8 +64,11 @@ def update_pd():
     pd = PaymentDetailsGroup.objects.all()
     for p in pd:
         try:
-            if is_psp_trader(p.trader):
-                # Виртуальные PSP-группы (expayone1, protocol1): без SMS, liveness не применяем.
+            uname = ""
+            if p.trader_id and getattr(p.trader, "user", None):
+                uname = p.trader.user.username or ""
+            if is_psp_trader(p.trader) or uname in _liveness_exempt_trader_usernames():
+                # Виртуальные PSP / тестовые трейдеры: без SMS, liveness не применяем.
                 fields = []
                 if p.status == 5:
                     p.status = 1
@@ -79,14 +82,14 @@ def update_pd():
         except Exception:
             logging.info(f'Updating PD {p.id} failed')
 
-    active_pd = pd.filter(status=1).exclude(trader__user__username__in=_psp_trader_usernames())
+    active_pd = pd.filter(status=1).exclude(trader__user__username__in=_liveness_exempt_trader_usernames())
     for p in active_pd:
         try:
             p.check_liveness()
         except Exception:
             logging.info(f'Updating PD {p.id} failed')
 
-    setup_pd = pd.filter(status=7).exclude(trader__user__username__in=_psp_trader_usernames())
+    setup_pd = pd.filter(status=7).exclude(trader__user__username__in=_liveness_exempt_trader_usernames())
     for p in setup_pd:
         try:
             p.check_liveness()
@@ -98,36 +101,77 @@ def _psp_trader_usernames() -> list[str]:
     from django.conf import settings
 
     names = []
-    for key in ("FAIRPAY_TRADER_USERNAME", "EXPAYONE_TRADER_USERNAME", "PROTOCOL_TRADER_USERNAME", "PLAYMENTS_TRADER_USERNAME"):
+    for key in (
+        "FAIRPAY_TRADER_USERNAME",
+        "EXPAYONE_TRADER_USERNAME",
+        "PROTOCOL_TRADER_USERNAME",
+        "PLAYMENTS_TRADER_USERNAME",
+        "BITZONE_TRADER_USERNAME",
+        "PLUTUS_TRADER_USERNAME",
+        "GIPAY_TRADER_USERNAME",
+        "LAYERONE_TRADER_USERNAME",
+        "PAYPLAT_TRADER_USERNAME",
+        "VISIONX_TRADER_USERNAME",
+    ):
         val = (getattr(settings, key, None) or "").strip()
         if val:
             names.append(val)
     return names or ["fairpay_agg", "expayone1", "protocol1", "playments1"]
 
+
+def _liveness_exempt_trader_usernames() -> set[str]:
+    from django.conf import settings
+
+    names = set(_psp_trader_usernames())
+    extra = getattr(settings, "LIVENESS_EXEMPT_TRADER_USERNAMES", "") or ""
+    for part in str(extra).split(","):
+        part = part.strip()
+        if part:
+            names.add(part)
+    test_trader = (getattr(settings, "MELBET_KZT_TEST_TRADER_USERNAME", None) or "").strip()
+    if test_trader:
+        names.add(test_trader)
+    return names
+
 def update_ps():
     from django.conf import settings
+    from payments.payoutkzt_rate import payoutkzt_ps_name, store_payoutkzt_rate
 
     pss = PaymentSystem.objects.all()
     rub_rate = get_bybit_rate("Sber")
+    kzt_xe_base = get_xe_kzt_base_rate()
     kzt_bybit_kaspi = get_bybit_kzt_rate()
-    kzt_binance_halyk = get_binance_kzt_halyk_rate()
-    protocol_ps_name = getattr(settings, "PROTOCOL_C2C_NAME", "C2CKZT")
+    kzt_binance_halyk = get_binance_kzt_halyk_rate() if kzt_xe_base is None else None
     playments_ps_name = getattr(settings, "PLAYMENTS_C2C_NAME", "C2CTRY")
+    payoutkzt_name = payoutkzt_ps_name()
+
+    if kzt_bybit_kaspi is not None:
+        try:
+            store_payoutkzt_rate(kzt_bybit_kaspi)
+            logging.info("PAYOUTKZT Bybit/Kaspi rate: %s", kzt_bybit_kaspi)
+        except Exception:
+            logging.info("Updating PAYOUTKZT rate failed", exc_info=True)
 
     for ps in pss:
         try:
             currency = ps.currency.symbol if ps.currency else None
             if ps.name == playments_ps_name:
                 continue
+            if (ps.name or "").strip().upper() == payoutkzt_name.upper():
+                continue
             if currency == "KZT":
-                if ps.name == protocol_ps_name:
-                    kzt_rate = kzt_binance_halyk
-                    source = "Binance/Halyk"
-                else:
+                if kzt_xe_base is not None:
+                    markup = xe_kzt_markup_for_ps(ps.name)
+                    kzt_rate = (kzt_xe_base * markup).quantize(Decimal("0.001"))
+                    source = f"XE.com+{(markup - 1) * 100}%"
+                elif kzt_bybit_kaspi is not None:
                     kzt_rate = kzt_bybit_kaspi
-                    source = "Bybit/Kaspi"
-                if kzt_rate is None:
-                    logging.warning("KZT rate skipped for %s (%s returned None)", ps.name, source)
+                    source = "Bybit/Kaspi (fallback)"
+                elif kzt_binance_halyk is not None:
+                    kzt_rate = kzt_binance_halyk
+                    source = "Binance/Halyk (fallback)"
+                else:
+                    logging.warning("KZT rate skipped for %s (all sources returned None)", ps.name)
                     continue
                 ps.update_rate(kzt_rate)
                 logging.info("KZT rate %s (%s): %s", ps.name, source, kzt_rate)
@@ -164,8 +208,13 @@ def expire():
         arbitrage_orders_in = InOrder.objects.filter(status__name="Arbitrage", amount__lte=ps.auto_close_amount, solution__payment_system=ps, updated_date__lte=arb_time_out)
 
         for order in expired_in_orders:
-            with transaction.atomic():
-                order.deal_time_expired()
+            try:
+                with transaction.atomic():
+                    locked = InOrder.objects.select_for_update().get(pk=order.pk)
+                    if locked.status and locked.status.name == "New":
+                        locked.deal_time_expired()
+            except Exception:
+                logging.exception("expire: failed to expire InOrder %s", order.pk)
 
         for order in expired_out_orders:
             with transaction.atomic():
@@ -225,29 +274,69 @@ def send_to_fastapi(order: dict, file) -> dict:
     return response.json()
 
 
-def build_orders_excel_buffer(queryset):
-    data = list(queryset.values(
-        'id', 'pay_in__id', 'status__name', 'amount', 'usd_amount', 'trader_fee',
-        'payment_details__group__owner', 'solution__payment_system__name', 'creation_date',
-    ))
+def build_orders_excel_buffer(queryset, *, for_merchant: bool = False, payment_fk_id_field: str = 'pay_in__id'):
+    payment_column_key = 'payment_id'
+    value_fields = [
+        'id',
+        payment_fk_id_field,
+        'status__name',
+        'amount',
+        'usd_amount',
+        'merchant_fee',
+        'solution__payment_system__name',
+        'creation_date',
+        'merchant_order_id',
+    ]
+    if not for_merchant:
+        value_fields.extend([
+            'trader_fee',
+            'payment_details__group__owner',
+        ])
+
+    data = list(queryset.values(*value_fields))
+
+    pay_in_ids = [str(item.get(payment_fk_id_field)) for item in data if item.get(payment_fk_id_field)]
+    if payment_fk_id_field == 'pay_in__id':
+        from payments.psp_payin import psp_external_references_for_pay_in_ids
+
+        psp_refs = psp_external_references_for_pay_in_ids(pay_in_ids)
+    else:
+        psp_refs = {}
 
     for item in data:
+        item[payment_column_key] = item.pop(payment_fk_id_field, None)
+        ref = psp_refs.get(str(item.get(payment_column_key) or ""), {})
+        item["psp_provider"] = ref.get("psp_provider", "")
+        item["psp_provider_order_id"] = ref.get("psp_provider_order_id", "")
         if item['creation_date']:
             item['creation_date'] = item['creation_date'].astimezone(pytz.utc).replace(tzinfo=None)
+        if not for_merchant:
+            mf = Decimal(str(item.get('merchant_fee') or 0))
+            tf = Decimal(str(item.get('trader_fee') or 0))
+            item['platform_commission'] = mf - tf
 
     df = pd.DataFrame(data)
 
+    payment_label = 'PayOut ID' if payment_fk_id_field == 'pay_out__id' else 'PayIn ID'
     column_mapping = {
-        'id': 'ID (InOrder)',
-        'pay_in__id': 'PayIn ID',
+        'id': 'ID (Order)',
+        payment_column_key: payment_label,
         'status__name': 'Статус',
         'amount': 'Сумма (Фиат)',
         'usd_amount': 'Сумма (USDT)',
-        'trader_fee': 'Прибыль',
-        'payment_details__group__owner': 'ФИО',
+        'merchant_fee': 'Комиссия мерчанта (USDT)',
+        'merchant_order_id': 'Merchant order ID',
         'solution__payment_system__name': 'Платёжная система',
         'creation_date': 'Дата создания',
+        'psp_provider': 'PSP',
+        'psp_provider_order_id': 'ID заявки PSP',
     }
+    if not for_merchant:
+        column_mapping.update({
+            'trader_fee': 'Комиссия трейдера (USDT)',
+            'platform_commission': 'Комиссия платформы (USDT)',
+            'payment_details__group__owner': 'ФИО',
+        })
 
     df.rename(columns=column_mapping, inplace=True)
 
@@ -258,8 +347,7 @@ def build_orders_excel_buffer(queryset):
     return buffer
 
 
-def orders_excel_http_response(queryset, *, filename_prefix: str = "orders"):
-    buffer = build_orders_excel_buffer(queryset)
+def _excel_http_response(buffer, filename_prefix: str):
     filename = f"{filename_prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     response = HttpResponse(
         buffer.getvalue(),
@@ -267,6 +355,116 @@ def orders_excel_http_response(queryset, *, filename_prefix: str = "orders"):
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+def orders_excel_http_response(
+    queryset,
+    *,
+    filename_prefix: str = "orders",
+    for_merchant: bool = False,
+    payment_fk_id_field: str = 'pay_in__id',
+):
+    buffer = build_orders_excel_buffer(
+        queryset,
+        for_merchant=for_merchant,
+        payment_fk_id_field=payment_fk_id_field,
+    )
+    return _excel_http_response(buffer, filename_prefix)
+
+
+def build_transactions_excel_buffer(queryset, *, user=None):
+    """Выгрузка проводок: статус и комиссия подтягиваются из связанной заявки.
+
+    Валюта считается по балансу: движения по KZT-балансам мерчанта — в тенге,
+    остальные — в USDT.
+    """
+    from trade.ledger import kzt_balance_ids, user_balance_ids
+
+    own_ids = {str(balance_id) for balance_id in user_balance_ids(user)}
+    kzt_ids = {str(balance_id) for balance_id in kzt_balance_ids()}
+    merchant_side = user is not None and (
+        hasattr(user, 'merchant') or hasattr(user, 'submerchant')
+    )
+    fee_field = 'merchant_fee' if merchant_side else 'trader_fee'
+
+    value_fields = ['id', 'transaction_type__name', 'value', 'comment', 'creation_date',
+                    'from_balance_id', 'to_balance_id']
+    for prefix in ('linked_in_order__', 'linked_out_order__'):
+        value_fields.extend([
+            f'{prefix}id',
+            f'{prefix}status__name',
+            f'{prefix}amount',
+            f'{prefix}{fee_field}',
+            f'{prefix}merchant_order_id',
+            f'{prefix}solution__payment_system__name',
+        ])
+
+    rows = []
+    for item in queryset.values(*value_fields):
+        in_order_id = item.get('linked_in_order__id')
+        out_order_id = item.get('linked_out_order__id')
+        prefix = 'linked_in_order__' if in_order_id else 'linked_out_order__'
+        from_id = str(item.get('from_balance_id') or '')
+        to_id = str(item.get('to_balance_id') or '')
+        created = item.get('creation_date')
+
+        if to_id in own_ids:
+            direction = 'Incoming'
+        elif from_id in own_ids:
+            direction = 'Outcoming'
+        else:
+            direction = ''
+
+        order_amount = item.get(f'{prefix}amount') if (in_order_id or out_order_id) else None
+        tx_type = item.get('transaction_type__name')
+        if merchant_side and out_order_id and tx_type == 'Charge':
+            tx_type = 'Withdrawal'
+
+        rows.append({
+            'id': item.get('id'),
+            'direction': direction,
+            'transaction_type': tx_type,
+            'value': order_amount if order_amount is not None else item.get('value'),
+            'currency': 'KZT' if from_id in kzt_ids or to_id in kzt_ids else 'USDT',
+            'fee': item.get(f'{prefix}{fee_field}'),
+            'order_status': item.get(f'{prefix}status__name'),
+            'order_kind': 'Deposit' if in_order_id else ('Withdrawal' if out_order_id else ''),
+            'order_id': in_order_id or out_order_id,
+            'merchant_order_id': item.get(f'{prefix}merchant_order_id'),
+            'payment_system': item.get(f'{prefix}solution__payment_system__name'),
+            'comment': item.get('comment'),
+            'creation_date': created.astimezone(pytz.utc).replace(tzinfo=None) if created else None,
+        })
+
+    column_mapping = {
+        'id': 'ID (транзакции)',
+        'direction': 'Направление',
+        'transaction_type': 'Тип',
+        'value': 'Сумма',
+        'currency': 'Валюта',
+        'fee': 'Комиссия мерчанта' if merchant_side else 'Комиссия трейдера',
+        'order_status': 'Статус заявки',
+        'order_kind': 'Тип заявки',
+        'order_id': 'ID заявки',
+        'merchant_order_id': 'Merchant order ID',
+        'payment_system': 'Платёжная система',
+        'comment': 'Комментарий',
+        'creation_date': 'Дата',
+    }
+
+    df = pd.DataFrame(rows, columns=list(column_mapping))
+    df.rename(columns=column_mapping, inplace=True)
+
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    buffer.seek(0)
+    return buffer
+
+
+def transactions_excel_http_response(queryset, *, user=None, filename_prefix: str = "transactions"):
+    buffer = build_transactions_excel_buffer(queryset, user=user)
+    return _excel_http_response(buffer, filename_prefix)
 
 
 def export_to_excel(queryset):

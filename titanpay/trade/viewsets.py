@@ -6,10 +6,11 @@ import django_filters
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Q
 from rest_framework.decorators import action
-from basics.models import Trader, Balance, PaymentDetails, TraderTeam, TraderTeamRates
+from basics.models import Trader, Balance, PaymentDetails, TraderTeam, TraderTeamRates, TeamLead
 from basics.serializers import TraderTeamSerializer, TraderTeamRatesSerializer
 from payments.models import PayOut
-from trade.utils2 import send_to_fastapi, orders_excel_http_response
+from trade.ledger import user_balance_ids
+from trade.utils2 import send_to_fastapi, orders_excel_http_response, transactions_excel_http_response
 from usermanagement.models import SupportMember
 from trade.serializers import WithdrawalRequestSupportSerializer, WithdrawalRequestBasicSerializer, \
     WithdrawalRequestCreateSerializer, WithdrawalRequestApproveSerializer, WithdrawalRequestRejectSerializer, \
@@ -169,7 +170,10 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
 
         merchants = Merchant.objects.all()
         merchant_balances = Balance.objects.filter(available_merchant__in=merchants)
-        query = WithdrawalRequest.objects.filter(Q(balance__in=merchant_balances) | Q(balance__in=balances))
+        teamlead_balances = Balance.objects.filter(teamlead__in=TeamLead.objects.all())
+        query = WithdrawalRequest.objects.filter(
+            Q(balance__in=merchant_balances) | Q(balance__in=balances) | Q(balance__in=teamlead_balances)
+        )
         return query
 
     @transaction.atomic
@@ -222,12 +226,18 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
         return Response(status=status.HTTP_201_CREATED)
 
 
+class CharInFilter(django_filters.BaseInFilter, django_filters.CharFilter):
+    pass
+
+
 class TransactionFilter(django_filters.FilterSet):
+    direction = django_filters.CharFilter(method='filter_direction')
+    transaction_type__name__in = CharInFilter(method='filter_transaction_types')
+
     class Meta:
         model = Transaction
         fields = {
             'id': ['exact'],
-            'transaction_type__name': ['in'],  # Transaction Type Name
             'value': ['gte', 'lte'],
             'creation_date': ['range'],
             'linked_in_order': ['exact'],
@@ -243,6 +253,33 @@ class TransactionFilter(django_filters.FilterSet):
             'to_balance__type': ['in'],  # to: (2 or 3) for internal Balances
             'from_balance__type': ['in'],  # to: (2 or 3) for internal Balances
         }
+
+    def filter_direction(self, queryset, name, value):
+        """incoming/outcoming относительно балансов запросившего, включая KZT-балансы мерчанта."""
+        value = (value or '').strip().lower()
+        if value in ('', 'all'):
+            return queryset
+
+        request = getattr(self, 'request', None)
+        balance_ids = user_balance_ids(getattr(request, 'user', None) if request is not None else None)
+        if not balance_ids:
+            return queryset
+
+        if value == 'incoming':
+            return queryset.filter(to_balance_id__in=balance_ids)
+        if value in ('outcoming', 'outgoing'):
+            return queryset.filter(from_balance_id__in=balance_ids)
+        return queryset
+
+    def filter_transaction_types(self, queryset, name, value):
+        names = [str(part).strip() for part in (value or []) if str(part).strip()]
+        if not names:
+            return queryset
+        q = Q(transaction_type__name__in=names)
+        # Merchant payouts are Charge (frozen → aggregator), not crypto Withdrawal.
+        if any(part.lower() == 'withdrawal' for part in names):
+            q |= Q(transaction_type__name='Charge', linked_out_order__isnull=False)
+        return queryset.filter(q)
 
 
 class TransactionViewset(viewsets.ModelViewSet):
@@ -273,22 +310,15 @@ class TransactionViewset(viewsets.ModelViewSet):
         return TransactionTraderSerializer
 
     def get_queryset(self):
-        if hasattr(self.request.user, 'trader') or hasattr(self.request.user, 'merchant'):
-            balance = self.request.user.trader.balance_usdt if hasattr(self.request.user, 'trader') else self.request.user.merchant.balance
-            frozen_balance = self.request.user.trader.frozen_balance_usdt if hasattr(self.request.user, 'trader') else self.request.user.merchant.frozen_balance
-            combined_queryset = Transaction.objects.filter(Q(from_balance=balance) | Q(to_balance=balance) | Q(from_balance=frozen_balance) | Q(to_balance=frozen_balance))
-            return combined_queryset
-
-        if hasattr(self.request.user, 'submerchant'):
-            balance = self.request.user.submerchant.merchant.balance
-            frozen_balance = self.request.user.submerchant.merchant.balance
-            combined_queryset = Transaction.objects.filter(Q(from_balance=balance) | Q(to_balance=balance) | Q(from_balance=frozen_balance) | Q(to_balance=frozen_balance))
-            return combined_queryset
-
-        if hasattr(self.request.user, 'teamlead'):
-            balance = self.request.user.teamlead.balance
-            combined_queryset = Transaction.objects.filter(Q(from_balance=balance) | Q(to_balance=balance))
-            return combined_queryset
+        balance_ids = user_balance_ids(self.request.user)
+        if balance_ids:
+            return Transaction.objects.filter(
+                Q(from_balance_id__in=balance_ids) | Q(to_balance_id__in=balance_ids)
+            ).select_related(
+                'transaction_type',
+                'linked_in_order__status',
+                'linked_out_order__status',
+            )
 
         if not hasattr(self.request.user, 'supportmember'):
             return Transaction.objects.none()
@@ -299,12 +329,24 @@ class TransactionViewset(viewsets.ModelViewSet):
 
         if support_member.is_head:
             merchants = Merchant.objects.all()
-            balances = Balance.objects.filter(Q(available__team__in=teams) | Q(trader_frozen__team__in=teams) | Q(available_merchant__in=merchants) | Q(frozen_merchant__in=merchants))
+            balances = Balance.objects.filter(
+                Q(available__team__in=teams)
+                | Q(trader_frozen__team__in=teams)
+                | Q(available_merchant__in=merchants)
+                | Q(frozen_merchant__in=merchants)
+                | Q(available_merchant_kzt__in=merchants)
+                | Q(frozen_merchant_kzt__in=merchants)
+            )
         else:
             balances = Balance.objects.filter(Q(available__team__in=teams) | Q(trader_frozen__team__in=teams))
 
         queryset = Transaction.objects.filter(Q(from_balance__in=balances) | Q(to_balance__in=balances))
         return queryset
+
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
+    def export_transactions(self, request):
+        queryset = self.filter_queryset(self.get_queryset()).order_by('-creation_date')[:10000]
+        return transactions_excel_http_response(queryset, user=request.user, filename_prefix="transactions")
 
 
 class InOrderFilter(django_filters.FilterSet):
@@ -695,42 +737,16 @@ class InOrderViewset(viewsets.ModelViewSet):
 
         return Response(status=status.HTTP_200_OK, data={'error': f'Status code: {status_code}'})
 
-    @action(detail=False, methods=['GET'], permission_classes=[TraderPermission | SupportPermission], url_path='export')
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
     def export_orders(self, request):
-        if hasattr(request.user, 'trader'):
-            trader: Trader = request.user.trader
+        queryset = self.filter_queryset(self.get_queryset())
+        status_filter = (request.query_params.get('status__name__in') or '').strip()
+        status_names = [s.strip() for s in status_filter.split(',') if s.strip()]
+        if status_names and 'Cannot process' not in status_names:
+            queryset = queryset.exclude(status__name="Cannot process")
 
-            queryset = InOrder.objects.filter(payment_details__group__trader=trader)
-
-        elif hasattr(request.user, 'supportmember'):
-            support_member = request.user.supportmember
-
-            if support_member.is_head:
-                queryset = InOrder.objects.all()
-            else:
-                merchants = support_member.controlled_merchants.all()
-                teams = support_member.controlled_teams.all()
-
-                query = Q()
-                if teams.exists():
-                    query &= Q(payment_details__group__trader__team__in=teams)
-                if merchants.exists():
-                    query &= Q(solution__merchant__in=merchants)
-
-                queryset = InOrder.objects.filter(query) if query else OutOrder.objects.none()
-
-        else:
-
-            queryset = InOrder.objects.none()
-
-        now = timezone.now()
-
-        start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start_of_previous_day = start_of_today - timedelta(days=1)
-
-        # queryset = queryset.filter(creation_date__gte=start_of_previous_day, creation_date__lt=start_of_today)
-
-        return orders_excel_http_response(queryset, filename_prefix="orders_in")
+        for_merchant = hasattr(request.user, 'merchant') or hasattr(request.user, 'submerchant')
+        return orders_excel_http_response(queryset, filename_prefix="orders_in", for_merchant=for_merchant)
 
     @action(detail=False, methods=['GET'], permission_classes=[TraderPermission], url_path='reasons')
     def get_reasons(self, request):
@@ -1099,42 +1115,18 @@ class OutOrderViewset(viewsets.ModelViewSet):
         data = [{"name": reason[0]} for reason in OutOrder.REJECTION_CHOICES]
         return Response(status=status.HTTP_200_OK, data=data)
 
-    @action(detail=False, methods=['GET'], permission_classes=[TraderPermission | SupportPermission], url_path='export')
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
     def export_orders(self, request):
-        if hasattr(request.user, 'trader'):
-            trader: Trader = request.user.trader
+        queryset = self.filter_queryset(self.get_queryset())
+        queryset = queryset.exclude(status__name__in=["Cannot process", "Failed"])
 
-            queryset = OutOrder.objects.filter(payment_details__group__trader=trader)
-
-        elif hasattr(request.user, 'supportmember'):
-            support_member = request.user.supportmember
-
-            if support_member.is_head:
-                queryset = OutOrder.objects.all()
-            else:
-                merchants = support_member.controlled_merchants.all()
-                teams = support_member.controlled_teams.all()
-
-                query = Q()
-                if teams.exists():
-                    query &= Q(payment_details__group__trader__team__in=teams)
-                if merchants.exists():
-                    query &= Q(solution__merchant__in=merchants)
-
-                queryset = OutOrder.objects.filter(query) if query else OutOrder.objects.none()
-
-        else:
-
-            queryset = OutOrder.objects.none()
-
-        now = timezone.now()
-
-        start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start_of_previous_day = start_of_today - timedelta(days=1)
-
-        # queryset = queryset.filter(creation_date__gte=start_of_previous_day, creation_date__lt=start_of_today)
-
-        return orders_excel_http_response(queryset, filename_prefix="orders_out")
+        for_merchant = hasattr(request.user, 'merchant') or hasattr(request.user, 'submerchant')
+        return orders_excel_http_response(
+            queryset,
+            filename_prefix="orders_out",
+            for_merchant=for_merchant,
+            payment_fk_id_field='pay_out__id',
+        )
 
 
 class TraderTeamRatesViewset(viewsets.ModelViewSet):

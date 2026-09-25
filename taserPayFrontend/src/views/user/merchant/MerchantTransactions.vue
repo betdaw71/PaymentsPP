@@ -1,5 +1,4 @@
 <script setup>
-import { useAuthStore } from "@/stores/useAuthStore"
 import { useTradeStore } from "@/stores/useTradeStore"
 import { formatUUID, resolveTransactionTypeVariantAndIcon } from "@core/utils/formatters"
 import FilterTransactions from "@/views/user/FilterTransactions.vue"
@@ -7,7 +6,6 @@ import { useBaseStore } from "@/stores/useBaseStore"
 
 const { t } = useI18n ()
 const tradeStore = useTradeStore ()
-const authStore = useAuthStore ()
 const baseStore = useBaseStore ()
 
 const snackbar = ref ({
@@ -81,7 +79,7 @@ const itemTypes = [
 const directionTypes = [
   { value: "all", name: "All" },
   { value: "incoming", name: "Incoming" },
-  { value: "outcoming", name: "Outcoming" },
+  { value: "outcoming", name: "Outgoing" },
 ]
 
 const orderingTypes = [
@@ -111,16 +109,21 @@ const orderingTypes = [
   },
 ]
 
-const getTransactions = async () => {
-  loadMessage.value = {
-    message: t ('data.loading'),
-    status: 0,
-  }
-  items.value = []
+/** Treat empty / 0 as "no amount filter" (0 is the stored default, not a real max). */
+const hasAmountFilter = value => {
+  if (value === null || value === undefined || value === "")
+    return false
+  const n = Number(value)
 
-  const params = {
-    per_page: filters.value.rowsPerPage,
-    page: currentPage.value,
+  return !Number.isNaN(n) && n > 0
+}
+
+const buildTransactionParams = (page = null) => {
+  const params = {}
+
+  if (page != null) {
+    params.per_page = filters.value.rowsPerPage
+    params.page = page
   }
 
   if (filters.value.ordering)
@@ -145,20 +148,46 @@ const getTransactions = async () => {
     params.id = filters.value.searchQueryId
   if (filters.value.selectedType && filters.value.selectedType.length > 0)
     params.transaction_type__name__in = filters.value.selectedType.join (",")
-  if (filters.value.minAmount)
+  if (hasAmountFilter(filters.value.minAmount))
     params.value__gte = filters.value.minAmount
-  if (filters.value.maxAmount)
+  if (hasAmountFilter(filters.value.maxAmount))
     params.value__lte = filters.value.maxAmount
   if (filters.value.searchQueryIn)
     params.linked_in_order = filters.value.searchQueryIn
   if (filters.value.searchQueryOut)
     params.linked_out_order = filters.value.searchQueryOut
-  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-    params.creation_date__range = filters.value.dateRange.replace (" to ", ",")
-  if (filters.value.direction === "outcoming")
-    params.from_balance__available___user__username__in = authStore.userData.username
-  else if (filters.value.direction === "incoming")
-    params.to_balance__available_merchant__user__username__in = authStore.userData.username
+  if (filters.value.dateRange && filters.value.dateRange.includes (" to ")) {
+    const [start, end] = filters.value.dateRange.split (" to ").map (part => part.trim ())
+    // Inclusive end-of-day so the last selected date is not truncated at 00:00.
+    params.creation_date__range = `${start},${end}T23:59:59`
+  }
+  if (filters.value.direction && filters.value.direction !== "all")
+    params.direction = filters.value.direction
+
+  return params
+}
+
+const transactionAmountLabel = item => {
+  return item.currency === 'KZT' ? 'KZT' : 'USD'
+}
+
+const normalizeAmountFilters = () => {
+  // Old UI stored 0 as "no filter"; clear it so Search/Export are not blocked.
+  if (!hasAmountFilter(filters.value.minAmount))
+    filters.value.minAmount = null
+  if (!hasAmountFilter(filters.value.maxAmount))
+    filters.value.maxAmount = null
+}
+
+const getTransactions = async () => {
+  normalizeAmountFilters ()
+  loadMessage.value = {
+    message: t ('data.loading'),
+    status: 0,
+  }
+  items.value = []
+
+  const params = buildTransactionParams (currentPage.value)
   tradeStore.getTradeTransaction (params).then (response => {
     if (response.error) {
       throw response.error
@@ -183,6 +212,33 @@ const getTransactions = async () => {
   })
 }
 
+const exportLoading = ref (false)
+
+const exportTransactions = async () => {
+  normalizeAmountFilters ()
+  exportLoading.value = true
+  try {
+    const response = await tradeStore.exportTradeTransaction (buildTransactionParams ())
+    if (response.error)
+      throw response.error
+    snackbar.value = {
+      enabled: true,
+      type: total.value === 0 ? "warning" : "success",
+      message: total.value === 0
+        ? "По фильтру 0 записей. Очистите Type/Max Amount или выгрузите Orders In/Out (Completed)."
+        : t ('data.exported'),
+    }
+  } catch (error) {
+    snackbar.value = {
+      enabled: true,
+      type: "error",
+      message: typeof error === "string" ? error : (error?.message || "Export failed"),
+    }
+  } finally {
+    exportLoading.value = false
+  }
+}
+
 
 watch (
   () => {
@@ -198,6 +254,7 @@ watch (
 )
 onMounted(
   () => {
+    normalizeAmountFilters ()
     getTransactions ()
   },
 )
@@ -408,9 +465,11 @@ const switchSelection = (values, name, key) => {
                     />
                   </div>
                   <VBtn
-                    variant="tonal"
-                    color="secondary"
-                    prepend-icon="tabler-screen-share"
+                    :loading="exportLoading"
+                    color="primary"
+                    variant="elevated"
+                    prepend-icon="tabler-download"
+                    @click="exportTransactions"
                   >
                     {{ $t('export') }}
                   </VBtn>
@@ -438,6 +497,12 @@ const switchSelection = (values, name, key) => {
                     </th>
                     <th scope="col">
                       {{ $t ('total').toUpperCase () }}
+                    </th>
+                    <th scope="col">
+                      {{ $t ('merchant_fee').toUpperCase () }}
+                    </th>
+                    <th scope="col">
+                      {{ $t ('status').toUpperCase () }}
                     </th>
                     <th scope="col">
                       {{ $t ('comment').toUpperCase () }}
@@ -510,13 +575,19 @@ const switchSelection = (values, name, key) => {
                             class=""
                             :prepend-icon="item.is_incoming ? 'tabler-caret-up' : 'tabler-caret-down'"
                           >
-                            USD&nbsp;{{ item.value }}
+                            {{ transactionAmountLabel(item) }}&nbsp;{{ item.value }}
                           </VChip>
                         </template>
                         <p class="mb-0">
                           {{ item.is_incoming ? 'In': 'Out' }}
                         </p>
                       </vtooltip>
+                    </td>
+                    <td>
+                      {{ item.fee != null ? `${transactionAmountLabel(item)} ${item.fee}` : '—' }}
+                    </td>
+                    <td>
+                      {{ item.order_status || '—' }}
                     </td>
                     <td>
                       {{ item.comment }}

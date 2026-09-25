@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
+import random
 
 from django.db import transaction
 from django.utils import timezone
@@ -35,19 +36,55 @@ def is_psp_trader(trader) -> bool:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import astrum_client as asc
+    from payments import concored_client as cc
+    from payments import paymap_client as pmc
+    from payments import bitzone_client as bzc
+    from payments import plutus_client as plc2
+    from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
+    from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     return (
         fc.is_fairpay_trader(trader)
         or ec.is_expayone_trader(trader)
         or pc.is_protocol_trader(trader)
         or plc.is_playments_trader(trader)
+        or asc.is_astrum_trader(trader)
+        or cc.is_concored_trader(trader)
+        or pmc.is_paymap_trader(trader)
+        or bzc.is_bitzone_trader(trader)
+        or plc2.is_plutus_trader(trader)
+        or syc.is_syndicate_trader(trader)
+        or bpc.is_botonpay_trader(trader)
+        or gpc.is_gipay_trader(trader)
+        or vxc.is_visionx_trader(trader)
+        or ppc.is_payplat_trader(trader)
+        or loc.is_layerone_trader(trader)
     )
+
+
+def psp_order_usd_ledger_amount(order) -> Decimal:
+    """
+    USDT для Freeze/Charge у PSP: Transaction.value хранит 2 знака после запятой.
+    Микросуммы (< 0.01 USDT) иначе округляются до 0 и complete падает на проверке frozen.
+    """
+    raw = Decimal(str(getattr(order, "usd_amount", 0) or 0))
+    if raw <= 0:
+        return Decimal("0")
+    q = raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if q <= 0:
+        q = Decimal("0.01")
+    return q
 
 
 def ensure_psp_frozen_for_complete(order) -> None:
     """
-    PSP pay-in: сумма должна быть заморожена при InOrder.create.
-    Перед complete только проверяем frozen_balance_usdt (без автодолива).
+    PSP pay-in: на frozen должна быть сумма заказа в ledger-формате (2 dp).
+    После expire/cancel webhook разморозка снимает freeze; перед complete дозамораживаем из available.
     """
     if not getattr(order, "payment_details_id", None):
         return
@@ -56,11 +93,21 @@ def ensure_psp_frozen_for_complete(order) -> None:
         return
 
     from basics.models import Balance
+    from trade.models import Transaction, TransactionType
 
     frozen_bal = Balance.objects.select_for_update().get(pk=trader.frozen_balance_usdt_id)
-    need = Decimal(str(order.usd_amount))
-    if frozen_bal.amount < need:
-        available_bal = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
+    need = psp_order_usd_ledger_amount(order)
+    if need <= 0:
+        return
+    if frozen_bal.amount >= need:
+        return
+
+    shortfall = (need - frozen_bal.amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if shortfall <= 0:
+        return
+
+    available_bal = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
+    if available_bal.amount < shortfall:
         raise ValidationError(
             {
                 "details": (
@@ -70,15 +117,481 @@ def ensure_psp_frozen_for_complete(order) -> None:
             }
         )
 
+    transaction_type = TransactionType.objects.get(name="Freeze")
+    Transaction.create(
+        _from=trader.balance_usdt,
+        _to=trader.frozen_balance_usdt,
+        value=shortfall,
+        _transaction_type=transaction_type,
+        _linked_in_order=order,
+        _comment="PSP replenish frozen before complete",
+    )
 
-def sort_groups_for_routing(groups, amount=None):
-    """PSP и обычные группы — только по current_volume (сумма не делит ExpayOne/Protocol)."""
-    return sorted(groups, key=lambda g: g.current_volume or Decimal(0))
+
+_INORDER_OPEN_STATUSES = frozenset({"New", "Money sent by user"})
+_INORDER_RELEASE_FREEZE_STATUSES = frozenset(
+    {
+        "Expired",
+        "Cannot process",
+        "Cancelled",
+        "Cancelled by support",
+        "Cancelled by trader",
+        "Cancelled by user",
+    }
+)
+
+
+def freeze_tx_is_reversed(freeze_tx) -> bool:
+    from trade.models import Transaction
+
+    return Transaction.objects.filter(
+        linked_in_order_id=freeze_tx.linked_in_order_id,
+        transaction_type__name="Deposit",
+        from_balance_id=freeze_tx.to_balance_id,
+        to_balance_id=freeze_tx.from_balance_id,
+        creation_date__gte=freeze_tx.creation_date,
+    ).exists()
+
+
+def inorder_ids_with_unreversed_freezes() -> set:
+    from trade.models import Transaction
+
+    order_ids: set = set()
+    for fz in Transaction.objects.filter(
+        transaction_type__name="Freeze",
+        linked_in_order_id__isnull=False,
+    ).only("id", "linked_in_order_id", "to_balance_id", "from_balance_id", "creation_date"):
+        if not freeze_tx_is_reversed(fz):
+            order_ids.add(fz.linked_in_order_id)
+    return order_ids
+
+
+def expected_psp_frozen_usdt(trader) -> Decimal:
+    """Сумма freeze по активным InOrder New (ожидаемый frozen у PSP-трейдера)."""
+    from trade.models import InOrder
+
+    if not is_psp_trader(trader):
+        return Decimal("0")
+    total = Decimal("0")
+    qs = InOrder.objects.filter(
+        payment_details__group__trader=trader,
+        status__name__in=_INORDER_OPEN_STATUSES,
+    ).only("id", "usd_amount")
+    for order in qs:
+        total += psp_order_usd_ledger_amount(order)
+    return total
+
+
+def reconcile_stuck_psp_inorder_freezes(*, limit: int = 200) -> int:
+    """
+    Разморозить InOrder в терминальных статусах, где остались неоткатанные Freeze.
+    Вызывается из cron (trade.tasks.update_all).
+    """
+    from trade.models import InOrder
+
+    order_ids = inorder_ids_with_unreversed_freezes()
+    if not order_ids:
+        return 0
+
+    fixed = 0
+    for order in (
+        InOrder.objects.filter(id__in=order_ids)
+        .select_related("status", "payment_details__group__trader")
+        .order_by("-updated_date")[:limit]
+    ):
+        status_name = order.status.name if order.status else ""
+        if status_name in _INORDER_OPEN_STATUSES:
+            continue
+        if status_name not in _INORDER_RELEASE_FREEZE_STATUSES and status_name != "Completed":
+            continue
+        trader = None
+        if order.payment_details_id:
+            trader = order.payment_details.group.trader
+        if trader is None:
+            from basics.models import Trader
+            from trade.models import Transaction
+
+            fz = (
+                Transaction.objects.filter(linked_in_order=order, transaction_type__name="Freeze")
+                .order_by("creation_date")
+                .first()
+            )
+            if fz is not None:
+                trader = Trader.objects.filter(frozen_balance_usdt_id=fz.to_balance_id).first()
+        if trader is None or not is_psp_trader(trader):
+            continue
+        with transaction.atomic():
+            locked = InOrder.objects.select_for_update().get(pk=order.pk)
+            locked.unfreeze("PSP reconcile stuck freeze")
+        fixed += 1
+    return fixed
+
+
+def psp_trader_frozen_snapshot(trader) -> dict:
+    from basics.models import Balance
+
+    frozen = Balance.objects.get(pk=trader.frozen_balance_usdt_id).amount
+    available = Balance.objects.get(pk=trader.balance_usdt_id).amount
+    expected = expected_psp_frozen_usdt(trader)
+    return {
+        "trader": trader.user.username,
+        "frozen_usdt": frozen,
+        "available_usdt": available,
+        "expected_frozen_usdt": expected,
+        "stuck_usdt": frozen - expected,
+    }
+
+
+def _team_mdr_in_map(groups) -> dict[tuple[int, int], Decimal]:
+    """(team_id, payment_system_id) -> mdr_in (для учёта комиссии; не менять ради каскада)."""
+    from basics.models import TraderTeamRates
+
+    team_ids = {g.trader.team_id for g in groups if g.trader and g.trader.team_id}
+    ps_ids = {g.payment_system_id for g in groups if g.payment_system_id}
+    if not team_ids or not ps_ids:
+        return {}
+    return {
+        (row["team_id"], row["payment_system_id"]): row["mdr_in"]
+        for row in TraderTeamRates.objects.filter(
+            team_id__in=team_ids,
+            payment_system_id__in=ps_ids,
+        ).values("team_id", "payment_system_id", "mdr_in")
+    }
+
+
+def _psp_routing_priority_map() -> dict[str, int]:
+    """username PSP-трейдера → приоритет каскада (меньше = раньше). Не трогает mdr_in."""
+    from django.conf import settings
+
+    raw = getattr(settings, "PSP_ROUTING_PRIORITY_MAP", None)
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        import json
+
+        try:
+            data = json.loads(str(raw or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            data = {}
+    out: dict[str, int] = {}
+    for key, val in (data or {}).items():
+        name = str(key).strip()
+        if not name:
+            continue
+        try:
+            out[name] = int(val)
+        except (TypeError, ValueError):
+            continue
+    from payments.bitzone_client import bitzone_trader_username
+    from payments.gipay_client import gipay_trader_username
+    from payments.payplat_client import payplat_trader_username
+
+    # Даже если .env пустой/битый — payplat, gipay и bitzone остаются в начале каскада.
+    out.setdefault(payplat_trader_username(), 1)
+    out.setdefault(gipay_trader_username(), 2)
+    out.setdefault(bitzone_trader_username(), 3)
+    out.setdefault("bitzone1", 3)
+    return out
+
+
+def psp_routing_priority_for_trader(trader) -> int:
+    """Приоритет в PSP-каскаде (1 = первый). По умолчанию 100."""
+    if trader is None or not getattr(trader, "user", None):
+        return 100
+    username = (trader.user.username or "").strip()
+    if not username:
+        return 100
+    mapping = _psp_routing_priority_map()
+    if username in mapping:
+        return mapping[username]
+    lower = {str(k).lower(): v for k, v in mapping.items()}
+    return lower.get(username.lower(), 100)
+
+
+def _trader_username(trader) -> str:
+    if trader is None or not getattr(trader, "user", None):
+        return ""
+    return (trader.user.username or "").strip()
+
+
+def _group_username(group) -> str:
+    return _trader_username(getattr(group, "trader", None))
+
+
+def parse_routing_share_map(raw=None) -> dict[str, Decimal]:
+    """username (lower) → вес доли. 0 и отрицательные отбрасываются."""
+    from django.conf import settings
+
+    if raw is None:
+        raw = getattr(settings, "PSP_ROUTING_SHARE_MAP", None)
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        import json
+
+        try:
+            data = json.loads(str(raw or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            data = {}
+    out: dict[str, Decimal] = {}
+    for key, val in (data or {}).items():
+        name = str(key).strip().lower()
+        if not name:
+            continue
+        try:
+            weight = Decimal(str(val))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        if weight > 0:
+            out[name] = weight
+    return out
+
+
+def get_routing_share_map() -> dict[str, Decimal]:
+    return parse_routing_share_map()
+
+
+def psp_routing_share_enabled() -> bool:
+    return bool(get_routing_share_map())
+
+
+def get_share_window_hours() -> int:
+    from django.conf import settings
+
+    raw = getattr(settings, "PSP_ROUTING_SHARE_WINDOW_HOURS", 24)
+    try:
+        hours = int(raw)
+    except (TypeError, ValueError):
+        hours = 24
+    return max(1, min(hours, 24 * 14))
+
+
+def fetch_psp_share_volumes(
+    usernames,
+    *,
+    payment_system_ids=None,
+    window_hours: int | None = None,
+) -> dict[str, Decimal]:
+    """
+    Сумма PayIn.amount, назначенная каждому PSP за скользящее окно.
+
+    Declined не считаем (заявка не ушла провайдеру / create fail).
+    Не lifetime current_volume: иначе PSP с маленькой историей заберёт весь поток.
+    """
+    from datetime import timedelta
+
+    from django.db.models import Sum
+
+    from payments.models import PayIn
+
+    names = [str(u).strip() for u in usernames if str(u or "").strip()]
+    if not names:
+        return {}
+    hours = window_hours if window_hours is not None else get_share_window_hours()
+    since = timezone.now() - timedelta(hours=hours)
+    qs = PayIn.objects.filter(
+        created_at__gte=since,
+        order__payment_details__group__trader__user__username__in=names,
+    ).exclude(status__name="Declined")
+    if payment_system_ids:
+        qs = qs.filter(payment_system_id__in=list(payment_system_ids))
+    rows = qs.values("order__payment_details__group__trader__user__username").annotate(
+        total=Sum("amount")
+    )
+    out = {n.lower(): Decimal("0") for n in names}
+    for row in rows:
+        uname = (
+            row.get("order__payment_details__group__trader__user__username") or ""
+        ).strip().lower()
+        if uname in out:
+            out[uname] = row["total"] or Decimal("0")
+    return out
+
+
+def share_metrics_for_groups(groups, *, share_volumes=None) -> dict[str, dict]:
+    """
+    Метрики доли среди PSP, которые есть в текущей выборке и имеют вес > 0.
+
+    target/actual — доли 0..1 от суммы весов/объёма присутствующих.
+    deficit = target - actual. Только для diagnose/trace; роутинг выбирает
+    взвешенно-случайно, без догона этого дефицита.
+    """
+    shares = get_routing_share_map()
+    if not shares:
+        return {}
+    seen: list[str] = []
+    for group in groups:
+        uname = _group_username(group).lower()
+        if uname and shares.get(uname, Decimal("0")) > 0 and uname not in seen:
+            seen.append(uname)
+    if not seen:
+        return {}
+    total_weight = sum(shares[u] for u in seen)
+    if total_weight <= 0:
+        return {}
+    if share_volumes is None:
+        ps_ids = {getattr(group, "payment_system_id", None) for group in groups}
+        ps_ids.discard(None)
+        volumes = fetch_psp_share_volumes(seen, payment_system_ids=ps_ids)
+    else:
+        volumes = {
+            str(key).strip().lower(): Decimal(str(val or 0))
+            for key, val in share_volumes.items()
+        }
+    window_total = sum(volumes.get(u, Decimal("0")) for u in seen)
+    metrics: dict[str, dict] = {}
+    for uname in seen:
+        weight = shares[uname]
+        target = weight / total_weight
+        volume = volumes.get(uname, Decimal("0"))
+        actual = (volume / window_total) if window_total > 0 else Decimal("0")
+        metrics[uname] = {
+            "weight": weight,
+            "target": target,
+            "actual": actual,
+            "deficit": target - actual,
+            "volume": volume,
+            "window_total": window_total,
+        }
+    return metrics
+
+
+def _weight_for_group(group, shares: dict[str, Decimal]) -> Decimal:
+    return shares.get(_group_username(group).lower(), Decimal("0"))
+
+
+def _weighted_shuffle(groups, shares: dict[str, Decimal], *, rng=None):
+    """
+    Выбор без возвращения: вероятность первого слота = доля из SHARE_MAP.
+
+    Не догоняем историю за 24ч — иначе payplat с большим окном отдаёт 100% gipay,
+    пока тот не наберёт целевой %. Нужен % от текущего потока заявок.
+    """
+    remaining = list(groups)
+    ordered = []
+    rng = rng or random
+    while remaining:
+        total = sum(_weight_for_group(g, shares) for g in remaining)
+        if total <= 0:
+            ordered.extend(remaining)
+            break
+        draw = Decimal(str(rng.random())) * total
+        acc = Decimal("0")
+        idx = len(remaining) - 1
+        for i, group in enumerate(remaining):
+            acc += _weight_for_group(group, shares)
+            if draw <= acc:
+                idx = i
+                break
+        ordered.append(remaining.pop(idx))
+    return ordered
+
+
+def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None):
+    """
+    Порядок выбора группы.
+
+    PSP всегда первыми. Если задан PSP_ROUTING_SHARE_MAP — среди провайдеров
+    с долей > 0 порядок взвешенно-случайный (70/30 значит ~70% заявок
+    первым слотом payplat). Не используем объём за окно для выбора:
+    догон истории отдаёт весь поток отстающему.
+
+    Провайдеры без доли (0 / не указаны) — после weighted, по приоритету.
+    Обычные трейдеры — после всех PSP, по current_volume.
+
+    share_volumes оставлен для совместимости (диагностика), на порядок не влияет.
+    rng — random.Random для тестов.
+    """
+    groups = list(groups)
+    if not groups:
+        return groups
+    psp = [g for g in groups if is_psp_trader(g.trader) or is_preferred_payin_psp(g.trader)]
+    rest = [g for g in groups if g not in psp]
+    mdr_map = _team_mdr_in_map(psp) if psp else {}
+
+    def cascade_key(group):
+        trader = group.trader
+        team_id = getattr(trader, "team_id", None) if trader else None
+        return (
+            psp_routing_priority_for_trader(trader),
+            mdr_map.get((team_id, group.payment_system_id), Decimal("999")),
+            group.current_volume or Decimal(0),
+            _group_username(group),
+        )
+
+    shares = get_routing_share_map()
+    weighted = [
+        g for g in psp if shares.get(_group_username(g).lower(), Decimal("0")) > 0
+    ]
+    if shares and weighted:
+        unweighted = [
+            g for g in psp if shares.get(_group_username(g).lower(), Decimal("0")) <= 0
+        ]
+        picked = _weighted_shuffle(weighted, shares, rng=rng)
+        try:
+            names = [_group_username(g) for g in picked]
+            logger.info(
+                "PSP_SHARE_PICK order=%s weights=%s",
+                names,
+                {k: str(v) for k, v in shares.items() if k in {n.lower() for n in names}},
+            )
+        except Exception:
+            pass
+        psp_sorted = picked + sorted(unweighted, key=cascade_key)
+    else:
+        psp_sorted = sorted(psp, key=cascade_key)
+    rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))
+    return psp_sorted + rest_sorted
 
 
 def psp_routing_amount_ok(trader, amount) -> bool:
     """Сумма не ограничивает выбор PSP — лимиты только MerchantSolution и ответ API провайдера."""
     return True
+
+
+def preferred_payin_psp_usernames() -> tuple[str, ...]:
+    """payplat / gipay всегда в каскаде, даже если .env переименовал username."""
+    from payments.gipay_client import gipay_trader_username
+    from payments.payplat_client import payplat_trader_username
+
+    names: list[str] = []
+    for raw in (payplat_trader_username(), "payplat1", gipay_trader_username(), "gipay1"):
+        name = (raw or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
+def is_preferred_payin_psp(trader) -> bool:
+    if trader is None or not getattr(trader, "user", None):
+        return False
+    actual = (trader.user.username or "").strip().lower()
+    if not actual:
+        return False
+    return actual in {n.lower() for n in preferred_payin_psp_usernames()}
+
+
+def apply_preferred_psp_order(groups):
+    """
+    payplat затем gipay всегда раньше остальных preferred.
+
+    Если включён PSP_ROUTING_SHARE_MAP — не переставляем: иначе доли
+    из sort_groups_for_routing сбросятся в payplat-first.
+    """
+    groups = list(groups)
+    if not groups or psp_routing_share_enabled():
+        return groups
+    pref_order = {n.lower(): i for i, n in enumerate(preferred_payin_psp_usernames())}
+    preferred = []
+    other = []
+    for group in groups:
+        uname = _group_username(group).lower()
+        if uname in pref_order:
+            preferred.append(group)
+        else:
+            other.append(group)
+    preferred.sort(key=lambda g: pref_order.get(_group_username(g).lower(), 99))
+    return preferred + other
 
 
 def psp_trader_usernames() -> frozenset[str]:
@@ -88,12 +601,37 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import astrum_client as asc
+    from payments import concored_client as cc
+    from payments import paymap_client as pmc
+    from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
+    from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
+    from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     names = {
         fc.fairpay_trader_username(),
         ec.expayone_trader_username(),
         pc.protocol_trader_username(),
         plc.playments_trader_username(),
+        asc.astrum_trader_username(),
+        cc.concored_trader_username(),
+        pmc.paymap_trader_username(),
+        bzc.bitzone_trader_username(),
+        pltc.plutus_trader_username(),
+        syc.syndicate_trader_username(),
+        bpc.botonpay_trader_username(),
+        gpc.gipay_trader_username(),
+        vxc.visionx_trader_username(),
+        ppc.payplat_trader_username(),
+        loc.layerone_trader_username(),
+        "payplat1",
+        "gipay1",
+        "layerone1",
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -122,6 +660,9 @@ def requisite_payload_has_fields(req: dict | None) -> bool:
         str(req.get("card_number") or "").strip()
         or str(req.get("phone") or "").strip()
         or str(req.get("deposit_number") or "").strip()
+        or str(req.get("deeplink") or "").strip()
+        or str(req.get("payment_form_url") or "").strip()
+        or str(req.get("qr_image_url") or "").strip()
     )
 
 
@@ -130,12 +671,32 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
+    from payments import paymap_client as pmc
+    from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
+    from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
+    from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     for getter in (
         fc.fairpay_requisite_for_payin,
         ec.expayone_requisite_for_payin,
         pc.protocol_requisite_for_payin,
         plc.playments_requisite_for_payin,
+        cc.concored_requisite_for_payin,
+        pmc.paymap_requisite_for_payin,
+        bzc.bitzone_requisite_for_payin,
+        pltc.plutus_requisite_for_payin,
+        syc.syndicate_requisite_for_payin,
+        bpc.botonpay_requisite_for_payin,
+        gpc.gipay_requisite_for_payin,
+        vxc.visionx_requisite_for_payin,
+        ppc.payplat_requisite_for_payin,
+        loc.layerone_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -148,11 +709,37 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
+    from payments import paymap_client as pmc
+    from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
+    from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
+    from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
     representation = pc.enrich_payin_payment_details(representation, pay_in)
-    return plc.enrich_payin_payment_details(representation, pay_in)
+    representation = plc.enrich_payin_payment_details(representation, pay_in)
+    representation = cc.enrich_payin_payment_details(representation, pay_in)
+    representation = pmc.enrich_payin_payment_details(representation, pay_in)
+    representation = bzc.enrich_payin_payment_details(representation, pay_in)
+    representation = pltc.enrich_payin_payment_details(representation, pay_in)
+    representation = syc.enrich_payin_payment_details(representation, pay_in)
+    representation = bpc.enrich_payin_payment_details(representation, pay_in)
+    return loc.enrich_payin_payment_details(
+        ppc.enrich_payin_payment_details(
+            vxc.enrich_payin_payment_details(
+                gpc.enrich_payin_payment_details(representation, pay_in),
+                pay_in,
+            ),
+            pay_in,
+        ),
+        pay_in,
+    )
 
 
 def payin_routed_group(pay_in: Any):
@@ -179,21 +766,85 @@ def payin_routed_psp_group_active(pay_in: Any) -> bool:
     return bool(group.in_active and group.status == 1)
 
 
+def _is_virtual_psp_payment_details(payment_details) -> bool:
+    if payment_details is None:
+        return False
+    owner = (getattr(payment_details.group, "owner", None) or "").lower()
+    return "virtual drop" in owner
+
+
+def payin_requires_psp_api_requisites(pay_in: Any) -> bool:
+    """Заявка ушла на виртуальную PSP-группу — реквизиты только из API провайдера."""
+    order = getattr(pay_in, "order", None)
+    if order is None or order.payment_details is None:
+        return False
+    trader = order.payment_details.group.trader
+    if is_psp_trader(trader):
+        return True
+    uname = trader.user.username if trader and getattr(trader, "user", None) else ""
+    if uname and uname in psp_trader_usernames():
+        return True
+    return _is_virtual_psp_payment_details(order.payment_details)
+
+
+def ensure_psp_payin_requisites_or_decline(pay_in: Any, *, provider: str | None = None) -> None:
+    """После attach: нет реквизитов PSP → Cannot process + Declined (для ответа мерчанту)."""
+    if not payin_requires_psp_api_requisites(pay_in):
+        return
+    if _payin_has_psp_requisite(pay_in):
+        return
+    pay_in.refresh_from_db()
+    if pay_in.status and pay_in.status.name == "Declined":
+        return
+    mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider or "missing_requisite")
+    pay_in.refresh_from_db()
+
+
 def _psp_provider_for_trader(trader):
     """Провайдер PSP по трейдеру подобранного реквизита (виртуальная группа)."""
     from payments import expayone_client as ec
     from payments import fairpay_client as fc
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
+    from payments import paymap_client as pmc
+    from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
+    from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
+    from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
+    if loc.is_layerone_trader(trader):
+        return "layerone", loc.try_attach_layerone_session
+    if gpc.is_gipay_trader(trader):
+        return "gipay", gpc.try_attach_gipay_session
+    if vxc.is_visionx_trader(trader):
+        return "visionx", vxc.try_attach_visionx_session
+    if ppc.is_payplat_trader(trader):
+        return "payplat", ppc.try_attach_payplat_session
     if ec.is_expayone_trader(trader):
         return "expayone", ec.try_attach_expayone_session
+    if bpc.is_botonpay_trader(trader):
+        return "botonpay", bpc.try_attach_botonpay_session
+    if bzc.is_bitzone_trader(trader):
+        return "bitzone", bzc.try_attach_bitzone_session
+    if pltc.is_plutus_trader(trader):
+        return "plutus", pltc.try_attach_plutus_session
+    if syc.is_syndicate_trader(trader):
+        return "syndicate", syc.try_attach_syndicate_session
     if fc.is_fairpay_trader(trader):
         return "fairpay", fc.try_attach_fairpay_session
     if plc.is_playments_trader(trader):
         return "playments", plc.try_attach_playments_session
+    if cc.is_concored_trader(trader):
+        return "concored", cc.try_attach_concored_session
+    if pmc.is_paymap_trader(trader):
+        return "paymap", pmc.try_attach_paymap_session
     return None, None
 
 
@@ -227,21 +878,22 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
     from basics.models import PaymentDetails, PaymentDetailsGroup
 
     order = pay_in.order
-    if order is None or order.solution is None:
+    if order is None:
         return
     ps = pay_in.payment_system
-    traffic = order.solution.traffic
     amount = pay_in.amount
+    # Не фильтруем по MerchantSolution.traffic: виртуальные группы payplat/gipay
+    # часто только Standard, а solution может ссылаться на другой TrafficType.
     groups = list(
         PaymentDetailsGroup.objects.filter(
             payment_system=ps,
             status=1,
             in_active=True,
             work_type="by_card",
-            allowed_traffic=traffic,
             trader__blocked=False,
+            trader__user__username__in=psp_trader_usernames(),
         )
-        .select_related("trader", "trader__user")
+        .select_related("trader", "trader__user", "trader__team", "trader__balance_usdt")
     )
     seen_trader_ids: set[int] = set()
     for group in sort_groups_for_routing(groups, amount):
@@ -249,7 +901,7 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
             continue
         if group.trader_id in seen_trader_ids:
             continue
-        if not is_psp_trader(group.trader):
+        if not is_psp_trader(group.trader) and not is_preferred_payin_psp(group.trader):
             continue
         detail = PaymentDetails.objects.filter(
             group=group,
@@ -267,6 +919,8 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
 
 def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     """Protocol/ExpayOne не выдал реквизиты — пробуем другой PSP с активной группой."""
+    import time
+
     from payments.payin_trace import Direction, trace_log
 
     failed_trader_id = None
@@ -274,11 +928,38 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     if routed is not None:
         failed_trader_id = routed.trader_id
 
-    for provider_name, attach, detail in _iter_psp_fallback_candidates(
-        pay_in, exclude_trader_id=failed_trader_id
-    ):
+    candidates = list(_iter_psp_fallback_candidates(pay_in, exclude_trader_id=failed_trader_id))
+    cand_rows = []
+    for provider_name, _attach, detail in candidates:
+        trader = detail.group.trader if detail and detail.group else None
+        uname = trader.user.username if trader and getattr(trader, "user", None) else None
+        cand_rows.append({
+            "provider": provider_name,
+            "trader": uname,
+            "priority": psp_routing_priority_for_trader(trader),
+            "group_id": str(detail.group_id) if detail else None,
+            "balance_usdt": (
+                str(trader.balance_usdt.amount)
+                if trader and getattr(trader, "balance_usdt", None)
+                else None
+            ),
+        })
+    trace_log(
+        pay_in=pay_in,
+        direction=Direction.ROUTING,
+        body={
+            "failed_provider": failed_provider,
+            "exclude_trader_id": failed_trader_id,
+            "candidates": cand_rows,
+        },
+        note="psp fallback candidates",
+    )
+
+    for provider_name, attach, detail in candidates:
         _swap_inorder_payment_details(pay_in, detail, pay_in.amount)
+        started = time.monotonic()
         result = attach(pay_in)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
         has_req = _payin_has_psp_requisite(pay_in) if result is True else False
         trace_log(
             pay_in=pay_in,
@@ -288,6 +969,7 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
                 "success": result is True,
                 "has_requisite": has_req,
                 "fallback": True,
+                "elapsed_ms": elapsed_ms,
             },
             note="psp provider fallback",
         )
@@ -311,48 +993,90 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
     """Реквизит от PSP-трейдера → один запрос к его API; нет реквизитов в ответе → Cannot process."""
     from payments.payin_trace import Direction, trace_log
 
-    order = getattr(pay_in, "order", None)
-    if order is None or order.payment_details is None:
-        return
-    trader = order.payment_details.group.trader
-    if not is_psp_trader(trader):
-        return
+    first_provider = None
+    should_log = False
+    try:
+        order = getattr(pay_in, "order", None)
+        if order is None or order.payment_details is None:
+            return
+        if not payin_requires_psp_api_requisites(pay_in):
+            return
+        should_log = True
+        trader = order.payment_details.group.trader
 
-    if not payin_routed_group_matches_ps(pay_in):
-        logger.error(
-            "PSP attach skipped: routed group PS mismatch pay_in_id=%s ps=%s",
-            pay_in.id,
-            pay_in.payment_system.name if pay_in.payment_system else None,
+        if not payin_routed_group_matches_ps(pay_in):
+            logger.error(
+                "PSP attach skipped: routed group PS mismatch pay_in_id=%s ps=%s",
+                pay_in.id,
+                pay_in.payment_system.name if pay_in.payment_system else None,
+            )
+            mark_inorder_cannot_process_from_psp_api(pay_in, provider="routing_mismatch")
+            return
+
+        if not payin_routed_psp_group_active(pay_in):
+            logger.error("PSP attach skipped: virtual group inactive pay_in_id=%s", pay_in.id)
+            mark_inorder_cannot_process_from_psp_api(pay_in, provider="group_inactive")
+            return
+
+        provider_name, attach = _psp_provider_for_trader(trader)
+        first_provider = provider_name
+        if attach is None:
+            logger.error(
+                "PSP attach handler missing pay_in_id=%s trader=%s",
+                pay_in.id,
+                trader.user.username if getattr(trader, "user", None) else trader.pk,
+            )
+            mark_inorder_cannot_process_from_psp_api(pay_in, provider="no_handler")
+            return
+
+        import time
+
+        started = time.monotonic()
+        result = attach(pay_in)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        trace_log(
+            pay_in=pay_in,
+            direction=Direction.ROUTING,
+            body={"provider": provider_name, "success": result is True, "elapsed_ms": elapsed_ms},
+            note="psp provider api",
         )
-        mark_inorder_cannot_process_from_psp_api(pay_in, provider="routing_mismatch")
-        return
+        if result is True:
+            pay_in.refresh_from_db()
+            if getattr(pay_in, "order_id", None):
+                pay_in.order.refresh_from_db()
+            return
 
-    if not payin_routed_psp_group_active(pay_in):
-        logger.error("PSP attach skipped: virtual group inactive pay_in_id=%s", pay_in.id)
-        mark_inorder_cannot_process_from_psp_api(pay_in, provider="group_inactive")
-        return
+        if try_psp_provider_fallback(pay_in, failed_provider=provider_name):
+            return
 
-    provider_name, attach = _psp_provider_for_trader(trader)
-    if attach is None:
-        return
+        mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider_name)
+    finally:
+        if should_log:
+            _log_preferred_session_outcome(pay_in, first_provider=first_provider)
 
-    result = attach(pay_in)
-    trace_log(
-        pay_in=pay_in,
-        direction=Direction.ROUTING,
-        body={"provider": provider_name, "success": result is True},
-        note="psp provider api",
-    )
-    if result is True:
-        pay_in.refresh_from_db()
-        if getattr(pay_in, "order_id", None):
-            pay_in.order.refresh_from_db()
-        return
 
-    if try_psp_provider_fallback(pay_in, failed_provider=provider_name):
+def _log_preferred_session_outcome(pay_in, *, first_provider: str | None) -> None:
+    """Нет сессии = API не звали. Сессия с amount_currently_unavailable = отказ провайдера по сумме."""
+    if pay_in is None or not getattr(pay_in, "id", None):
         return
+    from payments.models import GipayPayInSession, PayplatPayInSession
 
-    mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider_name)
+    has_pp = PayplatPayInSession.objects.filter(pay_in=pay_in).exists()
+    has_gp = GipayPayInSession.objects.filter(pay_in=pay_in).exists()
+    if not has_pp:
+        logger.warning(
+            "PAYPLAT_NO_SESSION pay_in=%s first_slot=%s — сессии нет: API PayPlat не вызывался. "
+            "Это не отказ PayPlat по лимиту/сумме (тогда была бы сессия amount_currently_unavailable). "
+            "Смотри строку PAYPLAT_STATUS / PAYPLAT_NO_SESSION reason= в логе этой заявки.",
+            pay_in.id,
+            first_provider or "?",
+        )
+    if not has_gp and not has_pp:
+        logger.warning(
+            "GIPAY_NO_SESSION pay_in=%s first_slot=%s — сессии нет: API GiPay тоже не вызывался.",
+            pay_in.id,
+            first_provider or "?",
+        )
 
 
 def _payin_has_psp_requisite(pay_in: Any) -> bool:
@@ -364,43 +1088,169 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import expayone_client as ec
     from payments import protocol_client as pc
     from payments import playments_client as plc
+    from payments import concored_client as cc
+    from payments import paymap_client as pmc
+    from payments import bitzone_client as bzc
+    from payments import plutus_client as pltc
+    from payments import syndicate_client as syc
+    from payments import botonpay_client as bpc
+    from payments import gipay_client as gpc
+    from payments import visionx_client as vxc
+    from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
     pc.protocol_cancel_if_linked(pay_in)
     plc.playments_cancel_if_linked(pay_in)
+    cc.concored_cancel_if_linked(pay_in)
+    pmc.paymap_cancel_if_linked(pay_in)
+    bzc.bitzone_cancel_if_linked(pay_in)
+    pltc.plutus_cancel_if_linked(pay_in)
+    syc.syndicate_cancel_if_linked(pay_in)
+    bpc.botonpay_cancel_if_linked(pay_in)
+    gpc.gipay_cancel_if_linked(pay_in)
+    vxc.visionx_cancel_if_linked(pay_in)
+    ppc.payplat_cancel_if_linked(pay_in)
+    loc.layerone_cancel_if_linked(pay_in)
+
+
+def _norm_webhook_status(raw) -> str:
+  """PSP status field may be str, bool (GiPay: true/false), or absent — use state separately."""
+  if raw is None:
+    return ""
+  if isinstance(raw, bool):
+    return "true" if raw else "false"
+  return str(raw).strip().lower().replace("-", "_")
 
 
 def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
     """Фактически оплаченная сумма из callback PSP (Protocol: amount / result.amount)."""
     if not isinstance(body, dict):
         return None
+
+    from payments.payplat_client import payplat_is_webhook_body, payplat_webhook_paid_amount
+
+    if payplat_is_webhook_body(body):
+        return payplat_webhook_paid_amount(body)
+
+    def _positive_decimal(raw) -> Decimal | None:
+        if raw is None:
+            return None
+        try:
+            val = Decimal(str(raw).strip().replace(",", "."))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+        return val if val > 0 else None
+
+    status = _norm_webhook_status(body.get("status"))
+    # Bitzone: после спора приходит re_calculation с фактической суммой в dispute* полях.
+    if status in ("re_calculation", "recalculation", "closed", "dispute"):
+        for key in ("disputeTraderFiatAmount", "disputeMerchantFiatAmount"):
+            paid = _positive_decimal(body.get(key))
+            if paid is not None:
+                return paid
+
     candidates: list[Any] = []
-    for key in ("amount", "paidAmount", "paid_amount", "transferredAmount", "requestedAmount"):
+    for key in (
+        "FactSum",
+        "fact_sum",
+        "OutSum",
+        "outSum",
+        "received_amount",
+        "disputeTraderFiatAmount",
+        "disputeMerchantFiatAmount",
+        "fiatAmount",
+        "amount_fiat",
+        "amount",
+        "paidAmount",
+        "paid_amount",
+        "transferredAmount",
+        "requestedAmount",
+        "amount_num",
+    ):
         if body.get(key) is not None:
             candidates.append(body.get(key))
     result = body.get("result")
     if isinstance(result, dict):
-        for key in ("amount", "paidAmount", "paid_amount", "transferredAmount", "requestedAmount"):
+        for key in (
+            "amount",
+            "paidAmount",
+            "paid_amount",
+            "transferredAmount",
+            "requestedAmount",
+            "quotedAmountMinor",
+            "requestedAmountMinor",
+        ):
             if result.get(key) is not None:
                 candidates.append(result.get(key))
+    invoice = body.get("invoice")
+    if isinstance(invoice, dict):
+        for key in ("fiat_amount", "fiatAmount", "amount"):
+            if invoice.get(key) is not None:
+                candidates.append(invoice.get(key))
+    factor = 1
+    try:
+        from django.conf import settings
+
+        factor = int(getattr(settings, "CONCORDED_AMOUNT_MINOR_FACTOR", 1) or 1)
+    except (TypeError, ValueError):
+        factor = 1
     for raw in candidates:
         try:
             val = Decimal(str(raw).strip())
         except (InvalidOperation, ValueError, TypeError):
             continue
         if val > 0:
+            if factor > 1 and val == val.to_integral_value():
+                val = val / Decimal(factor)
             return val
     return None
 
 
-def complete_inorder_from_psp_webhook(order, webhook_body: dict | None) -> None:
+def psp_webhook_is_recalculation(body: dict | None) -> bool:
+    if not isinstance(body, dict):
+        return False
+    status = _norm_webhook_status(body.get("status"))
+    return status in ("re_calculation", "recalculation")
+
+
+def handle_psp_success_webhook(order, webhook_body: dict | None) -> str:
+    """
+    Обработка success webhook PSP.
+    Возвращает: completed | recalculated | idempotent.
+    """
     from trade.models import InOrder
 
     if not isinstance(order, InOrder):
         raise ValidationError({"error": "no_inorder"})
+
     paid_amount = parse_psp_webhook_paid_amount(webhook_body)
+    state = order.status.name if order.status else None
+    if state == "Completed":
+        from payments.payplat_client import payplat_success_webhook_allows_completed_recalc
+
+        allow_recalc = psp_webhook_is_recalculation(webhook_body) or payplat_success_webhook_allows_completed_recalc(
+            webhook_body
+        )
+        if allow_recalc and paid_amount and paid_amount != order.amount:
+            old_amount = order.amount
+            if order.apply_psp_completed_recalc(paid_amount):
+                logger.info(
+                    "PSP completed recalc order_id=%s old=%s new=%s",
+                    order.pk,
+                    old_amount,
+                    paid_amount,
+                )
+                return "recalculated"
+        return "idempotent"
+
     order.complete_from_psp_success(paid_amount)
+    return "completed"
+
+
+def complete_inorder_from_psp_webhook(order, webhook_body: dict | None) -> None:
+    handle_psp_success_webhook(order, webhook_body)
 
 
 def mark_inorder_cannot_process_from_psp_api(pay_in: Any, *, provider: str | None = None) -> None:
@@ -473,6 +1323,12 @@ def cancel_inorder_on_psp_create_failed(order) -> None:
 
 def _extract_upstream_error(payload: dict) -> str | None:
     """Только для внутренних логов / diagnose_payin — не отдавать мерчанту."""
+    top_message = payload.get("message")
+    if top_message and str(top_message).strip():
+        top_message = str(top_message).strip()
+    detail = payload.get("detail")
+    if detail and str(detail).strip():
+        return str(detail).strip()
     err = payload.get("error")
     if isinstance(err, dict):
         parts = [err.get("message"), err.get("details")]
@@ -481,10 +1337,12 @@ def _extract_upstream_error(payload: dict) -> str | None:
             return ": ".join(parts)
         if err.get("code") is not None:
             return f"upstream error code {err['code']}"
+    if top_message and err and not isinstance(err, dict):
+        return f"{top_message} ({err})"
+    if top_message:
+        return top_message
     if err:
         return str(err)
-    if payload.get("message"):
-        return str(payload["message"])
     return None
 
 
@@ -505,17 +1363,42 @@ MERCHANT_DECLINE_MESSAGES = {
 def classify_payin_decline(pay_in: Any) -> str:
     """Внутренняя классификация отказа (без PII upstream)."""
     from payments.models import (
+        BitzonePayInSession,
+        BotonpayPayInSession,
+        ConcoredPayInSession,
         ExpayonePayInSession,
         FairpayPayInSession,
+        PaymapPayInSession,
         PlaymentsPayInSession,
+        PlutusPayInSession,
+        SyndicatePayInSession,
         ProtocolPayInSession,
+        GipayPayInSession,
+        LayeronePayInSession,
+        VisionxPayInSession,
+        PayplatPayInSession,
     )
 
     order = getattr(pay_in, "order", None)
     if order is not None and order.status and order.status.name == "Cannot process":
         return "routing_unavailable"
 
-    for model in (ExpayonePayInSession, FairpayPayInSession, ProtocolPayInSession, PlaymentsPayInSession):
+    for model in (
+        ExpayonePayInSession,
+        FairpayPayInSession,
+        ProtocolPayInSession,
+        LayeronePayInSession,
+        GipayPayInSession,
+        VisionxPayInSession,
+        PayplatPayInSession,
+        PlaymentsPayInSession,
+        ConcoredPayInSession,
+        PaymapPayInSession,
+        BitzonePayInSession,
+        PlutusPayInSession,
+        SyndicatePayInSession,
+        BotonpayPayInSession,
+    ):
         try:
             session = model.objects.get(pay_in=pay_in)
         except model.DoesNotExist:
@@ -523,7 +1406,13 @@ def classify_payin_decline(pay_in: Any) -> str:
         cr = session.create_response or {}
         if not isinstance(cr, dict):
             continue
-        if cr.get("error") == "no_payment_detail_in_response":
+        if cr.get("error") in (
+            "no_payment_detail_in_response",
+            "no_credentials_in_response",
+            "no_free_requisites",
+            "amount_currently_unavailable",
+            "requisite_currency_mismatch",
+        ):
             return "requisites_empty_response"
         if _extract_upstream_error(cr):
             return "requisites_unavailable"
@@ -536,10 +1425,20 @@ def classify_payin_decline(pay_in: Any) -> str:
 def psp_create_failure_reason_internal(pay_in: Any) -> str:
     """Подробности для логов и manage.py diagnose_payin (не API мерчанта)."""
     from payments.models import (
+        BitzonePayInSession,
+        BotonpayPayInSession,
+        ConcoredPayInSession,
         ExpayonePayInSession,
         FairpayPayInSession,
+        PaymapPayInSession,
         PlaymentsPayInSession,
+        PlutusPayInSession,
+        SyndicatePayInSession,
         ProtocolPayInSession,
+        GipayPayInSession,
+        LayeronePayInSession,
+        VisionxPayInSession,
+        PayplatPayInSession,
     )
 
     code = classify_payin_decline(pay_in)
@@ -553,7 +1452,17 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (ExpayonePayInSession, "expayone"),
         (FairpayPayInSession, "fairpay"),
         (ProtocolPayInSession, "protocol"),
+        (LayeronePayInSession, "layerone"),
+        (GipayPayInSession, "gipay"),
+        (VisionxPayInSession, "visionx"),
+        (PayplatPayInSession, "payplat"),
         (PlaymentsPayInSession, "playments"),
+        (ConcoredPayInSession, "concored"),
+        (PaymapPayInSession, "paymap"),
+        (BitzonePayInSession, "bitzone"),
+        (PlutusPayInSession, "plutus"),
+        (SyndicatePayInSession, "syndicate"),
+        (BotonpayPayInSession, "botonpay"),
     ):
         try:
             session = model.objects.get(pay_in=pay_in)
@@ -593,8 +1502,119 @@ def psp_create_failure_reason(pay_in: Any) -> str:
     return MERCHANT_DECLINE_MESSAGES.get(code, MERCHANT_DECLINE_MESSAGES["requisites_unavailable"])
 
 
+_PSP_SESSION_PROVIDER_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("payments.models.ExpayonePayInSession", "expayone", "provider_order_id"),
+    ("payments.models.FairpayPayInSession", "fairpay", "provider_order_id"),
+    ("payments.models.ProtocolPayInSession", "protocol", "provider_payment_id"),
+    ("payments.models.LayeronePayInSession", "layerone", "provider_payment_id"),
+    ("payments.models.GipayPayInSession", "gipay", "provider_payment_id"),
+    ("payments.models.VisionxPayInSession", "visionx", "provider_invoice_id"),
+    ("payments.models.PayplatPayInSession", "payplat", "provider_order_id"),
+    ("payments.models.PlaymentsPayInSession", "playments", "provider_deposit_id"),
+    ("payments.models.ConcoredPayInSession", "concored", "provider_payment_id"),
+    ("payments.models.PaymapPayInSession", "paymap", "provider_invoice_id"),
+    ("payments.models.BitzonePayInSession", "bitzone", "provider_transaction_id"),
+    ("payments.models.PlutusPayInSession", "plutus", "provider_trade_uuid"),
+    ("payments.models.SyndicatePayInSession", "syndicate", "provider_order_id"),
+    ("payments.models.BotonpayPayInSession", "botonpay", "provider_deal_uuid"),
+)
+
+
+def _botonpay_deal_uuid_from_session(session) -> str:
+    deal_uuid = (getattr(session, "provider_deal_uuid", None) or "").strip()
+    if deal_uuid:
+        return deal_uuid
+    wh = getattr(session, "last_webhook_payload", None) or {}
+    if isinstance(wh, dict):
+        for key in ("deal_uuid", "deal_id"):
+            raw = wh.get(key)
+            if raw:
+                return str(raw).strip()
+    cr = getattr(session, "create_response", None) or {}
+    if isinstance(cr, dict):
+        deal = cr.get("deal") if isinstance(cr.get("deal"), dict) else cr
+        if isinstance(deal, dict):
+            for key in ("deal_uuid", "deal_id", "id"):
+                raw = deal.get(key)
+                if raw:
+                    return str(raw).strip()
+    return ""
+
+
+def psp_external_reference(pay_in: Any) -> dict[str, str] | None:
+    """ID заявки у PSP для сверки (BotonPay deal_uuid, Bitzone id, …)."""
+    if pay_in is None:
+        return None
+    pay_in_id = str(getattr(pay_in, "id", pay_in))
+
+    for model_path, provider, field_name in _PSP_SESSION_PROVIDER_FIELDS:
+        module_name, class_name = model_path.rsplit(".", 1)
+        import importlib
+
+        model = getattr(importlib.import_module(module_name), class_name)
+        try:
+            session = model.objects.get(pay_in_id=pay_in_id)
+        except model.DoesNotExist:
+            continue
+
+        if provider == "botonpay":
+            ext_id = _botonpay_deal_uuid_from_session(session)
+        else:
+            ext_id = (getattr(session, field_name, None) or "").strip()
+
+        if not ext_id:
+            continue
+        return {
+            "psp_provider": provider,
+            "psp_provider_order_id": ext_id,
+            "platform_pay_in_id": pay_in_id,
+        }
+    return None
+
+
+def psp_external_references_for_pay_in_ids(pay_in_ids: list) -> dict[str, dict[str, str]]:
+    """Batch lookup для экспорта: pay_in_id -> psp_external_reference dict."""
+    if not pay_in_ids:
+        return {}
+    id_set = {str(x) for x in pay_in_ids}
+    out: dict[str, dict[str, str]] = {}
+
+    for model_path, provider, field_name in _PSP_SESSION_PROVIDER_FIELDS:
+        module_name, class_name = model_path.rsplit(".", 1)
+        import importlib
+
+        model = getattr(importlib.import_module(module_name), class_name)
+        rows = model.objects.filter(pay_in_id__in=id_set).values(
+            "pay_in_id", field_name, "last_webhook_payload", "create_response"
+        )
+        for row in rows:
+            pid = str(row["pay_in_id"])
+            if pid in out:
+                continue
+            if provider == "botonpay":
+                class _S:
+                    pass
+
+                s = _S()
+                s.provider_deal_uuid = row.get(field_name) or ""
+                s.last_webhook_payload = row.get("last_webhook_payload")
+                s.create_response = row.get("create_response")
+                ext_id = _botonpay_deal_uuid_from_session(s)
+            else:
+                ext_id = (row.get(field_name) or "").strip()
+            if ext_id:
+                out[pid] = {
+                    "psp_provider": provider,
+                    "psp_provider_order_id": ext_id,
+                    "platform_pay_in_id": pid,
+                }
+    return out
+
+
 def get_payin_decline_payload(pay_in: Any) -> dict | None:
-    """Если PayIn уже Declined — payload для ответа мерчанту (без raise)."""
+    """Если PayIn Declined или PSP без реквизитов — payload для ответа мерчанту (без raise)."""
+    pay_in.refresh_from_db()
+    ensure_psp_payin_requisites_or_decline(pay_in)
     pay_in.refresh_from_db()
     if pay_in.status and pay_in.status.name == "Declined":
         return merchant_decline_payload(pay_in)

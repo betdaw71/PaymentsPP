@@ -13,6 +13,20 @@ class Merchant(models.Model):
     user = models.OneToOneField(to=User, on_delete=models.CASCADE)
     balance = models.ForeignKey(to=Balance, on_delete=models.DO_NOTHING, null=True, related_name='available_merchant')
     frozen_balance = models.ForeignKey(to=Balance, on_delete=models.DO_NOTHING, null=True, related_name='frozen_merchant')
+    balance_kzt = models.ForeignKey(
+        to=Balance,
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name='available_merchant_kzt',
+    )
+    frozen_balance_kzt = models.ForeignKey(
+        to=Balance,
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name='frozen_merchant_kzt',
+    )
     payment_systems = models.ManyToManyField(to=PaymentSystem)
     language = models.ForeignKey(to=Language, on_delete=models.SET_NULL, null=True)
     telegram = models.CharField(max_length=64, default=None, null=True)

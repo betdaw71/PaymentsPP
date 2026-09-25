@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- pay-page: receipt-upload + kaspi-universal-link + halyk-foreign v4 -->
 <html lang="{{ default_locale|default:'ru' }}">
 <head>
   <meta charset="utf-8">
@@ -51,6 +52,7 @@
       padding: 8px 12px; font-size: 13px; cursor: pointer; white-space: nowrap;
     }
     .bank-btn { background: #0ea5e9; width: 100%; margin-top: 8px; padding: 12px; font-size: 15px; }
+    a.bank-btn { display: block; text-align: center; text-decoration: none; box-sizing: border-box; }
     .bank-btn.secondary { background: #334155; }
     .bank-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
     .hint { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 16px 0; }
@@ -73,6 +75,25 @@
     .error { color: #fca5a5; text-align: center; padding: 24px; }
     .hidden { display: none !important; }
     .bank-actions { margin: 12px 0; }
+    .bank-guide {
+      margin: 16px 0; padding: 14px; border: 1px solid var(--border);
+      border-radius: 12px; background: #111827;
+    }
+    .bank-guide-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    .bank-guide-caption { font-size: 12px; color: var(--muted); line-height: 1.45; margin-bottom: 12px; }
+    .bank-guide-image {
+      display: block; width: 100%; max-width: 320px; margin: 0 auto;
+      border-radius: 12px; border: 1px solid var(--border);
+    }
+    .receipt-box {
+      margin: 16px 0; padding: 14px; border: 1px dashed var(--border);
+      border-radius: 12px; background: #111827;
+    }
+    .receipt-box.has-file { border-color: var(--ok); border-style: solid; }
+    .receipt-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .receipt-file { width: 100%; font-size: 13px; color: var(--text); }
+    .receipt-name { margin-top: 8px; font-size: 13px; color: var(--ok); word-break: break-all; }
+    .receipt-hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -96,7 +117,14 @@
           <span class="timer-value" id="timer">—</span>
         </div>
         <div id="details"></div>
+        <div id="bank-guides"></div>
         <div class="bank-actions" id="bank-actions"></div>
+        <div class="receipt-box hidden" id="receipt-box">
+          <div class="receipt-label" id="txt-receipt-label"></div>
+          <input type="file" class="receipt-file" id="receipt-file" accept="image/*,application/pdf">
+          <div class="receipt-name hidden" id="receipt-name"></div>
+          <div class="receipt-hint" id="txt-receipt-hint"></div>
+        </div>
         <p class="hint" id="txt-hint"></p>
         <button class="btn btn-primary" id="btn-sent"></button>
         <button class="btn btn-ghost" id="btn-cancel"></button>
@@ -131,6 +159,9 @@
 
     let locale = localStorage.getItem(`pay_locale_${PAY_IN_ID}`) || DEFAULT_LOCALE;
     let pollTimer = null, countdownTimer = null;
+    let receiptRequired = false;
+    let receiptUploaded = false;
+    let selectedReceiptFile = null;
 
     const I18N = {
       kk: {
@@ -148,8 +179,13 @@
         okTitle: "Төлем сәтті", okMsg: "Дүкен сайтына бағыттауда…",
         failTitle: "Төлем орындалмады", failDeclined: "Төлем қабылданбады", failMsg: "Бағыттауда…",
         noReq: "Реквизиттер уақытша жоқ", notFound: "Төлем табылмады",
+        noReqTitle: "Төлем қолжетімсіз", noReqMsg: "Реквизиттер берілмеді. Жаңа төлем сұраңыз.",
         sentErr: "Растау сәтсіз", cancelErr: "Болдырмау қатесі",
         bankSection: "Банк қосымшасы",
+        receiptLabel: "Төлем чегі",
+        receiptHint: "Банк қосымшасынан скриншот немесе PDF жүктеңіз, содан кейін «Төледім» басыңыз.",
+        receiptRequired: "Алдымен чек жүктеңіз",
+        receiptUploaded: "Чек жүктелді",
       },
       ru: {
         loading: "Загрузка платежа…",
@@ -166,8 +202,13 @@
         okTitle: "Оплата успешна", okMsg: "Перенаправляем на сайт магазина…",
         failTitle: "Платёж не выполнен", failDeclined: "Платёж отклонён", failMsg: "Перенаправляем…",
         noReq: "Реквизиты временно недоступны", notFound: "Платёж не найден",
+        noReqTitle: "Платёж недоступен", noReqMsg: "Реквизиты не выданы. Создайте новый платёж.",
         sentErr: "Не удалось подтвердить оплату", cancelErr: "Ошибка отмены",
         bankSection: "Приложение банка",
+        receiptLabel: "Чек об оплате",
+        receiptHint: "Загрузите скриншот или PDF из банковского приложения, затем нажмите «Я оплатил».",
+        receiptRequired: "Сначала прикрепите чек",
+        receiptUploaded: "Чек прикреплён",
       },
     };
 
@@ -204,6 +245,48 @@
       document.getElementById("txt-ok-msg").textContent = t("okMsg");
     }
 
+    function updateSentButtonState() {
+      const btn = document.getElementById("btn-sent");
+      if (!receiptRequired) {
+        btn.disabled = false;
+        return;
+      }
+      btn.disabled = !(receiptUploaded || selectedReceiptFile);
+    }
+
+    function setupReceiptUi(data) {
+      receiptRequired = Boolean(data.receipt_required);
+      receiptUploaded = Boolean(data.receipt_uploaded);
+      const box = document.getElementById("receipt-box");
+      const fileInput = document.getElementById("receipt-file");
+      const nameEl = document.getElementById("receipt-name");
+
+      if (!receiptRequired) {
+        box.classList.add("hidden");
+        selectedReceiptFile = null;
+        updateSentButtonState();
+        return;
+      }
+
+      box.classList.remove("hidden");
+      document.getElementById("txt-receipt-label").textContent = t("receiptLabel");
+      document.getElementById("txt-receipt-hint").textContent = t("receiptHint");
+
+      if (receiptUploaded) {
+        box.classList.add("has-file");
+        nameEl.textContent = t("receiptUploaded");
+        nameEl.classList.remove("hidden");
+        fileInput.classList.add("hidden");
+      } else {
+        box.classList.remove("has-file");
+        nameEl.classList.add("hidden");
+        fileInput.classList.remove("hidden");
+        fileInput.value = "";
+        selectedReceiptFile = null;
+      }
+      updateSentButtonState();
+    }
+
     function fmtAmount(amount, currency) {
       const loc = locale === "kk" ? "kk-KZ" : "ru-RU";
       return `${Number(amount).toLocaleString(loc)} ${currency || ""}`.trim();
@@ -230,32 +313,121 @@
       return html || `<p class="hint">${t("noReq")}</p>`;
     }
 
+    function guideImageSrc(guide) {
+      const raw = (guide && guide.image_url) || "";
+      const assetPath = "/payment-page-assets/kaspi-international-transfers-guide.png";
+      let path = assetPath;
+      if (raw.includes("/payment-page-assets/")) {
+        path = raw.replace(/^https?:\/\/[^/]+/i, "");
+      } else if (raw && !/^https?:\/\//i.test(raw)) {
+        path = raw.startsWith("/") ? raw : "/" + raw;
+      }
+      return window.location.origin + path;
+    }
+
+    function renderBankGuides(data) {
+      const box = document.getElementById("bank-guides");
+      box.innerHTML = "";
+      const guides = data.bank_guides || [];
+      if (!guides.length) return;
+
+      guides.forEach((guide) => {
+        const block = document.createElement("div");
+        block.className = "bank-guide";
+        const title = document.createElement("div");
+        title.className = "bank-guide-title";
+        title.textContent = guide.title || "";
+        const caption = document.createElement("div");
+        caption.className = "bank-guide-caption";
+        caption.textContent = guide.caption || "";
+        block.appendChild(title);
+        block.appendChild(caption);
+        if (guide.image_url) {
+          const imgSrc = guideImageSrc(guide);
+          const img = document.createElement("img");
+          img.className = "bank-guide-image";
+          img.src = imgSrc;
+          img.alt = guide.title || "";
+          img.loading = "lazy";
+          img.addEventListener("error", () => {
+            if (img.dataset.fallback) return;
+            img.dataset.fallback = "1";
+            const apiBase = API_BASE.replace(/\/$/, "");
+            img.src = apiBase + "/payment-page-assets/kaspi-international-transfers-guide.png";
+          });
+          block.appendChild(img);
+        }
+        box.appendChild(block);
+      });
+    }
+
+    function isAndroid() {
+      return /android/i.test(navigator.userAgent || "");
+    }
+
+    function copyClipboardQuiet(text) {
+      if (!text || !navigator.clipboard) return;
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+
     function renderBankActions(data) {
       const box = document.getElementById("bank-actions");
       box.innerHTML = "";
       const actions = data.bank_actions || [];
       if (!actions.length && !data.clipboard_text) return;
 
-      let html = `<div class="label">${t("bankSection")}</div>`;
-      if (data.clipboard_text) {
-        html += `<button type="button" class="bank-btn" id="btn-copy-all">${t("copyAll")}</button>`;
-      }
-      actions.forEach((a) => {
-        html += `<button type="button" class="bank-btn secondary" data-bank-url="${a.url}">${a.label}</button>`;
-        if (a.hint) html += `<div class="bank-hint">${a.hint}</div>`;
-      });
-      box.innerHTML = html;
+      const label = document.createElement("div");
+      label.className = "label";
+      label.textContent = t("bankSection");
+      box.appendChild(label);
 
-      document.getElementById("btn-copy-all")?.addEventListener("click", () => {
-        navigator.clipboard.writeText(data.clipboard_text).then(() => alert(t("copied")));
-      });
-      box.querySelectorAll("[data-bank-url]").forEach(btn => {
-        btn.onclick = async () => {
-          if (data.clipboard_text) {
-            try { await navigator.clipboard.writeText(data.clipboard_text); } catch (_) {}
-          }
-          window.location.href = btn.dataset.bankUrl;
-        };
+      if (data.clipboard_text) {
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "bank-btn";
+        copyBtn.id = "btn-copy-all";
+        copyBtn.textContent = t("copyAll");
+        copyBtn.addEventListener("click", () => {
+          navigator.clipboard.writeText(data.clipboard_text).then(() => alert(t("copied")));
+        });
+        box.appendChild(copyBtn);
+      }
+
+      actions.forEach((a) => {
+        const httpsUrl = a.url || "";
+        const androidUrl = a.android_url || "";
+        const useAndroidIntent = isAndroid() && androidUrl;
+        const useNativeLink = !useAndroidIntent && /^https:\/\//i.test(httpsUrl);
+
+        if (useNativeLink) {
+          // iOS Universal Links: must be a real user tap on <a href="https://kaspi.kz/...">.
+          // Do not preventDefault, do not await clipboard, do not use location.href.
+          const el = document.createElement("a");
+          el.className = "bank-btn secondary";
+          el.href = httpsUrl;
+          el.textContent = a.label || "";
+          el.addEventListener("pointerdown", () => copyClipboardQuiet(data.clipboard_text));
+          box.appendChild(el);
+        } else {
+          const el = document.createElement("button");
+          el.type = "button";
+          el.className = "bank-btn secondary";
+          el.textContent = a.label || "";
+          el.addEventListener("click", async () => {
+            if (data.clipboard_text) {
+              try { await navigator.clipboard.writeText(data.clipboard_text); } catch (_) {}
+            }
+            window.location.href = useAndroidIntent ? androidUrl : httpsUrl;
+          });
+          box.appendChild(el);
+        }
+
+        if (a.hint) {
+          const hint = document.createElement("div");
+          hint.className = "bank-hint";
+          hint.textContent = a.hint;
+          box.appendChild(hint);
+        }
       });
     }
 
@@ -335,11 +507,21 @@
         return;
       }
 
+      if (data.requisites_available === false) {
+        show("fail-screen");
+        document.getElementById("fail-title").textContent = t("noReqTitle");
+        document.getElementById("fail-msg").textContent = t("noReqMsg");
+        if (data.failed_url) window.location.href = data.failed_url;
+        return;
+      }
+
       show("pay-screen");
       document.getElementById("amount-line").textContent = fmtAmount(data.amount, data.currency);
       document.getElementById("ps-line").textContent = data.payment_system || "";
       document.getElementById("details").innerHTML = renderDetails(data.payment_details);
+      renderBankGuides(data);
       renderBankActions(data);
+      setupReceiptUi(data);
       wireCopyButtons();
       if (data.expires_at) startCountdown(data.expires_at);
     }
@@ -372,13 +554,44 @@
       }, 3000);
     }
 
+    document.getElementById("receipt-file").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      selectedReceiptFile = file || null;
+      const nameEl = document.getElementById("receipt-name");
+      const box = document.getElementById("receipt-box");
+      if (selectedReceiptFile) {
+        box.classList.add("has-file");
+        nameEl.textContent = selectedReceiptFile.name;
+        nameEl.classList.remove("hidden");
+      } else {
+        box.classList.remove("has-file");
+        nameEl.classList.add("hidden");
+      }
+      updateSentButtonState();
+    });
+
     document.getElementById("btn-sent").onclick = async () => {
       const btn = document.getElementById("btn-sent");
+      if (receiptRequired && !receiptUploaded && !selectedReceiptFile) {
+        alert(t("receiptRequired"));
+        return;
+      }
       btn.disabled = true;
       try {
-        const res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, {
-          method: "POST", headers: apiHeaders(),
-        });
+        let res;
+        if (selectedReceiptFile) {
+          const form = new FormData();
+          form.append("file", selectedReceiptFile);
+          res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, {
+            method: "POST",
+            headers: apiHeaders(),
+            body: form,
+          });
+        } else {
+          res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, {
+            method: "POST", headers: apiHeaders(),
+          });
+        }
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.details || err.error || t("sentErr"));
@@ -389,7 +602,7 @@
       } catch (e) {
         alert(e.message);
       } finally {
-        btn.disabled = false;
+        updateSentButtonState();
       }
     };
 

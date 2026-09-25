@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from basics.models import Language, Currency, PaymentSystem, Trader, Balance, PaymentDetails, \
     TraderTeam, TrafficType, PaymentDetailsGroup, TeamLead, TraderTeamRates
 from basics.paginators import StandardResultsSetPagination
-from titanpay.settings import SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME
+from titanpay.settings import C2CTRY_NAME
 from usermanagement.models import SupportMember
 from merchant.models import Merchant
 from trade.models import Transaction, TransactionType
@@ -231,12 +231,20 @@ class BalanceViewset(viewsets.ModelViewSet):
 
         merchants = Merchant.objects.all()
         for merchant in merchants:
-            data_merchants.append({
+            row = {
                 "id": merchant.id,
                 "username": merchant.user.username,
                 "available_balance_amount": merchant.balance.amount if merchant.balance else 0.0,
                 "frozen_balance_amount": merchant.frozen_balance.amount if merchant.frozen_balance else 0.0,
-            })
+            }
+            from merchant.kzt_settlement import ensure_kzt_balances, is_melbet_merchant
+
+            if is_melbet_merchant(merchant):
+                ensure_kzt_balances(merchant)
+                merchant.refresh_from_db()
+                row["available_balance_kzt"] = float(merchant.balance_kzt.amount) if merchant.balance_kzt else 0.0
+                row["frozen_balance_kzt"] = float(merchant.frozen_balance_kzt.amount) if merchant.frozen_balance_kzt else 0.0
+            data_merchants.append(row)
 
         return Response(status=status.HTTP_200_OK, data=data_merchants)
 
@@ -292,6 +300,14 @@ class BalanceViewset(viewsets.ModelViewSet):
                 "frozen_amount": merchant.frozen_balance.amount if merchant.frozen_balance else 0.0,
                 "deposit_address": merchant.balance.address.get().address_public
             }
+            from merchant.kzt_settlement import ensure_kzt_balances, is_melbet_merchant
+
+            if is_melbet_merchant(merchant):
+                ensure_kzt_balances(merchant)
+                merchant.refresh_from_db()
+                data["amount_kzt"] = float(merchant.balance_kzt.amount) if merchant.balance_kzt else 0.0
+                data["frozen_amount_kzt"] = float(merchant.frozen_balance_kzt.amount) if merchant.frozen_balance_kzt else 0.0
+                data["currency_kzt"] = "KZT"
             return Response(status=status.HTTP_200_OK, data=data)
         elif hasattr(request.user, 'submerchant'):
             merchant: Merchant = request.user.submerchant.merchant
@@ -511,9 +527,9 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
         data = request.data
         data['group'] = str(group.id)
 
-        if ps_name in (SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
-            serializer = PaymentDetailsSberAddSerializer(data=request.data)
-        elif ps_name == C2CTRY_NAME:
+        from trade.routing.ps_names import card_like_ps_names
+
+        if ps_name in card_like_ps_names() or ps_name == C2CTRY_NAME:
             serializer = PaymentDetailsSberAddSerializer(data=request.data)
         else:
             return Response(status=status.HTTP_400_BAD_REQUEST, data={'error': 'This payment system is not supported'})
@@ -655,6 +671,10 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
         group.min_amount_out = serializer_data['min_amount_out']
         group.max_amount_out = serializer_data['max_amount_out']
         group.limit_per_period = serializer_data['volume_in']
+        if 'min_amount_in' in serializer_data:
+            group.min_amount_in = serializer_data['min_amount_in']
+        if 'max_amount_in' in serializer_data:
+            group.max_amount_in = serializer_data['max_amount_in']
         group.save()
 
         return Response(status=status.HTTP_200_OK)

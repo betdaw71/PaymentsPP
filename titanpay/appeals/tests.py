@@ -1,0 +1,693 @@
+from decimal import Decimal
+
+from django.contrib.auth.models import User
+from django.test import SimpleTestCase, TestCase
+
+from appeals.id_resolve import (
+    is_merchant_appeal_ticket,
+    parse_appeal_ticket,
+    resolve_pay_in_from_message,
+)
+from basics.models import Currency, PaymentSystem
+from merchant.models import Merchant
+from payments.models import PayIn, PayInStatus
+
+MELBET_TICKET = """
+🎟 Тикет #6620b1cb
+💰 Депозит
+📜 Заказ: 22924514129
+👤 Юзер: 1764357337
+💰 Сумма: 50 000 KZT
+📅 Дата: 10.08.2026 14:01:34
+🔗 Номер в ПС:
+💡 Маска юзера:
+🎯 Реквизиты из заявки:
+
+Статус: ❌ Неуспешно завершено
+💬 Комментарий: [AvaPay Manager] Не наш реквизит
+""".strip()
+
+
+class MelbetTicketParseTest(SimpleTestCase):
+    def test_extracts_order_and_ticket_hex(self):
+        hints = parse_appeal_ticket(MELBET_TICKET)
+        self.assertEqual(hints.merchant_order_ids, ["22924514129"])
+        self.assertEqual(hints.ticket_hexes, ["6620b1cb"])
+        self.assertTrue(is_merchant_appeal_ticket(MELBET_TICKET))
+
+    def test_plain_chat_is_not_a_ticket(self):
+        self.assertFalse(is_merchant_appeal_ticket("привет, чек во вложении"))
+        self.assertFalse(parse_appeal_ticket("привет").has_ids)
+
+    def test_live_melbet_ticket_with_nbsp_amount(self):
+        ticket = (
+            "🎟 Тикет #15b236c8\n"
+            "💰 Депозит\n"
+            "📜 Заказ: 23213959707\n"
+            "👤 Юзер: 1784701431\n"
+            "💰 Сумма: 11\u00a0431 KZT\n"
+            "📅 Дата: 29.08.2026 14:51:55\n"
+            "🔗 Номер в ПС: 6f705f1b-229b-4539-9c1c-966199da2567\n"
+            "💡 Маска юзера:\n"
+            "🎯 Реквизиты из заявки:\n"
+            "\n"
+            "Статус: 🆕 Создан\n"
+            "💬 Комментарий: Не пришел депозит"
+        )
+        hints = parse_appeal_ticket(ticket)
+        self.assertEqual(hints.merchant_order_ids, ["23213959707"])
+        self.assertEqual(hints.ticket_hexes, ["15b236c8"])
+        self.assertEqual(hints.psp_ids, ["6f705f1b-229b-4539-9c1c-966199da2567"])
+        self.assertTrue(is_merchant_appeal_ticket(ticket))
+
+
+class MelbetTicketResolveTest(TestCase):
+    def setUp(self):
+        user = User.objects.create_user(username="melbet", password="x")
+        self.merchant = Merchant.objects.create(user=user)
+        currency = Currency.objects.create(symbol="KZT", name="Tenge")
+        ps = PaymentSystem.objects.create(name="C2CKZT", currency=currency, required_fields={})
+        self.status = PayInStatus.objects.create(name="Failed")
+        self.pay_in = PayIn.objects.create(
+            amount=Decimal("50000"),
+            currency=currency,
+            payment_system=ps,
+            merchant_order_id="22924514129",
+            callback_url="https://example.com/cb",
+            merchant=self.merchant,
+            status=self.status,
+        )
+
+    def test_resolves_melbet_ticket_by_order_id(self):
+        result = resolve_pay_in_from_message(MELBET_TICKET)
+        self.assertTrue(result.ok)
+        self.assertTrue(result.recognized)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+    def test_resolves_by_short_ticket_hex(self):
+        hex8 = str(self.pay_in.id).replace("-", "")[:8]
+        result = resolve_pay_in_from_message(f"🎟 Тикет #{hex8}\n💰 Депозит")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+    def test_missing_order_is_recognized_not_found(self):
+        result = resolve_pay_in_from_message(
+            MELBET_TICKET.replace("22924514129", "00000000000")
+        )
+        self.assertFalse(result.ok)
+        self.assertTrue(result.recognized)
+        self.assertEqual(result.error_code, "not_found")
+        self.assertIn("ID не распознан", result.error_message)
+
+    def test_unrelated_text_has_no_id(self):
+        result = resolve_pay_in_from_message("отправьте чек пожалуйста")
+        self.assertFalse(result.ok)
+        self.assertFalse(result.recognized)
+        self.assertEqual(result.error_code, "no_id")
+
+    def test_compact_uuid_without_dashes(self):
+        compact = str(self.pay_in.id).replace("-", "")
+        result = resolve_pay_in_from_message(compact)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+    def test_bare_merchant_order_id_in_caption(self):
+        result = resolve_pay_in_from_message("22924514129")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+    def test_uuid_wrapped_across_lines(self):
+        from appeals.id_resolve import extract_uuids
+
+        uid = str(self.pay_in.id)
+        wrapped = f"{uid[:18]}\n{uid[18:]}"
+        self.assertEqual(extract_uuids(wrapped), [uid])
+        result = resolve_pay_in_from_message(f"ID:\n{wrapped}")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+    def test_screenshot_ticket_with_psp_uuid(self):
+        ticket = """
+🎟 Тикет #02f6868c
+💰 Депозит
+📜 Заказ: 23199289573
+👤 Юзер: 1669608479
+💰 Сумма: 15 000 KZT
+📅 Дата: 28.08.2026 18:49:42
+🔗 Номер в ПС: 77334ffa-2b2d-4509-aedc-d9437076efcf
+💡 Маска юзера:
+🎯 Реквизиты из заявки:
+Статус: 🆕 Создан
+💬 Комментарий: Не пришел депозит
+""".strip()
+        self.pay_in.merchant_order_id = "23199289573"
+        self.pay_in.save(update_fields=["merchant_order_id"])
+        result = resolve_pay_in_from_message(ticket)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+    def test_gps_label_is_parsed(self):
+        from appeals.id_resolve import parse_appeal_ticket
+
+        hints = parse_appeal_ticket("🔗 Номер в ГПС: abc-123-xyz")
+        self.assertEqual(hints.psp_ids, ["abc-123-xyz"])
+
+    def test_order_id_on_next_line(self):
+        wrapped = "📜 Заказ:\n22924514129\n🎟 Тикет №6620b1cb"
+        hints = parse_appeal_ticket(wrapped)
+        self.assertEqual(hints.merchant_order_ids, ["22924514129"])
+        self.assertEqual(hints.ticket_hexes, ["6620b1cb"])
+        result = resolve_pay_in_from_message(wrapped)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
+
+class ProviderPrivacyTest(SimpleTestCase):
+    def test_filename_never_keeps_merchant_brand(self):
+        from appeals.provider_privacy import provider_safe_filename
+
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 32
+        self.assertEqual(provider_safe_filename("Melbet_ticket.JPG", jpeg), "receipt.jpg")
+        self.assertEqual(provider_safe_filename("Melbet_Deposit.pdf", b"%PDF-1.4 x"), "receipt.pdf")
+
+    def test_caption_strips_melbet_and_avapay(self):
+        from appeals.provider_privacy import provider_safe_caption
+
+        fallback = "77334ffa-2b2d-4509-aedc-d9437076efcf"
+        self.assertEqual(provider_safe_caption("Melbet", fallback=fallback), fallback)
+        self.assertEqual(provider_safe_caption("AvaPay Manager", fallback=fallback), fallback)
+        self.assertEqual(
+            provider_safe_caption("Melbet ticket #6620b1cb\nЗаказ: 1", fallback=fallback),
+            fallback,
+        )
+        self.assertEqual(provider_safe_caption(fallback, fallback=fallback), fallback)
+
+    def test_ticket_pdf_detected_by_text(self):
+        from appeals.provider_privacy import extract_pdf_text, is_merchant_ticket_file
+
+        pdf = _ticket_pdf_bytes(MELBET_TICKET)
+        self.assertIn("22924514129", extract_pdf_text(pdf))
+        self.assertTrue(is_merchant_ticket_file(filename="receipt.pdf", file_bytes=pdf))
+        self.assertTrue(is_merchant_ticket_file(filename="Melbet_6620.pdf", file_bytes=b"%PDF-1.4"))
+
+
+def _ticket_pdf_bytes(text: str) -> bytes:
+    import re
+
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()
+    # Built-in Helvetica has no Cyrillic; keep ASCII labels so extract_pdf_text is reliable in tests.
+    page.insert_text((36, 72), "Melbet ticket")
+    order = re.search(r"Заказ:\s*([A-Za-z0-9._-]+)", text)
+    if order:
+        page.insert_text((36, 96), f"Order ID: {order.group(1)}")
+    page.insert_text((36, 120), text[:500])
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def _plain_pdf_bytes(text: str) -> bytes:
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((36, 72), text[:800])
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+class MerchantAppealForwardTest(TestCase):
+    def setUp(self):
+        from appeals.models import AppealCounterparty, AppealCounterpartyRole, AppealTelegramChat
+
+        user = User.objects.create_user(username="melbet", password="x")
+        self.merchant = Merchant.objects.create(user=user)
+        currency = Currency.objects.create(symbol="KZT", name="Tenge")
+        ps = PaymentSystem.objects.create(name="C2CKZT", currency=currency, required_fields={})
+        status = PayInStatus.objects.create(name="Failed")
+        self.pay_in = PayIn.objects.create(
+            amount=Decimal("50000"),
+            currency=currency,
+            payment_system=ps,
+            merchant_order_id="22924514129",
+            callback_url="https://example.com/cb",
+            merchant=self.merchant,
+            status=status,
+        )
+        merchant_cp = AppealCounterparty.objects.create(
+            name="Melbet",
+            role=AppealCounterpartyRole.MERCHANT,
+            merchant=self.merchant,
+        )
+        self.merchant_cp = merchant_cp
+        provider_cp = AppealCounterparty.objects.create(
+            name="PayPlat",
+            role=AppealCounterpartyRole.PROVIDER,
+            psp_provider="payplat",
+        )
+        AppealTelegramChat.objects.create(
+            counterparty=merchant_cp,
+            telegram_chat_id=111,
+            is_active=True,
+        )
+        AppealTelegramChat.objects.create(
+            counterparty=provider_cp,
+            telegram_chat_id=222,
+            is_active=True,
+        )
+
+    def test_provider_chat_is_skipped_without_reply_text(self):
+        from appeals.services import chat_role_for_telegram, process_merchant_appeal_message
+
+        self.assertEqual(chat_role_for_telegram(111), "merchant")
+        self.assertEqual(chat_role_for_telegram(222), "provider")
+        self.assertEqual(chat_role_for_telegram(999), "unknown")
+        result = process_merchant_appeal_message(
+            chat_id=222,
+            message_id=1,
+            text="ответьте на тикет Melbet",
+            file_bytes=b"\xff\xd8\xff" + b"\x00" * 16,
+            filename="receipt.jpg",
+        )
+        self.assertEqual(result.outcome, "skip")
+        self.assertEqual(result.message, "")
+
+    def test_ticket_pdf_sends_provider_id_not_the_ticket(self):
+        from unittest.mock import patch
+
+        from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        pdf = _ticket_pdf_bytes(MELBET_TICKET)
+        with (
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(self.pay_in.id)),
+            ),
+            patch("appeals.telegram_out.send_receipt_to_provider_chat") as mock_file,
+            patch(
+                "appeals.telegram_out.send_text_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=88),
+            ) as mock_text,
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=10,
+                text="",
+                file_bytes=pdf,
+                filename="Melbet_ticket.pdf",
+            )
+        self.assertEqual(result.outcome, "await_receipt")
+        self.assertIn("чек", result.message.lower())
+        mock_file.assert_not_called()
+        mock_text.assert_not_called()
+
+    def test_text_only_ticket_goes_to_provider_without_merchant_name(self):
+        from unittest.mock import patch
+
+        from appeals.services import init_telegram_chat, process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        ok, msg = init_telegram_chat(counterparty_id=str(self.merchant_cp.id), chat_id=333)
+        self.assertTrue(ok)
+        self.assertNotRegex(msg, r"(?i)melbet")
+
+        live = (
+            "🎟 Тикет #15b236c8\n"
+            "📜 Заказ: 23213959707\n"
+            "🔗 Номер в ПС: 6f705f1b-229b-4539-9c1c-966199da2567\n"
+            "🎯 Реквизиты из заявки:\n"
+            "💬 Комментарий: Не пришел депозит"
+        )
+        self.pay_in.merchant_order_id = "23213959707"
+        self.pay_in.save(update_fields=["merchant_order_id"])
+        with (
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(self.pay_in.id)),
+            ),
+            patch("appeals.telegram_out.send_receipt_to_provider_chat") as mock_file,
+            patch(
+                "appeals.telegram_out.send_text_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=77),
+            ) as mock_text,
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=12,
+                text=live,
+                file_bytes=b"",
+                filename="",
+            )
+        self.assertEqual(result.outcome, "await_receipt")
+        self.assertIn("чек", result.message.lower())
+        mock_file.assert_not_called()
+        mock_text.assert_not_called()
+
+    def test_receipt_plus_ticket_pdf_forwards_only_safe_payload(self):
+        from unittest.mock import patch
+
+        from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        ticket_pdf = _ticket_pdf_bytes(MELBET_TICKET)
+        with (
+            patch("appeals.services.upload_receipt_storage", return_value="https://s3/r.jpg"),
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(self.pay_in.id)),
+            ),
+            patch(
+                "appeals.telegram_out.send_receipt_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=99),
+            ) as mock_send,
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=11,
+                text="",
+                file_bytes=jpeg,
+                filename="Melbet_screenshot.jpg",
+                ticket_file_bytes=ticket_pdf,
+            )
+        self.assertEqual(result.outcome, "pending")
+        self.assertTrue(result.ok)
+        kwargs = mock_send.call_args.kwargs
+        self.assertEqual(kwargs["filename"], "receipt.jpg")
+        self.assertEqual(kwargs["file_bytes"], jpeg)
+        self.assertNotRegex(kwargs["caption"], r"(?i)melbet|avapay|тикет|заказ")
+        self.assertEqual(kwargs["caption"], str(self.pay_in.id))
+
+    def test_receipt_plus_id_from_other_merchant_is_accepted(self):
+        from unittest.mock import patch
+
+        from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        other_user = User.objects.create_user(username="alemkredit", password="x")
+        other_merchant = Merchant.objects.create(user=other_user)
+        other = PayIn.objects.create(
+            amount=Decimal("10000"),
+            currency=self.pay_in.currency,
+            payment_system=self.pay_in.payment_system,
+            merchant_order_id="alem-order-99",
+            callback_url="https://example.com/cb",
+            merchant=other_merchant,
+            status=self.pay_in.status,
+        )
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        with (
+            patch("appeals.services.upload_receipt_storage", return_value="https://s3/r.jpg"),
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(other.id)),
+            ),
+            patch(
+                "appeals.telegram_out.send_receipt_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=101),
+            ) as mock_send,
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=20,
+                text=str(other.id),
+                file_bytes=jpeg,
+                filename="receipt.jpg",
+            )
+        self.assertEqual(result.outcome, "pending")
+        self.assertTrue(result.ok)
+        self.assertEqual(mock_send.call_args.kwargs["caption"], str(other.id))
+
+    def test_duplicate_appeal_is_explained(self):
+        from unittest.mock import patch
+
+        from appeals.models import PayInAppeal, PayInAppealSource, PayInAppealStatus
+        from appeals.services import process_merchant_appeal_message
+
+        PayInAppeal.objects.create(
+            pay_in=self.pay_in,
+            source_counterparty=self.merchant_cp,
+            source=PayInAppealSource.TELEGRAM_MERCHANT,
+            status=PayInAppealStatus.SENT_TO_PROVIDER,
+            source_telegram_chat_id=111,
+            source_telegram_message_id=1,
+        )
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        with patch("appeals.telegram_out.send_receipt_to_provider_chat") as mock_send:
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=21,
+                text="22924514129",
+                file_bytes=jpeg,
+                filename="receipt.jpg",
+            )
+        self.assertEqual(result.outcome, "duplicate")
+        self.assertIn("уже существует", result.message)
+        mock_send.assert_not_called()
+
+    def test_receipt_without_known_id_awaits_caption_edit(self):
+        from appeals.services import process_merchant_appeal_message
+
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        result = process_merchant_appeal_message(
+            chat_id=111,
+            message_id=22,
+            text="чето непонятное",
+            file_bytes=jpeg,
+            filename="receipt.jpg",
+        )
+        self.assertEqual(result.outcome, "await_id")
+        self.assertIn("ID", result.message)
+
+    def test_bank_receipt_pdf_id_mined_from_bytes(self):
+        """PDF bank receipt with order id in body should resolve without caption."""
+        from unittest.mock import patch
+
+        from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        pdf = _plain_pdf_bytes(f"Payment receipt\nOrder: {self.pay_in.merchant_order_id}\nAmount: 50000")
+        with (
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("payplat", "", str(self.pay_in.id)),
+            ),
+            patch("appeals.services._upload_receipt", return_value="https://cdn.example/r.pdf"),
+            patch(
+                "appeals.telegram_out.send_receipt_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=77),
+            ) as mock_send,
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=30,
+                text="",
+                file_bytes=pdf,
+                filename="receipt.pdf",
+            )
+        self.assertIn(result.outcome, {"success", "pending", "partial"})
+        self.assertTrue(result.ok)
+        mock_send.assert_called_once()
+
+    def test_uuid_only_in_filename_resolves_pandapay_style(self):
+        """Pandapay often names the file with merchant_order_id and leaves caption empty."""
+        from unittest.mock import patch
+
+        from appeals.services import process_merchant_appeal_message
+        from appeals.telegram_out import SendResult
+
+        self.pay_in.merchant_order_id = "1907326a-9c20-41e9-8a87-d59e8315da99"
+        self.pay_in.save(update_fields=["merchant_order_id"])
+        jpeg = b"\xff\xd8\xff" + b"\x00" * 64
+        with (
+            patch(
+                "appeals.services._psp_meta_for_pay_in",
+                return_value=("bitzone", "", str(self.pay_in.id)),
+            ),
+            patch("appeals.services._upload_receipt", return_value="https://cdn.example/r.jpg"),
+            patch(
+                "appeals.telegram_out.send_receipt_to_provider_chat",
+                return_value=SendResult(ok=True, message_id=88),
+            ),
+        ):
+            result = process_merchant_appeal_message(
+                chat_id=111,
+                message_id=40,
+                text="",
+                file_bytes=jpeg,
+                filename="1907326a-9c20-41e9-8a87-d59e8315da99.jpg",
+            )
+        self.assertIn(result.outcome, {"success", "pending", "partial"})
+        self.assertTrue(result.ok)
+
+    def test_ticket_pdf_without_id_is_rejected_not_silent(self):
+        from appeals.services import process_merchant_appeal_message
+
+        pdf = _plain_pdf_bytes("Melbet ticket without any order number")
+        result = process_merchant_appeal_message(
+            chat_id=111,
+            message_id=31,
+            text="",
+            file_bytes=pdf,
+            filename="Melbet_empty.pdf",
+        )
+        self.assertEqual(result.outcome, "rejected")
+        self.assertIn("ID не распознан", result.message)
+
+
+class ProviderNudgeTest(TestCase):
+    def setUp(self):
+        from appeals.models import AppealCounterparty, AppealCounterpartyRole, PayInAppeal, PayInAppealStatus
+
+        user = User.objects.create_user(username="nudge_m", password="x")
+        merchant = Merchant.objects.create(user=user)
+        currency = Currency.objects.create(symbol="KZT", name="Tenge")
+        ps = PaymentSystem.objects.create(name="C2CKZT", currency=currency, required_fields={})
+        status = PayInStatus.objects.create(name="Failed")
+        pay_in = PayIn.objects.create(
+            amount=Decimal("1000"),
+            currency=currency,
+            payment_system=ps,
+            merchant_order_id="nudge-1",
+            callback_url="https://example.com/cb",
+            merchant=merchant,
+            status=status,
+        )
+        self.appeal = PayInAppeal.objects.create(
+            pay_in=pay_in,
+            source="telegram_merchant",
+            status=PayInAppealStatus.SENT_TO_PROVIDER,
+            provider_chat_id=222,
+            provider_message_id=55,
+        )
+
+    def test_nudge_at_one_and_three_hours(self):
+        from datetime import timedelta
+        from unittest.mock import patch
+
+        from django.utils import timezone
+
+        from appeals.notify import nudge_unanswered_provider_appeals
+        from appeals.telegram_out import SendResult
+
+        now = timezone.now()
+        self.appeal.created_at = now - timedelta(hours=1, minutes=2)
+        self.appeal.save(update_fields=["created_at"])
+        with patch(
+            "appeals.notify.send_text_to_provider_chat",
+            return_value=SendResult(ok=True, message_id=70),
+        ) as mock_send:
+            sent = nudge_unanswered_provider_appeals()
+        self.assertEqual(sent, 1)
+        self.appeal.refresh_from_db()
+        self.assertIsNotNone(self.appeal.provider_nudge_1h_at)
+        self.assertIsNone(self.appeal.provider_nudge_3h_at)
+        self.assertEqual(mock_send.call_args.kwargs["text"], "?")
+        self.assertEqual(mock_send.call_args.kwargs["reply_to_message_id"], 55)
+
+        self.appeal.created_at = now - timedelta(hours=3, minutes=2)
+        self.appeal.save(update_fields=["created_at"])
+        with patch(
+            "appeals.notify.send_text_to_provider_chat",
+            return_value=SendResult(ok=True, message_id=71),
+        ) as mock_send:
+            sent = nudge_unanswered_provider_appeals()
+        self.assertEqual(sent, 1)
+        self.appeal.refresh_from_db()
+        self.assertIsNotNone(self.appeal.provider_nudge_3h_at)
+        self.assertEqual(mock_send.call_args.kwargs["text"], "?")
+
+    def test_send_receipt_rewrites_leaking_filename_and_caption(self):
+        from unittest.mock import MagicMock, patch
+
+        from appeals.telegram_out import send_receipt_to_provider_chat
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"ok": True, "result": {"message_id": 7}}
+        mock_response.text = ""
+        with (
+            patch("appeals.telegram_out._bot_token", return_value="token"),
+            patch("appeals.telegram_out.requests.post", return_value=mock_response) as mock_post,
+        ):
+            send_receipt_to_provider_chat(
+                chat_id=222,
+                file_bytes=b"%PDF-1.4 body",
+                filename="Melbet_ticket.pdf",
+                caption="Melbet / AvaPay ticket",
+            )
+        kwargs = mock_post.call_args.kwargs
+        self.assertEqual(kwargs["files"]["document"][0], "receipt.pdf")
+        self.assertNotRegex(kwargs["data"]["caption"], r"(?i)melbet|avapay")
+
+
+class MerchantInlineClickApiTest(TestCase):
+    def setUp(self):
+        from rest_framework.authtoken.models import Token
+        from rest_framework.test import APIClient
+
+        from appeals.models import AppealCounterparty, AppealCounterpartyRole, PayInAppeal, PayInAppealStatus
+        from bots.models import TGBot
+
+        bot_user = User.objects.create_user(username="appeal_bot_user", password="x")
+        TGBot.objects.create(user=bot_user)
+        token = Token.objects.create(user=bot_user)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+        merchant_user = User.objects.create_user(username="melbet_inline", password="x")
+        merchant = Merchant.objects.create(user=merchant_user)
+        currency = Currency.objects.create(symbol="KZT", name="Tenge")
+        ps = PaymentSystem.objects.create(name="C2CKZT", currency=currency, required_fields={})
+        status = PayInStatus.objects.create(name="Failed")
+        pay_in = PayIn.objects.create(
+            amount=Decimal("50000"),
+            currency=currency,
+            payment_system=ps,
+            merchant_order_id="23213959707",
+            callback_url="https://example.com/cb",
+            merchant=merchant,
+            status=status,
+        )
+        counterparty = AppealCounterparty.objects.create(
+            name="Melbet",
+            role=AppealCounterpartyRole.MERCHANT,
+            merchant=merchant,
+        )
+        self.appeal = PayInAppeal.objects.create(
+            pay_in=pay_in,
+            source_counterparty=counterparty,
+            source="telegram_merchant",
+            status=PayInAppealStatus.APPROVED,
+            source_telegram_chat_id=-100111,
+            source_telegram_message_id=42,
+        )
+
+    def test_pending_then_mark_clicked(self):
+        from appeals.models import PayInAppeal
+
+        listed = self.client.get("/api/v1/bot/appeals/pending_inline_clicks/")
+        self.assertEqual(listed.status_code, 200)
+        items = listed.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["id"], str(self.appeal.id))
+        self.assertEqual(items[0]["chat_id"], -100111)
+        self.assertEqual(items[0]["message_id"], 42)
+        self.assertTrue(items[0]["approved"])
+
+        marked = self.client.post(
+            "/api/v1/bot/appeals/mark_inline_clicked/",
+            {"id": str(self.appeal.id)},
+            format="json",
+        )
+        self.assertEqual(marked.status_code, 200)
+        self.assertTrue(marked.json()["ok"])
+        self.appeal.refresh_from_db()
+        self.assertTrue(self.appeal.merchant_inline_clicked)
+        empty = self.client.get("/api/v1/bot/appeals/pending_inline_clicks/")
+        self.assertEqual(empty.json()["items"], [])
+        self.assertFalse(PayInAppeal.objects.filter(merchant_inline_clicked=False).exists())
