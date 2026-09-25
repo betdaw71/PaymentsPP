@@ -343,6 +343,22 @@ GIPAY_WEBHOOK_SKIP_VERIFY = os.getenv('GIPAY_WEBHOOK_SKIP_VERIFY', 'false').lowe
 # Доп. ключи для проверки Signature (через запятую), если в ЛК отдельный signing secret
 GIPAY_WEBHOOK_SIGNING_KEYS = os.getenv('GIPAY_WEBHOOK_SIGNING_KEYS', '')
 
+# Layer-1 PSP (layer-1.io, Aggrepay v2, KZT трансгран tgkz)
+# Колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/layerone/
+LAYERONE_API_BASE = os.getenv('LAYERONE_API_BASE', 'https://layer-1.io').rstrip('/')
+LAYERONE_MERCHANT_ID = os.getenv('LAYERONE_MERCHANT_ID', '')
+LAYERONE_SECRET_KEY = os.getenv('LAYERONE_SECRET_KEY', '')
+LAYERONE_API_KEY = os.getenv('LAYERONE_API_KEY', '')
+LAYERONE_TRADER_USERNAME = os.getenv('LAYERONE_TRADER_USERNAME', 'layerone1')
+LAYERONE_PAYIN_METHOD = os.getenv('LAYERONE_PAYIN_METHOD', 'tgkz')
+LAYERONE_PAYIN_METHOD_MAP = os.getenv('LAYERONE_PAYIN_METHOD_MAP', '{"C2CKZT":"tgkz","C2C":"tgkz"}')
+LAYERONE_ASSET_OR_BANK = os.getenv('LAYERONE_ASSET_OR_BANK', '')
+LAYERONE_DEFAULT_PAYER_IP = os.getenv('LAYERONE_DEFAULT_PAYER_IP', '127.0.0.1')
+LAYERONE_PAYER_USER_ID_FROM_CLIENT = os.getenv('LAYERONE_PAYER_USER_ID_FROM_CLIENT', 'false').lower() in ('true', '1', 'yes')
+LAYERONE_WEBHOOK_SKIP_VERIFY = os.getenv('LAYERONE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+LAYERONE_WEBHOOK_SIGNING_KEYS = os.getenv('LAYERONE_WEBHOOK_SIGNING_KEYS', '')
+LAYERONE_CALLBACK_URL = os.getenv('LAYERONE_CALLBACK_URL', '')
+
 # VisionX Pay PSP (https://api.visionxpay.club, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/visionx/)
 VISIONX_API_BASE = os.getenv('VISIONX_API_BASE', 'https://api.visionxpay.club').rstrip('/')
 VISIONX_API_KEY = os.getenv('VISIONX_API_KEY', '')

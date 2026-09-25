@@ -19,6 +19,7 @@ def _collect_deal_ids(pay_in) -> dict:
         BitzonePayInSession,
         FairpayPayInSession,
         GipayPayInSession,
+        LayeronePayInSession,
         PayplatPayInSession,
         VisionxPayInSession,
         ExpayonePayInSession,
@@ -43,6 +44,7 @@ def _collect_deal_ids(pay_in) -> dict:
     psp_sessions = [
         ("payplat", PayplatPayInSession, "external_id", "provider_order_id"),
         ("gipay", GipayPayInSession, "external_id", "provider_payment_id"),
+        ("layerone", LayeronePayInSession, "external_id", "provider_payment_id"),
         ("botonpay", BotonpayPayInSession, "external_id", "provider_deal_uuid"),
         ("bitzone", BitzonePayInSession, "external_id", "provider_transaction_id"),
         ("fairpay", FairpayPayInSession, "external_id", "provider_order_id"),

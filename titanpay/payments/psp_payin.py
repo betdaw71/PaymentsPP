@@ -46,6 +46,7 @@ def is_psp_trader(trader) -> bool:
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     return (
         fc.is_fairpay_trader(trader)
@@ -62,6 +63,7 @@ def is_psp_trader(trader) -> bool:
         or gpc.is_gipay_trader(trader)
         or vxc.is_visionx_trader(trader)
         or ppc.is_payplat_trader(trader)
+        or loc.is_layerone_trader(trader)
     )
 
 
@@ -609,6 +611,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     names = {
         fc.fairpay_trader_username(),
@@ -625,8 +628,10 @@ def psp_trader_usernames() -> frozenset[str]:
         gpc.gipay_trader_username(),
         vxc.visionx_trader_username(),
         ppc.payplat_trader_username(),
+        loc.layerone_trader_username(),
         "payplat1",
         "gipay1",
+        "layerone1",
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -675,6 +680,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     for getter in (
         fc.fairpay_requisite_for_payin,
@@ -690,6 +696,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         gpc.gipay_requisite_for_payin,
         vxc.visionx_requisite_for_payin,
         ppc.payplat_requisite_for_payin,
+        loc.layerone_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -711,6 +718,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
@@ -722,9 +730,12 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = pltc.enrich_payin_payment_details(representation, pay_in)
     representation = syc.enrich_payin_payment_details(representation, pay_in)
     representation = bpc.enrich_payin_payment_details(representation, pay_in)
-    return ppc.enrich_payin_payment_details(
-        vxc.enrich_payin_payment_details(
-            gpc.enrich_payin_payment_details(representation, pay_in),
+    return loc.enrich_payin_payment_details(
+        ppc.enrich_payin_payment_details(
+            vxc.enrich_payin_payment_details(
+                gpc.enrich_payin_payment_details(representation, pay_in),
+                pay_in,
+            ),
             pay_in,
         ),
         pay_in,
@@ -804,9 +815,12 @@ def _psp_provider_for_trader(trader):
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
+    if loc.is_layerone_trader(trader):
+        return "layerone", loc.try_attach_layerone_session
     if gpc.is_gipay_trader(trader):
         return "gipay", gpc.try_attach_gipay_session
     if vxc.is_visionx_trader(trader):
@@ -1083,6 +1097,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
+    from payments import layerone_client as loc
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
@@ -1097,6 +1112,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     gpc.gipay_cancel_if_linked(pay_in)
     vxc.visionx_cancel_if_linked(pay_in)
     ppc.payplat_cancel_if_linked(pay_in)
+    loc.layerone_cancel_if_linked(pay_in)
 
 
 def _norm_webhook_status(raw) -> str:
@@ -1358,6 +1374,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         SyndicatePayInSession,
         ProtocolPayInSession,
         GipayPayInSession,
+        LayeronePayInSession,
         VisionxPayInSession,
         PayplatPayInSession,
     )
@@ -1370,6 +1387,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         ExpayonePayInSession,
         FairpayPayInSession,
         ProtocolPayInSession,
+        LayeronePayInSession,
         GipayPayInSession,
         VisionxPayInSession,
         PayplatPayInSession,
@@ -1418,6 +1436,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         SyndicatePayInSession,
         ProtocolPayInSession,
         GipayPayInSession,
+        LayeronePayInSession,
         VisionxPayInSession,
         PayplatPayInSession,
     )
@@ -1433,6 +1452,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (ExpayonePayInSession, "expayone"),
         (FairpayPayInSession, "fairpay"),
         (ProtocolPayInSession, "protocol"),
+        (LayeronePayInSession, "layerone"),
         (GipayPayInSession, "gipay"),
         (VisionxPayInSession, "visionx"),
         (PayplatPayInSession, "payplat"),
@@ -1486,6 +1506,7 @@ _PSP_SESSION_PROVIDER_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("payments.models.ExpayonePayInSession", "expayone", "provider_order_id"),
     ("payments.models.FairpayPayInSession", "fairpay", "provider_order_id"),
     ("payments.models.ProtocolPayInSession", "protocol", "provider_payment_id"),
+    ("payments.models.LayeronePayInSession", "layerone", "provider_payment_id"),
     ("payments.models.GipayPayInSession", "gipay", "provider_payment_id"),
     ("payments.models.VisionxPayInSession", "visionx", "provider_invoice_id"),
     ("payments.models.PayplatPayInSession", "payplat", "provider_order_id"),

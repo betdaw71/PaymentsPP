@@ -166,13 +166,23 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
     if pay_in:
         return pay_in
 
-    from payments.models import BotonpayPayInSession, GipayPayInSession, PayplatPayInSession, VisionxPayInSession
+    from payments.models import (
+        BotonpayPayInSession,
+        GipayPayInSession,
+        LayeronePayInSession,
+        PayplatPayInSession,
+        VisionxPayInSession,
+    )
 
     session = BotonpayPayInSession.objects.filter(provider_deal_uuid=str(parsed)).select_related("pay_in").first()
     if session and session.pay_in_id:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 
     session = GipayPayInSession.objects.filter(provider_payment_id=str(parsed)).select_related("pay_in").first()
+    if session and session.pay_in_id:
+        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
+
+    session = LayeronePayInSession.objects.filter(provider_payment_id=str(parsed)).select_related("pay_in").first()
     if session and session.pay_in_id:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 
@@ -283,6 +293,7 @@ def _pay_in_for_psp_id(value: str) -> PayIn | None:
         ExpayonePayInSession,
         FairpayPayInSession,
         GipayPayInSession,
+        LayeronePayInSession,
         PaymapPayInSession,
         PayplatPayInSession,
         PlaymentsPayInSession,
@@ -301,6 +312,8 @@ def _pay_in_for_psp_id(value: str) -> PayIn | None:
         (BotonpayPayInSession, {"external_id": candidate}),
         (GipayPayInSession, {"provider_payment_id": candidate}),
         (GipayPayInSession, {"external_id": candidate}),
+        (LayeronePayInSession, {"provider_payment_id": candidate}),
+        (LayeronePayInSession, {"external_id": candidate}),
         (VisionxPayInSession, {"provider_invoice_id": candidate}),
         (VisionxPayInSession, {"provider_deal_id": candidate}),
         (VisionxPayInSession, {"external_id": candidate}),
