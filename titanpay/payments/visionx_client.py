@@ -381,11 +381,58 @@ def visionx_webhook_outcome(body: dict) -> str | None:
     """success | fail | None (ignore intermediate)."""
     invoice = _invoice_from_webhook(body)
     status = _norm_status(invoice.get("status"))
-    if status == "paid":
+    if status in ("paid", "recalculated", "recalculation", "re_calculation"):
         return "success"
     if status in ("canceled", "cancelled", "expired"):
         return "fail"
     return None
+
+
+def visionx_is_webhook_body(body: dict | None) -> bool:
+    """True for VisionX IPN. Не путать с Bitzone: у них top-level id без internalId."""
+    if not isinstance(body, dict):
+        return False
+    nested = body.get("invoice")
+    if isinstance(nested, dict):
+        return bool(nested.get("internalId") or nested.get("id"))
+    return bool(body.get("internalId"))
+
+
+def visionx_webhook_paid_amount(body: dict | None) -> Decimal | None:
+    """Фактическая сумма из IPN VisionX: invoice/deal amount (не курс)."""
+    if not visionx_is_webhook_body(body):
+        return None
+    assert isinstance(body, dict)
+    invoice = _invoice_from_webhook(body)
+    deal = invoice.get("deal") if isinstance(invoice.get("deal"), dict) else {}
+    for source in (invoice, deal, body):
+        if not isinstance(source, dict):
+            continue
+        for key in (
+            "paidAmount",
+            "paid_amount",
+            "factAmount",
+            "fact_amount",
+            "receivedAmount",
+            "amount",
+        ):
+            raw = source.get(key)
+            if raw is None:
+                continue
+            try:
+                val = Decimal(str(raw).strip().replace(",", "."))
+            except (ValueError, TypeError, ArithmeticError):
+                continue
+            if val > 0:
+                return val
+    return None
+
+
+def visionx_success_webhook_allows_completed_recalc(body: dict | None) -> bool:
+    """Повторный paid после Completed — можно скорректировать сумму."""
+    if not isinstance(body, dict):
+        return False
+    return visionx_is_webhook_body(body) and visionx_webhook_outcome(body) == "success"
 
 
 def _first_deal(create_body: dict) -> dict:

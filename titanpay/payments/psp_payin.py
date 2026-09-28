@@ -1130,9 +1130,12 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
         return None
 
     from payments.payplat_client import payplat_is_webhook_body, payplat_webhook_paid_amount
+    from payments.visionx_client import visionx_is_webhook_body, visionx_webhook_paid_amount
 
     if payplat_is_webhook_body(body):
         return payplat_webhook_paid_amount(body)
+    if visionx_is_webhook_body(body):
+        return visionx_webhook_paid_amount(body)
 
     def _positive_decimal(raw) -> Decimal | None:
         if raw is None:
@@ -1211,8 +1214,28 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
 def psp_webhook_is_recalculation(body: dict | None) -> bool:
     if not isinstance(body, dict):
         return False
-    status = _norm_webhook_status(body.get("status"))
-    return status in ("re_calculation", "recalculation")
+    statuses = [body.get("status")]
+    invoice = body.get("invoice")
+    if isinstance(invoice, dict):
+        statuses.append(invoice.get("status"))
+    return any(_norm_webhook_status(raw) in ("re_calculation", "recalculation", "recalculated") for raw in statuses)
+
+
+def psp_success_webhook_allows_completed_recalc(webhook_body: dict | None) -> bool:
+    """PayPlat / Bitzone / VisionX: повторный success после Completed можно применить как перерасчёт."""
+    if not isinstance(webhook_body, dict):
+        return False
+    if psp_webhook_is_recalculation(webhook_body):
+        return True
+    from payments.bitzone_client import bitzone_success_webhook_allows_completed_recalc
+    from payments.payplat_client import payplat_success_webhook_allows_completed_recalc
+    from payments.visionx_client import visionx_success_webhook_allows_completed_recalc
+
+    return (
+        payplat_success_webhook_allows_completed_recalc(webhook_body)
+        or bitzone_success_webhook_allows_completed_recalc(webhook_body)
+        or visionx_success_webhook_allows_completed_recalc(webhook_body)
+    )
 
 
 def handle_psp_success_webhook(order, webhook_body: dict | None) -> str:
@@ -1228,11 +1251,7 @@ def handle_psp_success_webhook(order, webhook_body: dict | None) -> str:
     paid_amount = parse_psp_webhook_paid_amount(webhook_body)
     state = order.status.name if order.status else None
     if state == "Completed":
-        from payments.payplat_client import payplat_success_webhook_allows_completed_recalc
-
-        allow_recalc = psp_webhook_is_recalculation(webhook_body) or payplat_success_webhook_allows_completed_recalc(
-            webhook_body
-        )
+        allow_recalc = psp_success_webhook_allows_completed_recalc(webhook_body)
         if allow_recalc and paid_amount and paid_amount != order.amount:
             old_amount = order.amount
             if order.apply_psp_completed_recalc(paid_amount):

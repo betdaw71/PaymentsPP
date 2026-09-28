@@ -375,6 +375,13 @@ def bitzone_webhook_outcome(body: dict) -> str | None:
     return None
 
 
+def bitzone_success_webhook_allows_completed_recalc(body: dict | None) -> bool:
+    """Повторный closed / re_calculation после Completed — можно скорректировать сумму."""
+    if not isinstance(body, dict):
+        return False
+    return bitzone_webhook_outcome(body) == "success"
+
+
 def bitzone_map_requisite(create_body: dict) -> dict:
     """Маппинг requisite из ответа Bitzone в payment_details для мерчанта."""
     if not isinstance(create_body, dict):
