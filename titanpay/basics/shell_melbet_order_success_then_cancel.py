@@ -1,34 +1,27 @@
 """
 Откат Completed pay-in: revert проводок + Cancelled + Failed callback мерчанту.
 
+Melbet C2CKZT: плечо мерчанта — balance_kzt (blockchain → ₸). USDT merchant.balance
+не трогаем. Если в проводках complete есть USDT-кошелёк мерчанта — abort.
+
 Ищет заявку по PayIn UUID или merchant_order_id.
 
-Запуск на сервере (pandapay пример):
-  # lookup = PayIn UUID или merchant_order_id (оба формата UUID поддерживаются)
+Melbet 23415840161:
   docker compose exec -T \\
-    -e MERCHANT_ORDER_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
+    -e MERCHANT_ORDER_ID=23415840161 \\
     -e ACTION=inspect \\
     app python manage.py shell < titanpay/basics/shell_melbet_order_success_then_cancel.py
 
-  # 2) dry-run отмены
   docker compose exec -T \\
-    -e MERCHANT_ORDER_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
+    -e MERCHANT_ORDER_ID=23415840161 \\
     -e ACTION=cancel \\
     -e DRY_RUN=1 \\
     app python manage.py shell < titanpay/basics/shell_melbet_order_success_then_cancel.py
 
-  # 3) боевая отмена + возврат средств + Failed callback
   docker compose exec -T \\
-    -e MERCHANT_ORDER_ID=6b6ccf00-3ecc-49db-abce-cbfae3f0d327 \\
+    -e MERCHANT_ORDER_ID=23415840161 \\
     -e ACTION=cancel \\
     app python manage.py shell < titanpay/basics/shell_melbet_order_success_then_cancel.py
-
-Интерактивно:
-  docker compose exec app python manage.py shell
-  exec(open("titanpay/basics/shell_melbet_order_success_then_cancel.py").read())
-  inspect("6b6ccf00-3ecc-49db-abce-cbfae3f0d327")
-  step2_cancel("6b6ccf00-3ecc-49db-abce-cbfae3f0d327", dry_run=True)
-  step2_cancel("6b6ccf00-3ecc-49db-abce-cbfae3f0d327")
 """
 from __future__ import annotations
 
@@ -42,10 +35,83 @@ from payments.models import PayIn, PayInStatus
 from payments.psp_payin import complete_inorder_from_psp_webhook, is_psp_trader
 from trade.models import InOrder, InOrderStatus, InOrderStatusChange, Transaction, TransactionType
 
-DEFAULT_LOOKUP = "6b6ccf00-3ecc-49db-abce-cbfae3f0d327"  # pandapay merchant_order_id
-COMPLETION_COMMENTS = frozenset({"In-order completed", "Commission", "Teamlead commission"})
+DEFAULT_LOOKUP = "23415840161"
+COMPLETION_COMMENTS = frozenset(
+    {
+        "In-order completed",
+        "Commission",
+        "Teamlead commission",
+        "PSP completed recalculation",
+    }
+)
 SHELL_FREEZE_COMMENT = "Shell: top-up freeze before complete"
 UNFREEZE_COMMENT = "Revert completed pay-in"
+
+
+def _balance_label(balance_id, merchant, trader=None) -> str:
+    if merchant is not None:
+        if merchant.balance_kzt_id and balance_id == merchant.balance_kzt_id:
+            return "melbet.balance_kzt"
+        if merchant.frozen_balance_kzt_id and balance_id == merchant.frozen_balance_kzt_id:
+            return "melbet.frozen_balance_kzt"
+        if merchant.balance_id and balance_id == merchant.balance_id:
+            return "merchant.balance_USDT"
+        if merchant.frozen_balance_id and balance_id == merchant.frozen_balance_id:
+            return "merchant.frozen_USDT"
+    if trader is not None:
+        if trader.balance_usdt_id and balance_id == trader.balance_usdt_id:
+            return f"{trader.user.username}.usdt"
+        if trader.frozen_balance_usdt_id and balance_id == trader.frozen_balance_usdt_id:
+            return f"{trader.user.username}.frozen_usdt"
+    from basics.models import Balance
+
+    bal = Balance.objects.filter(pk=balance_id).first()
+    if bal is None:
+        return str(balance_id)
+    if bal.type == 3:
+        return "blockchain"
+    if bal.type == 2:
+        return "aggregator"
+    return f"balance:{balance_id}/type={bal.type}"
+
+
+def _assert_melbet_kzt_ledger(order: InOrder, completion_txs: list) -> None:
+    """Melbet C2CKZT: списание только с balance_kzt. USDT merchant.balance — стоп."""
+    from merchant.kzt_settlement import ensure_kzt_balances, uses_melbet_kzt_settlement
+
+    merchant = order.solution.merchant
+    ps = order.solution.payment_system
+    if not uses_melbet_kzt_settlement(merchant, ps):
+        print("[guard] not Melbet C2CKZT — KZT ledger checks skipped")
+        return
+    ensure_kzt_balances(merchant)
+    merchant.refresh_from_db()
+    usdt_id = merchant.balance_id
+    kzt_id = merchant.balance_kzt_id
+    frozen_kzt_id = merchant.frozen_balance_kzt_id
+    kzt_touched = False
+    for tx in completion_txs:
+        for bid in (tx.from_balance_id, tx.to_balance_id):
+            if usdt_id and bid == usdt_id:
+                raise ValueError(
+                    "Abort: complete tx touches merchant.balance USDT. "
+                    "Melbet C2CKZT must debit balance_kzt only."
+                )
+            if frozen_kzt_id and bid == frozen_kzt_id:
+                raise ValueError(
+                    "Abort: complete tx touches frozen_balance_kzt — unexpected for pay-in complete."
+                )
+            if kzt_id and bid == kzt_id:
+                kzt_touched = True
+    if not kzt_touched:
+        raise ValueError(
+            "Abort: no complete tx on balance_kzt — refuse to debit USDT or guess the wallet."
+        )
+    print(
+        f"[guard] Melbet C2CKZT OK: debit {merchant.user.username}.balance_kzt "
+        f"id={kzt_id} amount_now={merchant.balance_kzt.amount}  "
+        f"USDT merchant.balance={merchant.balance.amount if merchant.balance_id else None} (unchanged)"
+    )
 
 
 def _psp_balances(order: InOrder) -> tuple[Decimal, Decimal]:
@@ -137,6 +203,11 @@ def _payin_qs():
         "status",
         "order__status",
         "order__payment_details__group__trader__user",
+        "order__solution__merchant__user",
+        "order__solution__merchant__balance",
+        "order__solution__merchant__balance_kzt",
+        "order__solution__merchant__frozen_balance_kzt",
+        "order__solution__payment_system",
         "merchant__user",
         "melbet_session",
         "protocol_session",
@@ -206,6 +277,24 @@ def inspect(lookup: str = DEFAULT_LOOKUP) -> dict:
     info["trader_frozen_usdt"] = str(frozen)
     info["trader_available_usdt"] = str(available)
     info["order_usd_amount"] = str(order.usd_amount)
+    info["order_amount"] = str(order.amount)
+    info["merchant_fee"] = str(order.merchant_fee)
+    merchant_obj = order.solution.merchant if order.solution_id else None
+    from merchant.kzt_settlement import in_order_credit_kzt, uses_melbet_kzt_settlement
+
+    kzt = False
+    if merchant_obj is not None and order.solution.payment_system_id:
+        kzt = uses_melbet_kzt_settlement(merchant_obj, order.solution.payment_system)
+    info["kzt_settlement"] = kzt
+    if merchant_obj is not None:
+        info["merchant_balance_USDT"] = str(merchant_obj.balance.amount) if merchant_obj.balance_id else None
+        info["merchant_balance_kzt"] = str(merchant_obj.balance_kzt.amount) if merchant_obj.balance_kzt_id else None
+        if kzt:
+            info["would_debit_kzt"] = str(in_order_credit_kzt(order))
+            info["kzt_after_debit"] = str(merchant_obj.balance_kzt.amount - in_order_credit_kzt(order))
+    trader_obj = None
+    if order.payment_details_id:
+        trader_obj = order.payment_details.group.trader
     txs = list(
         Transaction.objects.filter(linked_in_order=order)
         .select_related("transaction_type", "from_balance", "to_balance")
@@ -216,10 +305,12 @@ def inspect(lookup: str = DEFAULT_LOOKUP) -> dict:
         print(f"  {k}: {v}")
     print(f"  linked_transactions: {len(txs)}")
     for tx in txs:
+        src = _balance_label(tx.from_balance_id, merchant_obj, trader_obj)
+        dst = _balance_label(tx.to_balance_id, merchant_obj, trader_obj)
         print(
             f"    - {tx.creation_date:%Y-%m-%d %H:%M:%S} "
             f"{tx.transaction_type.name if tx.transaction_type else '?'} "
-            f"{tx.value} [{tx.comment}]"
+            f"{tx.value} {src} -> {dst} [{tx.comment}]"
         )
     print("=" * 60)
     return info
@@ -311,14 +402,21 @@ def step2_cancel(lookup: str = DEFAULT_LOOKUP, *, dry_run: bool = False) -> None
         raise ValueError("No completion transactions found — cannot safely revert accounting")
     if _already_reverted(order):
         raise ValueError("Revert transactions already exist for this order — aborting to avoid double revert")
+    _assert_melbet_kzt_ledger(order, completion_txs)
+    merchant_obj = order.solution.merchant
+    trader_obj = order.payment_details.group.trader if order.payment_details_id else None
+    usdt_before = merchant_obj.balance.amount if merchant_obj.balance_id else None
+    kzt_before = merchant_obj.balance_kzt.amount if merchant_obj.balance_kzt_id else None
     charge_type = TransactionType.objects.get(name="Charge")
     deposit_type = TransactionType.objects.get(name="Deposit")
     print(f"[step2] will revert {len(completion_txs)} completion transaction(s)")
     for tx in completion_txs:
         reverse_type = deposit_type if tx.transaction_type.name == "Charge" else charge_type
+        src = _balance_label(tx.from_balance_id, merchant_obj, trader_obj)
+        dst = _balance_label(tx.to_balance_id, merchant_obj, trader_obj)
         print(
             f"  revert {tx.transaction_type.name} {tx.value} "
-            f"({tx.from_balance_id} -> {tx.to_balance_id}) as {reverse_type.name}"
+            f"({src} -> {dst}) as {reverse_type.name} ({dst} -> {src})"
         )
     if dry_run:
         print("[step2] dry_run: would also unfreeze, decrease volumes, set Cancelled, PayIn Failed + callback")
@@ -346,6 +444,16 @@ def step2_cancel(lookup: str = DEFAULT_LOOKUP, *, dry_run: bool = False) -> None
     InOrderStatusChange.create(order=order, status=cancelled)
     pay_in.refresh_from_db()
     order.refresh_from_db()
+    merchant_obj.refresh_from_db()
+    usdt_after = merchant_obj.balance.amount if merchant_obj.balance_id else None
+    kzt_after = merchant_obj.balance_kzt.amount if merchant_obj.balance_kzt_id else None
+    print(f"[step2] merchant.balance USDT {usdt_before} -> {usdt_after}")
+    print(f"[step2] merchant.balance_kzt  {kzt_before} -> {kzt_after}")
+    if usdt_before is not None and usdt_after is not None and usdt_before != usdt_after:
+        raise ValueError(
+            f"Abort: merchant USDT changed {usdt_before} -> {usdt_after}. "
+            "Expected only KZT movement — rolling back, callback not sent."
+        )
     _finalize_cancel_payin(pay_in)
     print(f"[step2] done: InOrder={order.status.name}, PayIn={pay_in.status.name}")
 
