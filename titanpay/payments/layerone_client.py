@@ -1,4 +1,4 @@
-"""HTTP client for Layer-1 PSP (layer-1.io, Aggrepay API v2, method tgkz)."""
+"""HTTP client for Layer-1 PSP (layer-1.io, Aggrepay API v2, method c2ckz)."""
 from __future__ import annotations
 
 import hashlib
@@ -46,12 +46,12 @@ def _parse_method_map() -> dict[str, str]:
 
 
 def layerone_payin_method_for(payment_system_name: str | None) -> str:
-    """Layer-1 method: KZT трансгран — tgkz."""
+    """Layer-1 method: KZT — c2ckz."""
     ps_name = (payment_system_name or "").strip()
     mapped = _parse_method_map().get(ps_name)
     if mapped:
         return mapped.strip()
-    return (getattr(settings, "LAYERONE_PAYIN_METHOD", None) or "tgkz").strip()
+    return (getattr(settings, "LAYERONE_PAYIN_METHOD", None) or "c2ckz").strip()
 
 
 def layerone_callback_url() -> str:
@@ -237,7 +237,7 @@ def layerone_create_payment(
     method: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
-    payin_method = (method or getattr(settings, "LAYERONE_PAYIN_METHOD", None) or "tgkz").strip()
+    payin_method = (method or getattr(settings, "LAYERONE_PAYIN_METHOD", None) or "c2ckz").strip()
     payload: dict[str, Any] = {
         "orderId": order_id,
         "merchantId": _merchant_id(),

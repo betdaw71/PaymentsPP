@@ -3,7 +3,7 @@ Django shell: команда + трейдер Layer-1 PSP (username layerone1).
 
 Документация: https://documenter.getpostman.com/view/13931884/2sAYQdipUu
 ЛК: https://merchant.layer-1.io/
-API: Aggrepay v2 (POST /api/v2/payments), method tgkz (трансгран KZT).
+API: Aggrepay v2 (POST /api/v2/payments), method c2ckz (KZT).
 Колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/layerone/
 
 После run() в server .env (секреты НЕ коммитить):
@@ -12,8 +12,8 @@ API: Aggrepay v2 (POST /api/v2/payments), method tgkz (трансгран KZT).
   LAYERONE_SECRET_KEY=...
   LAYERONE_API_KEY=...
   LAYERONE_TRADER_USERNAME=layerone1
-  LAYERONE_PAYIN_METHOD=tgkz
-  LAYERONE_PAYIN_METHOD_MAP={"C2CKZT":"tgkz","C2C":"tgkz"}
+  LAYERONE_PAYIN_METHOD=c2ckz
+  LAYERONE_PAYIN_METHOD_MAP={"C2CKZT":"c2ckz","C2C":"c2ckz"}
 
 Запуск:
   docker compose exec -T app python manage.py shell < basics/shell_create_layerone_trader.py

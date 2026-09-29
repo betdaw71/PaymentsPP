@@ -201,7 +201,7 @@ class ProtocolPayInSession(models.Model):
 
 
 class LayeronePayInSession(models.Model):
-    """Связка PayIn ↔ платёж Layer-1 (layer-1.io API v2, трансгран tgkz)."""
+    """Связка PayIn ↔ платёж Layer-1 (layer-1.io API v2, method c2ckz)."""
 
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="layerone_session")
