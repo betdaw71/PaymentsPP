@@ -53,6 +53,15 @@ class ParseRoutingShareMapTest(SimpleTestCase):
     def test_invalid_json_is_empty(self):
         self.assertEqual(parse_routing_share_map("{not json"), {})
 
+    def test_short_psp_names_alias_to_trader_usernames(self):
+        parsed = parse_routing_share_map(
+            {"payplat1": 55, "gipay": 20, "visionx1": 20, "layerone": 5}
+        )
+        self.assertEqual(parsed["gipay1"], Decimal("20"))
+        self.assertEqual(parsed["layerone1"], Decimal("5"))
+        self.assertNotIn("gipay", parsed)
+        self.assertNotIn("layerone", parsed)
+
     @override_settings(PSP_ROUTING_SHARE_WINDOW_HOURS="48")
     def test_window_hours_clamped(self):
         self.assertEqual(get_share_window_hours(), 48)

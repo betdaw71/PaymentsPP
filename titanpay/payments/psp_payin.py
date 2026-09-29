@@ -318,6 +318,19 @@ def _group_username(group) -> str:
     return _trader_username(getattr(group, "trader", None))
 
 
+# Короткое имя из .env → username трейдера. Иначе "gipay" не матчится с gipay1.
+_SHARE_USERNAME_ALIASES = {
+    "gipay": "gipay1",
+    "payplat": "payplat1",
+    "visionx": "visionx1",
+    "layerone": "layerone1",
+    "bitzone": "bitzone1",
+    "plutus": "plutus1",
+    "protocol": "protocol1",
+    "botonpay": "botonpay1",
+}
+
+
 def parse_routing_share_map(raw=None) -> dict[str, Decimal]:
     """username (lower) → вес доли. 0 и отрицательные отбрасываются."""
     from django.conf import settings
@@ -338,6 +351,7 @@ def parse_routing_share_map(raw=None) -> dict[str, Decimal]:
         name = str(key).strip().lower()
         if not name:
             continue
+        name = _SHARE_USERNAME_ALIASES.get(name, name)
         try:
             weight = Decimal(str(val))
         except (InvalidOperation, TypeError, ValueError):

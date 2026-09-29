@@ -31,7 +31,7 @@ GROUP_OWNER = "GiPay Virtual Drop"
 TRAFFIC_NAME = "Standard"
 PS_NAMES = ("C2CKZT", C2C_NAME)
 CURRENCY_SYMBOL = "KZT"
-DEFAULT_MDR_IN = Decimal("7")
+DEFAULT_MDR_IN = Decimal("4.70")
 
 
 def _ensure_virtual_card(group: PaymentDetailsGroup) -> None:

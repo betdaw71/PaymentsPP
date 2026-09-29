@@ -36,7 +36,7 @@ GROUP_OWNER = "GiPay Virtual Drop"
 TRAFFIC_NAME = "Standard"
 PS_NAME = C2C_NAME
 CURRENCY_SYMBOL = "KZT"
-DEFAULT_MDR_IN = Decimal("6")
+DEFAULT_MDR_IN = Decimal("4.70")
 
 
 def _default_mdr_in(team, kzt_ps: PaymentSystem) -> Decimal:
