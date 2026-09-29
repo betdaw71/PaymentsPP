@@ -55,14 +55,16 @@ class ParseRoutingShareMapTest(SimpleTestCase):
 
     def test_short_psp_names_alias_to_trader_usernames(self):
         parsed = parse_routing_share_map(
-            {"payplat1": 45, "gipay": 20, "visionx1": 20, "layerone": 5, "plutus": 10}
+            {"payplat1": 45, "gipay": 20, "visionx1": 20, "layerone": 5, "plutus": 10, "patriotpay": 5}
         )
         self.assertEqual(parsed["gipay1"], Decimal("20"))
         self.assertEqual(parsed["layerone1"], Decimal("5"))
         self.assertEqual(parsed["plutus1"], Decimal("10"))
+        self.assertEqual(parsed["patriot1"], Decimal("5"))
         self.assertNotIn("gipay", parsed)
         self.assertNotIn("layerone", parsed)
         self.assertNotIn("plutus", parsed)
+        self.assertNotIn("patriotpay", parsed)
 
     @override_settings(PSP_ROUTING_SHARE_WINDOW_HOURS="48")
     def test_window_hours_clamped(self):

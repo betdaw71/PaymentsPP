@@ -33,6 +33,7 @@ from payments.botonpay_views import botonpay_webhook_view
 from payments.gipay_views import GipayWebhookView
 from payments.layerone_views import LayeroneWebhookView
 from payments.visionx_views import VisionxWebhookView
+from payments.patriotpay_views import PatriotpayWebhookView
 from payments.payplat_views import PayplatWebhookView
 from payments.payment_page import payment_page, payment_page_redirect
 from payments.payment_page_assets import serve_payment_page_asset
@@ -76,6 +77,8 @@ urlpatterns = [
     path('api/v1/webhooks/psp/layerone/', LayeroneWebhookView.as_view(), name='webhook-layerone'),
     path('api/v1/webhooks/psp/visionx', VisionxWebhookView.as_view(), name='webhook-visionx-no-slash'),
     path('api/v1/webhooks/psp/visionx/', VisionxWebhookView.as_view(), name='webhook-visionx'),
+    path('api/v1/webhooks/psp/patriotpay', PatriotpayWebhookView.as_view(), name='webhook-patriotpay-no-slash'),
+    path('api/v1/webhooks/psp/patriotpay/', PatriotpayWebhookView.as_view(), name='webhook-patriotpay'),
     path('api/v1/webhooks/psp/payplat', PayplatWebhookView.as_view(), name='webhook-payplat-no-slash'),
     path('api/v1/webhooks/psp/payplat/', PayplatWebhookView.as_view(), name='webhook-payplat'),
     path('prometheus-X60iSjSJB4PA2mdqDnA1mRBZbmGpapdMpwZ6L29c', include('django_prometheus.urls')),

@@ -47,6 +47,7 @@ def is_psp_trader(trader) -> bool:
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
     from payments import layerone_client as loc
+    from payments import patriotpay_client as ppc2
 
     return (
         fc.is_fairpay_trader(trader)
@@ -64,6 +65,7 @@ def is_psp_trader(trader) -> bool:
         or vxc.is_visionx_trader(trader)
         or ppc.is_payplat_trader(trader)
         or loc.is_layerone_trader(trader)
+        or ppc2.is_patriotpay_trader(trader)
     )
 
 
@@ -324,6 +326,8 @@ _SHARE_USERNAME_ALIASES = {
     "payplat": "payplat1",
     "visionx": "visionx1",
     "layerone": "layerone1",
+    "patriotpay": "patriot1",
+    "patriot": "patriot1",
     "bitzone": "bitzone1",
     "plutus": "plutus1",
     "protocol": "protocol1",
@@ -626,6 +630,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
     from payments import layerone_client as loc
+    from payments import patriotpay_client as ppc2
 
     names = {
         fc.fairpay_trader_username(),
@@ -643,10 +648,12 @@ def psp_trader_usernames() -> frozenset[str]:
         vxc.visionx_trader_username(),
         ppc.payplat_trader_username(),
         loc.layerone_trader_username(),
+        ppc2.patriotpay_trader_username(),
         "payplat1",
         "gipay1",
         "layerone1",
         "plutus1",
+        "patriot1",
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -696,6 +703,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
     from payments import layerone_client as loc
+    from payments import patriotpay_client as ppc2
 
     for getter in (
         fc.fairpay_requisite_for_payin,
@@ -712,6 +720,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         vxc.visionx_requisite_for_payin,
         ppc.payplat_requisite_for_payin,
         loc.layerone_requisite_for_payin,
+        ppc2.patriotpay_requisite_for_payin,
     ):
         req = getter(pay_in)
         if requisite_payload_has_fields(req):
@@ -734,6 +743,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
     from payments import layerone_client as loc
+    from payments import patriotpay_client as ppc2
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
@@ -745,10 +755,13 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = pltc.enrich_payin_payment_details(representation, pay_in)
     representation = syc.enrich_payin_payment_details(representation, pay_in)
     representation = bpc.enrich_payin_payment_details(representation, pay_in)
-    return loc.enrich_payin_payment_details(
-        ppc.enrich_payin_payment_details(
-            vxc.enrich_payin_payment_details(
-                gpc.enrich_payin_payment_details(representation, pay_in),
+    return ppc2.enrich_payin_payment_details(
+        loc.enrich_payin_payment_details(
+            ppc.enrich_payin_payment_details(
+                vxc.enrich_payin_payment_details(
+                    gpc.enrich_payin_payment_details(representation, pay_in),
+                    pay_in,
+                ),
                 pay_in,
             ),
             pay_in,
@@ -831,11 +844,14 @@ def _psp_provider_for_trader(trader):
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
     from payments import layerone_client as loc
+    from payments import patriotpay_client as ppc2
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
     if loc.is_layerone_trader(trader):
         return "layerone", loc.try_attach_layerone_session
+    if ppc2.is_patriotpay_trader(trader):
+        return "patriotpay", ppc2.try_attach_patriotpay_session
     if gpc.is_gipay_trader(trader):
         return "gipay", gpc.try_attach_gipay_session
     if vxc.is_visionx_trader(trader):
@@ -1113,6 +1129,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
     from payments import layerone_client as loc
+    from payments import patriotpay_client as ppc2
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
@@ -1128,6 +1145,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     vxc.visionx_cancel_if_linked(pay_in)
     ppc.payplat_cancel_if_linked(pay_in)
     loc.layerone_cancel_if_linked(pay_in)
+    ppc2.patriotpay_cancel_if_linked(pay_in)
 
 
 def _norm_webhook_status(raw) -> str:
@@ -1145,10 +1163,15 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
         return None
 
     from payments.payplat_client import payplat_is_webhook_body, payplat_webhook_paid_amount
+    from payments.patriotpay_client import patriotpay_is_webhook_body, patriotpay_webhook_paid_amount
     from payments.visionx_client import visionx_is_webhook_body, visionx_webhook_paid_amount
 
     if payplat_is_webhook_body(body):
         return payplat_webhook_paid_amount(body)
+    if patriotpay_is_webhook_body(body):
+        paid = patriotpay_webhook_paid_amount(body)
+        if paid is not None:
+            return paid
     if visionx_is_webhook_body(body):
         return visionx_webhook_paid_amount(body)
 
@@ -1244,12 +1267,14 @@ def psp_success_webhook_allows_completed_recalc(webhook_body: dict | None) -> bo
         return True
     from payments.bitzone_client import bitzone_success_webhook_allows_completed_recalc
     from payments.payplat_client import payplat_success_webhook_allows_completed_recalc
+    from payments.patriotpay_client import patriotpay_success_webhook_allows_completed_recalc
     from payments.visionx_client import visionx_success_webhook_allows_completed_recalc
 
     return (
         payplat_success_webhook_allows_completed_recalc(webhook_body)
         or bitzone_success_webhook_allows_completed_recalc(webhook_body)
         or visionx_success_webhook_allows_completed_recalc(webhook_body)
+        or patriotpay_success_webhook_allows_completed_recalc(webhook_body)
     )
 
 
@@ -1410,6 +1435,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         GipayPayInSession,
         LayeronePayInSession,
         VisionxPayInSession,
+        PatriotpayPayInSession,
         PayplatPayInSession,
     )
 
@@ -1424,6 +1450,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         LayeronePayInSession,
         GipayPayInSession,
         VisionxPayInSession,
+        PatriotpayPayInSession,
         PayplatPayInSession,
         PlaymentsPayInSession,
         ConcoredPayInSession,
@@ -1472,6 +1499,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         GipayPayInSession,
         LayeronePayInSession,
         VisionxPayInSession,
+        PatriotpayPayInSession,
         PayplatPayInSession,
     )
 
@@ -1489,6 +1517,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (LayeronePayInSession, "layerone"),
         (GipayPayInSession, "gipay"),
         (VisionxPayInSession, "visionx"),
+        (PatriotpayPayInSession, "patriotpay"),
         (PayplatPayInSession, "payplat"),
         (PlaymentsPayInSession, "playments"),
         (ConcoredPayInSession, "concored"),
@@ -1543,6 +1572,7 @@ _PSP_SESSION_PROVIDER_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("payments.models.LayeronePayInSession", "layerone", "provider_payment_id"),
     ("payments.models.GipayPayInSession", "gipay", "provider_payment_id"),
     ("payments.models.VisionxPayInSession", "visionx", "provider_invoice_id"),
+    ("payments.models.PatriotpayPayInSession", "patriotpay", "provider_invoice_id"),
     ("payments.models.PayplatPayInSession", "payplat", "provider_order_id"),
     ("payments.models.PlaymentsPayInSession", "playments", "provider_deposit_id"),
     ("payments.models.ConcoredPayInSession", "concored", "provider_payment_id"),
