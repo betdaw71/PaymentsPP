@@ -646,6 +646,7 @@ def psp_trader_usernames() -> frozenset[str]:
         "payplat1",
         "gipay1",
         "layerone1",
+        "plutus1",
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
