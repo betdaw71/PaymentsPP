@@ -115,8 +115,8 @@ class PatriotpayPayinHelpersTest(SimpleTestCase):
         self.assertEqual(payload["currency"], "KZT")
         self.assertEqual(payload["amount"], "20000")
         self.assertEqual(payload["paymentOption"], "CROSS_BORDER")
-        self.assertEqual(payload["crossBorderCurrency"], "TJS")
         self.assertEqual(payload["crossBorderRequisiteType"], "CARD")
+        self.assertNotIn("crossBorderCurrency", payload)
         self.assertTrue(payload["startDeal"])
         self.assertEqual(req.call_args.args[:2], ("POST", "/api/merchant/invoices"))
 

@@ -260,7 +260,6 @@ def patriotpay_create_invoice(
     }
     option = str(payload["paymentOption"] or "").upper()
     if option == "CROSS_BORDER":
-        payload["crossBorderCurrency"] = (cross_border_currency or "").upper() or None
         payload["crossBorderRequisiteType"] = cross_border_requisite_type
     if success_url:
         payload["successUrl"] = success_url
