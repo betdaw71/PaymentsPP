@@ -21,12 +21,12 @@ from payments.psp_payin import parse_psp_webhook_paid_amount, psp_success_webhoo
 
 class PatriotpayPayinHelpersTest(SimpleTestCase):
     @override_settings(
-        PATRIOTPAY_PAYIN_OPTION="TO_CARD",
-        PATRIOTPAY_PAYIN_OPTION_MAP='{"C2CKZT":"TO_CARD","C2C":"TO_CARD"}',
+        PATRIOTPAY_PAYIN_OPTION="CROSS_BORDER",
+        PATRIOTPAY_PAYIN_OPTION_MAP='{"C2CKZT":"CROSS_BORDER","C2C":"CROSS_BORDER"}',
     )
-    def test_option_is_to_card_for_c2ckzt(self):
-        self.assertEqual(patriotpay_payment_option_for("C2CKZT"), "TO_CARD")
-        self.assertEqual(patriotpay_payment_option_for("C2C"), "TO_CARD")
+    def test_option_is_cross_border_for_c2ckzt(self):
+        self.assertEqual(patriotpay_payment_option_for("C2CKZT"), "CROSS_BORDER")
+        self.assertEqual(patriotpay_payment_option_for("C2C"), "CROSS_BORDER")
 
     def test_paid_is_success(self):
         self.assertEqual(patriotpay_webhook_outcome({"status": "paid"}), "success")
@@ -92,27 +92,31 @@ class PatriotpayPayinHelpersTest(SimpleTestCase):
         PATRIOTPAY_API_BASE="https://api.patriotpay.club",
         PATRIOTPAY_API_KEY="api-key",
         PATRIOTPAY_SECRET_KEY="secret",
-        PATRIOTPAY_PAYIN_OPTION="TO_CARD",
+        PATRIOTPAY_PAYIN_OPTION="CROSS_BORDER",
     )
     @patch(
         "payments.patriotpay_client._request",
         return_value=(True, {"id": "inv-1", "deals": [{"id": "deal-1"}]}),
     )
-    def test_create_sends_to_card_and_kzt(self, req):
+    def test_create_sends_cross_border_kzt_tjs(self, req):
         ok, data = patriotpay_create_invoice(
             amount=Decimal("20000"),
             internal_id="po-1",
             currency="KZT",
             notification_url="https://api.avapay.net/api/v1/webhooks/psp/patriotpay/",
             notification_token="tok",
-            payment_option="TO_CARD",
+            payment_option="CROSS_BORDER",
+            cross_border_currency="TJS",
+            cross_border_requisite_type="CARD",
         )
         self.assertTrue(ok)
         payload = req.call_args.kwargs["json_payload"]
         self.assertEqual(payload["type"], "in")
         self.assertEqual(payload["currency"], "KZT")
         self.assertEqual(payload["amount"], "20000")
-        self.assertEqual(payload["paymentOption"], "TO_CARD")
+        self.assertEqual(payload["paymentOption"], "CROSS_BORDER")
+        self.assertEqual(payload["crossBorderCurrency"], "TJS")
+        self.assertEqual(payload["crossBorderRequisiteType"], "CARD")
         self.assertTrue(payload["startDeal"])
         self.assertEqual(req.call_args.args[:2], ("POST", "/api/merchant/invoices"))
 

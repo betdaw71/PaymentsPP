@@ -255,7 +255,7 @@ def patriotpay_create_invoice(
         "userId": user_id or internal_id,
         "startDeal": True,
         "strictlySingleTransfer": True,
-        "paymentOption": payment_option or "TO_CARD",
+        "paymentOption": payment_option or "CROSS_BORDER",
         "paymentMethod": payment_method,
     }
     option = str(payload["paymentOption"] or "").upper()
