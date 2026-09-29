@@ -495,11 +495,28 @@ class PayOut(models.Model):
         headers = {"Signature": signature, "Content-Type": "application/json"}
 
         status_code = 500
+        response_text = ""
         try:
             r = requests.post(self.callback_url, json=data, headers=headers)
             status_code = r.status_code
-        except Exception:
-            logging.error(f"Callback to {self.callback_url} failed")
+            response_text = (r.text or "")[:2000]
+        except Exception as exc:
+            logging.error(f"Callback to {self.callback_url} failed: {exc}")
+            response_text = str(exc)
+
+        from payments.payin_trace import Direction, trace_log
+
+        trace_log(
+            pay_in=None,
+            merchant=self.merchant,
+            merchant_order_id=self.merchant_order_id or "",
+            direction=Direction.MERCHANT_CALLBACK,
+            body={"request": data, "response_preview": response_text, "pay_out_id": str(self.id)},
+            http_method="POST",
+            url=self.callback_url,
+            status_code=status_code,
+            note=f"payout status={data.get('status')}",
+        )
 
         return status_code
 

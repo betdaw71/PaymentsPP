@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 from payments.models import PayIn, PayOut, PayplatPayInSession, PayplatPayOutSession
 from payments.payin_trace import Direction, trace_log
 from payments.payplat_client import (
+    apply_payplat_payout_paid,
     payplat_is_payout_webhook,
     payplat_webhook_outcome,
     resolve_payplat_payout_webhook_session,
@@ -194,6 +195,18 @@ class PayplatWebhookView(APIView):
             session.provider_payout_id = str(pid)
         session.save()
 
+        pay_out = session.pay_out
+        trace_log(
+            pay_in=None,
+            merchant=pay_out.merchant if pay_out else None,
+            merchant_order_id=(pay_out.merchant_order_id if pay_out else "") or "",
+            direction=Direction.PAYPLAT_WEBHOOK,
+            body=body,
+            http_method="POST",
+            url="/api/v1/webhooks/psp/payplat/",
+            note=f"payout PayOut={session.pay_out_id} status={body.get('status')}",
+        )
+
         if outcome == "success":
             return self._handle_payout_success(session)
         if outcome == "fail":
@@ -206,23 +219,23 @@ class PayplatWebhookView(APIView):
         return Response({"status": "ok", "message": "Webhook received successfully"})
 
     def _handle_payout_success(self, session: PayplatPayOutSession) -> Response:
-        pay_out = session.pay_out
-        if not pay_out or not pay_out.order_id:
-            return Response({"status": "error", "message": "no_pay_out"}, status=status.HTTP_400_BAD_REQUEST)
-
-        with transaction.atomic():
-            locked = OutOrder.objects.select_for_update().get(pk=pay_out.order_id)
-            if locked.status and locked.status.name == "Completed":
-                locked_po = PayOut.objects.select_for_update().get(pk=pay_out.pk)
-                if locked_po.status and locked_po.status.name != "Success":
-                    locked_po.success()
-                return Response({"status": "ok", "message": "Webhook received successfully"})
-            if locked.status and locked.status.name == "New":
-                locked.complete()
-            locked_po = PayOut.objects.select_for_update().get(pk=pay_out.pk)
-            if locked_po.status and locked_po.status.name not in ("Success", "Failed", "Declined"):
-                locked_po.success()
-
+        result = apply_payplat_payout_paid(session)
+        if not result.get("ok"):
+            logger.warning(
+                "PayPlat payout PAID apply failed PayOut=%s result=%s",
+                session.pay_out_id,
+                result,
+            )
+            message = result.get("error") or "apply_failed"
+            code = status.HTTP_400_BAD_REQUEST if message == "no_pay_out" else status.HTTP_409_CONFLICT
+            return Response({"status": "error", "message": message}, status=code)
+        logger.info(
+            "PayPlat payout PAID applied PayOut=%s action=%s out_order=%s refreeze=%s",
+            session.pay_out_id,
+            result.get("action"),
+            result.get("out_order"),
+            result.get("refreeze"),
+        )
         return Response({"status": "ok", "message": "Webhook received successfully"})
 
     def _handle_payout_fail(self, session: PayplatPayOutSession) -> Response:

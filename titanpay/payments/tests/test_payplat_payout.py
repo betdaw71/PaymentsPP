@@ -1,15 +1,18 @@
 from decimal import Decimal
+import inspect
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 
 from payments.payplat_client import (
+    apply_payplat_payout_paid,
     payplat_create_payout,
     payplat_is_payout_webhook,
     payplat_payout_create_rejected,
     payplat_webhook_outcome,
     _payout_amount_for_payplat,
 )
+from payments.payplat_views import PayplatWebhookView
 
 
 class PayplatPayoutHelpersTest(SimpleTestCase):
@@ -54,6 +57,27 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         body = {"status": "SUCCESS", "shop_internal_id": "abc"}
         self.assertFalse(payplat_is_payout_webhook(body))
         self.assertEqual(payplat_webhook_outcome(body), "success")
+
+    def test_paid_without_type_is_success_when_forced_payout(self):
+        body = {"status": "PAID", "shop_internal_id": "po-1", "payout_id": "503"}
+        self.assertFalse(payplat_is_payout_webhook(body))
+        self.assertEqual(payplat_webhook_outcome(body, payout=True), "success")
+        self.assertIsNone(payplat_webhook_outcome(body))
+
+    def test_late_paid_applies_after_failed_or_cannot_process(self):
+        src = inspect.getsource(apply_payplat_payout_paid)
+        self.assertIn("Expired", src)
+        self.assertIn("Cannot process", src)
+        self.assertIn("Failed", src)
+        self.assertIn("PayPlat PAID after expire/fail", src)
+        view_src = inspect.getsource(PayplatWebhookView._handle_payout_success)
+        self.assertIn("apply_payplat_payout_paid", view_src)
+        self.assertNotIn('name not in ("Success", "Failed", "Declined")', view_src)
+
+    def test_payout_webhook_is_traced(self):
+        src = inspect.getsource(PayplatWebhookView._dispatch_payout)
+        self.assertIn("PAYPLAT_WEBHOOK", src)
+        self.assertIn("payout PayOut=", src)
 
     @override_settings(PAYPLAT_PAYOUT_CURRENCY="KZT")
     def test_amount_uses_kzt_when_currency_kzt(self):

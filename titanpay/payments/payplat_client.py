@@ -229,6 +229,8 @@ def _request(
     json_payload: dict | None = None,
     timeout: int = 60,
     pay_in=None,
+    merchant=None,
+    merchant_order_id: str | None = None,
 ) -> tuple[bool, dict[str, Any] | str]:
     shop_id = _shop_id()
     secret = _secret_key()
@@ -249,6 +251,8 @@ def _request(
 
     trace_log(
         pay_in=pay_in,
+        merchant=merchant,
+        merchant_order_id=merchant_order_id,
         direction=Direction.PAYPLAT_OUT_REQUEST,
         body=payload if payload else {"_method": method, "_path": path},
         http_method=method,
@@ -265,6 +269,8 @@ def _request(
         logger.exception("PayPlat %s %s failed: %s", method, path, exc)
         trace_log(
             pay_in=pay_in,
+            merchant=merchant,
+            merchant_order_id=merchant_order_id,
             direction=Direction.PAYPLAT_OUT_RESPONSE,
             body={"error": str(exc)},
             http_method=method,
@@ -281,6 +287,8 @@ def _request(
 
     trace_log(
         pay_in=pay_in,
+        merchant=merchant,
+        merchant_order_id=merchant_order_id,
         direction=Direction.PAYPLAT_OUT_RESPONSE,
         body=resp_body,
         http_method=method,
@@ -387,6 +395,7 @@ def payplat_create_payout(
     name: str | None = None,
     surname: str | None = None,
     tariff: str | None = None,
+    pay_out=None,
 ) -> tuple[bool, dict[str, Any] | str]:
     payload: dict[str, Any] = {
         "shop_internal_id": shop_internal_id,
@@ -419,7 +428,15 @@ def payplat_create_payout(
     tariff_val = (tariff if tariff is not None else payplat_tariff()).strip().upper()
     if tariff_val:
         payload["tariff"] = tariff_val
-    return _request("POST", payplat_payout_path(), json_payload=payload)
+    merchant = getattr(pay_out, "merchant", None) if pay_out is not None else None
+    merchant_order_id = getattr(pay_out, "merchant_order_id", None) if pay_out is not None else None
+    return _request(
+        "POST",
+        payplat_payout_path(),
+        json_payload=payload,
+        merchant=merchant,
+        merchant_order_id=merchant_order_id,
+    )
 
 
 def _norm_status(raw: str | None) -> str:
@@ -1020,6 +1037,7 @@ def try_create_payplat_payout(pay_out: Any, *, client_ip: str | None = None) -> 
         currency=payplat_payout_currency(),
         name=holder_name,
         surname=holder_surname,
+        pay_out=pay_out,
     )
     if not ok:
         session.create_response = data if isinstance(data, dict) else {"error": str(data)}
@@ -1034,3 +1052,126 @@ def try_create_payplat_payout(pay_out: Any, *, client_ip: str | None = None) -> 
         logger.error("PayPlat create payout rejected PayOut=%s: %s", pay_out.id, session.create_response)
         return False
     return True
+
+
+_PAYOUT_COMPLETE_FROM = frozenset({"New", "Expired", "Cannot process", "Failed"})
+
+
+def out_order_has_unreversed_freeze(order) -> bool:
+    """True if merchant freeze is still on the OutOrder (not unfrozen and not charged)."""
+    from trade.models import Transaction
+
+    last_freeze = (
+        Transaction.objects.filter(linked_out_order=order, transaction_type__name="Freeze")
+        .order_by("-creation_date")
+        .first()
+    )
+    if last_freeze is None:
+        return False
+    reversed_unfreeze = Transaction.objects.filter(
+        linked_out_order=order,
+        transaction_type__name="Deposit",
+        creation_date__gte=last_freeze.creation_date,
+        from_balance_id=last_freeze.to_balance_id,
+        to_balance_id=last_freeze.from_balance_id,
+    ).exists()
+    completed_charge = Transaction.objects.filter(
+        linked_out_order=order,
+        transaction_type__name="Charge",
+        creation_date__gte=last_freeze.creation_date,
+        from_balance_id=last_freeze.to_balance_id,
+        comment__icontains="completed",
+    ).exists()
+    return not reversed_unfreeze and not completed_charge
+
+
+def resolve_completable_out_order(pay_out):
+    """Prefer the OutOrder that still has requisites after expire/cannot_process cascade."""
+    from trade.models import OutOrder
+
+    locked = OutOrder.objects.select_for_update().get(pk=pay_out.order_id)
+    if locked.payment_details_id:
+        return locked
+    alt = (
+        OutOrder.objects.select_for_update()
+        .filter(
+            merchant_order_id=locked.merchant_order_id,
+            solution_id=locked.solution_id,
+            payment_details__isnull=False,
+        )
+        .exclude(pk=locked.pk)
+        .order_by("-creation_date")
+        .first()
+    )
+    return alt or locked
+
+
+def apply_payplat_payout_paid(session) -> dict[str, Any]:
+    """Complete OutOrder and PayOut.success() on provider PAID, including after expire/fail.
+
+    Live bug before this: complete() only ran on OutOrder New, and PayOut.success()
+    skipped Failed/Declined — late PAID IPN was stored then ignored.
+    """
+    from django.db import transaction as db_transaction
+
+    from payments.models import PayOut
+    from rest_framework.exceptions import ValidationError
+
+    pay_out = session.pay_out
+    if not pay_out or not pay_out.order_id:
+        return {"ok": False, "error": "no_pay_out"}
+
+    with db_transaction.atomic():
+        locked_po = PayOut.objects.select_for_update().get(pk=pay_out.pk)
+        locked = resolve_completable_out_order(locked_po)
+        st = locked.status.name if locked.status else None
+        po_st = locked_po.status.name if locked_po.status else None
+
+        if st == "Completed":
+            if po_st != "Success":
+                locked_po.success()
+                return {
+                    "ok": True,
+                    "action": "pay_out_success",
+                    "out_order": str(locked.id),
+                    "status": st,
+                    "pay_out_was": po_st,
+                }
+            return {"ok": True, "action": "already", "out_order": str(locked.id), "status": st}
+
+        if st not in _PAYOUT_COMPLETE_FROM:
+            return {
+                "ok": False,
+                "error": f"bad_out_order_status:{st}",
+                "out_order": str(locked.id),
+            }
+        if not locked.payment_details_id:
+            return {"ok": False, "error": "no_payment_details", "out_order": str(locked.id)}
+
+        refreeze = False
+        if not out_order_has_unreversed_freeze(locked):
+            locked.freeze("PayPlat PAID after expire/fail")
+            refreeze = True
+        try:
+            locked.complete()
+        except ValidationError as exc:
+            return {
+                "ok": False,
+                "error": "complete_failed",
+                "detail": str(getattr(exc, "detail", exc)),
+                "refreeze": refreeze,
+                "out_order": str(locked.id),
+            }
+
+        if locked_po.order_id != locked.pk:
+            locked_po.order = locked
+            locked_po.save(update_fields=["order", "updated_at"])
+        if po_st != "Success":
+            locked_po.success()
+        return {
+            "ok": True,
+            "action": "completed",
+            "out_order": str(locked.id),
+            "refreeze": refreeze,
+            "pay_out_was": po_st,
+        }
