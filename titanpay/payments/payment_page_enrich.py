@@ -37,7 +37,14 @@ def _requisites_available(data: dict, pay_in: PayIn) -> bool:
     if order_status == "Cannot process":
         return False
     pd = data.get("payment_details") or {}
-    return bool(pd.get("card_number") or pd.get("phone") or pd.get("deposit_number"))
+    return bool(
+        pd.get("card_number")
+        or pd.get("phone")
+        or pd.get("deposit_number")
+        or pd.get("payment_form_url")
+        or pd.get("deeplink")
+        or pd.get("qr_image_url")
+    )
 
 
 def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = None) -> dict:

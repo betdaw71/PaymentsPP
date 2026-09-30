@@ -12,7 +12,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from payments.gipay_client import (
+    gipay_webhook_ids,
     gipay_webhook_outcome,
+    gipay_webhook_state,
     resolve_gipay_webhook_session,
     verify_webhook_signature,
     webhook_signature_debug_hint,
@@ -65,9 +67,9 @@ class GipayWebhookView(APIView):
         except (UnicodeDecodeError, json.JSONDecodeError):
             body = request.data if isinstance(request.data, dict) else {}
 
-        order_id = body.get("orderId")
-        payment_id = body.get("id") or body.get("paymentId")
+        order_id, payment_id = gipay_webhook_ids(body)
         outcome = gipay_webhook_outcome(body)
+        notified_state = gipay_webhook_state(body)
 
         session = resolve_gipay_webhook_session(order_id=order_id, payment_id=payment_id)
 
@@ -81,11 +83,11 @@ class GipayWebhookView(APIView):
             body=body,
             http_method="POST",
             url="/api/v1/webhooks/psp/gipay/",
-            note=f"linked pay_in state={body.get('state')}",
+            note=f"linked pay_in state={notified_state or body.get('state')}",
         )
 
         session.last_webhook_payload = body
-        session.last_notified_state = _norm_status(body.get("state")) or session.last_notified_state
+        session.last_notified_state = _norm_status(notified_state) or session.last_notified_state
         session.save()
 
         if outcome == "success":
@@ -95,7 +97,7 @@ class GipayWebhookView(APIView):
         logger.warning(
             "GiPay webhook ignored PayIn=%s state=%s",
             session.pay_in_id,
-            body.get("state"),
+            notified_state or body.get("state"),
         )
         return Response({"ok": True, "ignored": True})
 

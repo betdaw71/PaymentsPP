@@ -10,9 +10,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.exceptions import ValidationError
 
-from payments.models import PlutusPayInSession, PayIn
+from payments.models import PayIn, PlutusPayInSession
 from payments.payin_trace import Direction, trace_log
-from payments.plutus_client import plutus_webhook_outcome
+from payments.plutus_client import plutus_webhook_outcome, resolve_plutus_webhook_session
 from payments.psp_payin import complete_inorder_from_psp_webhook
 from trade.models import InOrder
 
@@ -96,17 +96,13 @@ def plutus_webhook_view(request):
         logger.info("Plutus service webhook event=%s body=%s", event, body)
         return _json_response({"ok": True, "event": event})
 
-    platform_id = body.get("platform_id")
-    session = None
-    if platform_id:
-        session = (
-            PlutusPayInSession.objects.filter(external_id=str(platform_id))
-            .select_related("pay_in", "pay_in__order")
-            .first()
-        )
-
+    session = resolve_plutus_webhook_session(body)
     if session is None:
-        logger.warning("Plutus webhook: session not found platform_id=%s", platform_id)
+        logger.warning(
+            "Plutus webhook: session not found platform_id=%s id=%s",
+            body.get("platform_id"),
+            body.get("id"),
+        )
         return _json_response({"ok": False, "error": "unknown_order"}, status=404)
 
     outcome = plutus_webhook_outcome(body)

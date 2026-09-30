@@ -5,6 +5,7 @@ import json
 import logging
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import requests
 from django.conf import settings
@@ -189,10 +190,77 @@ def plutus_webhook_outcome(body: dict) -> str | None:
     if event in ("requisite_deactivated", "capacity_available"):
         return None
     status = _norm_status(body.get("status"))
-    if status == "completed":
+    if status in ("completed", "success", "paid", "finished", "payed"):
         return "success"
-    if status == "cancelled":
+    if status in ("cancelled", "canceled", "expired", "failed", "timeout"):
         return "fail"
+    return None
+
+
+def _plutus_webhook_lookup_values(body: dict | None) -> list[str]:
+    if not isinstance(body, dict):
+        return []
+    values: list[str] = []
+    platform = body.get("platform") if isinstance(body.get("platform"), dict) else {}
+    for raw in (
+        body.get("platform_id"),
+        body.get("id"),
+        body.get("external_id"),
+        body.get("payment_id"),
+        platform.get("id"),
+        platform.get("trade_id"),
+    ):
+        text = str(raw or "").strip()
+        if text and text not in values:
+            values.append(text)
+    return values
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return True
+
+
+def resolve_plutus_webhook_session(body: dict | None):
+    """Найти сессию по platform_id / id / trade_id из callback Plutus."""
+    from payments.models import PayIn, PlutusPayInSession
+
+    for value in _plutus_webhook_lookup_values(body):
+        session = (
+            PlutusPayInSession.objects.filter(external_id=value)
+            .select_related("pay_in", "pay_in__order")
+            .first()
+        )
+        if session is not None:
+            return session
+        session = (
+            PlutusPayInSession.objects.filter(provider_trade_uuid=value)
+            .select_related("pay_in", "pay_in__order")
+            .first()
+        )
+        if session is not None:
+            return session
+        if not _is_uuid(value):
+            continue
+        pay_in = (
+            PayIn.objects.filter(pk=value)
+            .select_related("order__payment_details__group__trader")
+            .first()
+        )
+        if pay_in is None or pay_in.order is None or pay_in.order.payment_details is None:
+            continue
+        if not is_plutus_trader(pay_in.order.payment_details.group.trader):
+            continue
+        session = (
+            PlutusPayInSession.objects.filter(pay_in=pay_in)
+            .select_related("pay_in", "pay_in__order")
+            .first()
+        )
+        if session is not None:
+            return session
     return None
 
 

@@ -22,6 +22,15 @@ class LayeronePayinHelpersTest(SimpleTestCase):
     def test_finished_is_success(self):
         self.assertEqual(layerone_webhook_outcome({"state": "finished"}), "success")
 
+    def test_nested_result_finished_is_success(self):
+        self.assertEqual(
+            layerone_webhook_outcome({"status": True, "result": {"state": "finished"}}),
+            "success",
+        )
+
+    def test_paid_is_success(self):
+        self.assertEqual(layerone_webhook_outcome({"state": "paid"}), "success")
+
     def test_expired_is_fail(self):
         self.assertEqual(layerone_webhook_outcome({"state": "expired"}), "fail")
 

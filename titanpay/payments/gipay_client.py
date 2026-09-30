@@ -279,6 +279,18 @@ def _norm_state(raw: str | None) -> str:
     return (raw or "").strip().lower()
 
 
+def gipay_webhook_ids(body: dict | None) -> tuple[str, str]:
+    from payments.aggrepay_webhook import webhook_ids
+
+    return webhook_ids(body)
+
+
+def gipay_webhook_state(body: dict | None) -> str:
+    from payments.aggrepay_webhook import webhook_state
+
+    return webhook_state(body)
+
+
 def resolve_gipay_webhook_session(
     *,
     order_id: str | None,
@@ -348,12 +360,9 @@ def resolve_gipay_webhook_session(
 
 def gipay_webhook_outcome(body: dict) -> str | None:
     """success | fail | None (ignore intermediate)."""
-    state = _norm_state(body.get("state"))
-    if state == "finished":
-        return "success"
-    if state in ("canceled", "cancelled", "expired", "failed"):
-        return "fail"
-    return None
+    from payments.aggrepay_webhook import webhook_outcome
+
+    return webhook_outcome(body)
 
 
 def gipay_map_requisite(create_body: dict) -> dict:

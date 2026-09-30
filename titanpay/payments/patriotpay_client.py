@@ -379,7 +379,15 @@ def patriotpay_webhook_outcome(body: dict) -> str | None:
     """success | fail | None (ignore intermediate)."""
     invoice = _invoice_from_webhook(body)
     status = _norm_status(invoice.get("status"))
-    if status in ("paid", "recalculated", "recalculation", "re_calculation"):
+    if status in (
+        "paid",
+        "recalculated",
+        "recalculation",
+        "re_calculation",
+        "success",
+        "completed",
+        "finished",
+    ):
         return "success"
     if status in ("canceled", "cancelled", "expired"):
         return "fail"

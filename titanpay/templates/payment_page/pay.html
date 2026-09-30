@@ -167,7 +167,7 @@
       kk: {
         loading: "Төлем жүктелуде…",
         timer: "Уақыт қалды",
-        card: "Карта нөмірі", phone: "Телефон", account: "Шот",
+        card: "Карта нөмірі", phone: "Телефон", account: "Шот", payLink: "Төлем сілтемесі",
         owner: "Алушы", bank: "Банк", bic: "БИК",
         copy: "Көшіру", copied: "Көшірілді",
         copyAll: "Барлығын көшіру",
@@ -190,7 +190,7 @@
       ru: {
         loading: "Загрузка платежа…",
         timer: "Осталось времени",
-        card: "Номер карты", phone: "Телефон", account: "Счёт",
+        card: "Номер карты", phone: "Телефон", account: "Счёт", payLink: "Ссылка для оплаты",
         owner: "Получатель", bank: "Банк", bic: "БИК",
         copy: "Копировать", copied: "Скопировано",
         copyAll: "Скопировать всё",
@@ -307,6 +307,10 @@
       if (pd.card_number) html += detailField(t("card"), pd.card_number, true);
       if (pd.phone) html += detailField(t("phone"), pd.phone, true);
       if (pd.deposit_number) html += detailField(t("account"), pd.deposit_number, true);
+      if (pd.payment_form_url && /^https?:\/\//i.test(pd.payment_form_url)) {
+        html += `<div class="field"><div class="label">${t("payLink")}</div>
+          <a class="bank-btn" href="${pd.payment_form_url}" rel="noopener noreferrer">${t("payLink")}</a></div>`;
+      }
       if (pd.owner) html += detailField(t("owner"), pd.owner, false);
       if (pd.bank) html += detailField(t("bank"), pd.bank, false);
       if (pd.bic) html += detailField(t("bic"), pd.bic, true);
