@@ -117,8 +117,7 @@ def _lookup(deal_id: str) -> None:
         "status",
         "solution__merchant__user",
         "solution__payment_system__currency",
-        "pay_in__status",
-    ).filter(id=deal_id).first()
+    ).prefetch_related("pay_in").filter(id=deal_id).first()
     if in_order:
         pay = in_order.pay_in.first()
         _print_order_block(title=str(in_order.id), order=in_order, pay=pay, direction="in")
@@ -128,8 +127,7 @@ def _lookup(deal_id: str) -> None:
         "status",
         "solution__merchant__user",
         "solution__payment_system__currency",
-        "pay_out__status",
-    ).filter(id=deal_id).first()
+    ).prefetch_related("pay_out").filter(id=deal_id).first()
     if out_order:
         pay = out_order.pay_out.first()
         _print_order_block(title=str(out_order.id), order=out_order, pay=pay, direction="out")
