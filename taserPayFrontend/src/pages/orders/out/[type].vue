@@ -9,6 +9,7 @@ import {
 } from "@core/utils/formatters"
 import { useBaseStore } from "@/stores/useBaseStore"
 import OrderOutDrawer from "@/views/user/OrderOutDrawer.vue"
+import { toDjangoDateTimeRange } from "@core/utils/dateRange"
 
 const props = defineProps ({
   type: {
@@ -216,11 +217,9 @@ const buildOrderFilterParams = ({ paginate = false } = {}) => {
       params.usd_amount__gte = filters.value.minUSDAmount
     if (hasAmountFilter(filters.value.maxUSDAmount))
       params.usd_amount__lte = filters.value.maxUSDAmount
-    if (filters.value.dateRange && filters.value.dateRange.includes (" to ")) {
-      const [start, end] = filters.value.dateRange.split (" to ").map (part => part.trim ())
-
-      params.creation_date__range = `${start},${end}T23:59:59`
-    }
+    const creationRange = toDjangoDateTimeRange(filters.value.dateRange)
+    if (creationRange)
+      params.creation_date__range = creationRange
 
     if (filters.value.selectedCurrencies && filters.value.selectedCurrencies.length > 0)
       params.currency__symbol__in = filters.value.selectedCurrencies.join (",")

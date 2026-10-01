@@ -10,7 +10,7 @@ from basics.models import Trader, Balance, PaymentDetails, TraderTeam, TraderTea
 from basics.serializers import TraderTeamSerializer, TraderTeamRatesSerializer
 from payments.models import PayOut
 from trade.ledger import user_balance_ids
-from trade.utils2 import send_to_fastapi, orders_excel_http_response, transactions_excel_http_response
+from trade.utils2 import send_to_fastapi, orders_excel_http_response, transactions_excel_http_response, withdrawals_excel_http_response
 from usermanagement.models import SupportMember
 from trade.serializers import WithdrawalRequestSupportSerializer, WithdrawalRequestBasicSerializer, \
     WithdrawalRequestCreateSerializer, WithdrawalRequestApproveSerializer, WithdrawalRequestRejectSerializer, \
@@ -175,6 +175,11 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
             Q(balance__in=merchant_balances) | Q(balance__in=balances) | Q(balance__in=teamlead_balances)
         )
         return query
+
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='export')
+    def export_withdrawals(self, request):
+        queryset = self.filter_queryset(self.get_queryset()).order_by('-date')[:10000]
+        return withdrawals_excel_http_response(queryset)
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -349,7 +354,20 @@ class TransactionViewset(viewsets.ModelViewSet):
         return transactions_excel_http_response(queryset, user=request.user, filename_prefix="transactions")
 
 
+class CharInFilter(django_filters.BaseInFilter, django_filters.CharFilter):
+    pass
+
+
 class InOrderFilter(django_filters.FilterSet):
+    payment_system__name__in = CharInFilter(field_name='solution__payment_system__name')
+    currency__symbol__in = CharInFilter(field_name='solution__payment_system__currency__symbol')
+    traffic_type__name__in = CharInFilter(field_name='solution__traffic__name')
+    trader__user__username__in = CharInFilter(field_name='payment_details__group__trader__user__username')
+    trader__team__name__in = CharInFilter(field_name='payment_details__group__trader__team__name')
+    merchant__user__username__in = CharInFilter(field_name='solution__merchant__user__username')
+    transaction_id = django_filters.CharFilter(field_name='pay_in__id')
+    customer_id = django_filters.CharFilter(field_name='pay_in__client__client_id')
+
     class Meta:
         model = InOrder
         fields = {
@@ -755,6 +773,15 @@ class InOrderViewset(viewsets.ModelViewSet):
 
 
 class OutOrderFilter(django_filters.FilterSet):
+    payment_system__name__in = CharInFilter(field_name='solution__payment_system__name')
+    currency__symbol__in = CharInFilter(field_name='solution__payment_system__currency__symbol')
+    traffic_type__name__in = CharInFilter(field_name='solution__traffic__name')
+    trader__user__username__in = CharInFilter(field_name='payment_details__group__trader__user__username')
+    trader__team__name__in = CharInFilter(field_name='payment_details__group__trader__team__name')
+    merchant__user__username__in = CharInFilter(field_name='solution__merchant__user__username')
+    transaction_id = django_filters.CharFilter(field_name='pay_out__id')
+    customer_id = django_filters.CharFilter(field_name='pay_out__client__client_id')
+
     class Meta:
         model = OutOrder
         fields = {

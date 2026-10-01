@@ -3,6 +3,7 @@ import { useTradeStore } from "@/stores/useTradeStore"
 import { formatUUID, resolveTransactionTypeVariantAndIcon } from "@core/utils/formatters"
 import FilterTransactions from "@/views/user/FilterTransactions.vue"
 import { useBaseStore } from "@/stores/useBaseStore"
+import { toDjangoDateTimeRange } from "@core/utils/dateRange"
 
 const { t } = useI18n ()
 const tradeStore = useTradeStore ()
@@ -156,11 +157,9 @@ const buildTransactionParams = (page = null) => {
     params.linked_in_order = filters.value.searchQueryIn
   if (filters.value.searchQueryOut)
     params.linked_out_order = filters.value.searchQueryOut
-  if (filters.value.dateRange && filters.value.dateRange.includes (" to ")) {
-    const [start, end] = filters.value.dateRange.split (" to ").map (part => part.trim ())
-    // Inclusive end-of-day so the last selected date is not truncated at 00:00.
-    params.creation_date__range = `${start},${end}T23:59:59`
-  }
+  const creationRange = toDjangoDateTimeRange(filters.value.dateRange)
+  if (creationRange)
+    params.creation_date__range = creationRange
   if (filters.value.direction && filters.value.direction !== "all")
     params.direction = filters.value.direction
 

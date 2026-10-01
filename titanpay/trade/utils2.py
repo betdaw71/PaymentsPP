@@ -468,6 +468,55 @@ def transactions_excel_http_response(queryset, *, user=None, filename_prefix: st
     return _excel_http_response(buffer, filename_prefix)
 
 
+_WITHDRAWAL_STATUS_LABEL = {0: "New", 1: "Success", 2: "Rejected"}
+
+
+def build_withdrawals_excel_buffer(queryset):
+    rows = []
+    for item in queryset.values(
+        "id",
+        "status",
+        "amount",
+        "address_to",
+        "comment",
+        "date",
+        "from_user__username",
+    ):
+        created = item.get("date")
+        rows.append({
+            "id": item.get("id"),
+            "status": _WITHDRAWAL_STATUS_LABEL.get(item.get("status"), item.get("status")),
+            "amount": item.get("amount"),
+            "address_to": item.get("address_to"),
+            "comment": item.get("comment"),
+            "from_user": item.get("from_user__username"),
+            "date": created.astimezone(pytz.utc).replace(tzinfo=None) if created else None,
+        })
+
+    column_mapping = {
+        "id": "ID",
+        "status": "Статус",
+        "amount": "Сумма (USDT)",
+        "address_to": "Адрес",
+        "comment": "Комментарий",
+        "from_user": "Пользователь",
+        "date": "Дата",
+    }
+    df = pd.DataFrame(rows, columns=list(column_mapping))
+    df.rename(columns=column_mapping, inplace=True)
+
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    buffer.seek(0)
+    return buffer
+
+
+def withdrawals_excel_http_response(queryset, *, filename_prefix: str = "withdrawals"):
+    buffer = build_withdrawals_excel_buffer(queryset)
+    return _excel_http_response(buffer, filename_prefix)
+
+
 def export_to_excel(queryset):
     """Legacy: upload to S3 and return public URL. Requires BUCKET_NAME in .env."""
     buffer = build_orders_excel_buffer(queryset)

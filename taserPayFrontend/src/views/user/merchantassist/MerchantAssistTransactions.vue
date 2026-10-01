@@ -3,6 +3,7 @@ import { useTradeStore } from "@/stores/useTradeStore"
 import { formatUUID, resolveTransactionTypeVariantAndIcon } from "@core/utils/formatters"
 import FilterTransactions from "@/views/user/FilterTransactions.vue"
 import { useBaseStore } from "@/stores/useBaseStore"
+import { toDjangoDateTimeRange } from "@core/utils/dateRange"
 
 const { t } = useI18n ()
 const tradeStore = useTradeStore ()
@@ -119,8 +120,9 @@ const transactionQueryParams = ({ paginate } = { paginate: true }) => {
     params.linked_in_order = filters.value.searchQueryIn
   if (filters.value.searchQueryOut)
     params.linked_out_order = filters.value.searchQueryOut
-  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-    params.creation_date__range = filters.value.dateRange.replace (" to ", ",")
+  const creationRange = toDjangoDateTimeRange(filters.value.dateRange)
+  if (creationRange)
+    params.creation_date__range = creationRange
   if (filters.value.direction && filters.value.direction !== "all")
     params.direction = filters.value.direction
 

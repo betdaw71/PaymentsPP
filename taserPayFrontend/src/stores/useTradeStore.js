@@ -294,6 +294,9 @@ export const useTradeStore = defineStore ({
     async exportTradeTransaction (params) {
       return exportOrdersExcel('/trade/transaction/export/', params, 'transactions.xlsx')
     },
+    async exportTradeWithdrawalRequest (params) {
+      return exportOrdersExcel('/trade/withdrawal-request/export/', params, 'withdrawals.xlsx')
+    },
     async getTradeWithdrawalRequest (params) {
       const response = await instance.get (`/trade/withdrawal-request/`, { params })
       if (response.status === 200) {
