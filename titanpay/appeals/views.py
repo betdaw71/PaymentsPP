@@ -61,6 +61,9 @@ def _collect_deal_ids(pay_in) -> dict:
             session = model.objects.get(pay_in=pay_in)
             result[f"{psp_name}_external_id"] = getattr(session, ext_field, "") or ""
             result[f"{psp_name}_provider_id"] = getattr(session, prov_field, "") or ""
+            deal_id = getattr(session, "provider_deal_id", "") or ""
+            if deal_id:
+                result[f"{psp_name}_deal_id"] = deal_id
             result[f"{psp_name}_last_status"] = getattr(session, "last_notified_state", "") or getattr(session, "last_notified_status", "") or ""
         except model.DoesNotExist:
             pass

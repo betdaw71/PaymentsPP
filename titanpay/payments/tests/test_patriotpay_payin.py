@@ -53,6 +53,20 @@ class PatriotpayPayinHelpersTest(SimpleTestCase):
         self.assertEqual(parse_psp_webhook_paid_amount(body), Decimal("5004.50"))
         self.assertTrue(psp_success_webhook_allows_completed_recalc(body))
 
+    def test_paid_amount_prefers_sum_over_invoice_amount(self):
+        body = {
+            "invoice": {
+                "id": "inv-1",
+                "internalId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "status": "recalculated",
+                "amount": "5000.00",
+                "sum": {"amount": "5004.50", "currency": "KZT", "subunit": 2},
+            }
+        }
+        self.assertEqual(patriotpay_webhook_paid_amount(body), Decimal("5004.50"))
+        self.assertEqual(parse_psp_webhook_paid_amount(body), Decimal("5004.50"))
+        self.assertTrue(psp_success_webhook_allows_completed_recalc(body))
+
     def test_view_does_not_skip_completed_success(self):
         src = inspect.getsource(PatriotpayWebhookView._handle_success)
         self.assertIn("handle_psp_success_webhook", src)

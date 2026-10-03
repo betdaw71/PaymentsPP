@@ -423,7 +423,6 @@ def _amount_from_source(source: dict) -> Decimal | None:
         "factAmount",
         "fact_amount",
         "receivedAmount",
-        "amount",
     ):
         paid = _positive_decimal(source.get(key))
         if paid is not None:
@@ -434,7 +433,8 @@ def _amount_from_source(source: dict) -> Decimal | None:
             paid = _positive_decimal(nested.get("amount"))
             if paid is not None:
                 return paid
-    return None
+    # invoice.amount — запрошенная сумма; после sum.*, иначе перерасчёт не увидит факт.
+    return _positive_decimal(source.get("amount"))
 
 
 def patriotpay_webhook_paid_amount(body: dict | None) -> Decimal | None:

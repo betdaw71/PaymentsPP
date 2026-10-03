@@ -1,5 +1,7 @@
+import html
 import logging
 import os
+import re
 import threading
 import time
 
@@ -50,7 +52,7 @@ HELP_TEXT = (
     f"(ждём до {int(PENDING_ID_EDIT_SEC)} сек)\n\n"
     "Команды:\n"
     "/init <uuid контрагента> — регистрация чата\n"
-    "/lookup <ID заявки> — все ID по сделке (PayIn, InOrder, PSP, Melbet)\n"
+    "/lookup <ID заявки> — все ID по сделке (PayIn, InOrder, все PSP, Melbet)\n"
     "/appeal — запомнить тикет и ждать чек\n\n"
     "В BotFather отключите Group Privacy, иначе бот не видит фото в группе."
 )
@@ -212,8 +214,46 @@ def backend_lookup(query: str) -> tuple[bool, dict | str]:
     return False, payload.get("message", "Заявка не найдена.")
 
 
+def _html_txt(val) -> str:
+    return html.escape(str(val), quote=False)
+
+
+def _html_code(val) -> str:
+    return f"<code>{_html_txt(val)}</code>"
+
+
+def _lookup_query(text: str) -> str | None:
+    raw = (text or "").strip()
+    match = re.match(r"^/{1,2}lookup(?:@\w+)?(?:\s+|$)(.*)$", raw, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).strip()
+
+
+_LOOKUP_ID_FIELDS = (
+    "pay_in_id",
+    "merchant_order_id",
+    "in_order_id",
+    "melbet_session_id",
+    "melbet_order_id",
+)
+_PSP_LOOKUP_ORDER = (
+    "payplat",
+    "gipay",
+    "layerone",
+    "patriotpay",
+    "botonpay",
+    "bitzone",
+    "fairpay",
+    "visionx",
+    "expayone",
+    "protocol",
+    "syndicate",
+)
+
+
 def _format_lookup(data: dict) -> str:
-    lines = ["📋 Все ID по сделке:\n"]
+    lines = ["📋 <b>Все ID по сделке</b>\n"]
     field_labels = [
         ("pay_in_id", "PayIn ID"),
         ("merchant_order_id", "Merchant Order ID"),
@@ -228,49 +268,74 @@ def _format_lookup(data: dict) -> str:
     for key, label in field_labels:
         val = data.get(key)
         if val:
-            lines.append(f"  {label}: {val}")
+            shown = _html_code(val) if key in _LOOKUP_ID_FIELDS else _html_txt(val)
+            lines.append(f"  {label}: {shown}")
 
-    # PSP sessions
-    psp_names = ["payplat", "gipay", "botonpay", "bitzone", "fairpay", "visionx", "expayone", "protocol", "syndicate"]
+    extras = []
+    for key in data:
+        if key.endswith("_external_id"):
+            extras.append(key[: -len("_external_id")])
+    psp_names = list(_PSP_LOOKUP_ORDER)
+    for name in extras:
+        if name not in psp_names:
+            psp_names.append(name)
+
     for psp in psp_names:
         ext = data.get(f"{psp}_external_id")
         prov = data.get(f"{psp}_provider_id")
+        deal = data.get(f"{psp}_deal_id")
         last_st = data.get(f"{psp}_last_status")
-        if ext or prov:
-            lines.append(f"\n🔗 {psp.upper()}:")
-            if ext:
-                lines.append(f"  external_id: {ext}")
-            if prov:
-                lines.append(f"  provider_id: {prov}")
-            if last_st:
-                lines.append(f"  last_status: {last_st}")
+        if not (ext or prov or deal):
+            continue
+        lines.append(f"\n🔗 <b>{_html_txt(psp.upper())}</b>")
+        if ext:
+            lines.append(f"  external_id: {_html_code(ext)}")
+        if prov:
+            lines.append(f"  provider_id: {_html_code(prov)}")
+        if deal:
+            lines.append(f"  deal_id: {_html_code(deal)}")
+        if last_st:
+            lines.append(f"  last_status: {_html_txt(last_st)}")
 
     appeals = data.get("appeals")
     if appeals:
         lines.append(f"\n📝 Апелляции ({len(appeals)}):")
         for a in appeals:
-            lines.append(f"  {a['id']} — {a['status']} ({a['created_at'][:19]})")
+            created = (a.get("created_at") or "")[:19]
+            lines.append(f"  {_html_code(a['id'])} — {_html_txt(a.get('status') or '')} ({_html_txt(created)})")
 
     return "\n".join(lines)
+
+
+def _reply_lookup(message: Message) -> None:
+    _audit(message)
+    query = _lookup_query(message.text or "")
+    if not query:
+        bot.reply_to(
+            message,
+            "Использование: /lookup <ID заявки>\nID может быть PayIn UUID, merchant_order_id, provider ID и т.д.",
+        )
+        return
+
+    ok, result = backend_lookup(query)
+    if not ok:
+        bot.reply_to(message, f"❌ {_html_txt(result)}", parse_mode="HTML")
+        return
+
+    bot.reply_to(message, _format_lookup(result), parse_mode="HTML")
 
 
 @bot.message_handler(commands=["lookup"])
 @bot.channel_post_handler(commands=["lookup"])
 def lookup_command(message: Message):
     """Lookup all IDs for a deal by any known ID."""
-    _audit(message)
-    parts = (message.text or "").strip().split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].strip():
-        bot.reply_to(message, "Использование: /lookup <ID заявки>\nID может быть PayIn UUID, merchant_order_id, provider ID и т.д.")
-        return
+    _reply_lookup(message)
 
-    query = parts[1].strip()
-    ok, result = backend_lookup(query)
-    if not ok:
-        bot.reply_to(message, f"❌ {result}")
-        return
 
-    bot.reply_to(message, _format_lookup(result))
+@bot.message_handler(func=lambda m: (m.text or "").strip().lower().startswith("//lookup"))
+@bot.channel_post_handler(func=lambda m: (m.text or "").strip().lower().startswith("//lookup"))
+def lookup_double_slash_command(message: Message):
+    _reply_lookup(message)
 
 
 @bot.message_handler(commands=["init"])

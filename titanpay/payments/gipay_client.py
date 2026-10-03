@@ -365,6 +365,29 @@ def gipay_webhook_outcome(body: dict) -> str | None:
     return webhook_outcome(body)
 
 
+def gipay_is_webhook_body(body: dict | None) -> bool:
+    """Aggrepay-стиль callback (state + orderId/id), не PatriotPay/PayPlat invoice."""
+    if not isinstance(body, dict):
+        return False
+    from payments.patriotpay_client import patriotpay_is_webhook_body
+    from payments.payplat_client import payplat_is_webhook_body
+
+    if patriotpay_is_webhook_body(body) or payplat_is_webhook_body(body):
+        return False
+    from payments.aggrepay_webhook import webhook_ids, webhook_state
+
+    state = webhook_state(body)
+    order_id, payment_id = webhook_ids(body)
+    return bool(state and (order_id or payment_id))
+
+
+def gipay_success_webhook_allows_completed_recalc(body: dict | None) -> bool:
+    """Повторный finished после Completed — можно скорректировать сумму."""
+    if not gipay_is_webhook_body(body):
+        return False
+    return gipay_webhook_outcome(body) == "success"
+
+
 def gipay_map_requisite(create_body: dict) -> dict:
     """Маппинг result из POST /api/v2/payments в payment_details для мерчанта."""
     result = create_body.get("result") if isinstance(create_body, dict) else {}
