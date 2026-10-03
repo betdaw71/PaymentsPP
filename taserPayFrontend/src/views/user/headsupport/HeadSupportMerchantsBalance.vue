@@ -47,6 +47,9 @@ onMounted(
     updateTeam ()
   },
 )
+
+const hasMerchantKzt = item => item.available_balance_kzt !== undefined
+  && item.available_balance_kzt !== null
 </script>
 
 <template>
@@ -131,6 +134,37 @@ onMounted(
                           {{ $t('frozen_balance') }}
                         </span>
                       </VTooltip>
+                      <template v-if="hasMerchantKzt(item)">
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="warning"
+                              text-color="white"
+                              small
+                            >
+                              ₸ {{ item.available_balance_kzt }}
+                            </VChip>
+                          </template>
+                          <span>{{ $t('user.balance.available_kzt') }}</span>
+                        </VTooltip>
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="secondary"
+                              text-color="white"
+                              small
+                              append-icon="tabler-snowflake"
+                            >
+                              ₸ {{ item.frozen_balance_kzt }}
+                            </VChip>
+                          </template>
+                          <span>{{ $t('user.balance.frozen_kzt') }}</span>
+                        </VTooltip>
+                      </template>
                     </VListItemTitle>
                   </VListItem>
                 </VList>

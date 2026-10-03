@@ -2,6 +2,7 @@ from merchant.models import Merchant, MerchantSolution
 from basics.models import PaymentDetails, PaymentSystem, Trader, PaymentDetailsGroup, TrafficType
 from rest_framework.exceptions import ValidationError
 from django.db.models import F, ExpressionWrapper, DecimalField
+from trade.routing.routeutils import in_order_amount_q
 import random
 import re
 from decimal import Decimal
@@ -67,7 +68,7 @@ class SBPRouting:
         filtered_options = possible_options.annotate(
             total_value=ExpressionWrapper(F('current_volume') + amount,
                                           output_field=DecimalField(max_digits=32, decimal_places=2))
-        ).filter(total_value__lte=F('limit_per_period'))
+        ).filter(total_value__lte=F('limit_per_period')).filter(in_order_amount_q(amount))
 
         return filtered_options
 
@@ -96,7 +97,7 @@ class SBPRouting:
         return None
 
     def choose_detail_in(self, amount: Decimal, usd_amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders,
-                         client_deposit_count):
+                         client_deposit_count, merchant=None):
 
         risk_cluster = initial_risk_cluster = self.get_risks(client_deposit_count, traffic_type, amount)
 
@@ -151,7 +152,7 @@ class SBPRouting:
 
         return possible_groups.order_by('current_out_volume')
 
-    def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None):
+    def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None, merchant=None):
         if excluded is None:
             excluded = list()
 

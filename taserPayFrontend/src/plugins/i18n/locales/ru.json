@@ -482,9 +482,14 @@
     },
     "balance": {
       "available": "Доступный",
+      "available_kzt": "Доступный (KZT)",
       "deposit_address": "Адрес для депозита (TRC-20)",
       "frozen": "Замороженный",
-      "title": "Баланс"
+      "frozen_kzt": "Замороженный (KZT)",
+      "title": "Баланс",
+      "wallet_kzt": "Баланс KZT (C2CKZT)",
+      "wallet_usdt": "Баланс USDT",
+      "withdraw_usdt_hint": "Вывод только в USDT"
     },
     "info": {
       "first_name": "Имя",

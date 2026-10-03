@@ -2,11 +2,9 @@ from merchant.models import Merchant, MerchantSolution
 from basics.models import PaymentDetails, PaymentSystem, Trader, PaymentDetailsGroup, TrafficType
 from rest_framework.exceptions import ValidationError
 from django.db.models import F, ExpressionWrapper, DecimalField
-import random
-import re
 from decimal import Decimal
 
-from trade.routing.routeutils import get_teams_for_ps
+from trade.routing.routeutils import get_teams_for_ps, in_order_amount_q
 
 
 class SberRouting:
@@ -24,7 +22,7 @@ class SberRouting:
         filtered_options = possible_options.annotate(
             total_value=ExpressionWrapper(F('current_volume') + amount,
                                           output_field=DecimalField(max_digits=32, decimal_places=2))
-        ).filter(total_value__lte=F('limit_per_period'))
+        ).filter(total_value__lte=F('limit_per_period')).filter(in_order_amount_q(amount))
 
         return filtered_options
 
@@ -56,7 +54,7 @@ class SberRouting:
 
     def choose_detail_in(self, amount: Decimal, usd_amount: Decimal, payment_system: PaymentSystem,
                          traffic_type: TrafficType, active_orders,
-                         client_deposit_count):
+                         client_deposit_count, merchant=None):
 
         possible_options = self.get_possible_options_in(None, payment_system, amount, traffic_type, usd_amount)
 
@@ -79,7 +77,7 @@ class SberRouting:
         return possible_groups.order_by('current_out_volume')
 
     def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType,
-                          excluded=None):
+                          excluded=None, merchant=None):
         if excluded is None:
             excluded = list()
 

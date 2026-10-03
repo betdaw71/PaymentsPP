@@ -68,6 +68,11 @@ onMounted (() => {
 
 const isWithdrawDialogOpen = ref (false)
 const isTransferDialogOpen = ref (false)
+
+const hasKztBalance = computed (
+  () => balanceData.value.amount_kzt !== undefined
+    && balanceData.value.amount_kzt !== null,
+)
 </script>
 
 <template>
@@ -99,7 +104,7 @@ const isTransferDialogOpen = ref (false)
             />
           </VCardTitle>
           <VCol cols="12">
-            <VCard :title="$t('wallet')">
+            <VCard :title="hasKztBalance ? $t('user.balance.wallet_usdt') : $t('wallet')">
               <VCardText>
                 <VForm @submit.prevent="() => {}">
                   <VRow class="pt-1">
@@ -152,9 +157,45 @@ const isTransferDialogOpen = ref (false)
                       >
                         {{ $t('withdraw') }}
                       </VBtn>
+                      <div
+                        v-if="hasKztBalance"
+                        class="text-caption text-medium-emphasis mt-2"
+                      >
+                        {{ $t('user.balance.withdraw_usdt_hint') }}
+                      </div>
                     </VCol>
                   </VRow>
                 </VForm>
+              </VCardText>
+            </VCard>
+            <VCard
+              v-if="hasKztBalance"
+              class="mt-4"
+              :title="$t('user.balance.wallet_kzt')"
+            >
+              <VCardText>
+                <VRow class="pt-1">
+                  <VCol cols="6">
+                    <VTextField
+                      v-model="balanceData.amount_kzt"
+                      :label="$t('user.balance.available_kzt')"
+                      prepend-inner-icon="tabler-coins"
+                      outlined
+                      dense
+                      readonly
+                    />
+                  </VCol>
+                  <VCol cols="6">
+                    <VTextField
+                      v-model="balanceData.frozen_amount_kzt"
+                      :label="$t('user.balance.frozen_kzt')"
+                      append-inner-icon="tabler-snowflake"
+                      outlined
+                      dense
+                      readonly
+                    />
+                  </VCol>
+                </VRow>
               </VCardText>
             </VCard>
           </VCol>
