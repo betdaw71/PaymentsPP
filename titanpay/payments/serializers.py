@@ -115,9 +115,10 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
         representation['recalculated'] = instance.order.recalculated
         representation['redirect_url'] = generate_link(instance.id, instance.payment_system.name)
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
+        from payments.merchant_deal_quote import apply_deal_quote
         from payments.psp_payin import enrich_payin_payment_details as enrich_psp
 
-        return enrich_psp(representation, instance)
+        return apply_deal_quote(enrich_psp(representation, instance), instance)
 
     def to_internal_value(self, data):
         data = resolve_currency_and_payment_system_ids(data)
@@ -364,9 +365,10 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
         representation['expires_at'] = int((instance.created_at + instance.payment_system.expired_time_in).timestamp())
         representation['recalculated'] = instance.order.recalculated
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
+        from payments.merchant_deal_quote import apply_deal_quote
         from payments.psp_payin import enrich_payin_payment_details as enrich_psp
 
-        return enrich_psp(representation, instance)
+        return apply_deal_quote(enrich_psp(representation, instance), instance)
 
     def create(self, validated_data):
         merchant = self.context['request'].user.merchant
