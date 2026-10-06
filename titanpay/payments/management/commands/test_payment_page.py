@@ -20,7 +20,7 @@ from django.test import RequestFactory
 from merchant.kzt_settlement import is_melbet_merchant, melbet_kzt_usernames
 from payments.models import PayIn
 from payments.payment_page import payment_page
-from payments.payment_page_assets import kaspi_guide_asset_path
+from payments.payment_page_assets import halyk_guide_asset_path, kaspi_guide_asset_path
 from payments.payment_page_enrich import enrich_for_payment_page
 from payments.receipt_policy import receipt_required_for_payin
 from payments.utils import generate_link
@@ -98,8 +98,13 @@ class Command(BaseCommand):
         asset = (
             Path(settings.BASE_DIR) / "payments" / "static" / "payment_page" / "kaspi-international-transfers-guide.png"
         )
+        halyk_asset = (
+            Path(settings.BASE_DIR) / "payments" / "static" / "payment_page" / "halyk-foreign-card-guide.jpg"
+        )
         self._ok("kaspi guide png", asset.is_file(), f"{asset.stat().st_size if asset.is_file() else 0} bytes")
+        self._ok("halyk guide jpg", halyk_asset.is_file(), f"{halyk_asset.stat().st_size if halyk_asset.is_file() else 0} bytes")
         self._ok("kaspi asset path", kaspi_guide_asset_path().startswith("/payment-page-assets/"))
+        self._ok("halyk asset path", halyk_guide_asset_path().startswith("/payment-page-assets/"))
 
     def _create_melbet_deposit(self, *, merchant: str, amount: str, method: str) -> PayIn:
         from payments.integrations.melbet.amount_probe import is_melbet_deposit_allocated
@@ -277,9 +282,10 @@ class Command(BaseCommand):
                     )
                     guides = data.get("bank_guides") or []
                     self._ok(
-                        "obtain Homebank guide without Kaspi image",
+                        "obtain Homebank guide image",
                         bool(guides)
                         and guides[0].get("id") == "halyk_foreign"
+                        and "halyk-foreign-card-guide" in str(guides[0].get("image_url") or "")
                         and "kaspi-international-transfers-guide" not in str(guides[0].get("image_url") or ""),
                     )
                 else:
@@ -321,6 +327,15 @@ class Command(BaseCommand):
             "kaspi asset HTTP",
             asset.status_code == 200 and str(asset.get("Content-Type", "")).startswith("image/"),
             f"{asset.status_code} {asset.get('Content-Type')}",
+        )
+        halyk = serve_payment_page_asset(
+            factory.get(halyk_guide_asset_path()),
+            "halyk-foreign-card-guide.jpg",
+        )
+        self._ok(
+            "halyk asset HTTP",
+            halyk.status_code == 200 and str(halyk.get("Content-Type", "")).startswith("image/"),
+            f"{halyk.status_code} {halyk.get('Content-Type')}",
         )
 
     def _check_unknown_payin_404(self) -> None:
@@ -386,5 +401,7 @@ class Command(BaseCommand):
             host = page_url.split(str(pay_in.id))[0].rstrip("/")
             asset = requests.get(f"{host}{kaspi_guide_asset_path()}", timeout=15)
             self._ok("live kaspi asset", asset.status_code == 200, str(asset.status_code))
+            halyk = requests.get(f"{host}{halyk_guide_asset_path()}", timeout=15)
+            self._ok("live halyk asset", halyk.status_code == 200, str(halyk.status_code))
         except requests.RequestException as exc:
             self._ok("live kaspi asset", False, str(exc))

@@ -4,7 +4,11 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 
 from payments.bank_guides import build_bank_guides
-from payments.payment_page_assets import kaspi_guide_public_url, payment_page_public_base
+from payments.payment_page_assets import (
+    halyk_guide_public_url,
+    kaspi_guide_public_url,
+    payment_page_public_base,
+)
 from payments.receipt_policy import receipt_required_for_payin
 
 
@@ -19,21 +23,28 @@ class Command(BaseCommand):
             ("bank_guides in enrich", "bank_guides" in enrich_src),
             ("receipt_policy module", True),
         ]
-        asset = (
-            Path(__file__).resolve().parents[2]
-            / "static"
-            / "payment_page"
-            / "kaspi-international-transfers-guide.png"
-        )
+        assets_dir = Path(__file__).resolve().parents[2] / "static" / "payment_page"
+        asset = assets_dir / "kaspi-international-transfers-guide.png"
+        halyk_asset = assets_dir / "halyk-foreign-card-guide.jpg"
         checks.append(("kaspi png in repo", asset.is_file()))
+        checks.append(("halyk jpg in repo", halyk_asset.is_file()))
         guide_url = kaspi_guide_public_url()
         checks.append(("kaspi asset URL", bool(guide_url)))
         checks.append(
             ("kaspi URL is relative path", guide_url.startswith("/payment-page-assets/")),
         )
+        checks.append(
+            ("halyk URL is relative path", halyk_guide_public_url().startswith("/payment-page-assets/")),
+        )
 
         guides = build_bank_guides(currency="KZT", locale="ru", bank_actions=[{"id": "kaspi", "label": "Kaspi"}])
-        checks.append(("build_bank_guides KZT", len(guides) == 1))
+        checks.append(("build_bank_guides KZT kaspi", len(guides) == 1))
+        halyk_guides = build_bank_guides(
+            currency="KZT", locale="ru", bank_actions=[{"id": "halyk", "label": "Homebank"}]
+        )
+        checks.append(
+            ("build_bank_guides KZT halyk image", "halyk-foreign-card-guide" in (halyk_guides[0].get("image_url") or "")),
+        )
 
         self.stdout.write(self.style.HTTP_INFO("\n=== Payment page deploy check ===\n"))
         ok = True
@@ -44,7 +55,9 @@ class Command(BaseCommand):
 
         self.stdout.write(f"\n  payment_page_base: {payment_page_public_base()}")
         self.stdout.write(f"  kaspi_guide_url: {kaspi_guide_public_url()}")
-        self.stdout.write(f"  asset_bytes: {asset.stat().st_size if asset.is_file() else 0}")
+        self.stdout.write(f"  halyk_guide_url: {halyk_guide_public_url()}")
+        self.stdout.write(f"  kaspi_asset_bytes: {asset.stat().st_size if asset.is_file() else 0}")
+        self.stdout.write(f"  halyk_asset_bytes: {halyk_asset.stat().st_size if halyk_asset.is_file() else 0}")
 
         sample = checks and ok
         if sample:

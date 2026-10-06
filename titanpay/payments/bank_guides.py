@@ -1,7 +1,7 @@
 """Подсказки с картинками для платёжной страницы (KZT)."""
 from __future__ import annotations
 
-from payments.payment_page_assets import kaspi_guide_public_url
+from payments.payment_page_assets import halyk_guide_public_url, kaspi_guide_public_url
 
 
 def _action_ids(bank_actions: list[dict] | None) -> set[str]:
@@ -37,7 +37,7 @@ def build_bank_guides(
         return [
             {
                 "id": "halyk_foreign",
-                "image_url": "",
+                "image_url": halyk_guide_public_url(),
                 "title": title,
                 "caption": caption,
             }

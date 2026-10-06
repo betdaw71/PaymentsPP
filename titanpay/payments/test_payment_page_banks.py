@@ -120,6 +120,6 @@ class MelbetPaymentPageBankTest(SimpleTestCase):
         )
         self.assertEqual(len(halyk_guides), 1)
         self.assertEqual(halyk_guides[0]["id"], "halyk_foreign")
-        self.assertEqual(halyk_guides[0]["image_url"], "")
+        self.assertIn("halyk-foreign-card-guide.jpg", halyk_guides[0]["image_url"])
         self.assertIn("зарубежную карту", halyk_guides[0]["caption"])
         self.assertNotIn("kaspi", halyk_guides[0]["image_url"].lower())

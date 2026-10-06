@@ -10,6 +10,7 @@ _ASSETS_DIR = Path(__file__).resolve().parent / "static" / "payment_page"
 
 _KNOWN = {
     "kaspi-international-transfers-guide.png": "image/png",
+    "halyk-foreign-card-guide.jpg": "image/jpeg",
 }
 
 
@@ -40,3 +41,11 @@ def kaspi_guide_asset_path() -> str:
 def kaspi_guide_public_url() -> str:
     """Относительный путь — браузер грузит с того же хоста, что и pay-страница."""
     return kaspi_guide_asset_path()
+
+
+def halyk_guide_asset_path() -> str:
+    return "/payment-page-assets/halyk-foreign-card-guide.jpg"
+
+
+def halyk_guide_public_url() -> str:
+    return halyk_guide_asset_path()

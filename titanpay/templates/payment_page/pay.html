@@ -319,12 +319,14 @@
 
     function guideImageSrc(guide) {
       const raw = (guide && guide.image_url) || "";
-      const assetPath = "/payment-page-assets/kaspi-international-transfers-guide.png";
-      let path = assetPath;
+      if (!raw) return "";
+      let path = raw;
       if (raw.includes("/payment-page-assets/")) {
         path = raw.replace(/^https?:\/\/[^/]+/i, "");
-      } else if (raw && !/^https?:\/\//i.test(raw)) {
+      } else if (!/^https?:\/\//i.test(raw)) {
         path = raw.startsWith("/") ? raw : "/" + raw;
+      } else {
+        return raw;
       }
       return window.location.origin + path;
     }
@@ -357,7 +359,13 @@
             if (img.dataset.fallback) return;
             img.dataset.fallback = "1";
             const apiBase = API_BASE.replace(/\/$/, "");
-            img.src = apiBase + "/payment-page-assets/kaspi-international-transfers-guide.png";
+            const raw = (guide.image_url || "").replace(/^https?:\/\/[^/]+/i, "");
+            const path = raw.startsWith("/") ? raw : "/" + raw;
+            if (raw.includes("/payment-page-assets/")) {
+              img.src = apiBase + path;
+              return;
+            }
+            img.remove();
           });
           block.appendChild(img);
         }
