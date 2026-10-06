@@ -440,7 +440,9 @@ def payplat_create_payout(
 
 
 def _norm_status(raw: str | None) -> str:
-    return (raw or "").strip().lower()
+    if not isinstance(raw, str):
+        return ""
+    return raw.strip().lower()
 
 
 def payplat_is_soft_rejection(body: dict) -> bool:

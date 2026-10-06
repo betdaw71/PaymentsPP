@@ -287,7 +287,9 @@ def patriotpay_get_payment_methods(*, currency: str = "KZT") -> tuple[bool, dict
 
 
 def _norm_status(raw: str | None) -> str:
-    return (raw or "").strip().lower()
+    if not isinstance(raw, str):
+        return ""
+    return raw.strip().lower()
 
 
 def _invoice_from_webhook(body: dict) -> dict:

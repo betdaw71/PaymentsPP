@@ -357,7 +357,9 @@ def bitzone_cancel_pay_in(provider_id: str, *, pay_in=None) -> tuple[bool, dict[
 
 
 def _norm_status(raw: str | None) -> str:
-    return (raw or "").strip().lower()
+    if not isinstance(raw, str):
+        return ""
+    return raw.strip().lower()
 
 
 def bitzone_webhook_outcome(body: dict) -> str | None:

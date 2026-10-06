@@ -249,7 +249,13 @@ def run():
         best = None
         print("  CALLBACKS:")
         for src, psp, body, ts in bodies:
-            paid_q, allow, why = diagnose_body(order, expected, body)
+            try:
+                paid_q, allow, why = diagnose_body(order, expected, body)
+            except Exception as exc:
+                print(f"    {when(ts)}  {src:28}  ERROR {type(exc).__name__}: {exc}")
+                keys = ",".join(list(body.keys())[:12])
+                print(f"      keys={keys}")
+                continue
             keys = ",".join(list(body.keys())[:12])
             inv = body.get("invoice") if isinstance(body.get("invoice"), dict) else {}
             extra = ""

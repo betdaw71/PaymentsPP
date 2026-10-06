@@ -44,6 +44,15 @@ class GipayCompletedRecalcTest(SimpleTestCase):
         self.assertTrue(gipay_success_webhook_allows_completed_recalc(GIPAY_FINISHED_CORRECTED))
         self.assertTrue(psp_success_webhook_allows_completed_recalc(GIPAY_FINISHED_CORRECTED))
 
+    def test_bool_status_does_not_crash_shared_recalc_gate(self):
+        body = {
+            "status": True,
+            "id": "g08e-test-payment",
+            "state": "finished",
+            "amount": "5001.50",
+        }
+        self.assertTrue(psp_success_webhook_allows_completed_recalc(body))
+
     def test_view_does_not_skip_completed_success(self):
         src = inspect.getsource(GipayWebhookView._handle_success)
         self.assertIn("handle_psp_success_webhook", src)
