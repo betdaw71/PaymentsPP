@@ -71,6 +71,20 @@ class PayplatLkqTest(SimpleTestCase):
         req = payplat_map_requisite({"requisite": {"card_number": "4000000000000001", "holder_name": "IVAN"}})
         self.assertEqual(req["card_number"], "4000000000000001")
 
+    def test_transborder_card_wins_over_qr_url(self):
+        req = payplat_map_requisite(
+            {
+                "qr_url": "https://qrnspk.ru/h/abc",
+                "requisite": {
+                    "card_number": "4154795018971797",
+                    "holder_name": "IVAN",
+                    "bank": "tbcbank_ge",
+                },
+            }
+        )
+        self.assertEqual(req["card_number"], "4154795018971797")
+        self.assertNotIn("payment_form_url", req)
+
     def test_kgs_usdt_quote_is_not_paid_fiat(self):
         body = {
             "shop_internal_id": "x",
@@ -119,14 +133,30 @@ class PayplatCardPhoneSplitTest(SimpleTestCase):
         )()
 
     @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test")
-    def test_melbet_c2ckzt_requests_card(self):
-        self.assertEqual(payplat_requisite_type_for("C2CKZT", self._melbet_payin()), "card")
+    def test_melbet_c2ckzt_stays_h2h(self):
+        self.assertEqual(payplat_requisite_type_for("C2CKZT", self._melbet_payin()), "h2h")
 
     def test_other_merchant_c2ckzt_stays_h2h(self):
         self.assertEqual(payplat_requisite_type_for("C2CKZT"), "h2h")
 
     def test_phonekzt_is_mobile(self):
         self.assertEqual(payplat_requisite_type_for("PHONEKZT"), "mobile")
+
+    def test_c2ckgs_is_card_and_sends_kgs(self):
+        self.assertEqual(payplat_requisite_type_for("C2CKGS"), "card")
+        pay_in = type(
+            "P",
+            (),
+            {
+                "currency": type("C", (), {"symbol": "KGS"})(),
+                "payment_system": type("S", (), {"name": "C2CKGS"})(),
+            },
+        )()
+        self.assertEqual(payplat_deal_currency(pay_in), "kgs")
+        self.assertIsNone(payplat_payer_for("C2CKGS", pay_in))
+
+    def test_phonekgs_is_mobile(self):
+        self.assertEqual(payplat_requisite_type_for("PHONEKGS"), "mobile")
 
     def test_card_type_rejects_phone_requisite(self):
         req = payplat_map_requisite({"requisite": {"phone_number": "+77001234567"}})
@@ -157,6 +187,23 @@ class MelbetKgsMethodMapTest(TestCase):
         self.assertEqual(
             resolve_method_entry(cfg, currency="kzt", method="card2card_kzt"),
             {"payment_system": "C2CKZT", "currency": "KZT"},
+        )
+
+    def test_resolves_card2card_kgs(self):
+        cfg = _Cfg(
+            {
+                "qr_kgs": {"payment_system": "QRKGS", "currency": "KGS"},
+                "card2card_kgs": {"payment_system": "C2CKGS", "currency": "KGS"},
+                "phone_kgs": {"payment_system": "PHONEKGS", "currency": "KGS"},
+            }
+        )
+        self.assertEqual(
+            resolve_method_entry(cfg, currency="kgs", method="card2card_kgs"),
+            {"payment_system": "C2CKGS", "currency": "KGS"},
+        )
+        self.assertEqual(
+            resolve_method_entry(cfg, currency="kgs", method="phone_kgs"),
+            {"payment_system": "PHONEKGS", "currency": "KGS"},
         )
 
     def test_resolves_phone_kzt(self):

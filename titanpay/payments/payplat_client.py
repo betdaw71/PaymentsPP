@@ -60,23 +60,13 @@ def _parse_json_map(setting_name: str) -> dict[str, str]:
 def payplat_requisite_type_for(payment_system_name: str | None, pay_in: Any = None) -> str:
     ps_name = (payment_system_name or "").strip()
     mapped = _parse_json_map("PAYPLAT_REQUISITE_TYPE_MAP").get(ps_name)
-    merchant = getattr(pay_in, "merchant", None) if pay_in is not None else None
-    if merchant is None and pay_in is not None:
-        order = getattr(pay_in, "order", None)
-        solution = getattr(order, "solution", None) if order is not None else None
-        merchant = getattr(solution, "merchant", None) if solution is not None else None
-    from merchant.kzt_settlement import is_melbet_merchant
-
-    if is_melbet_merchant(merchant):
-        if ps_name.upper() == "C2CKZT":
-            return "card"
-        if ps_name.upper() == "PHONEKZT":
-            return "mobile"
     if mapped:
         return mapped.strip().lower()
     if ps_name.upper() == "QRKGS":
         return "lkq"
-    if ps_name.upper() == "PHONEKZT":
+    if ps_name.upper() == "C2CKGS":
+        return "card"
+    if ps_name.upper() in ("PHONEKZT", "PHONEKGS"):
         return "mobile"
     default = (getattr(settings, "PAYPLAT_REQUISITE_TYPE", None) or "h2h").strip().lower()
     return default or "h2h"
@@ -109,7 +99,7 @@ def payplat_payer_for(payment_system_name: str | None, pay_in: Any = None) -> st
     pay_cur = ""
     if pay_in is not None and getattr(pay_in, "currency", None):
         pay_cur = (pay_in.currency.symbol or "").strip().upper()
-    if pay_cur in ("KGS", "KGZ") or ps_name.upper() == "QRKGS":
+    if pay_cur in ("KGS", "KGZ") or ps_name.upper() in ("QRKGS", "C2CKGS", "PHONEKGS"):
         return None
     default = (getattr(settings, "PAYPLAT_PAYER", None) or "").strip().lower()
     if default and default not in ("null", "none", ""):
@@ -129,7 +119,7 @@ def payplat_deal_currency(pay_in: Any = None, payment_system_name: str | None = 
     pay_cur = ""
     if pay_in is not None and getattr(pay_in, "currency", None):
         pay_cur = (pay_in.currency.symbol or "").strip().upper()
-    if pay_cur in ("KGS", "KGZ") or ps_name.upper() == "QRKGS":
+    if pay_cur in ("KGS", "KGZ") or ps_name.upper() in ("QRKGS", "C2CKGS", "PHONEKGS"):
         return "kgs"
     return None
 
@@ -796,43 +786,9 @@ def _http_url(*values) -> str:
 
 
 def payplat_map_requisite(create_body: dict) -> dict:
-    """Маппинг ответа POST /deals: LKQ widget/QR либо H2H card/phone."""
+    """H2H card/phone first (трансгран KZT). LKQ widget/QR — только если карты/телефона нет."""
     if not isinstance(create_body, dict):
         return {}
-
-    invoice = create_body.get("invoice") if isinstance(create_body.get("invoice"), dict) else {}
-    payment_data = invoice.get("payment_data") if isinstance(invoice.get("payment_data"), dict) else {}
-    requisite = create_body.get("requisite") if isinstance(create_body.get("requisite"), dict) else {}
-    widget = _http_url(
-        create_body.get("widget_url"),
-        create_body.get("qr_url"),
-        create_body.get("payment_form_url"),
-        invoice.get("widget_url"),
-        invoice.get("qr_url"),
-        payment_data.get("widget_url"),
-        payment_data.get("qr_url"),
-        requisite.get("widget_url"),
-        requisite.get("qr_url"),
-    )
-    qr_img = _http_url(
-        create_body.get("qr_image_url"),
-        invoice.get("qr_image_url"),
-        payment_data.get("qr_image_url"),
-        requisite.get("qr_image_url"),
-    )
-    if widget or qr_img:
-        out: dict[str, str] = {}
-        if widget:
-            out["payment_form_url"] = widget
-        if qr_img:
-            out["qr_image_url"] = qr_img
-        owner = requisite.get("holder_name") or payment_data.get("card_holder") or ""
-        bank = requisite.get("bank") or payment_data.get("bank") or ""
-        if owner:
-            out["owner"] = owner
-        if bank:
-            out["bank"] = bank
-        return out
 
     requisite = create_body.get("requisite")
     if isinstance(requisite, dict):
@@ -882,6 +838,40 @@ def payplat_map_requisite(create_body: dict) -> dict:
                     "owner": owner,
                     "bank": bank,
                 }
+
+    invoice = create_body.get("invoice") if isinstance(create_body.get("invoice"), dict) else {}
+    payment_data = invoice.get("payment_data") if isinstance(invoice.get("payment_data"), dict) else {}
+    requisite = create_body.get("requisite") if isinstance(create_body.get("requisite"), dict) else {}
+    widget = _http_url(
+        create_body.get("widget_url"),
+        create_body.get("qr_url"),
+        create_body.get("payment_form_url"),
+        invoice.get("widget_url"),
+        invoice.get("qr_url"),
+        payment_data.get("widget_url"),
+        payment_data.get("qr_url"),
+        requisite.get("widget_url"),
+        requisite.get("qr_url"),
+    )
+    qr_img = _http_url(
+        create_body.get("qr_image_url"),
+        invoice.get("qr_image_url"),
+        payment_data.get("qr_image_url"),
+        requisite.get("qr_image_url"),
+    )
+    if widget or qr_img:
+        out: dict[str, str] = {}
+        if widget:
+            out["payment_form_url"] = widget
+        if qr_img:
+            out["qr_image_url"] = qr_img
+        owner = requisite.get("holder_name") or payment_data.get("card_holder") or ""
+        bank = requisite.get("bank") or payment_data.get("bank") or ""
+        if owner:
+            out["owner"] = owner
+        if bank:
+            out["bank"] = bank
+        return out
 
     return {}
 
