@@ -1,0 +1,41 @@
+============================================================
+Метод / файл: AvaPay_Integration_information_card2card_kgs_KG_8c48.docx
+Креды (фрагмент): x-api-key: vJ-57rbr1kVRsUNo9xKiGNOqtBFal-G3gnpC7RZCNwo
+Secret присутствует: да
+ЛК / пароль: https://avapay.net/ — логин кабинета мерчанта уже выдан. Пароль сменён вашим менеджером; актуального пароля у нас нет, доступа к нему не имеем. По вопросам доступа / сброса — Teleg
+Поддержка: Telegram: @avapay_support5 (операционные инциденты и доступ в ЛК).
+Депозит/вывод: Депозит и вывод.
+Fee in: 7% (валюта комиссии — USDT; amount в API = GROSS к оплате клиентом в KGS).
+Fee out: 3.2% (валюта комиссии — USDT).
+Лимиты in: KGS: min 500 / max 1 000 000.
+Лимиты out: KGS: min 5 000 / max 1 000 000. Out info: выплаты по QR, 1–3 чека в зависимости от величины суммы.
+Notification deposit (тело): True
+FX / баланс: Да. Валюта процессинга / запроса: KGS. Валюта баланса и settlement: USDT. Источник курса: https://www.xe.com (XE) + курсовая маржа 2%. Settlement: USDT, fee 0%, период T+0, лимит от 3 000 USDT. В Melb
+
+============================================================
+Метод / файл: AvaPay_Integration_information_phone_kgs_KG_924d.docx
+Креды (фрагмент): x-api-key: vJ-57rbr1kVRsUNo9xKiGNOqtBFal-G3gnpC7RZCNwo
+Secret присутствует: да
+ЛК / пароль: https://avapay.net/ — логин кабинета мерчанта уже выдан. Пароль сменён вашим менеджером; актуального пароля у нас нет, доступа к нему не имеем. По вопросам доступа / сброса — Teleg
+Поддержка: Telegram: @avapay_support5 (операционные инциденты и доступ в ЛК).
+Депозит/вывод: Депозит и вывод.
+Fee in: 7% (валюта комиссии — USDT; amount в API = GROSS к оплате клиентом в KGS).
+Fee out: 3.2% (валюта комиссии — USDT).
+Лимиты in: KGS: min 500 / max 1 000 000.
+Лимиты out: KGS: min 5 000 / max 1 000 000. Out info: выплаты по QR, 1–3 чека в зависимости от величины суммы.
+Notification deposit (тело): True
+FX / баланс: Да. Валюта процессинга / запроса: KGS. Валюта баланса и settlement: USDT. Источник курса: https://www.xe.com (XE) + курсовая маржа 2%. Settlement: USDT, fee 0%, период T+0, лимит от 3 000 USDT. В Melb
+
+============================================================
+Метод / файл: AvaPay_Integration_information_qr_kgs_KG_e497.docx
+Креды (фрагмент): x-api-key: vJ-57rbr1kVRsUNo9xKiGNOqtBFal-G3gnpC7RZCNwo
+Secret присутствует: да
+ЛК / пароль: https://avapay.net/ — логин кабинета мерчанта уже выдан. Пароль сменён вашим менеджером; актуального пароля у нас нет, доступа к нему не имеем. По вопросам доступа / сброса — Teleg
+Поддержка: Telegram: @avapay_support5 (операционные инциденты и доступ в ЛК).
+Депозит/вывод: Депозит и вывод.
+Fee in: 7% (валюта комиссии — USDT; amount в API = GROSS к оплате клиентом в KGS).
+Fee out: 3.2% (валюта комиссии — USDT).
+Лимиты in: KGS: min 500 / max 1 000 000.
+Лимиты out: KGS: min 5 000 / max 1 000 000. Out info: выплаты по QR, 1–3 чека в зависимости от величины суммы.
+Notification deposit (тело): True
+FX / баланс: Да. Валюта процессинга / запроса: KGS. Валюта баланса и settlement: USDT. Источник курса: https://www.xe.com (XE) + курсовая маржа 2%. Settlement: USDT, fee 0%, период T+0, лимит от 3 000 USDT. В Melb
