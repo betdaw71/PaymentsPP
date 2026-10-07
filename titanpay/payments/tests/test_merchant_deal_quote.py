@@ -79,3 +79,7 @@ class DealQuoteTest(TestCase):
             {"order": None, "merchant": type("M", (), {"user": type("U", (), {"username": "aggrepay"})()})()},
         )()
         self.assertEqual(deal_quote_fields(pay_in), {})
+
+    def test_alemkredit_gets_rate_only(self):
+        fields = deal_quote_fields(self._pay_in(username="alemkredit"))
+        self.assertEqual(fields, {"rate": 470.34})

@@ -91,6 +91,7 @@ class PayIn(models.Model):
         if self.callback_url is None or self.callback_url == "":
             return
         from payments.integrations.melbet.callbacks import try_send_melbet_payin_callback
+        from payments.merchant_deal_quote import callback_extra_fields
 
         status_name = data.get("status") if isinstance(data, dict) else None
         if try_send_melbet_payin_callback(self, status_name=status_name):
@@ -102,6 +103,7 @@ class PayIn(models.Model):
         data["payment_system"] = self.payment_system.name
         data["recalculated"] = self.order.recalculated
         data["timestamp"] = int(timezone.now().timestamp())
+        data.update(callback_extra_fields(self))
         signature = self.merchant.api_keys.get(active=True).sign_data(data)
 
         headers = {"Signature": signature, "Content-Type": "application/json"}

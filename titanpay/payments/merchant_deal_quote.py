@@ -1,7 +1,8 @@
-"""Курс и комиссия сделки в create pay-in — только для Aggrepay."""
+"""Курс и комиссия сделки в create pay-in / callback — точечно по мерчантам."""
 from decimal import Decimal
 
 from merchant.tiered_mdr import effective_mdr_in
+from payments.merchant_usd_amount import ALEMKREDIT_USERNAME
 
 AGGREPAY_USERNAME = "aggrepay"
 
@@ -26,6 +27,10 @@ def is_aggrepay_merchant(pay_in) -> bool:
     return _merchant_username(pay_in).lower() == AGGREPAY_USERNAME
 
 
+def is_alemkredit_payin(pay_in) -> bool:
+    return _merchant_username(pay_in).lower() == ALEMKREDIT_USERNAME
+
+
 def _deal_rate(pay_in):
     order = getattr(pay_in, "order", None)
     detail = getattr(order, "payment_details", None) if order is not None else None
@@ -42,19 +47,36 @@ def _deal_rate(pay_in):
 
 
 def deal_quote_fields(pay_in) -> dict:
-    if not is_aggrepay_merchant(pay_in):
-        return {}
     order = getattr(pay_in, "order", None)
     if order is None:
         return {}
 
-    solution = getattr(order, "solution", None)
-    fee_percent = effective_mdr_in(solution, order.amount) if solution is not None else None
-    return {
-        "rate": _as_float(_deal_rate(pay_in)),
-        "fee": _as_float(getattr(order, "merchant_fee", None)),
-        "fee_percent": _as_float(fee_percent),
-    }
+    if is_aggrepay_merchant(pay_in):
+        solution = getattr(order, "solution", None)
+        fee_percent = effective_mdr_in(solution, order.amount) if solution is not None else None
+        return {
+            "rate": _as_float(_deal_rate(pay_in)),
+            "fee": _as_float(getattr(order, "merchant_fee", None)),
+            "fee_percent": _as_float(fee_percent),
+        }
+
+    if is_alemkredit_payin(pay_in):
+        rate = _deal_rate(pay_in)
+        if rate is None:
+            return {}
+        return {"rate": _as_float(rate)}
+
+    return {}
+
+
+def callback_extra_fields(pay_in) -> dict:
+    """Доп. поля webhook: курс — только Alemkredit."""
+    if not is_alemkredit_payin(pay_in):
+        return {}
+    rate = _deal_rate(pay_in)
+    if rate is None:
+        return {}
+    return {"rate": _as_float(rate)}
 
 
 def apply_deal_quote(representation, pay_in):

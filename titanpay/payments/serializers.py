@@ -97,13 +97,15 @@ def resolve_currency_and_payment_system_ids(data: dict) -> dict:
 
 class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
     ftd = serializers.BooleanField(required=True, write_only=True)
+    amount_in_usd = serializers.BooleanField(required=False, write_only=True, default=False)
     client = ClientSerializer()
     payment_details = serializers.SerializerMethodField()
 
     class Meta:
         model = PayIn
         fields = ['id', 'currency', 'amount', 'payment_system', 'status', 'merchant_order_id', 'success_url',
-                  'failed_url', 'callback_url', 'created_at', 'updated_at', 'payment_details', 'client', 'ftd']
+                  'failed_url', 'callback_url', 'created_at', 'updated_at', 'payment_details', 'client', 'ftd',
+                  'amount_in_usd']
         read_only_fields = ['created_at', 'updated_at', 'status']
 
     def to_representation(self, instance):
@@ -135,6 +137,10 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
 
         if ftd is None:
             raise serializers.ValidationError({"ftd": "This field is required"})
+
+        from payments.merchant_usd_amount import apply_usd_amount_flag
+
+        apply_usd_amount_flag(validated_data, merchant)
 
         solution = MerchantSolution.objects.filter(merchant=merchant, payment_system=validated_data['payment_system'], ftd=ftd, status=1)
 
@@ -341,13 +347,15 @@ class PayInInvoiceFailSerializer(serializers.ModelSerializer):
 
 class PayInPaymentCreateSerializer(serializers.ModelSerializer):
     ftd = serializers.BooleanField(required=True, write_only=True)
+    amount_in_usd = serializers.BooleanField(required=False, write_only=True, default=False)
     client = ClientSerializer()
     payment_details = serializers.SerializerMethodField()
 
     class Meta:
         model = PayIn
         fields = ['id', 'currency', 'amount', 'payment_system', 'status', 'merchant_order_id', 'success_url',
-                  'failed_url', 'callback_url', 'created_at', 'updated_at', 'payment_details', 'client', 'ftd']
+                  'failed_url', 'callback_url', 'created_at', 'updated_at', 'payment_details', 'client', 'ftd',
+                  'amount_in_usd']
         read_only_fields = ['created_at', 'updated_at', 'status']
 
     def to_internal_value(self, data):
@@ -378,6 +386,10 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
 
         if ftd is None:
             raise serializers.ValidationError({"ftd": "This field is required"})
+
+        from payments.merchant_usd_amount import apply_usd_amount_flag
+
+        apply_usd_amount_flag(validated_data, merchant)
 
         solution = MerchantSolution.objects.filter(merchant=merchant, payment_system=validated_data['payment_system'], ftd=ftd, status=1)
 
