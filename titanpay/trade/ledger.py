@@ -12,6 +12,8 @@ def merchant_balance_ids(merchant) -> list:
         merchant.frozen_balance_id,
         merchant.balance_kzt_id,
         merchant.frozen_balance_kzt_id,
+        getattr(merchant, "balance_kgs_id", None),
+        getattr(merchant, "frozen_balance_kgs_id", None),
     )
     return [balance_id for balance_id in ids if balance_id is not None]
 
@@ -53,11 +55,15 @@ def kzt_balance_ids() -> set:
     from merchant.models import Merchant
 
     ids = set()
-    for available_id, frozen_id in Merchant.objects.values_list(
-        "balance_kzt_id", "frozen_balance_kzt_id"
+    for available_id, frozen_id, available_kgs, frozen_kgs in Merchant.objects.values_list(
+        "balance_kzt_id", "frozen_balance_kzt_id", "balance_kgs_id", "frozen_balance_kgs_id"
     ):
         if available_id is not None:
             ids.add(available_id)
         if frozen_id is not None:
             ids.add(frozen_id)
+        if available_kgs is not None:
+            ids.add(available_kgs)
+        if frozen_kgs is not None:
+            ids.add(frozen_kgs)
     return ids

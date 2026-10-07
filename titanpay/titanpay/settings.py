@@ -420,7 +420,7 @@ PAYPLAT_TEST_PS_NAME = os.getenv('PAYPLAT_TEST_PS_NAME', 'C2CKZTTEST')
 # JSON: requisite_type для PayPlat (h2h + payer=kz → сумма в тенге)
 PAYPLAT_REQUISITE_TYPE_MAP = os.getenv(
     'PAYPLAT_REQUISITE_TYPE_MAP',
-    '{"C2C":"h2h","C2CKZT":"h2h","C2CKZTTEST":"h2h"}',
+    '{"C2C":"h2h","C2CKZT":"h2h","C2CKZTTEST":"h2h","QRKGS":"lkq","PHONEKZT":"mobile"}',
 )
 PAYPLAT_REQUISITE_TYPE = os.getenv('PAYPLAT_REQUISITE_TYPE', 'h2h')
 PAYPLAT_BANK_MAP = os.getenv('PAYPLAT_BANK_MAP', '')
@@ -541,6 +541,8 @@ BOTONPAY_TEST_PS_NAME = os.getenv('BOTONPAY_TEST_PS_NAME', 'C2CKZTTEST')
 
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
+MELBET_KZT_PS_NAMES = os.getenv('MELBET_KZT_PS_NAMES', 'C2CKZT,PHONEKZT')
+MELBET_KGS_PS_NAMES = os.getenv('MELBET_KGS_PS_NAMES', 'QRKGS')
 # Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)
 MELBET_KZT_TEST_TRADER_USERNAME = os.getenv('MELBET_KZT_TEST_TRADER_USERNAME', '')
 # Melbet redirect: probe nearby amounts when routing/PSP cascade fails (KZT step e.g. ±20)

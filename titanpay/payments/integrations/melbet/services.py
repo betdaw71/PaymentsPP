@@ -348,9 +348,18 @@ def create_melbet_withdrawal(
 
 
 def deposit_response(pay_in: PayIn) -> dict:
+    redirect_url = generate_link(pay_in.id, pay_in.payment_system.name)
+    ps_name = (pay_in.payment_system.name or "").strip().upper() if pay_in.payment_system else ""
+    if ps_name == "QRKGS":
+        from payments.payplat_client import payplat_requisite_for_payin
+
+        req = payplat_requisite_for_payin(pay_in) or {}
+        widget = (req.get("payment_form_url") or "").strip()
+        if widget.lower().startswith("http://") or widget.lower().startswith("https://"):
+            redirect_url = widget
     return {
         "transaction_id": str(pay_in.id),
-        "redirect_url": generate_link(pay_in.id, pay_in.payment_system.name),
+        "redirect_url": redirect_url,
     }
 
 

@@ -249,13 +249,13 @@ class InOrder(models.Model):
         from merchant.kzt_settlement import (
             in_order_credit_kzt,
             merchant_available_balance,
-            uses_melbet_kzt_settlement,
+            uses_melbet_fiat_settlement,
         )
 
         for_trader = self.trader_fee
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+        if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             for_merchant = in_order_credit_kzt(self)
-            merchant_balance = merchant_available_balance(self.solution.merchant)
+            merchant_balance = merchant_available_balance(self.solution.merchant, self.solution.payment_system)
         else:
             for_merchant = self.usd_amount - self.merchant_fee
             merchant_balance = self.solution.merchant.balance
@@ -264,7 +264,7 @@ class InOrder(models.Model):
                                            value=charge_usd, _transaction_type=transaction_type_1,
                                            _linked_in_order=self, _comment="In-order completed")
 
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+        if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             # KZT merchant leg: не списываем USDT-агрегатор на сумму в тенге (только USDT от трейдера выше).
             blockchain = Balance.objects.get(type=3)
             from_aggregator_to_merchant = Transaction.create(
@@ -386,9 +386,9 @@ class InOrder(models.Model):
         return True
 
     def _merchant_credit_amount(self) -> Decimal:
-        from merchant.kzt_settlement import in_order_credit_kzt, uses_melbet_kzt_settlement
+        from merchant.kzt_settlement import in_order_credit_kzt, uses_melbet_fiat_settlement
 
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+        if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             return in_order_credit_kzt(self)
         return self.usd_amount - self.merchant_fee
 
@@ -406,7 +406,7 @@ class InOrder(models.Model):
         from decimal import ROUND_HALF_UP
 
         from basics.models import Balance
-        from merchant.kzt_settlement import merchant_available_balance, uses_melbet_kzt_settlement
+        from merchant.kzt_settlement import merchant_available_balance, uses_melbet_fiat_settlement
         from payments.psp_payin import ensure_psp_frozen_for_complete, is_psp_trader
 
         aggregator = Balance.objects.get(type=2)
@@ -436,8 +436,8 @@ class InOrder(models.Model):
                     _comment=comment,
                 )
 
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
-            merchant_balance = merchant_available_balance(self.solution.merchant)
+        if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
+            merchant_balance = merchant_available_balance(self.solution.merchant, self.solution.payment_system)
             blockchain = Balance.objects.get(type=3)
             d_merchant = (new_for_merchant - old_for_merchant).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if d_merchant > 0:
@@ -924,14 +924,14 @@ class OutOrder(models.Model):
         trader = chosen_detail.group.trader
         from merchant.kzt_settlement import (
             merchant_available_balance,
-            uses_melbet_kzt_settlement,
+            uses_melbet_fiat_settlement,
         )
 
-        if uses_melbet_kzt_settlement(solution.merchant, solution.payment_system):
+        if uses_melbet_fiat_settlement(solution.merchant, solution.payment_system):
             for_merchant, for_trader, for_platform = calculate_fees(amount, solution, trader, direction="out")
             merchant_fee = for_merchant - amount
             trader_fee = for_trader - amount
-            merchant_bal = merchant_available_balance(solution.merchant)
+            merchant_bal = merchant_available_balance(solution.merchant, solution.payment_system)
             from merchant.kzt_settlement import balance_allows_negative_ledger
 
             kzt_insufficient = (
@@ -987,14 +987,14 @@ class OutOrder(models.Model):
             merchant_available_balance,
             merchant_frozen_balance,
             out_order_freeze_kzt,
-            uses_melbet_kzt_settlement,
+            uses_melbet_fiat_settlement,
         )
 
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+        if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             for_merchant = out_order_freeze_kzt(self)
             Transaction.create(
-                _from=merchant_available_balance(self.solution.merchant),
-                _to=merchant_frozen_balance(self.solution.merchant),
+                _from=merchant_available_balance(self.solution.merchant, self.solution.payment_system),
+                _to=merchant_frozen_balance(self.solution.merchant, self.solution.payment_system),
                 value=for_merchant,
                 _transaction_type=transaction_type,
                 _linked_out_order=self,
@@ -1013,14 +1013,14 @@ class OutOrder(models.Model):
             merchant_available_balance,
             merchant_frozen_balance,
             out_order_freeze_kzt,
-            uses_melbet_kzt_settlement,
+            uses_melbet_fiat_settlement,
         )
 
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+        if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             for_merchant = out_order_freeze_kzt(self)
             Transaction.create(
-                _from=merchant_frozen_balance(self.solution.merchant),
-                _to=merchant_available_balance(self.solution.merchant),
+                _from=merchant_frozen_balance(self.solution.merchant, self.solution.payment_system),
+                _to=merchant_available_balance(self.solution.merchant, self.solution.payment_system),
                 value=for_merchant,
                 _transaction_type=transaction_type_2,
                 _linked_out_order=self,
@@ -1056,13 +1056,13 @@ class OutOrder(models.Model):
         from merchant.kzt_settlement import (
             merchant_frozen_balance,
             out_order_freeze_kzt,
-            uses_melbet_kzt_settlement,
+            uses_melbet_fiat_settlement,
         )
 
-        if uses_melbet_kzt_settlement(merchant, self.solution.payment_system):
+        if uses_melbet_fiat_settlement(merchant, self.solution.payment_system):
             for_merchant = out_order_freeze_kzt(self)
             for_trader = self.usd_amount + self.trader_fee
-            frozen_kzt = merchant_frozen_balance(merchant)
+            frozen_kzt = merchant_frozen_balance(merchant, self.solution.payment_system)
         else:
             for_merchant, for_trader = self.usd_amount + self.merchant_fee, self.usd_amount + self.trader_fee
             frozen_kzt = merchant.frozen_balance
@@ -1147,13 +1147,13 @@ class OutOrder(models.Model):
             merchant_available_balance,
             merchant_frozen_balance,
             out_order_freeze_kzt,
-            uses_melbet_kzt_settlement,
+            uses_melbet_fiat_settlement,
         )
 
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+        if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             for_merchant = out_order_freeze_kzt(self)
             for_trader = self.usd_amount + self.trader_fee
-            merchant_fr = merchant_frozen_balance(self.solution.merchant)
+            merchant_fr = merchant_frozen_balance(self.solution.merchant, self.solution.payment_system)
         else:
             for_merchant, for_trader = self.usd_amount + self.merchant_fee, self.usd_amount + self.trader_fee
             merchant_bal = self.solution.merchant.balance
@@ -1273,12 +1273,12 @@ class OutOrder(models.Model):
             from merchant.kzt_settlement import (
                 merchant_available_balance,
                 out_order_freeze_kzt,
-                uses_melbet_kzt_settlement,
+                uses_melbet_fiat_settlement,
             )
 
-            if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+            if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
                 refund = out_order_freeze_kzt(self)
-                merchant_bal = merchant_available_balance(self.solution.merchant)
+                merchant_bal = merchant_available_balance(self.solution.merchant, self.solution.payment_system)
             else:
                 refund = self.usd_amount + self.merchant_fee
                 merchant_bal = self.solution.merchant.balance
@@ -1349,9 +1349,9 @@ class OutOrder(models.Model):
                 'details': 'Cannot recalculate not completed order'})
 
         new_usd_amount = new_amount / self.solution.payment_system.get_rate()
-        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
+        from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_fiat_settlement
 
-        if uses_melbet_kzt_settlement(self.solution.merchant, self.solution.payment_system):
+        if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             new_merchant_fee = merchant_fee_in_kzt(new_amount, self.solution.mdr_out)
         else:
             new_merchant_fee = self.solution.mdr_out * new_usd_amount / Decimal(100)

@@ -307,6 +307,10 @@
       if (pd.card_number) html += detailField(t("card"), pd.card_number, true);
       if (pd.phone) html += detailField(t("phone"), pd.phone, true);
       if (pd.deposit_number) html += detailField(t("account"), pd.deposit_number, true);
+      if (pd.qr_image_url && /^https?:\/\//i.test(pd.qr_image_url)) {
+        html += `<div class="field"><div class="label">${t("payLink")}</div>
+          <img alt="QR" src="${pd.qr_image_url}" style="max-width:220px;height:auto;border-radius:12px;background:#fff;padding:8px"></div>`;
+      }
       if (pd.payment_form_url && /^https?:\/\//i.test(pd.payment_form_url)) {
         html += `<div class="field"><div class="label">${t("payLink")}</div>
           <a class="bank-btn" href="${pd.payment_form_url}" rel="noopener noreferrer">${t("payLink")}</a></div>`;

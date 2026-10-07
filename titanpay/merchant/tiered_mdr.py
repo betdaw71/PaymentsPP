@@ -4,7 +4,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Sequence
 
-from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_kzt_settlement
+from merchant.kzt_settlement import merchant_fee_in_kzt, uses_melbet_fiat_settlement
 
 # (min_inclusive, max_exclusive, mdr_percent) in order currency (RUB).
 Tier = tuple[Decimal, Decimal, Decimal]
@@ -33,6 +33,6 @@ def effective_mdr_in(solution, amount) -> Decimal:
 
 def merchant_payin_fee(*, solution, amount: Decimal, usd_amount: Decimal) -> Decimal:
     mdr = effective_mdr_in(solution, amount)
-    if uses_melbet_kzt_settlement(solution.merchant, solution.payment_system):
+    if uses_melbet_fiat_settlement(solution.merchant, solution.payment_system):
         return merchant_fee_in_kzt(amount, mdr)
     return mdr * usd_amount / Decimal(100)

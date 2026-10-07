@@ -27,9 +27,12 @@ def sender_bank_for_melbet_method(melbet_method: str | None) -> str | None:
 
     card2card_kzt_kaspi / *kaspi* — Kaspi, международные переводы.
     card2card_kzt / *halyk* / *homebank* — Homebank, перевод на зарубежную карту.
+    phone_kzt / *phone* / *mobile* — перевод по номеру, без карточных гайдов.
     """
     method = (melbet_method or "").strip().lower()
     if not method:
+        return None
+    if "phone" in method or "mobile" in method:
         return None
     if "kaspi" in method:
         return "kaspi"

@@ -14,6 +14,8 @@ from merchant.models import Merchant
 MELBET_USERNAME = "melbet"
 MELBET_TEST_USERNAME = "melbet_test"
 KZT_PS_NAME = "C2CKZT"
+PHONE_KZT_PS_NAME = "PHONEKZT"
+KGS_PS_NAME = "QRKGS"
 
 
 def melbet_kzt_usernames() -> frozenset[str]:
@@ -27,18 +29,55 @@ def is_melbet_merchant(merchant: Merchant | None) -> bool:
     return merchant.user.username in melbet_kzt_usernames()
 
 
+def melbet_kzt_ps_names() -> frozenset[str]:
+    raw = getattr(settings, "MELBET_KZT_PS_NAMES", None)
+    if raw:
+        return frozenset(part.strip().upper() for part in str(raw).split(",") if part.strip())
+    return frozenset({KZT_PS_NAME, PHONE_KZT_PS_NAME})
+
+
 def uses_melbet_kzt_settlement(merchant: Merchant, payment_system) -> bool:
+    return melbet_fiat_ledger(merchant, payment_system) == "KZT"
+
+
+def melbet_kgs_ps_names() -> frozenset[str]:
+    raw = getattr(settings, "MELBET_KGS_PS_NAMES", None)
+    if raw:
+        return frozenset(part.strip().upper() for part in str(raw).split(",") if part.strip())
+    return frozenset({KGS_PS_NAME})
+
+
+def melbet_fiat_ledger(merchant: Merchant | None, payment_system) -> str | None:
+    """Локальный ledger Melbet: 'KZT' | 'KGS' | None (тогда USDT)."""
     if not is_melbet_merchant(merchant) or payment_system is None:
-        return False
-    return (payment_system.name or "").upper() == KZT_PS_NAME
+        return None
+    name = (payment_system.name or "").upper()
+    if name in melbet_kzt_ps_names():
+        return "KZT"
+    if name in melbet_kgs_ps_names():
+        return "KGS"
+    symbol = ""
+    currency = getattr(payment_system, "currency", None)
+    if currency is not None:
+        symbol = (getattr(currency, "symbol", None) or "").upper()
+    if symbol == "KGS":
+        return "KGS"
+    return None
+
+
+def uses_melbet_fiat_settlement(merchant: Merchant, payment_system) -> bool:
+    return melbet_fiat_ledger(merchant, payment_system) is not None
 
 
 def balance_allows_negative_ledger(balance: Balance) -> bool:
     if balance is None:
         return False
-    return Merchant.objects.filter(balance_kzt_id=balance.id).exists() or Merchant.objects.filter(
-        frozen_balance_kzt_id=balance.id
-    ).exists()
+    return (
+        Merchant.objects.filter(balance_kzt_id=balance.id).exists()
+        or Merchant.objects.filter(frozen_balance_kzt_id=balance.id).exists()
+        or Merchant.objects.filter(balance_kgs_id=balance.id).exists()
+        or Merchant.objects.filter(frozen_balance_kgs_id=balance.id).exists()
+    )
 
 
 @transaction.atomic
@@ -52,16 +91,35 @@ def ensure_kzt_balances(merchant: Merchant) -> Merchant:
     return merchant
 
 
-def merchant_available_balance(merchant: Merchant) -> Balance:
+def merchant_available_balance(merchant: Merchant, payment_system=None) -> Balance:
+    if melbet_fiat_ledger(merchant, payment_system) == "KGS":
+        ensure_kgs_balances(merchant)
+        merchant.refresh_from_db()
+        return merchant.balance_kgs
     ensure_kzt_balances(merchant)
     merchant.refresh_from_db()
     return merchant.balance_kzt
 
 
-def merchant_frozen_balance(merchant: Merchant) -> Balance:
+def merchant_frozen_balance(merchant: Merchant, payment_system=None) -> Balance:
+    if melbet_fiat_ledger(merchant, payment_system) == "KGS":
+        ensure_kgs_balances(merchant)
+        merchant.refresh_from_db()
+        return merchant.frozen_balance_kgs
     ensure_kzt_balances(merchant)
     merchant.refresh_from_db()
     return merchant.frozen_balance_kzt
+
+
+@transaction.atomic
+def ensure_kgs_balances(merchant: Merchant) -> Merchant:
+    merchant = Merchant.objects.select_for_update().get(pk=merchant.pk)
+    if merchant.balance_kgs_id is None:
+        merchant.balance_kgs = Balance.objects.create(type=0, amount=Decimal("0"))
+    if merchant.frozen_balance_kgs_id is None:
+        merchant.frozen_balance_kgs = Balance.objects.create(type=1, amount=Decimal("0"))
+    merchant.save(update_fields=["balance_kgs", "frozen_balance_kgs"])
+    return merchant
 
 
 def merchant_fee_in_kzt(amount: Decimal, mdr_in: Decimal) -> Decimal:

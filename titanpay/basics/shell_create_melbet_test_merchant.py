@@ -21,7 +21,7 @@ from django.db import transaction
 from rest_framework.authtoken.models import Token
 
 from basics.models import Balance, Currency, Language, PaymentSystem, TrafficType
-from merchant.kzt_settlement import MELBET_TEST_USERNAME, ensure_kzt_balances
+from merchant.kzt_settlement import MELBET_TEST_USERNAME, ensure_kgs_balances, ensure_kzt_balances
 from merchant.models import Merchant, MerchantSolution
 from payments.integrations.melbet.models import MelbetIntegrationConfig
 from payments.models import APIKeys
@@ -34,7 +34,13 @@ KZT_METHOD_MAP = {
     "card2card_kzt": {"payment_system": "C2CKZT", "currency": "KZT"},
     "card2card_kzt_kaspi": {"payment_system": "C2CKZT", "currency": "KZT"},
     "card2card_kzt_halyk": {"payment_system": "C2CKZT", "currency": "KZT"},
+    "phone_kzt": {"payment_system": "PHONEKZT", "currency": "KZT"},
+    "mobile_kzt": {"payment_system": "PHONEKZT", "currency": "KZT"},
     "default": {"payment_system": "C2CKZT", "currency": "KZT"},
+    "default_kgs": {"payment_system": "QRKGS", "currency": "KGS"},
+    "qr_kgs": {"payment_system": "QRKGS", "currency": "KGS"},
+    "lkq": {"payment_system": "QRKGS", "currency": "KGS"},
+    "elqr": {"payment_system": "QRKGS", "currency": "KGS"},
 }
 
 SETTINGS = {
@@ -147,6 +153,7 @@ def run(password: str = DEFAULT_PASSWORD) -> dict:
         print(f"  + Merchant: {merchant.id}")
 
     ensure_kzt_balances(merchant)
+    ensure_kgs_balances(merchant)
     merchant.refresh_from_db()
     merchant.payment_systems.add(ps)
 

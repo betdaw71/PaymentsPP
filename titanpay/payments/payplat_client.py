@@ -23,6 +23,8 @@ _REQUISITE_TYPES_NEED_CONTRAGENT = frozenset(
         "p2p_tran",
         "c2c_tran",
         "h2h",
+        "card",
+        "mobile",
     }
 )
 
@@ -55,11 +57,27 @@ def _parse_json_map(setting_name: str) -> dict[str, str]:
     return {str(k): str(v) for k, v in data.items()}
 
 
-def payplat_requisite_type_for(payment_system_name: str | None) -> str:
+def payplat_requisite_type_for(payment_system_name: str | None, pay_in: Any = None) -> str:
     ps_name = (payment_system_name or "").strip()
     mapped = _parse_json_map("PAYPLAT_REQUISITE_TYPE_MAP").get(ps_name)
+    merchant = getattr(pay_in, "merchant", None) if pay_in is not None else None
+    if merchant is None and pay_in is not None:
+        order = getattr(pay_in, "order", None)
+        solution = getattr(order, "solution", None) if order is not None else None
+        merchant = getattr(solution, "merchant", None) if solution is not None else None
+    from merchant.kzt_settlement import is_melbet_merchant
+
+    if is_melbet_merchant(merchant):
+        if ps_name.upper() == "C2CKZT":
+            return "card"
+        if ps_name.upper() == "PHONEKZT":
+            return "mobile"
     if mapped:
         return mapped.strip().lower()
+    if ps_name.upper() == "QRKGS":
+        return "lkq"
+    if ps_name.upper() == "PHONEKZT":
+        return "mobile"
     default = (getattr(settings, "PAYPLAT_REQUISITE_TYPE", None) or "h2h").strip().lower()
     return default or "h2h"
 
@@ -79,21 +97,40 @@ def payplat_tariff() -> str:
 
 
 def payplat_payer_for(payment_system_name: str | None, pay_in: Any = None) -> str | None:
-    """Коридор плательщика PayPlat: kz → сумма в тенге, ru → в рублях (см. документацию h2h/c2c_ab)."""
+    """Коридор плательщика PayPlat: kz → сумма в тенге, ru → в рублях (см. документацию h2h/c2c_ab).
+
+    Для локального KGS (LKQ) payer не шлём — валюта задаётся полем currency=kgs.
+    """
     ps_name = (payment_system_name or "").strip()
     mapped = _parse_json_map("PAYPLAT_PAYER_MAP").get(ps_name)
     if mapped:
         val = mapped.strip().lower()
         return val if val not in ("null", "none", "") else None
+    pay_cur = ""
+    if pay_in is not None and getattr(pay_in, "currency", None):
+        pay_cur = (pay_in.currency.symbol or "").strip().upper()
+    if pay_cur in ("KGS", "KGZ") or ps_name.upper() == "QRKGS":
+        return None
     default = (getattr(settings, "PAYPLAT_PAYER", None) or "").strip().lower()
     if default and default not in ("null", "none", ""):
         return default
+    if pay_cur == "KZT":
+        return "kz"
+    if pay_cur == "RUB":
+        return "ru"
+    return None
+
+
+def payplat_deal_currency(pay_in: Any = None, payment_system_name: str | None = None) -> str | None:
+    """PayPlat: для локального сом обязателен currency=kgs (регистр как в их API)."""
+    ps_name = (payment_system_name or "").strip()
+    if pay_in is not None and getattr(pay_in, "payment_system", None) and not ps_name:
+        ps_name = pay_in.payment_system.name or ""
+    pay_cur = ""
     if pay_in is not None and getattr(pay_in, "currency", None):
-        sym = (pay_in.currency.symbol or "").strip().upper()
-        if sym == "KZT":
-            return "kz"
-        if sym == "RUB":
-            return "ru"
+        pay_cur = (pay_in.currency.symbol or "").strip().upper()
+    if pay_cur in ("KGS", "KGZ") or ps_name.upper() == "QRKGS":
+        return "kgs"
     return None
 
 
@@ -312,6 +349,7 @@ def payplat_create_deal(
     bank: str | None = None,
     tariff: str | None = None,
     payer: str | None = None,
+    currency: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
     payload: dict[str, Any] = {
@@ -322,6 +360,9 @@ def payplat_create_deal(
     req_type = (requisite_type or payplat_requisite_type_for(None)).strip().lower()
     if req_type:
         payload["requisite_type"] = req_type
+    currency_val = (currency or "").strip().lower()
+    if currency_val:
+        payload["currency"] = currency_val
     payer_val = (payer or "").strip().lower()
     if payer_val:
         payload["payer"] = payer_val
@@ -664,18 +705,40 @@ def _positive_decimal(raw) -> Decimal | None:
     return val if val > 0 else None
 
 
+_FIAT_QUOTE_CURRENCIES = frozenset({"KZT", "RUB", "KGS", "KGZ"})
+
+
 def payplat_webhook_paid_amount(body: dict | None) -> Decimal | None:
-    """Фактическая сумма из IPN PayPlat — провайдер: quote_amount (не amount / fiat_amount)."""
+    """Фактическая сумма к оплате в фиате заявки.
+
+    KZT H2H: quote_amount в тенге (quote_currency=KZT).
+    Локальный KGS: quote_amount часто USDT — тогда берём amount / fiat_amount в сомах.
+    """
     if not payplat_is_webhook_body(body):
         return None
     assert isinstance(body, dict)
 
-    for source in (body, body.get("invoice")):
-        if not isinstance(source, dict):
-            continue
-        paid = _positive_decimal(source.get("quote_amount"))
-        if paid is not None:
-            return paid
+    invoice = body.get("invoice") if isinstance(body.get("invoice"), dict) else {}
+    quote_cur = (
+        (invoice.get("quote_currency") or body.get("quote_currency") or "")
+        .strip()
+        .upper()
+    )
+    use_quote = not quote_cur or quote_cur in _FIAT_QUOTE_CURRENCIES
+    if use_quote:
+        for source in (body, invoice):
+            if not isinstance(source, dict):
+                continue
+            paid = _positive_decimal(source.get("quote_amount"))
+            if paid is not None:
+                return paid
+    for key in ("amount", "fiat_amount"):
+        for source in (body, invoice):
+            if not isinstance(source, dict):
+                continue
+            paid = _positive_decimal(source.get(key))
+            if paid is not None:
+                return paid
     return None
 
 
@@ -712,10 +775,64 @@ def payplat_requisite_currency_ok(
     return not pay_cur or req_cur == pay_cur
 
 
+def payplat_requisite_matches_requested_type(req: dict, requisite_type: str | None) -> bool:
+    """CARD не должен отдавать телефон, MOBILE — не карту."""
+    rt = (requisite_type or "").strip().lower()
+    if not isinstance(req, dict):
+        return False
+    if rt == "card":
+        return bool(str(req.get("card_number") or "").strip())
+    if rt in ("mobile", "phone"):
+        return bool(str(req.get("phone") or "").strip())
+    return True
+
+
+def _http_url(*values) -> str:
+    for raw in values:
+        s = (raw or "").strip()
+        if s.lower().startswith("http://") or s.lower().startswith("https://"):
+            return s
+    return ""
+
+
 def payplat_map_requisite(create_body: dict) -> dict:
-    """Маппинг ответа POST /deals в payment_details для мерчанта (только H2H card/phone, не redirect)."""
+    """Маппинг ответа POST /deals: LKQ widget/QR либо H2H card/phone."""
     if not isinstance(create_body, dict):
         return {}
+
+    invoice = create_body.get("invoice") if isinstance(create_body.get("invoice"), dict) else {}
+    payment_data = invoice.get("payment_data") if isinstance(invoice.get("payment_data"), dict) else {}
+    requisite = create_body.get("requisite") if isinstance(create_body.get("requisite"), dict) else {}
+    widget = _http_url(
+        create_body.get("widget_url"),
+        create_body.get("qr_url"),
+        create_body.get("payment_form_url"),
+        invoice.get("widget_url"),
+        invoice.get("qr_url"),
+        payment_data.get("widget_url"),
+        payment_data.get("qr_url"),
+        requisite.get("widget_url"),
+        requisite.get("qr_url"),
+    )
+    qr_img = _http_url(
+        create_body.get("qr_image_url"),
+        invoice.get("qr_image_url"),
+        payment_data.get("qr_image_url"),
+        requisite.get("qr_image_url"),
+    )
+    if widget or qr_img:
+        out: dict[str, str] = {}
+        if widget:
+            out["payment_form_url"] = widget
+        if qr_img:
+            out["qr_image_url"] = qr_img
+        owner = requisite.get("holder_name") or payment_data.get("card_holder") or ""
+        bank = requisite.get("bank") or payment_data.get("bank") or ""
+        if owner:
+            out["owner"] = owner
+        if bank:
+            out["bank"] = bank
+        return out
 
     requisite = create_body.get("requisite")
     if isinstance(requisite, dict):
@@ -803,7 +920,7 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
 
     external_id = str(pay_in.id)
     ps_name = pay_in.payment_system.name if pay_in.payment_system else None
-    requisite_type = payplat_requisite_type_for(ps_name)
+    requisite_type = payplat_requisite_type_for(ps_name, pay_in)
     bank = payplat_bank_for(ps_name)
     payer = payplat_payer_for(ps_name, pay_in)
 
@@ -817,6 +934,8 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
     id_contragent = external_id
     if pay_in.client_id and getattr(pay_in, "client", None):
         id_contragent = str(pay_in.client.client_id)
+    if requisite_type == "lkq":
+        id_contragent = None
 
     ok, data = payplat_create_deal(
         amount=pay_in.amount,
@@ -825,6 +944,7 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
         id_contragent=id_contragent,
         bank=bank,
         payer=payer,
+        currency=payplat_deal_currency(pay_in, ps_name),
         pay_in=pay_in,
     )
     if not ok:
@@ -852,6 +972,25 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
 
     req = payplat_map_requisite(session.create_response)
     from payments.psp_payin import requisite_payload_has_fields
+
+    if requisite_payload_has_fields(req) and not payplat_requisite_matches_requested_type(req, requisite_type):
+        upstream = session.create_response
+        order_id = session.provider_order_id
+        session.create_response = {
+            "error": "requisite_type_mismatch",
+            "upstream": upstream,
+            "expected_type": requisite_type,
+        }
+        session.provider_order_id = ""
+        session.save(update_fields=["create_response", "provider_order_id", "updated_at"])
+        if order_id:
+            payplat_cancel_deal(shop_internal_id=external_id, pay_in=pay_in)
+        logger.error(
+            "PayPlat: requisite type mismatch PayIn=%s expected=%s",
+            pay_in.id,
+            requisite_type,
+        )
+        return False
 
     if requisite_payload_has_fields(req) and not payplat_requisite_currency_ok(
         session.create_response, pay_in, payer=payer

@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from basics.models import TraderTeamRates
-from merchant.kzt_settlement import is_melbet_merchant, merchant_fee_in_kzt, uses_melbet_kzt_settlement
+from merchant.kzt_settlement import is_melbet_merchant, merchant_fee_in_kzt, uses_melbet_fiat_settlement
 from merchant.models import MerchantSolution
 from payments.models import PayIn, PayInStatus
 from payments.psp_payin import (
@@ -147,7 +147,7 @@ def reallocate_melbet_in_order(
         pay_in.save(update_fields=["amount", "status", "updated_at"])
         return pay_in
 
-    if uses_melbet_kzt_settlement(solution.merchant, payment_system_obj):
+    if uses_melbet_fiat_settlement(solution.merchant, payment_system_obj):
         merchant_fee = merchant_fee_in_kzt(new_amount, solution.mdr_in)
     else:
         merchant_fee = solution.mdr_in * usd_amount / Decimal(100)

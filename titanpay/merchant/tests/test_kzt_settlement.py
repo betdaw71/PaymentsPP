@@ -10,11 +10,14 @@ from merchant.kzt_settlement import (
     MELBET_TEST_USERNAME,
     MELBET_USERNAME,
     balance_allows_negative_ledger,
+    ensure_kgs_balances,
     ensure_kzt_balances,
     in_order_credit_kzt,
     is_melbet_merchant,
+    merchant_available_balance,
     merchant_fee_in_kzt,
     out_order_freeze_kzt,
+    uses_melbet_fiat_settlement,
     uses_melbet_kzt_settlement,
 )
 from merchant.models import Merchant
@@ -59,8 +62,22 @@ class KztSettlementHelpersTest(TestCase):
             required_fields={},
         )
         self.assertTrue(uses_melbet_kzt_settlement(merchant, c2c))
+        phone = PaymentSystem.objects.create(
+            name="PHONEKZT",
+            currency=currency,
+            required_fields={},
+        )
+        self.assertTrue(uses_melbet_kzt_settlement(merchant, phone))
         self.assertFalse(uses_melbet_kzt_settlement(merchant, sber))
         self.assertFalse(uses_melbet_kzt_settlement(merchant, None))
+        kgs = Currency.objects.create(symbol="KGS", name="Som")
+        qr = PaymentSystem.objects.create(name="QRKGS", currency=kgs, required_fields={})
+        self.assertFalse(uses_melbet_kzt_settlement(merchant, qr))
+        self.assertTrue(uses_melbet_fiat_settlement(merchant, qr))
+        self.assertTrue(uses_melbet_fiat_settlement(merchant, c2c))
+        ensure_kgs_balances(merchant)
+        merchant.refresh_from_db()
+        self.assertEqual(merchant_available_balance(merchant, qr).id, merchant.balance_kgs_id)
 
     def test_ensure_kzt_balances_creates_accounts(self):
         user = User.objects.create_user(username="kzt_bal_user", password="x")
@@ -83,6 +100,10 @@ class KztSettlementHelpersTest(TestCase):
         merchant.refresh_from_db()
         self.assertTrue(balance_allows_negative_ledger(merchant.balance_kzt))
         self.assertTrue(balance_allows_negative_ledger(merchant.frozen_balance_kzt))
+        ensure_kgs_balances(merchant)
+        merchant.refresh_from_db()
+        self.assertTrue(balance_allows_negative_ledger(merchant.balance_kgs))
+        self.assertTrue(balance_allows_negative_ledger(merchant.frozen_balance_kgs))
         plain = Balance.objects.create(type=0, amount=Decimal("10"))
         self.assertFalse(balance_allows_negative_ledger(plain))
 
