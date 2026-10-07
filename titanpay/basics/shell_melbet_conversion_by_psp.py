@@ -11,7 +11,7 @@ issued = не Declined (рек выдан). Конверсия мерчанта 
   docker compose exec -T -e DAYS=7 -e MERCHANT=melbet app python manage.py shell \\
     < titanpay/basics/shell_melbet_conversion_by_psp.py
 
-  PS=C2CKZT  COMPARE=1
+  PS=C2CKZT  COMPARE=1  SENDER=halyk|kaspi
 """
 from __future__ import annotations
 
@@ -23,12 +23,14 @@ from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
+from payments.integrations.melbet.mapping import sender_bank_for_melbet_method
 from payments.models import PayIn
 
 MSK = ZoneInfo("Europe/Moscow")
 MERCHANT = (os.environ.get("MERCHANT") or "melbet").strip()
 DAYS = float(os.environ.get("DAYS") or "7")
 PS = (os.environ.get("PS") or "").strip()
+SENDER = (os.environ.get("SENDER") or "").strip().lower()
 COMPARE = (os.environ.get("COMPARE") or "1").strip().lower() in {"1", "true", "yes", "on"}
 
 BUCKETS = (
@@ -83,9 +85,12 @@ def qs_for(start, end):
         "order",
         "order__status",
         "order__payment_details__group__trader__user",
+        "melbet_session",
     )
     if PS:
         qs = qs.filter(payment_system__name=PS)
+    if SENDER:
+        qs = qs.filter(melbet_session__isnull=False)
     return qs.order_by("created_at")
 
 
@@ -148,7 +153,14 @@ def collect(start, end):
     by_day: dict[str, Cell] = defaultdict(Cell)
     by_bucket: dict[str, Cell] = defaultdict(Cell)
     n = 0
+    by_method: dict[str, Cell] = defaultdict(Cell)
     for pay_in in qs_for(start, end).iterator(chunk_size=400):
+        session = getattr(pay_in, "melbet_session", None)
+        method = (session.melbet_method if session is not None else "") or ""
+        if SENDER:
+            bank = sender_bank_for_melbet_method(method)
+            if bank != SENDER:
+                continue
         n += 1
         status = pay_in.status.name if pay_in.status else "-"
         amount = pay_in.amount
@@ -165,6 +177,7 @@ def collect(start, end):
         by_psp_bucket[psp][bkt].add(status, amount)
         by_day[day].add(status, amount)
         by_bucket[bkt].add(status, amount)
+        by_method[method or "(no_method)"].add(status, amount)
     return {
         "n": n,
         "total": total,
@@ -173,6 +186,7 @@ def collect(start, end):
         "by_psp_bucket": by_psp_bucket,
         "by_day": by_day,
         "by_bucket": by_bucket,
+        "by_method": by_method,
     }
 
 
@@ -180,10 +194,14 @@ def print_report(title, start, end, data):
     print("=" * 108)
     print(title)
     print(f"  {start.strftime('%Y-%m-%d %H:%M')} → {end.strftime('%Y-%m-%d %H:%M')} {MSK.key}")
-    print(f"  merchant={MERCHANT}  ps={PS or 'ALL'}  payins={data['n']}")
+    print(f"  merchant={MERCHANT}  ps={PS or 'ALL'}  sender={SENDER or 'ALL'}  payins={data['n']}")
     print("-" * 108)
     print("ИТОГО")
     print("  " + row_line("all", data["total"], 12))
+    if data.get("by_method"):
+        print("\nПо melbet method (что просят на странице)")
+        for name, cell in sorted(data["by_method"].items(), key=lambda x: -x[1].n):
+            print("  " + row_line(name, cell, 28))
     print("\nПо payment_system")
     for name, cell in sorted(data["by_ps"].items(), key=lambda x: -x[1].n):
         print("  " + row_line(name, cell, 12))
