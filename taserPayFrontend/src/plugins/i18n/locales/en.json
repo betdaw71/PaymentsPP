@@ -484,11 +484,14 @@
     "balance": {
       "available": "Available",
       "available_kzt": "Available (KZT)",
+      "available_kgs": "Available (KGS)",
       "deposit_address": "Deposit Address (TRC-20)",
       "frozen": "Frozen",
       "frozen_kzt": "Frozen (KZT)",
+      "frozen_kgs": "Frozen (KGS)",
       "title": "Balance",
       "wallet_kzt": "KZT balance (C2CKZT)",
+      "wallet_kgs": "KGS balance",
       "wallet_usdt": "USDT balance",
       "withdraw_usdt_hint": "Withdrawals are in USDT only"
     },

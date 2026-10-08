@@ -50,6 +50,9 @@ onMounted(
 
 const hasMerchantKzt = item => item.available_balance_kzt !== undefined
   && item.available_balance_kzt !== null
+
+const hasMerchantKgs = item => item.available_balance_kgs !== undefined
+  && item.available_balance_kgs !== null
 </script>
 
 <template>
@@ -163,6 +166,39 @@ const hasMerchantKzt = item => item.available_balance_kzt !== undefined
                             </VChip>
                           </template>
                           <span>{{ $t('user.balance.frozen_kzt') }}</span>
+                        </VTooltip>
+                      </template>
+                      <template v-if="hasMerchantKgs(item)">
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="success"
+                              variant="tonal"
+                              text-color="white"
+                              small
+                            >
+                              {{ item.available_balance_kgs }} KGS
+                            </VChip>
+                          </template>
+                          <span>{{ $t('user.balance.available_kgs') }}</span>
+                        </VTooltip>
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="secondary"
+                              variant="tonal"
+                              text-color="white"
+                              small
+                              append-icon="tabler-snowflake"
+                            >
+                              {{ item.frozen_balance_kgs }} KGS
+                            </VChip>
+                          </template>
+                          <span>{{ $t('user.balance.frozen_kgs') }}</span>
                         </VTooltip>
                       </template>
                     </VListItemTitle>

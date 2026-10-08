@@ -73,6 +73,11 @@ const hasKztBalance = computed (
   () => balanceData.value.amount_kzt !== undefined
     && balanceData.value.amount_kzt !== null,
 )
+
+const hasKgsBalance = computed (
+  () => balanceData.value.amount_kgs !== undefined
+    && balanceData.value.amount_kgs !== null,
+)
 </script>
 
 <template>
@@ -189,6 +194,36 @@ const hasKztBalance = computed (
                     <VTextField
                       v-model="balanceData.frozen_amount_kzt"
                       :label="$t('user.balance.frozen_kzt')"
+                      append-inner-icon="tabler-snowflake"
+                      outlined
+                      dense
+                      readonly
+                    />
+                  </VCol>
+                </VRow>
+              </VCardText>
+            </VCard>
+            <VCard
+              v-if="hasKgsBalance"
+              class="mt-4"
+              :title="$t('user.balance.wallet_kgs')"
+            >
+              <VCardText>
+                <VRow class="pt-1">
+                  <VCol cols="6">
+                    <VTextField
+                      v-model="balanceData.amount_kgs"
+                      :label="$t('user.balance.available_kgs')"
+                      prepend-inner-icon="tabler-coins"
+                      outlined
+                      dense
+                      readonly
+                    />
+                  </VCol>
+                  <VCol cols="6">
+                    <VTextField
+                      v-model="balanceData.frozen_amount_kgs"
+                      :label="$t('user.balance.frozen_kgs')"
                       append-inner-icon="tabler-snowflake"
                       outlined
                       dense

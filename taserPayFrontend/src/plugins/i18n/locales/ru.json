@@ -483,11 +483,14 @@
     "balance": {
       "available": "Доступный",
       "available_kzt": "Доступный (KZT)",
+      "available_kgs": "Доступный (KGS)",
       "deposit_address": "Адрес для депозита (TRC-20)",
       "frozen": "Замороженный",
       "frozen_kzt": "Замороженный (KZT)",
+      "frozen_kgs": "Замороженный (KGS)",
       "title": "Баланс",
       "wallet_kzt": "Баланс KZT (C2CKZT)",
+      "wallet_kgs": "Баланс KGS",
       "wallet_usdt": "Баланс USDT",
       "withdraw_usdt_hint": "Вывод только в USDT"
     },
