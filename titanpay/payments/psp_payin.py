@@ -1267,6 +1267,7 @@ def psp_success_webhook_allows_completed_recalc(webhook_body: dict | None) -> bo
         return True
     from payments.bitzone_client import bitzone_success_webhook_allows_completed_recalc
     from payments.gipay_client import gipay_success_webhook_allows_completed_recalc
+    from payments.layerone_client import layerone_success_webhook_allows_completed_recalc
     from payments.payplat_client import payplat_success_webhook_allows_completed_recalc
     from payments.patriotpay_client import patriotpay_success_webhook_allows_completed_recalc
     from payments.visionx_client import visionx_success_webhook_allows_completed_recalc
@@ -1277,6 +1278,7 @@ def psp_success_webhook_allows_completed_recalc(webhook_body: dict | None) -> bo
         or visionx_success_webhook_allows_completed_recalc(webhook_body)
         or patriotpay_success_webhook_allows_completed_recalc(webhook_body)
         or gipay_success_webhook_allows_completed_recalc(webhook_body)
+        or layerone_success_webhook_allows_completed_recalc(webhook_body)
     )
 
 

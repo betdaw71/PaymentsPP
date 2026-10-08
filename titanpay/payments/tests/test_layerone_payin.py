@@ -45,6 +45,15 @@ class LayeronePayinHelpersTest(SimpleTestCase):
         self.assertEqual(req["owner"], "IVAN")
         self.assertEqual(req["bank"], "Kaspi")
 
+    def test_map_result_url(self):
+        req = layerone_map_requisite({"status": True, "result": {"state": "created", "url": "https://layer-1.io/p/abc"}})
+        self.assertEqual(req["payment_form_url"], "https://layer-1.io/p/abc")
+
+    def test_map_card_number_alias(self):
+        req = layerone_map_requisite({"result": {"cardNumber": "4400430182839016", "cardHolder": "IVAN"}})
+        self.assertEqual(req["card_number"], "4400430182839016")
+        self.assertEqual(req["owner"], "IVAN")
+
     @override_settings(
         LAYERONE_API_BASE="https://layer-1.io",
         LAYERONE_API_KEY="1|token",

@@ -226,6 +226,11 @@ def _request(
     return True, resp_body
 
 
+def layerone_get_methods(*, currency: str = "KZT") -> tuple[bool, dict[str, Any] | str]:
+    cur = (currency or "KZT").strip().upper()
+    return _request("GET", f"/api/v2/methods?currency={cur}", json_payload={}, pay_in=None)
+
+
 def layerone_create_payment(
     *,
     amount: Decimal,
@@ -234,10 +239,17 @@ def layerone_create_payment(
     callback_url: str | None = None,
     payer_user_id: str | None = None,
     payer_ip: str | None = None,
+    payer_user_agent: str | None = None,
     method: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
     payin_method = (method or getattr(settings, "LAYERONE_PAYIN_METHOD", None) or "c2ckz").strip()
+    payer: dict[str, Any] = {
+        "userId": payer_user_id or order_id,
+        "userIp": payer_ip or getattr(settings, "LAYERONE_DEFAULT_PAYER_IP", "127.0.0.1"),
+    }
+    if payer_user_agent:
+        payer["userAgent"] = payer_user_agent
     payload: dict[str, Any] = {
         "orderId": order_id,
         "merchantId": _merchant_id(),
@@ -245,10 +257,7 @@ def layerone_create_payment(
         "currency": currency.upper(),
         "method": payin_method,
         "callbackUri": callback_url or layerone_callback_url(),
-        "payer": {
-            "userId": payer_user_id or order_id,
-            "userIp": payer_ip or getattr(settings, "LAYERONE_DEFAULT_PAYER_IP", "127.0.0.1"),
-        },
+        "payer": payer,
     }
     asset_or_bank = (getattr(settings, "LAYERONE_ASSET_OR_BANK", None) or "").strip()
     if asset_or_bank:
@@ -334,24 +343,69 @@ def layerone_webhook_outcome(body: dict) -> str | None:
     return webhook_outcome(body)
 
 
-def layerone_map_requisite(create_body: dict) -> dict:
-    result = create_body.get("result") if isinstance(create_body, dict) else {}
-    if not isinstance(result, dict):
-        result = create_body if isinstance(create_body, dict) else {}
-    address = (result.get("address") or "").strip()
-    owner = result.get("recipient") or ""
-    bank = result.get("bankName") or result.get("bank") or ""
-    if not address:
-        url = (create_body.get("url") or "").strip() if isinstance(create_body, dict) else ""
-        if url:
-            return {"payment_form_url": url, "owner": owner, "bank": bank}
+def layerone_is_webhook_body(body: dict | None) -> bool:
+    if not isinstance(body, dict):
+        return False
+    from payments.aggrepay_webhook import webhook_ids, webhook_state
+
+    state = webhook_state(body)
+    order_id, payment_id = webhook_ids(body)
+    return bool(state and (order_id or payment_id))
+
+
+def layerone_success_webhook_allows_completed_recalc(body: dict | None) -> bool:
+    if not layerone_is_webhook_body(body):
+        return False
+    return layerone_webhook_outcome(body) == "success"
+
+
+def _layerone_result(create_body: dict) -> dict:
+    if not isinstance(create_body, dict):
         return {}
-    digits = "".join(c for c in address if c.isdigit())
-    if len(digits) >= 16:
-        return {"card_number": digits[:16], "owner": owner, "bank": bank}
-    if address.startswith("+") or (digits and len(digits) <= 12):
-        return {"phone": address if address.startswith("+") else f"+{digits}", "owner": owner, "bank": bank}
-    return {"card_number": address, "owner": owner, "bank": bank}
+    result = create_body.get("result") if isinstance(create_body.get("result"), dict) else {}
+    data = create_body.get("data") if isinstance(create_body.get("data"), dict) else {}
+    nested = create_body.get("requisite") if isinstance(create_body.get("requisite"), dict) else {}
+    inner = result.get("requisite") if isinstance(result.get("requisite"), dict) else {}
+    merged: dict = {}
+    for part in (create_body, data, nested, result, inner):
+        if isinstance(part, dict):
+            merged.update({k: v for k, v in part.items() if v not in (None, "")})
+    return merged
+
+
+def layerone_map_requisite(create_body: dict) -> dict:
+    result = _layerone_result(create_body)
+    owner = result.get("recipient") or result.get("cardHolder") or result.get("holder_name") or ""
+    bank = result.get("bankName") or result.get("bank") or ""
+    address = str(
+        result.get("address")
+        or result.get("cardNumber")
+        or result.get("card_number")
+        or result.get("pan")
+        or result.get("phone_number")
+        or result.get("phone")
+        or ""
+    ).strip()
+    url = ""
+    for key in ("url", "paymentUrl", "payment_url", "widget_url", "payment_form_url"):
+        raw = str(result.get(key) or "").strip()
+        if raw.lower().startswith("http://") or raw.lower().startswith("https://"):
+            url = raw
+            break
+    if address:
+        digits = "".join(c for c in address if c.isdigit())
+        if len(digits) >= 16:
+            return {"card_number": digits[:16], "owner": owner, "bank": bank}
+        if address.startswith("+") or (digits and len(digits) <= 12):
+            return {
+                "phone": address if address.startswith("+") else f"+{digits}",
+                "owner": owner,
+                "bank": bank,
+            }
+        return {"card_number": address, "owner": owner, "bank": bank}
+    if url:
+        return {"payment_form_url": url, "owner": owner, "bank": bank}
+    return {}
 
 
 def layerone_requisite_for_payin(pay_in: Any) -> dict | None:
@@ -394,16 +448,26 @@ def try_attach_layerone_session(pay_in: Any) -> bool | None:
     session.external_id = external_id
     session.save(update_fields=["external_id", "updated_at"])
 
+    client = getattr(pay_in, "client", None)
     payer_user_id = str(pay_in.id)
-    if getattr(settings, "LAYERONE_PAYER_USER_ID_FROM_CLIENT", False):
-        if pay_in.client_id and getattr(pay_in, "client", None):
-            payer_user_id = str(pay_in.client.client_id)
+    if client is not None and getattr(client, "client_id", None):
+        payer_user_id = str(client.client_id)
+
+    payer_ip = None
+    payer_ua = None
+    if client is not None:
+        device = client.devices.first()
+        if device is not None:
+            payer_ip = (device.ip_address or "").strip() or None
+            payer_ua = (device.user_agent or "").strip() or None
 
     ok, data = layerone_create_payment(
         amount=pay_in.amount,
         order_id=external_id,
         currency=currency_sym,
         payer_user_id=payer_user_id,
+        payer_ip=payer_ip,
+        payer_user_agent=payer_ua,
         method=layerone_payin_method_for(
             pay_in.payment_system.name if pay_in.payment_system else None
         ),
