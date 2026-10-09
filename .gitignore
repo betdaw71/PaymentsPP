@@ -52,6 +52,11 @@ promo/.cursor/
 .DS_Store
 Thumbs.db
 
+# --- Telegram userbot sessions (full account access) ---
+*.session
+*.session-journal
+appealbot/sessions/
+
 # --- Runtime / prod data ---
 titanpay/files/
 media/

@@ -77,6 +77,10 @@ class Command(BaseCommand):
             time.sleep(options["interval"])
 
     def _print_payin_trace(self, pay_in_id: str):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from trade.models import InOrder
+
+        pay_in = None
         try:
             pay_in = PayIn.objects.select_related(
                 "status",
@@ -84,8 +88,41 @@ class Command(BaseCommand):
                 "order__status",
                 "payment_system",
             ).get(id=pay_in_id)
-        except PayIn.DoesNotExist:
-            raise CommandError(f"PayIn {pay_in_id} не найден")
+        except (PayIn.DoesNotExist, ValueError, DjangoValidationError):
+            pay_in = (
+                PayIn.objects.select_related(
+                    "status",
+                    "merchant__user",
+                    "order__status",
+                    "payment_system",
+                )
+                .filter(merchant_order_id=pay_in_id)
+                .order_by("-created_at")
+                .first()
+            )
+            if pay_in is None:
+                try:
+                    order = InOrder.objects.filter(id=pay_in_id).first()
+                except DjangoValidationError:
+                    order = None
+                if order is not None:
+                    pay_in = (
+                        PayIn.objects.select_related(
+                            "status",
+                            "merchant__user",
+                            "order__status",
+                            "payment_system",
+                        )
+                        .filter(order=order)
+                        .order_by("-created_at")
+                        .first()
+                    )
+            if pay_in is None:
+                raise CommandError(
+                    f"PayIn {pay_in_id} не найден (ни id, ни merchant_order_id, ни InOrder id). "
+                    f"Пример: python manage.py payin_trace <pay_in_id>"
+                )
+            self.stdout.write(self.style.WARNING(f"Найден не по PayIn.id: {pay_in.id}"))
 
         self.stdout.write(self.style.HTTP_INFO(f"\n{'=' * 72}"))
         self.stdout.write(self.style.HTTP_INFO(f"PAY-IN TRACE  {pay_in.id}"))

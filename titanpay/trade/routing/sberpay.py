@@ -7,7 +7,7 @@ import random
 import re
 from decimal import Decimal
 
-from trade.routing.routeutils import get_teams_for_ps
+from trade.routing.routeutils import get_teams_for_ps, in_order_amount_q
 
 
 class SberPayRouting:
@@ -68,7 +68,7 @@ class SberPayRouting:
         filtered_options = possible_options.annotate(
             total_value=ExpressionWrapper(F('current_volume') + amount,
                                           output_field=DecimalField(max_digits=32, decimal_places=2))
-        ).filter(total_value__lte=F('limit_per_period'))
+        ).filter(total_value__lte=F('limit_per_period')).filter(in_order_amount_q(amount))
 
         return filtered_options
 
@@ -97,7 +97,7 @@ class SberPayRouting:
         return None
 
     def choose_detail_in(self, amount: Decimal, usd_amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders,
-                         client_deposit_count):
+                         client_deposit_count, merchant=None):
 
         payment_system = PaymentSystem.objects.get(name=SBER_NAME)
 
@@ -146,5 +146,5 @@ class SberPayRouting:
         return None
 
     def choose_detail_out(self, amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType,
-                          excluded=None):
+                          excluded=None, merchant=None):
         raise ValidationError("This method does not support pay-outs!")

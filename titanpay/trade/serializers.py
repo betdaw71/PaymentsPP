@@ -5,25 +5,43 @@ from basics.serializers import PaymentDetailsSberActionSerializer, PaymentDetail
     PaymentDetailsSberPayOrderSerializer, PaymentDetailsSBPOrderSerializer, PaymentDetailsSberDepOrderSerializer
 from merchant.models import Merchant
 from titanpay.settings import (
-    SBER_NAME,
     SBERPAY_NAME,
     SBP_NAME,
     SBERDEP_NAME,
     UPI_INTENT_NAME,
-    C2C_NAME,
-    PROTOCOL_C2C_NAME,
     C2CTRY_NAME,
+    CONCORDED_KBZPAY_PS_NAME,
+    CONCORDED_WAVEPAY_PS_NAME,
 )
+from trade.ledger import kzt_balance_ids, merchant_balance_ids
 from trade.models import TransactionType, OutOrderStatus, InOrderStatus, InOrder, Transaction, WithdrawalRequest, \
     OutOrder, InOrderStatusChange
 from rest_framework.exceptions import ValidationError
+
+
+def _transaction_gross_amount(instance):
+    """Сумма заявки до комиссии; если заявки нет — сумма проводки."""
+    order = instance.linked_in_order or instance.linked_out_order
+    if order is not None and order.amount is not None:
+        return order.amount
+    return instance.value
+
+
+def _transaction_currency(instance, context) -> str:
+    kzt_ids = context.setdefault('_kzt_balance_ids', kzt_balance_ids())
+    if instance.from_balance_id in kzt_ids or instance.to_balance_id in kzt_ids:
+        return 'KZT'
+    return 'USDT'
 
 
 def payment_details_payload_for_order(payment_details, payment_system_name: str) -> dict:
     """Реквизит в ответе списка ордеров: имя PS из UPI_INTENT_NAME (settings) — как карта Сбера."""
     if payment_details is None:
         return {}
-    if payment_system_name in (SBER_NAME, UPI_INTENT_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
+    from trade.routing.ps_names import card_like_ps_names
+
+    card_ps = card_like_ps_names() | {UPI_INTENT_NAME}
+    if payment_system_name in card_ps:
         return PaymentDetailsSberOrderSerializer(payment_details).data
     if payment_system_name in (SBERDEP_NAME, C2CTRY_NAME):
         return PaymentDetailsSberDepOrderSerializer(payment_details).data
@@ -49,6 +67,11 @@ def payment_details_payload_for_in_order(in_order) -> dict:
         if requisite_payload_has_fields(req):
             return req
     ps_name = in_order.solution.payment_system.name if in_order.solution and in_order.solution.payment_system else ""
+    concored_ps = {CONCORDED_KBZPAY_PS_NAME, CONCORDED_WAVEPAY_PS_NAME}
+    if ps_name in concored_ps:
+        return {}
+    if in_order.payment_details is None:
+        return {}
     return payment_details_payload_for_order(in_order.payment_details, ps_name)
 
 
@@ -127,7 +150,7 @@ class InOrderTraderFullSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class InOrderTraderBossListSerializer(serializers.ModelSerializer):
@@ -189,7 +212,45 @@ class InOrderTraderBossFullSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        return _attach_pic_url(representation, instance)
+
+
+def _attach_psp_reference(representation: dict, in_order) -> dict:
+    from payments.models import PayIn
+    from payments.psp_payin import psp_external_reference
+
+    pay_in = PayIn.objects.filter(order_id=in_order.pk).first()
+    representation["pay_in_id"] = str(pay_in.id) if pay_in else ""
+    ref = psp_external_reference(pay_in) if pay_in else None
+    representation["psp_provider"] = ref["psp_provider"] if ref else ""
+    representation["psp_provider_order_id"] = ref["psp_provider_order_id"] if ref else ""
+    return representation
+
+
+def _attach_pic_url(representation: dict, instance) -> dict:
+    from payments.models import PayIn
+    from payments.utils import public_storage_url
+
+    pic = (getattr(instance, "pic", None) or "").strip()
+    if not pic:
+        pay_in = PayIn.objects.filter(order_id=instance.pk).first()
+        if pay_in:
+            try:
+                from appeals.models import PayInAppeal
+
+                appeal = (
+                    PayInAppeal.objects.filter(pay_in=pay_in)
+                    .exclude(receipt_url="")
+                    .order_by("-created_at")
+                    .first()
+                )
+                if appeal:
+                    pic = appeal.receipt_url
+            except Exception:
+                pass
+    if pic:
+        representation["pic"] = public_storage_url(pic)
+    return representation
 
 
 class InOrderSupportListSerializer(serializers.ModelSerializer):
@@ -224,7 +285,7 @@ class InOrderSupportListSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        return _attach_psp_reference(representation, instance)
 
 
 class InOrderSupportSerializer(serializers.ModelSerializer):
@@ -261,7 +322,8 @@ class InOrderSupportSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        representation = _attach_psp_reference(representation, instance)
+        return _attach_pic_url(representation, instance)
 
 
 class InOrderMerchantListSerializer(serializers.ModelSerializer):
@@ -305,7 +367,7 @@ class InOrderMerchantSerializer(serializers.ModelSerializer):
         representation['traffic_type'] = instance.solution.traffic.name
         representation['customer_id'] = instance.pay_in.get().client.client_id
         # representation['customer_id'] = "000303033"
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class InOrderTeamLeadSerializer(serializers.ModelSerializer):
@@ -379,7 +441,7 @@ class OutOrderTraderFullSerializer(serializers.ModelSerializer):
         representation['traffic_type'] = instance.solution.traffic.name
         representation['owner'] = instance.payment_details.group.owner
         representation['expires_at'] = (instance.solution.payment_system.expired_time_out + instance.creation_date).timestamp()
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderTraderBossListSerializer(serializers.ModelSerializer):
@@ -424,7 +486,7 @@ class OutOrderTraderBossFullSerializer(serializers.ModelSerializer):
         representation['trader'] = instance.payment_details.group.trader.user.username if instance.payment_details is not None else None
         representation['owner'] = instance.payment_details.group.owner if instance.payment_details is not None else None
         representation['expires_at'] = (instance.solution.payment_system.expired_time_out + instance.creation_date).timestamp()
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderSupportListSerializer(serializers.ModelSerializer):
@@ -479,7 +541,7 @@ class OutOrderSupportSerializer(serializers.ModelSerializer):
         representation['customer_id'] = instance.pay_out.get().client.client_id if instance.pay_out.exists() else None
         representation['expires_at'] = (instance.solution.payment_system.expired_time_out + instance.creation_date).timestamp()
 
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderMerchantListSerializer(serializers.ModelSerializer):
@@ -501,7 +563,7 @@ class OutOrderMerchantListSerializer(serializers.ModelSerializer):
         representation['traffic_type'] = instance.solution.traffic.name
         # representation['customer_id'] = instance.pay_out.get().client.client_id
         # representation['customer_id'] = "000303033"
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderMerchantSerializer(serializers.ModelSerializer):
@@ -523,7 +585,7 @@ class OutOrderMerchantSerializer(serializers.ModelSerializer):
         representation['traffic_type'] = instance.solution.traffic.name
         representation['customer_id'] = instance.pay_out.get().client.client_id if instance.pay_out.exists() else None
         # representation['customer_id'] = "000303033"
-        return representation
+        return _attach_pic_url(representation, instance)
 
 
 class OutOrderTeamLeadSerializer(serializers.ModelSerializer):
@@ -573,8 +635,16 @@ class TransactionMerchantSerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         representation['transaction_type'] = instance.transaction_type.name
         user = self.context['request'].user
-        user_balance = user.merchant.balance
-        representation['is_incoming'] = instance.is_incoming(user_balance)
+        representation['is_incoming'] = instance.to_balance_id in merchant_balance_ids(user.merchant)
+        representation['currency'] = _transaction_currency(instance, self.context)
+        order = instance.linked_in_order or instance.linked_out_order
+        representation['value'] = _transaction_gross_amount(instance)
+        representation['fee'] = order.merchant_fee if order is not None else None
+        representation['order_status'] = (
+            order.status.name if order is not None and order.status_id else None
+        )
+        if instance.linked_out_order_id and representation['transaction_type'] == 'Charge':
+            representation['transaction_type'] = 'Withdrawal'
         return representation
 
 
@@ -587,8 +657,16 @@ class TransactionSubMerchantSerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         representation['transaction_type'] = instance.transaction_type.name
         user = self.context['request'].user
-        user_balance = user.submerchant.merchant.balance
-        representation['is_incoming'] = instance.is_incoming(user_balance)
+        representation['is_incoming'] = instance.to_balance_id in merchant_balance_ids(user.submerchant.merchant)
+        representation['currency'] = _transaction_currency(instance, self.context)
+        order = instance.linked_in_order or instance.linked_out_order
+        representation['value'] = _transaction_gross_amount(instance)
+        representation['fee'] = order.merchant_fee if order is not None else None
+        representation['order_status'] = (
+            order.status.name if order is not None and order.status_id else None
+        )
+        if instance.linked_out_order_id and representation['transaction_type'] == 'Charge':
+            representation['transaction_type'] = 'Withdrawal'
         return representation
 
 
@@ -655,7 +733,7 @@ class WithdrawalRequestSupportSerializer(serializers.ModelSerializer):
 
 class WithdrawalRequestCreateSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=32, decimal_places=2, validators=[MinValueValidator(0)])
-    address = serializers.CharField(max_length=42)
+    address = serializers.CharField(max_length=50)
 
 
 class WithdrawalRequestApproveSerializer(serializers.Serializer):

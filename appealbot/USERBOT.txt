@@ -1,0 +1,68 @@
+Юзербот апелляций (как у GiPay: «человек» в чате, не BotFather)
+
+Почему так
+  Telegram Bot API не отдаёт сообщения других ботов. Mel Transaction Bot
+  пишет тикеты в группу AvaPay| Melbet | Support 1 — обычный appealbot их
+  не видит и не может нажать ✅ Подтвердить / ❌ Отклонить.
+  Нужен отдельный Telegram-АККАУНТ (не бот), который сидит в этой группе.
+  Telethon логинится этим аккаунтом и:
+    1) забирает тикет (текст + PDF) и шлёт в наш process_message/
+    2) опционально жмёт кнопку Mel Transaction Bot, когда провайдер
+       подтвердил/отклонил (USERBOT_CLICK_INLINE=1)
+
+Аккаунт
+  1. Отдельная SIM / отдельный Telegram. Не личный, не аккаунт из чатов
+     провайдеров.
+  2. Имя любое нейтральное. В группу мерчанта добавить как участника
+     (админ не обязателен).
+  3. Не добавлять этот аккаунт в чаты провайдеров.
+  4. Включить 2FA после первого входа (пароль — в TELEGRAM_2FA_PASSWORD
+     только на время login-скрипта, в .env сервера его держать не нужно).
+
+API id / hash (один раз)
+  1. С ЭТОГО же аккаунта открыть https://my.telegram.org
+  2. API development tools → создать приложение (Platform: Other).
+  3. Скопировать api_id и api_hash → TELEGRAM_API_ID / TELEGRAM_API_HASH.
+     Это не токен BotFather.
+
+Сессия (один раз, интерактивно — нужен код из Telegram)
+  На машине, где вы можете ввести код:
+
+    TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=hex \\
+      docker compose --profile userbot run --rm -it --no-deps \\
+      appeal-userbot python userbot_login.py
+
+  Скрипт напечатает TELEGRAM_SESSION_STRING=...
+  Вставить в server .env. Строку никому не слать: это полный вход в аккаунт.
+
+.env на сервере
+  TELEGRAM_API_ID=...
+  TELEGRAM_API_HASH=...
+  TELEGRAM_SESSION_STRING=...
+  USERBOT_WATCH_CHAT_IDS=-100xxxxxxxxxx   # id группы Support 1 (необязательно, но лучше)
+  USERBOT_SOURCE_USERNAMES=               # пусто = любой бот в этих чатах;
+                                          # иначе username Mel Transaction Bot без @
+  USERBOT_CLICK_INLINE=0                  # 1 — жать Подтвердить/Отклонить после резолва
+
+  Узнать chat id: в группе уже есть /init; либо переслать любое сообщение
+  боту @userinfobot / смотреть логи appealbot.
+
+Запуск
+  docker compose --profile userbot up -d --build appeal-userbot
+  docker compose logs -f appeal-userbot
+
+  Сначала оставьте CLICK_INLINE=0 и проверьте, что по новому тикету Mel
+  Transaction Bot в группе появляется реакция 👀 и апелляция уходит провайдеру
+  (в чат провайдера — только id, без имени мерчанта).
+
+Кнопки Mel Transaction Bot
+  USERBOT_CLICK_INLINE=1 после того как ingest стабилен. Юзербот поллит
+  pending_inline_clicks/ и жмёт ту же кнопку на том же message_id, с которого
+  забрали тикет. «Запросить доп информацию» не нажимается.
+
+Ограничения Telegram
+  Юзербот формально против ToS. Держите аккаунт тихим: только эта группа,
+  без массовых рассылок. При бане — новая SIM + новая сессия.
+
+Обычный appealbot (BotFather) оставляйте: /init, человеческие форварды,
+реакции «Успех» на наш message_id.
