@@ -40,7 +40,6 @@ TEST_TRADER_COUNTERPARTY_NAME = os.environ.get(
 )
 
 PROVIDERS = [
-    {"name": "BotonPay", "psp_provider": "botonpay"},
     {"name": "BitZone", "psp_provider": "bitzone"},
     {"name": "Protocol", "psp_provider": "protocol"},
     {"name": "GiPay", "psp_provider": "gipay"},

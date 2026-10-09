@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from trade.routing.ps_names import routing_payment_systems
 from trade.routing.routeutils import get_teams_for_payment_systems, in_order_amount_q
-from payments.psp_payin import psp_trader_usernames
+from payments.psp_payin import DISABLED_PSP_TRADER_USERNAMES, psp_trader_usernames
 
 
 class SberRouting:
@@ -25,7 +25,7 @@ class SberRouting:
             payment_system__in=route_ps,
             in_active=True,
             trader__blocked=False,
-        ).filter(balance_ok)
+        ).exclude(trader__user__username__in=DISABLED_PSP_TRADER_USERNAMES).filter(balance_ok)
         psp_q = Q(trader__user__username__in=psp_users)
         regular_q = Q(trader__team__in=teams, allowed_traffic=traffic_type)
         possible_options = base.filter(psp_q | regular_q).distinct()
@@ -155,7 +155,7 @@ class SberRouting:
             amount__gte=amount,
             trader__blocked=False,
             deposit_number_on=False,
-        ).filter(Q(allowed_traffic=traffic_type) | psp_q).distinct()
+        ).exclude(trader__user__username__in=DISABLED_PSP_TRADER_USERNAMES).filter(Q(allowed_traffic=traffic_type) | psp_q).distinct()
 
         possible_groups = possible_groups.exclude(trader__in=excluded)
 

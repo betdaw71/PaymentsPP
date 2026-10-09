@@ -2,7 +2,7 @@
 Django shell: мерчант Alemkredit — KZT трансгран (C2CKZT), pay-in 8%.
 
 Создаёт пользователя, Merchant, MerchantSolution (STD + FTD), API-креды.
-Роутинг на PSP (BotonPay / Bitzone / PayMap) общий для C2CKZT — отдельно не настраивается.
+Роутинг на PSP (Bitzone и др.) общий для C2CKZT — отдельно не настраивается.
 
 Запуск на сервере:
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_create_alemkredit_merchant.py
@@ -70,8 +70,7 @@ def run(password: str = DEFAULT_PASSWORD) -> dict:
     ps = PaymentSystem.objects.filter(name=PS_NAME, currency=currency).first()
     if ps is None:
         raise SystemExit(
-            f"PaymentSystem {PS_NAME} not found — создайте через shell_create_melbet_test_merchant.py "
-            "или shell_create_botonpay_trader.py"
+            f"PaymentSystem {PS_NAME} not found — создайте PS C2CKZT заранее"
         )
     print(f"  ~ PaymentSystem {ps.name} ({ps.id})")
 

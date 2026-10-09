@@ -306,7 +306,7 @@ class SyndicatePayInSession(models.Model):
 
 
 class BotonpayPayInSession(models.Model):
-    """Связка PayIn ↔ сделка BotonPay (POST /api/public/v1/deals)."""
+    """Историческая связка PayIn ↔ BotonPay (провайдер отключён)."""
 
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="botonpay_session")
@@ -352,7 +352,7 @@ class ConcoredPayInSession(models.Model):
 
 
 class PaymapPayInSession(models.Model):
-    """Связка PayIn ↔ PayMap (API v2 fiat invoice, KZT)."""
+    """Историческая связка PayIn ↔ PayMap (провайдер отключён)."""
 
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     pay_in = models.OneToOneField(to="PayIn", on_delete=models.CASCADE, related_name="paymap_session")

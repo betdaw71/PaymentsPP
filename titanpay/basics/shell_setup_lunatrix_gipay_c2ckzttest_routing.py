@@ -49,7 +49,7 @@ from payments.models import GipayPayInSession
 from payments.psp_payin import complete_inorder_from_psp_webhook, psp_trader_usernames
 from trade.models import InOrder
 
-PS_NAME = (getattr(settings, "BOTONPAY_TEST_PS_NAME", None) or "C2CKZTTEST").strip()
+PS_NAME = (getattr(settings, "PLUTUS_TEST_PS_NAME", None) or "C2CKZTTEST").strip()
 MERCHANT_USERNAME = "lunatrixpay"
 TRAFFIC_NAME = "Standard"
 TEAM_NAME = "GiPay KZT"

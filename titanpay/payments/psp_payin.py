@@ -12,6 +12,9 @@ from rest_framework.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
+# Retired PSP traders: never route, never treat as virtual providers.
+DISABLED_PSP_TRADER_USERNAMES = frozenset({"botonpay1", "paymap_kzt"})
+
 
 def decline_payin(pay_in: Any, *, send_callback: bool = True) -> None:
     """Declined без callback при create-fail; совместимо со старым PayIn.declined() без kwargs."""
@@ -38,11 +41,9 @@ def is_psp_trader(trader) -> bool:
     from payments import playments_client as plc
     from payments import astrum_client as asc
     from payments import concored_client as cc
-    from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
     from payments import plutus_client as plc2
     from payments import syndicate_client as syc
-    from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
@@ -56,11 +57,9 @@ def is_psp_trader(trader) -> bool:
         or plc.is_playments_trader(trader)
         or asc.is_astrum_trader(trader)
         or cc.is_concored_trader(trader)
-        or pmc.is_paymap_trader(trader)
         or bzc.is_bitzone_trader(trader)
         or plc2.is_plutus_trader(trader)
         or syc.is_syndicate_trader(trader)
-        or bpc.is_botonpay_trader(trader)
         or gpc.is_gipay_trader(trader)
         or vxc.is_visionx_trader(trader)
         or ppc.is_payplat_trader(trader)
@@ -331,7 +330,6 @@ _SHARE_USERNAME_ALIASES = {
     "bitzone": "bitzone1",
     "plutus": "plutus1",
     "protocol": "protocol1",
-    "botonpay": "botonpay1",
 }
 
 
@@ -621,11 +619,9 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import playments_client as plc
     from payments import astrum_client as asc
     from payments import concored_client as cc
-    from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
-    from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
@@ -639,11 +635,9 @@ def psp_trader_usernames() -> frozenset[str]:
         plc.playments_trader_username(),
         asc.astrum_trader_username(),
         cc.concored_trader_username(),
-        pmc.paymap_trader_username(),
         bzc.bitzone_trader_username(),
         pltc.plutus_trader_username(),
         syc.syndicate_trader_username(),
-        bpc.botonpay_trader_username(),
         gpc.gipay_trader_username(),
         vxc.visionx_trader_username(),
         ppc.payplat_trader_username(),
@@ -660,7 +654,8 @@ def psp_trader_usernames() -> frozenset[str]:
         names.update(u.strip() for u in extra.split(",") if u.strip())
     elif isinstance(extra, (list, tuple, set)):
         names.update(str(u).strip() for u in extra if str(u).strip())
-    return frozenset(n for n in names if n)
+    disabled = {n.lower() for n in DISABLED_PSP_TRADER_USERNAMES}
+    return frozenset(n for n in names if n and n.lower() not in disabled)
 
 
 def filter_inorders_for_trader_lk(qs):
@@ -694,11 +689,9 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
-    from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
-    from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
@@ -711,11 +704,9 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         pc.protocol_requisite_for_payin,
         plc.playments_requisite_for_payin,
         cc.concored_requisite_for_payin,
-        pmc.paymap_requisite_for_payin,
         bzc.bitzone_requisite_for_payin,
         pltc.plutus_requisite_for_payin,
         syc.syndicate_requisite_for_payin,
-        bpc.botonpay_requisite_for_payin,
         gpc.gipay_requisite_for_payin,
         vxc.visionx_requisite_for_payin,
         ppc.payplat_requisite_for_payin,
@@ -734,11 +725,9 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
-    from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
-    from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
@@ -750,11 +739,9 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = pc.enrich_payin_payment_details(representation, pay_in)
     representation = plc.enrich_payin_payment_details(representation, pay_in)
     representation = cc.enrich_payin_payment_details(representation, pay_in)
-    representation = pmc.enrich_payin_payment_details(representation, pay_in)
     representation = bzc.enrich_payin_payment_details(representation, pay_in)
     representation = pltc.enrich_payin_payment_details(representation, pay_in)
     representation = syc.enrich_payin_payment_details(representation, pay_in)
-    representation = bpc.enrich_payin_payment_details(representation, pay_in)
     return ppc2.enrich_payin_payment_details(
         loc.enrich_payin_payment_details(
             ppc.enrich_payin_payment_details(
@@ -835,11 +822,9 @@ def _psp_provider_for_trader(trader):
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
-    from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
-    from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
@@ -860,8 +845,6 @@ def _psp_provider_for_trader(trader):
         return "payplat", ppc.try_attach_payplat_session
     if ec.is_expayone_trader(trader):
         return "expayone", ec.try_attach_expayone_session
-    if bpc.is_botonpay_trader(trader):
-        return "botonpay", bpc.try_attach_botonpay_session
     if bzc.is_bitzone_trader(trader):
         return "bitzone", bzc.try_attach_bitzone_session
     if pltc.is_plutus_trader(trader):
@@ -874,8 +857,6 @@ def _psp_provider_for_trader(trader):
         return "playments", plc.try_attach_playments_session
     if cc.is_concored_trader(trader):
         return "concored", cc.try_attach_concored_session
-    if pmc.is_paymap_trader(trader):
-        return "paymap", pmc.try_attach_paymap_session
     return None, None
 
 
@@ -1120,11 +1101,9 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import protocol_client as pc
     from payments import playments_client as plc
     from payments import concored_client as cc
-    from payments import paymap_client as pmc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
     from payments import syndicate_client as syc
-    from payments import botonpay_client as bpc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
     from payments import payplat_client as ppc
@@ -1136,11 +1115,9 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     pc.protocol_cancel_if_linked(pay_in)
     plc.playments_cancel_if_linked(pay_in)
     cc.concored_cancel_if_linked(pay_in)
-    pmc.paymap_cancel_if_linked(pay_in)
     bzc.bitzone_cancel_if_linked(pay_in)
     pltc.plutus_cancel_if_linked(pay_in)
     syc.syndicate_cancel_if_linked(pay_in)
-    bpc.botonpay_cancel_if_linked(pay_in)
     gpc.gipay_cancel_if_linked(pay_in)
     vxc.visionx_cancel_if_linked(pay_in)
     ppc.payplat_cancel_if_linked(pay_in)

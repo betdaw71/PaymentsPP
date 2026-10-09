@@ -420,7 +420,7 @@ PAYPLAT_TEST_PS_NAME = os.getenv('PAYPLAT_TEST_PS_NAME', 'C2CKZTTEST')
 # JSON: requisite_type для PayPlat (h2h + payer=kz → сумма в тенге)
 PAYPLAT_REQUISITE_TYPE_MAP = os.getenv(
     'PAYPLAT_REQUISITE_TYPE_MAP',
-    '{"C2C":"h2h","C2CKZT":"h2h","C2CKZTTEST":"h2h","QRKGS":"lkq","PHONEKZT":"mobile"}',
+    '{"C2C":"h2h","C2CKZT":"h2h","C2CKZTTEST":"h2h","QRKGS":"lkq","C2CKGS":"card","PHONEKGS":"mobile","PHONEKZT":"mobile"}',
 )
 PAYPLAT_REQUISITE_TYPE = os.getenv('PAYPLAT_REQUISITE_TYPE', 'h2h')
 PAYPLAT_BANK_MAP = os.getenv('PAYPLAT_BANK_MAP', '')
@@ -531,18 +531,10 @@ SYNDICATE_BANK_MAP = os.getenv('SYNDICATE_BANK_MAP', '')
 SYNDICATE_DEFAULT_BANK = os.getenv('SYNDICATE_DEFAULT_BANK', 'any-bank')
 SYNDICATE_WEBHOOK_SKIP_VERIFY = os.getenv('SYNDICATE_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
 
-# BotonPay PSP (https://botonpay.org/api-docs) — pay-in deals, KZT transgran / multi-fiat
-BOTONPAY_API_BASE = os.getenv('BOTONPAY_API_BASE', 'https://botonpay.org/api/public/v1').rstrip('/')
-BOTONPAY_API_KEY = os.getenv('BOTONPAY_API_KEY', '')
-BOTONPAY_WEBHOOK_SECRET = os.getenv('BOTONPAY_WEBHOOK_SECRET', '')
-BOTONPAY_TRADER_USERNAME = os.getenv('BOTONPAY_TRADER_USERNAME', 'botonpay1')
-BOTONPAY_WEBHOOK_SKIP_VERIFY = os.getenv('BOTONPAY_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
-BOTONPAY_TEST_PS_NAME = os.getenv('BOTONPAY_TEST_PS_NAME', 'C2CKZTTEST')
-
 # Melbet KZT ledger: usernames with C2CKZT settlement (prod + melbet_test sandbox)
 MELBET_KZT_USERNAMES = os.getenv('MELBET_KZT_USERNAMES', 'melbet,melbet_test')
 MELBET_KZT_PS_NAMES = os.getenv('MELBET_KZT_PS_NAMES', 'C2CKZT,PHONEKZT')
-MELBET_KGS_PS_NAMES = os.getenv('MELBET_KGS_PS_NAMES', 'QRKGS')
+MELBET_KGS_PS_NAMES = os.getenv('MELBET_KGS_PS_NAMES', 'QRKGS,C2CKGS,PHONEKGS')
 # Staging: force C2CKZT pay-in routing to this trader (non-PSP local test)
 MELBET_KZT_TEST_TRADER_USERNAME = os.getenv('MELBET_KZT_TEST_TRADER_USERNAME', '')
 # Melbet redirect: probe nearby amounts when routing/PSP cascade fails (KZT step e.g. ±20)
@@ -567,16 +559,6 @@ CONCORDED_AMOUNT_MINOR_FACTOR = int(os.getenv('CONCORDED_AMOUNT_MINOR_FACTOR', '
 CONCORDED_KBZPAY_PS_NAME = os.getenv('CONCORDED_KBZPAY_PS_NAME', 'KBZPay')
 CONCORDED_WAVEPAY_PS_NAME = os.getenv('CONCORDED_WAVEPAY_PS_NAME', 'WavePay')
 C2CMMK_NAME = os.getenv('C2CMMK_NAME', 'C2CMMK')
-
-# PayMap PSP (API v2, KZT; docs http://docs.paymap.me; API host europe.paymap.me; callback /api/v1/webhooks/psp/paymap/)
-PAYMAP_API_BASE = os.getenv('PAYMAP_API_BASE', 'https://europe.paymap.me').rstrip('/')
-PAYMAP_API_KEY = os.getenv('PAYMAP_API_KEY', '')
-PAYMAP_TRADER_USERNAME = os.getenv('PAYMAP_TRADER_USERNAME', 'paymap_kzt')
-PAYMAP_DEFAULT_INVOICE_TYPE = os.getenv('PAYMAP_DEFAULT_INVOICE_TYPE', 'CARD')
-PAYMAP_INVOICE_TYPE_MAP = os.getenv('PAYMAP_INVOICE_TYPE_MAP', '')
-PAYMAP_TARGET_BANK_MAP = os.getenv('PAYMAP_TARGET_BANK_MAP', '')
-PAYMAP_INVOICE_LIFETIME_MINUTES = int(os.getenv('PAYMAP_INVOICE_LIFETIME_MINUTES', '15'))
-PAYMAP_CANCEL_ON_DECLINE = os.getenv('PAYMAP_CANCEL_ON_DECLINE', '').strip().lower() in ('1', 'true', 'yes')
 
 # Playments PSP (TRY bank transfer H2H pay-in / pay-out)
 PLAYMENTS_API_BASE = os.getenv('PLAYMENTS_API_BASE', 'https://api.playments.world').rstrip('/')

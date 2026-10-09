@@ -25,11 +25,9 @@ from payments.protocol_views import ProtocolWebhookView
 from payments.playments_views import PlaymentsDepositWebhookView, PlaymentsWithdrawalWebhookView
 from payments.astrum_views import AstrumPayinWebhookView, AstrumPayoutWebhookView
 from payments.concored_views import ConcoredWebhookView
-from payments.paymap_views import PaymapWebhookView
 from payments.bitzone_views import bitzone_webhook_view
 from payments.plutus_views import plutus_webhook_view
 from payments.syndicate_views import syndicate_webhook_view
-from payments.botonpay_views import botonpay_webhook_view
 from payments.gipay_views import GipayWebhookView
 from payments.layerone_views import LayeroneWebhookView
 from payments.visionx_views import VisionxWebhookView
@@ -66,11 +64,9 @@ urlpatterns = [
     path('api/v1/webhooks/psp/astrum/payout/', AstrumPayoutWebhookView.as_view(), name='webhook-astrum-payout'),
     path('api/v1/webhooks/psp/astrum/payin/', AstrumPayinWebhookView.as_view(), name='webhook-astrum-payin'),
     path('api/v1/webhooks/psp/concored/', ConcoredWebhookView.as_view(), name='webhook-concored'),
-    path('api/v1/webhooks/psp/paymap/', PaymapWebhookView.as_view(), name='webhook-paymap'),
     path('api/v1/webhooks/psp/bitzone/', bitzone_webhook_view, name='webhook-bitzone'),
     path('api/v1/webhooks/psp/plutus/', plutus_webhook_view, name='webhook-plutus'),
     path('api/v1/webhooks/psp/syndicate/', syndicate_webhook_view, name='webhook-syndicate'),
-    path('api/v1/webhooks/psp/botonpay/', botonpay_webhook_view, name='webhook-botonpay'),
     path('api/v1/webhooks/psp/gipay', GipayWebhookView.as_view(), name='webhook-gipay-no-slash'),
     path('api/v1/webhooks/psp/gipay/', GipayWebhookView.as_view(), name='webhook-gipay'),
     path('api/v1/webhooks/psp/layerone', LayeroneWebhookView.as_view(), name='webhook-layerone-no-slash'),

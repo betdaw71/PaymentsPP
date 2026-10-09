@@ -224,7 +224,7 @@ def _summarize(label: str, merchant: str, start: datetime, end: datetime) -> dic
     if routing_multi:
         print(
             f"  pay-ins with >1 routing trace: {len(routing_multi)} "
-            f"(обычно PSP fallback expayone→protocol→botonpay, не melbet probe)"
+            f"(обычно PSP fallback, не amount probe)"
         )
 
     stats = _print_conversion(payins, in_orders)
