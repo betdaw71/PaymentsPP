@@ -80,8 +80,7 @@ def visionx_cross_border_currency_for(
     cur = (payin_currency or "").strip().upper()
     if cur and cur in by_payin:
         return _opt_str(by_payin[cur])
-    defaults = {"KZT": "TJS", "RUB": "TJS"}
-    return defaults.get(cur)
+    return None
 
 
 def visionx_cross_border_requisite_type_for(payment_system_name: str | None) -> str | None:
@@ -246,27 +245,24 @@ def visionx_create_invoice(
     cancel_url: str | None = None,
     pay_in=None,
 ) -> tuple[bool, dict[str, Any] | str]:
+    cb_currency = (cross_border_currency or "").strip().upper() or None
     payload: dict[str, Any] = {
+        "internalId": internal_id,
         "type": "in",
+        "paymentOption": payment_option or "CROSS_BORDER",
+        "paymentMethod": payment_method,
+        "crossBorderCurrency": cb_currency,
+        "crossBorderRequisiteType": cross_border_requisite_type,
+        "userId": user_id or internal_id,
         "amount": _format_amount(amount),
         "currency": currency.upper(),
         "notificationUrl": notification_url,
-        "notificationToken": notification_token,
-        "internalId": internal_id,
-        "userId": user_id or internal_id,
-        "startDeal": True,
+        "successUrl": (success_url or "").strip() or "http://success",
+        "cancelUrl": (cancel_url or "").strip() or "http://fail",
         "strictlySingleTransfer": True,
-        "paymentOption": payment_option or "CROSS_BORDER",
-        "paymentMethod": payment_method,
+        "notificationToken": notification_token,
+        "startDeal": True,
     }
-    option = str(payload["paymentOption"] or "").upper()
-    if option == "CROSS_BORDER":
-        payload["crossBorderCurrency"] = (cross_border_currency or "").upper() or None
-        payload["crossBorderRequisiteType"] = cross_border_requisite_type
-    if success_url:
-        payload["successUrl"] = success_url
-    if cancel_url:
-        payload["cancelUrl"] = cancel_url
     return _request("POST", "/api/merchant/invoices", json_payload=payload, pay_in=pay_in)
 
 
