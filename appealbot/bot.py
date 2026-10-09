@@ -242,6 +242,7 @@ _PSP_LOOKUP_ORDER = (
     "gipay",
     "layerone",
     "patriotpay",
+    "prochub",
     "botonpay",
     "bitzone",
     "fairpay",

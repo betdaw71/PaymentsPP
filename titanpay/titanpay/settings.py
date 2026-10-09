@@ -411,6 +411,22 @@ PATRIOTPAY_PAYER_USER_ID_FROM_CLIENT = os.getenv('PATRIOTPAY_PAYER_USER_ID_FROM_
 PATRIOTPAY_WEBHOOK_SKIP_VERIFY = os.getenv('PATRIOTPAY_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
 PATRIOTPAY_CALLBACK_URL = os.getenv('PATRIOTPAY_CALLBACK_URL', '')
 
+# Prochub PSP (https://prochub.pro, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/prochub/)
+PROCHUB_API_BASE = os.getenv('PROCHUB_API_BASE', 'https://prochub.pro').rstrip('/')
+PROCHUB_API_KEY = os.getenv('PROCHUB_API_KEY', '')
+PROCHUB_SECRET_KEY = os.getenv('PROCHUB_SECRET_KEY', '')
+PROCHUB_MERCHANT_ID = os.getenv('PROCHUB_MERCHANT_ID', '')
+PROCHUB_TRADER_USERNAME = os.getenv('PROCHUB_TRADER_USERNAME', 'prochub1')
+PROCHUB_INVOICE_TYPE = os.getenv('PROCHUB_INVOICE_TYPE', 'CARD')
+PROCHUB_INVOICE_TYPE_MAP = os.getenv(
+    'PROCHUB_INVOICE_TYPE_MAP',
+    '{"C2CKZT":"CARD","C2C":"CARD","C2CKZTTEST":"CARD","PHONEKZT":"MOBILE_COM"}',
+)
+PROCHUB_BANK_CODE = os.getenv('PROCHUB_BANK_CODE', '')
+PROCHUB_INVOICE_LIFETIME_MINUTES = int(os.getenv('PROCHUB_INVOICE_LIFETIME_MINUTES', '15') or '15')
+PROCHUB_WEBHOOK_SKIP_VERIFY = os.getenv('PROCHUB_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+PROCHUB_CALLBACK_URL = os.getenv('PROCHUB_CALLBACK_URL', '')
+
 # PayPlat PSP (https://payplat.su, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/payplat/)
 PAYPLAT_API_BASE = os.getenv('PAYPLAT_API_BASE', 'https://payplat.su/test/api').rstrip('/')
 PAYPLAT_SHOP_ID = os.getenv('PAYPLAT_SHOP_ID', '')
@@ -463,7 +479,7 @@ PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mo
 # JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
 PSP_ROUTING_PRIORITY_MAP = os.getenv(
     'PSP_ROUTING_PRIORITY_MAP',
-    '{"payplat1": 1, "gipay1": 2, "bitzone1": 3}',
+    '{"payplat1": 1, "gipay1": 2, "bitzone1": 3, "prochub1": 4}',
 )
 # JSON: доля трафика PSP в % за скользящее окно. Пустой {} = только каскад по приоритету.
 # Пример: {"payplat1": 70, "gipay1": 30}. Доли нормализуются среди провайдеров,

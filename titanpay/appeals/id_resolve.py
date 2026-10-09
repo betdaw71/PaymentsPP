@@ -172,6 +172,7 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
         LayeronePayInSession,
         PayplatPayInSession,
         PatriotpayPayInSession,
+        ProchubPayInSession,
         VisionxPayInSession,
     )
 
@@ -200,6 +201,10 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 
     session = PatriotpayPayInSession.objects.filter(provider_deal_id=str(parsed)).select_related("pay_in").first()
+    if session and session.pay_in_id:
+        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
+
+    session = ProchubPayInSession.objects.filter(provider_invoice_id=str(parsed)).select_related("pay_in").first()
     if session and session.pay_in_id:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 
@@ -311,6 +316,7 @@ def _pay_in_for_psp_id(value: str) -> PayIn | None:
         SyndicatePayInSession,
         VisionxPayInSession,
         PatriotpayPayInSession,
+        ProchubPayInSession,
     )
 
     candidate = (value or "").strip()
@@ -330,6 +336,8 @@ def _pay_in_for_psp_id(value: str) -> PayIn | None:
         (PatriotpayPayInSession, {"provider_invoice_id": candidate}),
         (PatriotpayPayInSession, {"provider_deal_id": candidate}),
         (PatriotpayPayInSession, {"external_id": candidate}),
+        (ProchubPayInSession, {"provider_invoice_id": candidate}),
+        (ProchubPayInSession, {"external_id": candidate}),
         (PayplatPayInSession, {"provider_order_id": candidate}),
         (PayplatPayInSession, {"external_id": candidate}),
         (BitzonePayInSession, {"provider_transaction_id": candidate}),
