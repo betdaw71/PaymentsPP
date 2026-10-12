@@ -82,6 +82,11 @@ def _best_success_body(pay_in, session, *, direction: str, outcome_fn):
         if outcome_fn(body) != "success":
             continue
         paid = parse_psp_webhook_paid_amount(body)
+        from payments.bitzone_client import bitzone_completed_recalc_paid_amount
+
+        bz_paid = bitzone_completed_recalc_paid_amount(body, current)
+        if bz_paid is not None:
+            paid = bz_paid
         if paid is None:
             continue
         paid = q2(paid)

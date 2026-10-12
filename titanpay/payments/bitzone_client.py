@@ -413,6 +413,9 @@ def bitzone_completed_recalc_paid_amount(body: dict | None, current_amount) -> D
         current = Decimal(str(current_amount))
     except (InvalidOperation, ValueError, TypeError):
         return None
+    q = Decimal("0.01")
+    fiat = fiat.quantize(q)
+    current = current.quantize(q)
     if fiat != current:
         return fiat
     return None

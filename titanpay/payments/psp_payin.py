@@ -1306,7 +1306,9 @@ def handle_psp_success_webhook(order, webhook_body: dict | None) -> str:
         if bz_paid is not None:
             paid_amount = bz_paid
         allow_recalc = psp_success_webhook_allows_completed_recalc(webhook_body)
-        if allow_recalc and paid_amount and paid_amount != order.amount:
+        paid_q = paid_amount.quantize(Decimal("0.01")) if paid_amount is not None else None
+        order_q = Decimal(str(order.amount or 0)).quantize(Decimal("0.01"))
+        if allow_recalc and paid_q and paid_q != order_q:
             old_amount = order.amount
             if order.apply_psp_completed_recalc(paid_amount):
                 logger.info(
