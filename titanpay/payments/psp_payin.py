@@ -1300,6 +1300,11 @@ def handle_psp_success_webhook(order, webhook_body: dict | None) -> str:
     paid_amount = parse_psp_webhook_paid_amount(webhook_body)
     state = order.status.name if order.status else None
     if state == "Completed":
+        from payments.bitzone_client import bitzone_completed_recalc_paid_amount
+
+        bz_paid = bitzone_completed_recalc_paid_amount(webhook_body, order.amount)
+        if bz_paid is not None:
+            paid_amount = bz_paid
         allow_recalc = psp_success_webhook_allows_completed_recalc(webhook_body)
         if allow_recalc and paid_amount and paid_amount != order.amount:
             old_amount = order.amount

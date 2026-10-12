@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import SimpleTestCase
 
 from payments.bitzone_client import (
+    bitzone_completed_recalc_paid_amount,
     bitzone_success_webhook_allows_completed_recalc,
     bitzone_webhook_outcome,
 )
@@ -60,6 +61,34 @@ class BitzoneVisionxCompletedRecalcTest(SimpleTestCase):
         self.assertEqual(parse_psp_webhook_paid_amount(BITZONE_RECALC), Decimal("5004.50"))
         self.assertTrue(bitzone_success_webhook_allows_completed_recalc(BITZONE_RECALC))
         self.assertTrue(psp_success_webhook_allows_completed_recalc(BITZONE_RECALC))
+
+    def test_bitzone_completed_recalc_uses_fiat_amount_not_stale_dismerch(self):
+        body = {
+            "id": "bz-1",
+            "status": "re_calculation",
+            "cascadeId": "c1",
+            "requisite": {},
+            "fiatAmount": "4000.01",
+            "disputeTraderFiatAmount": "0.00",
+            "disputeMerchantFiatAmount": "4000.00",
+        }
+        self.assertEqual(parse_psp_webhook_paid_amount(body), Decimal("4000.00"))
+        self.assertEqual(
+            bitzone_completed_recalc_paid_amount(body, Decimal("4000.00")),
+            Decimal("4000.01"),
+        )
+
+    def test_bitzone_first_close_still_prefers_dismerch(self):
+        body = {
+            "id": "bz-1",
+            "status": "re_calculation",
+            "fiatAmount": "5100.04",
+            "disputeTraderFiatAmount": "0.00",
+            "disputeMerchantFiatAmount": "5000.04",
+        }
+        self.assertEqual(parse_psp_webhook_paid_amount(body), Decimal("5000.04"))
+        self.assertIsNone(bitzone_completed_recalc_paid_amount(body, Decimal("5000.04")))
+        self.assertIsNone(bitzone_completed_recalc_paid_amount(body, Decimal("5100.04")))
 
     def test_bitzone_second_closed_with_new_fiat_allows_recalc(self):
         closed_new = {**BITZONE_CLOSED, "fiatAmount": "5004.50"}

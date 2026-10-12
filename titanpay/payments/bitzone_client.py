@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import requests
@@ -374,6 +374,47 @@ def bitzone_webhook_outcome(body: dict) -> str | None:
         return "success"
     if status in ("canceled", "cancelled"):
         return "fail"
+    return None
+
+
+def bitzone_is_webhook_body(body: dict | None) -> bool:
+    if not isinstance(body, dict):
+        return False
+    if "disputeTraderFiatAmount" in body or "disputeMerchantFiatAmount" in body:
+        return True
+    return bool(body.get("cascadeId") and body.get("fiatAmount") is not None and "requisite" in body)
+
+
+def _positive_decimal(raw) -> Decimal | None:
+    if raw is None:
+        return None
+    try:
+        val = Decimal(str(raw).strip().replace(",", "."))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return val if val > 0 else None
+
+
+def bitzone_completed_recalc_paid_amount(body: dict | None, current_amount) -> Decimal | None:
+    """
+    После Completed Bitzone шлёт re_calculation так:
+    fiatAmount = новая сумма, disputeMerchantFiatAmount = старая (часто = текущему ордеру),
+    disputeTraderFiatAmount = 0. Обычный parse берёт disMerch и считает idempotent.
+    """
+    if not bitzone_is_webhook_body(body):
+        return None
+    status = _norm_status(body.get("status")).replace("-", "_")
+    if status not in ("re_calculation", "recalculation"):
+        return None
+    fiat = _positive_decimal(body.get("fiatAmount"))
+    if fiat is None or current_amount is None:
+        return None
+    try:
+        current = Decimal(str(current_amount))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if fiat != current:
+        return fiat
     return None
 
 
