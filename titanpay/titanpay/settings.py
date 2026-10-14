@@ -288,7 +288,10 @@ UPI_INTENT_NAME = os.getenv('FAIRPAY_PAYMENT_SYSTEM_NAME', 'UPI Intent')
 C2C_NAME='C2C'
 C2CKZT_NAME = os.getenv('C2CKZT_NAME', 'C2CKZT')
 # Банки-PS для KZT трансграна: мерч шлёт C2C/C2CKZT, роутинг берёт группы этих PS, имя банка в реквизитах.
-KZT_C2C_BANK_PS_NAMES = os.getenv('KZT_C2C_BANK_PS_NAMES', 'Vietcombank')
+KZT_C2C_BANK_PS_NAMES = os.getenv(
+    'KZT_C2C_BANK_PS_NAMES',
+    'Vietcombank,Elkard,Kompanion,Mbank,Optima,O bank,Bai-Tushum',
+)
 # Глобальная наценка XE USD/KZT (пусто = +5%). Пер-PS перекрывает: XE_KZT_MARKUP_BY_PS.
 XE_KZT_MARKUP = os.getenv('XE_KZT_MARKUP', '')
 XE_KZT_MARKUP_BY_PS = os.getenv('XE_KZT_MARKUP_BY_PS', '{"Vietcombank":"1.04"}')
