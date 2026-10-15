@@ -1,3 +1,6 @@
+from decimal import Decimal
+from types import SimpleNamespace
+
 from django.test import SimpleTestCase
 
 from payments.bank_deeplinks import (
@@ -123,3 +126,63 @@ class MelbetPaymentPageBankTest(SimpleTestCase):
         self.assertIn("halyk-foreign-card-guide.jpg", halyk_guides[0]["image_url"])
         self.assertIn("зарубежную карту", halyk_guides[0]["caption"])
         self.assertNotIn("kaspi", halyk_guides[0]["image_url"].lower())
+
+
+def _pay_in(*, username="melbet", amount="5000", usd="10.94", currency="KZT", pic="skip"):
+    user = SimpleNamespace(username=username)
+    merchant = SimpleNamespace(user=user)
+    currency_obj = SimpleNamespace(symbol=currency)
+    order = SimpleNamespace(
+        usd_amount=Decimal(usd),
+        status=SimpleNamespace(name="Waiting for payment"),
+        pic=pic,
+    )
+    return SimpleNamespace(
+        amount=Decimal(amount),
+        currency=currency_obj,
+        merchant=merchant,
+        order=order,
+        status=SimpleNamespace(name="In Progress"),
+        payment_system=SimpleNamespace(name="C2CKZT"),
+        melbet_session=None,
+    )
+
+
+class MelbetUsdTransferQuoteTest(SimpleTestCase):
+    def test_melbet_kzt_shows_usd_not_kzt(self):
+        from payments.payment_page_enrich import transfer_quote_for_page
+
+        amt, cur = transfer_quote_for_page(_pay_in(), "KZT")
+        self.assertEqual(cur, "USD")
+        self.assertEqual(amt, Decimal("10.94"))
+
+    def test_other_merchant_keeps_kzt(self):
+        from payments.payment_page_enrich import transfer_quote_for_page
+
+        amt, cur = transfer_quote_for_page(_pay_in(username="aggrepay"), "KZT")
+        self.assertEqual(cur, "KZT")
+        self.assertEqual(amt, Decimal("5000"))
+
+    def test_enrich_clipboard_and_kaspi_use_usd(self):
+        from payments.payment_page_enrich import enrich_for_payment_page
+
+        data = {
+            "amount": "5000.00",
+            "currency": "KZT",
+            "status": "In Progress",
+            "payment_details": {
+                "card_number": "4713380055047126",
+                "bank": "Tojiksodirotbonk JSC",
+                "owner": "Rahmatova Rano",
+            },
+        }
+        out = enrich_for_payment_page(data, _pay_in(), locale="ru")
+        self.assertEqual(out["transfer_amount"], "10.94")
+        self.assertEqual(out["transfer_currency"], "USD")
+        self.assertEqual(out["amount"], "5000.00")
+        self.assertEqual(out["currency"], "KZT")
+        self.assertIn("10.94 USD", out["clipboard_text"])
+        self.assertNotIn("5000", out["clipboard_text"])
+        url = (out["bank_actions"] or [{}])[0].get("url") or ""
+        self.assertIn("10.94", url)
+        self.assertNotIn("5000", url)

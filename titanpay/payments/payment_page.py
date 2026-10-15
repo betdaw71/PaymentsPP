@@ -13,6 +13,13 @@ from payments.models import PayIn
 from payments.payment_page_enrich import resolve_locale
 
 
+def uses_melbet_hosted_page(merchant) -> bool:
+    """Клон Melbet только для этого мерчанта; выключается MELBET_PAYMENT_PAGE=0."""
+    if not getattr(settings, "MELBET_PAYMENT_PAGE_ENABLED", True):
+        return False
+    return is_melbet_merchant(merchant)
+
+
 def _page_config() -> dict:
     return {
         "api_base": getattr(settings, "PUBLIC_API_URL", "https://api.avapay.net").rstrip("/"),
@@ -33,7 +40,7 @@ def payment_page(request, pay_in_id):
         "default_locale": resolve_locale(pay_in, request.GET.get("lang")),
         **_page_config(),
     }
-    template = "payment_page/pay_melbet.html" if is_melbet_merchant(pay_in.merchant) else "payment_page/pay.html"
+    template = "payment_page/pay_melbet.html" if uses_melbet_hosted_page(pay_in.merchant) else "payment_page/pay.html"
     return render(request, template, ctx)
 
 

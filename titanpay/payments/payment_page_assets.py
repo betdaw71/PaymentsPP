@@ -14,6 +14,10 @@ _KNOWN = {
     "kaspi-step-1.jpg": "image/jpeg",
     "kaspi-step-2.jpg": "image/jpeg",
     "kaspi-step-3.jpg": "image/jpeg",
+    "kaspi-banner-1.jpg": "image/jpeg",
+    "kaspi-banner-2.jpg": "image/jpeg",
+    "kaspi-banner-3.jpg": "image/jpeg",
+    "kaspi-mark.png": "image/png",
 }
 
 

@@ -7,143 +7,239 @@
   <title>MELBET — {% if default_locale == 'kk' %}төлем{% else %}оплата{% endif %}</title>
   <style>
     :root {
-      --bg: #e8eef4; --card: #fff; --text: #1c2430; --muted: #8b95a3; --line: #e6ebf1;
-      --teal: #12a8bc; --teal-dark: #0e8fa1; --kaspi: #e30613; --warn-bg: #fff4cc;
-      --warn-text: #5c4a12; --red: #e11d2e;
+      --bg: #e8eef3; --card: #fff; --text: #1c2430; --muted: #8b95a3; --line: #e8edf2;
+      --teal: #12b7c9; --teal-dark: #0e9aab; --kaspi: #f14635; --warn-bg: #fff3c8;
+      --warn-text: #6a5414; --link: #1a8dff; --red: #e11d2e; --radius: 16px;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-      background: var(--bg); color: var(--text); min-height: 100vh;
+      background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased;
     }
-    .phone { max-width: 430px; margin: 0 auto; min-height: 100vh; background: var(--bg); }
-    .nav {
-      position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between;
-      height: 52px; padding: 0 8px; background: #f7f9fc; border-bottom: 1px solid #edf1f5;
-    }
-    .nav button { width: 40px; height: 40px; border: 0; background: transparent; color: #6b7787; font-size: 22px; cursor: pointer; }
-    .nav h1 { margin: 0; font-size: 17px; font-weight: 500; color: #6b7787; }
-    .sheet { padding: 12px 12px 28px; }
-    .card { background: var(--card); border-radius: 18px; padding: 16px; margin-bottom: 12px; }
-    .lang { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+    .frame { width: 100%; max-width: 430px; margin: 0 auto; min-height: 100vh; padding: 14px 12px 28px; }
+    .card { background: var(--card); border-radius: var(--radius); padding: 14px 14px 12px; margin-bottom: 10px; }
+    .lang { display: flex; justify-content: flex-end; }
     .lang-pill {
-      display: flex; align-items: center; gap: 8px; border: 1px solid #dbe3ec; border-radius: 12px;
-      padding: 6px 10px; font-size: 13px; background: #fff; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; border: 1px solid #dbe3ec; border-radius: 10px;
+      padding: 5px 8px 5px 6px; font-size: 13px; color: #3d4654; background: #fff; cursor: pointer;
     }
-    .brand-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .logo { font-weight: 800; letter-spacing: .04em; font-size: 22px; }
-    .logo .bar { width: 54px; height: 4px; background: var(--teal); border-radius: 2px; margin-top: 4px; }
-    .pay-id { font-size: 12px; color: var(--muted); text-align: right; line-height: 1.35; }
+    .ru-flag { width: 20px; height: 14px; border-radius: 2px; overflow: hidden; display: inline-flex; flex-direction: column; }
+    .ru-flag i { flex: 1; display: block; }
+    .ru-flag i:nth-child(1) { background: #fff; }
+    .ru-flag i:nth-child(2) { background: #0039a6; }
+    .ru-flag i:nth-child(3) { background: #d52b1e; }
+    .brand-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 6px; }
+    .melbet-logo { width: 132px; height: auto; display: block; }
+    .melbet-bar { width: 52px; height: 3px; background: var(--teal); border-radius: 2px; margin-top: 5px; }
+    .pay-id { font-size: 11px; color: var(--muted); text-align: right; line-height: 1.35; }
+    .pay-id b { color: #6b7787; font-weight: 500; font-size: 12px; }
     .chip {
-      display: inline-flex; align-items: center; gap: 6px; margin: 14px 0 10px;
-      background: #f3c84b; color: #1a1a1a; border-radius: 999px; padding: 5px 12px 5px 8px;
+      display: inline-flex; align-items: center; gap: 7px; margin: 12px 0 10px;
+      background: #1ecad8; color: #fff; border-radius: 999px; padding: 3px 12px 3px 3px;
       font-weight: 800; font-size: 13px;
     }
-    .chip-ico { width: 22px; height: 22px; border-radius: 50%; background: #2bb24c; display: grid; place-items: center; color: #fff; }
-    .pay-line { font-size: 16px; margin: 4px 0 14px; }
+    .kz-flag { width: 26px; height: 26px; display: block; }
+    .pay-line { font-size: 15px; margin: 0 0 12px; color: #3d4654; }
     .pay-line strong { color: var(--teal); }
+    .kaspi-box { border: 1px solid #eef1f4; border-radius: 14px; padding: 12px 12px 10px; }
+    .kaspi-cap { text-align: center; font-size: 13px; color: #5b6570; margin-bottom: 10px; }
     .kaspi, a.kaspi {
-      width: 100%; border: 0; border-radius: 14px; cursor: pointer; text-decoration: none;
-      background: var(--kaspi); color: #fff; display: flex; align-items: center; justify-content: center; gap: 12px;
-      padding: 14px 12px; font-size: 16px; font-weight: 700;
+      width: 100%; border: 0; border-radius: 12px; cursor: pointer; text-decoration: none;
+      background: var(--kaspi); color: #fff;
+      display: grid; grid-template-columns: 54px 1px 1fr; align-items: center; gap: 0;
+      padding: 7px 12px 7px 6px; font-size: 16px; font-weight: 700; line-height: 1.15;
     }
-    .kaspi-mark { width: 46px; height: 46px; border-radius: 10px; background: #fff; display: grid; place-items: center; }
-    .warn { margin-top: 12px; background: var(--warn-bg); color: var(--warn-text); border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.4; display: flex; gap: 10px; }
+    .kaspi-mark { width: 38px; height: 38px; margin: 0 auto; display: block; border-radius: 9px; object-fit: cover; }
+    .kaspi-split { width: 1px; height: 32px; background: rgba(255,255,255,.45); justify-self: center; }
+    .kaspi > span { text-align: center; width: 100%; }
+    .warn {
+      margin-top: 10px; background: var(--warn-bg); color: var(--warn-text);
+      border-radius: 12px; padding: 11px 12px; font-size: 13px; line-height: 1.4;
+      display: flex; gap: 8px; align-items: flex-start;
+    }
+    .warn-ico {
+      width: 22px; height: 22px; border-radius: 50%; background: #f5b400; color: #fff;
+      display: grid; place-items: center; font-weight: 800; flex-shrink: 0; font-size: 13px;
+    }
     .guide-link {
-      margin-top: 12px; width: 100%; border: 0; background: transparent; color: #1a8dff;
-      font-size: 16px; font-weight: 700; padding: 10px 4px; display: flex; justify-content: space-between; cursor: pointer;
+      width: 100%; margin: 0 0 10px; border: 0; background: #fff; color: var(--link);
+      font-size: 16px; font-weight: 700; padding: 14px 16px; border-radius: 14px;
+      display: flex; justify-content: space-between; align-items: center; cursor: pointer;
     }
-    .req-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line); }
+    .req { padding: 8px 14px 10px; border: 1.5px solid #3ad4e4; border-radius: 18px; background: #fff; }
+    .req-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 4px; border-bottom: 1px solid var(--line); }
     .req-row:last-child { border-bottom: 0; }
-    .req-label { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .req-label { font-size: 13px; color: var(--muted); margin-bottom: 3px; }
     .req-val { font-size: 16px; font-weight: 700; word-break: break-all; }
     .visa { color: #1a56db; font-style: italic; font-weight: 800; margin-left: 6px; }
-    .copy { width: 36px; height: 36px; border: 0; background: transparent; color: #9aa6b4; font-size: 18px; cursor: pointer; }
-    .timer { display: flex; justify-content: space-between; padding: 8px 8px 16px; color: var(--muted); font-size: 14px; }
+    .copy { width: 34px; height: 34px; border: 0; background: transparent; color: #9aa6b4; cursor: pointer; }
+    .timer { display: flex; justify-content: space-between; align-items: center; padding: 6px 6px 14px; color: var(--muted); font-size: 14px; }
     .timer.expired { color: var(--red); }
     .timer-value { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 700; }
-    .paid {
-      width: 100%; border: 0; border-radius: 14px; cursor: pointer; background: var(--teal); color: #fff;
-      font-size: 17px; font-weight: 700; padding: 16px;
-    }
+    .paid { width: 100%; border: 0; border-radius: 14px; cursor: pointer; background: var(--teal); color: #fff; font-size: 17px; font-weight: 700; padding: 15px; }
     .paid:disabled { opacity: .5; }
-    .problems { text-align: center; color: var(--muted); margin: 18px 0 8px; }
-    .faq { width: 100%; border: 0; background: transparent; text-align: left; padding: 14px 8px; display: flex; gap: 10px; font-size: 15px; color: #1a8dff; cursor: pointer; }
+    .problems { text-align: center; color: var(--muted); margin: 16px 0 4px; font-size: 15px; }
+    .faq { width: 100%; border: 0; background: transparent; text-align: left; padding: 12px 8px; display: flex; gap: 10px; font-size: 15px; color: var(--link); cursor: pointer; }
     .faq-body { display: none; padding: 0 12px 12px 40px; color: #5b6776; font-size: 13px; line-height: 1.45; }
     .faq-wrap.open .faq-body { display: block; }
-    .cancel { width: 100%; border: 0; background: transparent; color: var(--red); font-size: 15px; font-weight: 600; padding: 14px; cursor: pointer; }
-    .safe { text-align: center; color: #9aa6b4; font-size: 13px; padding: 8px 0 20px; }
+    .cancel { width: 100%; border: 0; background: transparent; color: var(--red); font-size: 15px; font-weight: 600; padding: 12px; cursor: pointer; }
+    .safe { text-align: center; color: #9aa6b4; font-size: 13px; padding: 6px 0 8px; }
     .hidden { display: none !important; }
     .state { text-align: center; padding: 48px 16px; }
     .spinner { width: 36px; height: 36px; border: 3px solid #dbe3ec; border-top-color: var(--teal); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .overlay { position: fixed; inset: 0; background: #f4f6f8; z-index: 50; display: none; flex-direction: column; max-width: 430px; margin: 0 auto; }
-    .overlay.show { display: flex; }
-    .ov-head { display: flex; justify-content: space-between; padding: 16px; }
-    .ov-head h2 { margin: 0; font-size: 24px; }
-    .ov-img-wrap { flex: 1; padding: 8px 16px; overflow: auto; }
-    .ov-img-wrap img { width: 100%; border-radius: 12px; display: block; }
-    .step-card { margin: 8px 16px; background: #fff; border-radius: 18px; padding: 14px; display: flex; gap: 12px; align-items: center; }
-    .step-n { width: 42px; height: 42px; border-radius: 50%; background: #1a8dff; color: #fff; display: grid; place-items: center; font-weight: 800; }
-    .ov-nav { display: flex; gap: 12px; padding: 12px 16px 24px; }
-    .ov-nav button { flex: 1; border: 0; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
-    .ov-back { background: #eef2f6; color: #6b7787; }
-    .ov-next { background: #1a8dff; color: #fff; }
-    .dots { display: flex; justify-content: center; gap: 6px; }
-    .dots i { width: 7px; height: 7px; border-radius: 50%; background: #cfd8e3; display: block; }
-    .dots i.on { background: #1a8dff; }
     .receipt-box { margin: 12px 0; padding: 12px; border: 1px dashed #dbe3ec; border-radius: 12px; }
-    .bank-hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .overlay {
+      position: fixed; inset: 0; z-index: 50; display: none;
+      background: rgba(20,28,38,.45); align-items: flex-end; justify-content: center; padding: 0;
+    }
+    .overlay.show { display: flex; }
+    .ov-panel {
+      width: min(430px, 100%); background: #fff; border-radius: 20px 20px 0 0;
+      padding: 16px 14px 18px; position: relative; max-height: 96vh; overflow: auto;
+    }
+    .ov-head h2 { margin: 0 36px 0 0; font-size: 20px; font-weight: 800; line-height: 1.25; }
+    .ov-sub { color: #8b95a3; font-size: 14px; margin: 6px 0 12px; }
+    .ov-x {
+      position: absolute; top: 12px; right: 12px; z-index: 2; border: 0; background: transparent;
+      font-size: 28px; color: #6b7787; cursor: pointer; line-height: 1;
+    }
+    .id-copy { border: 0; background: none; color: #b0bac4; cursor: pointer; padding: 0 0 0 4px; vertical-align: middle; }
+    .paid { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .faq { align-items: center; }
+    .faq .chev { margin-left: auto; opacity: .7; }
+    .banner-swipe {
+      position: relative; aspect-ratio: 3 / 4; touch-action: pan-y; user-select: none;
+      overflow: hidden; border-radius: 16px; background: #0b3a9e; cursor: grab;
+    }
+    .banner-swipe img {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: contain; object-position: center; pointer-events: none;
+    }
+    .arr {
+      position: absolute; top: 49%; transform: translateY(-50%);
+      width: 42px; height: 42px; border: 0; border-radius: 50%;
+      background: #fff; color: #2f7bff; font-size: 22px; line-height: 1;
+      box-shadow: 0 4px 14px rgba(15,35,80,.18);
+      cursor: pointer; z-index: 3; padding: 0 0 2px;
+      display: grid; place-items: center;
+    }
+    .arr-l { left: 10px; } .arr-r { right: 10px; }
+    .arr:disabled { opacity: .38; pointer-events: none; }
+    .dots { display: flex; justify-content: center; gap: 6px; padding: 12px 0 10px; }
+    .dots i { width: 7px; height: 7px; border-radius: 50%; background: #d5dde6; display: block; }
+    .dots i.on { background: #1a8dff; width: 16px; border-radius: 4px; }
+    .ov-nav { display: flex; gap: 10px; }
+    .ov-back, .ov-next {
+      flex: 1; border: 0; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    .ov-back { background: #eef1f4; color: #5b6570; }
+    .ov-back:disabled { opacity: .45; cursor: default; }
+    .ov-next { background: #1a8dff; color: #fff; }
+    @media (hover: hover) {
+      .kaspi:hover, a.kaspi:hover { filter: brightness(1.05); }
+      .paid:hover { background: var(--teal-dark); }
+      .copy:hover { color: var(--teal); }
+    }
+    @media (min-width: 768px) {
+      body { background: #c9d3de; background-image: radial-gradient(ellipse 80% 45% at 50% 0%, #eef3f8, #c9d3de); }
+      .frame { max-width: 980px; padding: 28px 24px 40px; }
+      .desk { display: grid; grid-template-columns: 1.05fr .95fr; gap: 12px; align-items: start; }
+      .desk-side { background: #fff; border-radius: 18px; padding: 8px 14px 12px; }
+      .overlay { align-items: center; padding: 16px; }
+      .ov-panel { border-radius: 20px; }
+    }
   </style>
 </head>
 <body>
-  <div class="phone">
-    <div class="nav">
-      <button type="button" onclick="history.back()">‹</button>
-      <h1 id="txt-nav">Пополнение счёта</h1>
-      <button type="button" id="btn-reload">↻</button>
-    </div>
-    <div class="sheet" id="app">
+  <div class="frame">
+    <div id="app">
       <div class="state" id="loading"><div class="spinner"></div><p id="txt-loading"></p></div>
       <div class="state hidden" id="error"></div>
 
-      <div class="hidden" id="pay-screen">
-        <div class="card">
-          <div class="lang">
-            <button type="button" class="lang-pill" id="lang-toggle">Русский ▾</button>
+      <div class="hidden desk" id="pay-screen">
+        <div class="desk-main">
+          <div class="card">
+            <div class="lang">
+              <button type="button" class="lang-pill" id="lang-toggle"><span class="ru-flag"><i></i><i></i><i></i></span> <span id="lang-label">Русский ▾</span></button>
+            </div>
+            <div class="brand-row">
+              <div>
+                <svg class="melbet-logo" viewBox="0 0 280 48" aria-label="MELBET">
+                  <text x="4" y="38" font-family="Arial Black, Helvetica Neue, sans-serif" font-size="40" font-style="italic" font-weight="900" letter-spacing="-2.4">
+                    <tspan fill="#111214">MEL</tspan><tspan fill="#F5B400">BET</tspan>
+                  </text>
+                </svg>
+                <div class="melbet-bar"></div>
+              </div>
+              <div class="pay-id">ID платежа:<br><b id="pid"></b>
+                <button type="button" class="id-copy" id="pid-copy" aria-label="copy">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="chip">
+              <svg class="kz-flag" viewBox="0 0 32 32" aria-hidden="true">
+                <circle cx="16" cy="16" r="16" fill="#00AFCA"/>
+                <g transform="translate(16 14.2)" fill="#FEC50C">
+                  <circle r="3.5"/>
+                  <g>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(22.5)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(45)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(67.5)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(90)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(112.5)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(135)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(157.5)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(180)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(202.5)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(225)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(247.5)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(270)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(292.5)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(315)"/>
+                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(337.5)"/>
+                  </g>
+                  <path d="M-11 5.6c3.4-5.6 7.2-8.2 11-8.2s7.6 2.6 11 8.2c-3.2-3.4-6.8-5.1-11-5.1s-7.8 1.7-11 5.1Z"/>
+                  <path d="M-1.2 2.2 0 8.2 1.2 2.2Z"/>
+                </g>
+              </svg>
+              <span id="cur-chip">KZT</span>
+            </div>
+            <div class="pay-line" id="amount-line"></div>
+            <div class="kaspi-box">
+              <div class="kaspi-cap" id="kaspi-cap">Нажмите для быстрой оплаты через банк</div>
+              <div id="bank-actions"></div>
+              <div class="warn" id="txt-hint"></div>
+            </div>
           </div>
-          <div class="brand-row">
-            <div class="logo">MELBET<div class="bar"></div></div>
-            <div class="pay-id">ID платежа:<br><b id="pid"></b></div>
-          </div>
-          <div class="chip"><span class="chip-ico">₸</span> <span id="cur-chip">KZT</span></div>
-          <div class="pay-line" id="amount-line"></div>
-          <div id="bank-actions"></div>
-          <div class="warn" id="txt-hint"></div>
           <button class="guide-link" type="button" id="open-guide">Пошаговая инструкция <span>›</span></button>
+          <div class="hidden" id="bank-guides"></div>
+          <div class="receipt-box hidden" id="receipt-box">
+            <div id="txt-receipt-label"></div>
+            <input type="file" id="receipt-file" accept="image/*,application/pdf">
+            <div class="hidden" id="receipt-name"></div>
+            <div id="txt-receipt-hint"></div>
+          </div>
         </div>
-        <div class="card" id="details"></div>
-        <div class="hidden" id="bank-guides"></div>
-        <div class="receipt-box hidden" id="receipt-box">
-          <div id="txt-receipt-label"></div>
-          <input type="file" id="receipt-file" accept="image/*,application/pdf">
-          <div class="hidden" id="receipt-name"></div>
-          <div id="txt-receipt-hint"></div>
+        <div class="desk-side">
+          <div class="card req" id="details"></div>
+          <div class="timer" id="timer-box"><span id="txt-timer-label"></span><span>⏱ <span class="timer-value" id="timer">—</span></span></div>
+          <button class="paid" id="btn-sent"></button>
+          <div class="problems" id="txt-problems">Возникли проблемы?</div>
+          <div class="faq-wrap">
+            <button class="faq" type="button">⚑  <span id="faq1-q"></span><span class="chev">▾</span></button>
+            <div class="faq-body" id="faq1-a"></div>
+          </div>
+          <div class="faq-wrap">
+            <button class="faq" type="button">?  <span id="faq2-q"></span><span class="chev">▾</span></button>
+            <div class="faq-body" id="faq2-a"></div>
+          </div>
+          <button class="cancel" id="btn-cancel"></button>
+          <div class="safe">🛡 <span id="txt-safe"></span></div>
         </div>
-        <div class="timer" id="timer-box"><span id="txt-timer-label"></span><span>⏱ <span class="timer-value" id="timer">—</span></span></div>
-        <button class="paid" id="btn-sent"></button>
-        <div class="problems" id="txt-problems">Возникли проблемы?</div>
-        <div class="faq-wrap">
-          <button class="faq" type="button">⚑  <span id="faq1-q"></span></button>
-          <div class="faq-body" id="faq1-a"></div>
-        </div>
-        <div class="faq-wrap">
-          <button class="faq" type="button">?  <span id="faq2-q"></span></button>
-          <div class="faq-body" id="faq2-a"></div>
-        </div>
-        <button class="cancel" id="btn-cancel"></button>
-        <div class="safe">🛡 <span id="txt-safe"></span></div>
       </div>
 
       <div class="state hidden" id="wait-screen">
@@ -159,27 +255,21 @@
         <p id="fail-msg"></p>
       </div>
     </div>
-
     <div class="overlay" id="overlay">
-      <div class="ov-head">
-        <div>
-          <h2 id="ov-h">Как выполнить перевод</h2>
-          <small id="ov-sub"></small>
+      <div class="ov-panel">
+        <button class="ov-x" type="button" id="close-guide">×</button>
+        <div class="ov-head"><h2 id="ov-h">Как выполнить перевод</h2></div>
+        <div class="ov-sub" id="ov-sub"></div>
+        <div class="banner-swipe" id="banner-swipe">
+          <img id="ov-img" alt="">
+          <button type="button" class="arr arr-l" id="ov-arr-l" aria-label="назад">‹</button>
+          <button type="button" class="arr arr-r" id="ov-arr-r" aria-label="вперёд">›</button>
         </div>
-        <button type="button" id="close-guide" style="border:0;background:transparent;font-size:28px;color:#6b7787">×</button>
-      </div>
-      <div class="ov-img-wrap"><img id="ov-img" alt=""></div>
-      <div class="step-card">
-        <div class="step-n" id="ov-n">1</div>
-        <div>
-          <div style="font-weight:800;font-size:18px" id="ov-title"></div>
-          <div style="color:#5b6776;font-size:15px" id="ov-cap"></div>
+        <div class="dots" id="ov-dots"><i class="on"></i><i></i><i></i></div>
+        <div class="ov-nav">
+          <button class="ov-back" type="button" id="ov-back">Назад</button>
+          <button class="ov-next" type="button" id="ov-next">Далее</button>
         </div>
-      </div>
-      <div class="dots"><i class="on"></i><i></i><i></i></div>
-      <div class="ov-nav">
-        <button class="ov-back" type="button" id="ov-back">Назад</button>
-        <button class="ov-next" type="button" id="ov-next">Далее</button>
       </div>
     </div>
   </div>
@@ -195,14 +285,14 @@
     const SENT_KEY = `pay_sent_${PAY_IN_ID}`;
     const STEPS = {
       ru: [
-        { img: "/payment-page-assets/kaspi-step-1.jpg", title: "Шаг 1", cap: "Выберите «Переводы»." },
-        { img: "/payment-page-assets/kaspi-step-2.jpg", title: "Шаг 2", cap: "Выберите «Международные переводы»." },
-        { img: "/payment-page-assets/kaspi-step-3.jpg", title: "Шаг 3", cap: "Укажите номер карты, имя и фамилию, сумму перевода." },
+        { img: "/payment-page-assets/kaspi-banner-1.jpg?v=2", title: "Шаг 1", cap: "Выберите «Переводы»." },
+        { img: "/payment-page-assets/kaspi-banner-2.jpg?v=2", title: "Шаг 2", cap: "Выберите «Международные переводы»." },
+        { img: "/payment-page-assets/kaspi-banner-3.jpg?v=2", title: "Шаг 3", cap: "Укажите номер карты, имя и фамилию, сумму перевода." },
       ],
       kk: [
-        { img: "/payment-page-assets/kaspi-step-1.jpg", title: "1-қадам", cap: "«Аударымдар» бөлімін таңдаңыз." },
-        { img: "/payment-page-assets/kaspi-step-2.jpg", title: "2-қадам", cap: "«Халықаралық аударымдар» тармағын таңдаңыз." },
-        { img: "/payment-page-assets/kaspi-step-3.jpg", title: "3-қадам", cap: "Карта нөмірін, аты-жөнін және соманы енгізіңіз." },
+        { img: "/payment-page-assets/kaspi-banner-1.jpg?v=2", title: "1-қадам", cap: "«Аударымдар» бөлімін таңдаңыз." },
+        { img: "/payment-page-assets/kaspi-banner-2.jpg?v=2", title: "2-қадам", cap: "«Халықаралық аударымдар» тармағын таңдаңыз." },
+        { img: "/payment-page-assets/kaspi-banner-3.jpg?v=2", title: "3-қадам", cap: "Карта нөмірін, аты-жөнін және соманы енгізіңіз." },
       ],
     };
 
@@ -220,8 +310,9 @@
         amountExact: "Дәл аударым сомасы",
         copy: "Көшіру", copied: "Көшірілді", copyAll: "Барлығын көшіру",
         hint: "Назар аударыңыз: соманы доллармен ($) көрсетіңіз, блоктау болмас үшін.",
+        kaspiCap: "Жылдам төлеу үшін банкті басыңыз",
         payOne: "Бір төлеммен төлеңіз",
-        sent: "✓  Төледім", cancel: "✕  Өтінімді болдырмау", cancelConfirm: "Өтінімді болдырмау керек пе?",
+        sent: "Төледім", cancel: "✕  Өтінімді болдырмау", cancelConfirm: "Өтінімді болдырмау керек пе?",
         waitTitle: "Растау күтілуде", waitMsg: "Төлем қабылданды. Бетті жабуға болады.",
         waitVerify: "Төлем тексерілуде.",
         okTitle: "Төлем сәтті", okMsg: "Дүкен сайтына бағыттауда…",
@@ -237,6 +328,8 @@
         faq2q: "Қалай төлеуді түсінбеймін", faq2a: "Нұсқаулықты ашыңыз: Аударымдар → Халықаралық аударымдар → карта, аты латынша, сома $.",
         safe: "Барлық төлемдер қорғалған", lang: "Қазақша ▾",
         ovH: "Аударымды қалай жасау керек",
+        ovBack: "Артқа", ovNext: "Келесі", ovDone: "Дайын",
+        ovStep: "Қадам {n} / 3",
       },
       ru: {
         loading: "Загрузка платежа…", nav: "Пополнение счёта",
@@ -245,8 +338,9 @@
         amountExact: "Точная сумма перевода",
         copy: "Копировать", copied: "Скопировано", copyAll: "Скопировать всё",
         hint: "Обратите внимание: сумму перевода указывайте в долларах США ($), чтобы избежать блокировок.",
+        kaspiCap: "Нажмите для быстрой оплаты через банк",
         payOne: "одним платежом",
-        sent: "✓  Я оплатил", cancel: "✕  Отменить заявку", cancelConfirm: "Отменить заявку?",
+        sent: "Я оплатил", cancel: "✕  Отменить заявку", cancelConfirm: "Отменить заявку?",
         waitTitle: "Ожидаем подтверждение", waitMsg: "Платёж принят. Можно закрыть страницу.",
         waitVerify: "Платёж проверяется.",
         okTitle: "Оплата успешна", okMsg: "Перенаправляем на сайт магазина…",
@@ -262,6 +356,8 @@
         faq2q: "Я не понимаю, как платить", faq2a: "Откройте инструкцию: Переводы → Международные переводы → карта, имя латиницей, сумма в $.",
         safe: "Все платежи защищены", lang: "Русский ▾",
         ovH: "Как выполнить перевод",
+        ovBack: "Назад", ovNext: "Далее", ovDone: "Готово",
+        ovStep: "Шаг {n} из 3",
       },
     };
 
@@ -282,10 +378,10 @@
       document.getElementById("lang-kk").classList.toggle("active", locale === "kk");
       document.getElementById("lang-ru").classList.toggle("active", locale === "ru");
       document.getElementById("txt-loading").textContent = t("loading");
-      document.getElementById("txt-nav").textContent = t("nav");
       document.getElementById("txt-timer-label").textContent = t("timer");
-      document.getElementById("txt-hint").innerHTML = "⚠️  " + t("hint");
-      document.getElementById("btn-sent").textContent = t("sent");
+      const hint = t("hint").replace("Обратите внимание:", "<b>Обратите внимание:</b>").replace("Назар аударыңыз:", "<b>Назар аударыңыз:</b>");
+      document.getElementById("txt-hint").innerHTML = '<span class="warn-ico">!</span><div>' + hint + "</div>";
+      document.getElementById("btn-sent").innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#fff" stroke-width="2"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg> ' + t("sent");
       document.getElementById("btn-cancel").textContent = t("cancel");
       document.getElementById("txt-wait-title").textContent = t("waitTitle");
       document.getElementById("txt-wait-msg").textContent = t("waitMsg");
@@ -298,9 +394,9 @@
       document.getElementById("faq2-q").textContent = t("faq2q");
       document.getElementById("faq2-a").textContent = t("faq2a");
       document.getElementById("txt-safe").textContent = t("safe");
-      document.getElementById("lang-toggle").textContent = t("lang");
+      document.getElementById("lang-label").textContent = t("lang");
+      document.getElementById("kaspi-cap").textContent = t("kaspiCap");
       document.getElementById("ov-h").textContent = t("ovH");
-      document.getElementById("ov-back").textContent = locale === "kk" ? "Артқа" : "Назад";
     }
     function updateSentButtonState() {
       const btn = document.getElementById("btn-sent");
@@ -333,18 +429,46 @@
       }
       updateSentButtonState();
     }
+    function pageTransfer(data) {
+      if (data.transfer_amount != null && data.transfer_amount !== "" && data.transfer_currency) {
+        return { amount: data.transfer_amount, currency: data.transfer_currency };
+      }
+      if (data.usd_amount != null && Number(data.usd_amount) > 0) {
+        return { amount: data.usd_amount, currency: "USD" };
+      }
+      return { amount: data.amount, currency: data.currency || "KZT" };
+    }
     function fmtAmount(amount, currency) {
+      const cur = (currency || "").toUpperCase();
+      if (cur === "USD") {
+        const n = Number(amount);
+        return `${Number.isFinite(n) ? n.toFixed(2) : amount} USD`;
+      }
       const loc = locale === "kk" ? "kk-KZ" : "ru-RU";
       return `${Number(amount).toLocaleString(loc)} ${currency || ""}`.trim();
     }
-    function detailField(label, value, copyable, extra) {
+    function copyAmountText(amount, currency) {
+      if ((currency || "").toUpperCase() === "USD") {
+        const n = Number(amount);
+        return Number.isFinite(n) ? n.toFixed(2) : String(amount);
+      }
+      return String(amount);
+    }
+    function attrEscape(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
+    }
+    function detailField(label, value, copyable, extra, copyText) {
       if (!value) return "";
       const id = "f-" + Math.random().toString(36).slice(2, 8);
+      const payload = copyText != null ? copyText : value;
       return `<div class="req-row"><div><div class="req-label">${label}</div>
         <div class="req-val" id="${id}">${value}${extra || ""}</div></div>
-        ${copyable ? `<button type="button" class="copy" data-target="${id}">⎘</button>` : ""}</div>`;
+        ${copyable ? `<button type="button" class="copy" data-target="${id}" data-copy="${attrEscape(payload)}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M4 16V6a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ""}</div>`;
     }
-    function renderDetails(pd, amountLine) {
+    function renderDetails(pd, amountLine, amountCopy) {
       if (!pd || typeof pd !== "object") return `<p>${t("noReq")}</p>`;
       let html = "";
       const visa = (pd.card_number || "").replace(/\s/g, "").startsWith("4") ? '<span class="visa">VISA</span>' : "";
@@ -360,7 +484,7 @@
       if (!hasH2h && pd.payment_form_url && /^https?:\/\//i.test(pd.payment_form_url)) {
         html += `<a class="kaspi" href="${pd.payment_form_url}" rel="noopener noreferrer">${t("payLink")}</a>`;
       }
-      if (amountLine) html += detailField(t("amountExact"), amountLine, true);
+      if (amountLine) html += detailField(t("amountExact"), amountLine, true, "", amountCopy);
       if (pd.bic) html += detailField(t("bic"), pd.bic, true);
       return html || `<p>${t("noReq")}</p>`;
     }
@@ -381,8 +505,8 @@
       const androidUrl = kaspi.android_url || "";
       const useAndroidIntent = isAndroid() && androidUrl;
       const useNativeLink = !useAndroidIntent && /^https:\/\//i.test(httpsUrl);
-      const mark = `<span class="kaspi-mark"><svg width="34" height="28" viewBox="0 0 34 28" fill="none"><circle cx="11" cy="9" r="5" fill="#e30613"/><circle cx="23" cy="9" r="5" fill="#e30613"/><path d="M4 24c1.5-6 6-8 13-8s11.5 2 13 8" stroke="#e30613" stroke-width="4" stroke-linecap="round"/></svg></span>`;
-      const label = kaspi.label || (locale === "kk" ? "Kaspi Bank арқылы төлеу" : "Оплатить через Kaspi Bank");
+      const mark = `<img class="kaspi-mark" src="/payment-page-assets/kaspi-mark.png" alt="Kaspi"><span class="kaspi-split"></span>`;
+      const label = `<span>${kaspi.label || (locale === "kk" ? "Kaspi Bank арқылы төлеу" : "Оплатить через<br>Kaspi Bank")}</span>`;
       if (useNativeLink) {
         const el = document.createElement("a");
         el.className = "kaspi";
@@ -407,8 +531,12 @@
     function wireCopyButtons() {
       document.querySelectorAll(".copy").forEach(btn => {
         btn.onclick = () => {
+          if (btn.dataset.copy) {
+            navigator.clipboard.writeText(btn.dataset.copy);
+            return;
+          }
           const el = document.getElementById(btn.dataset.target);
-          navigator.clipboard.writeText(el.textContent.replace("VISA", "").trim());
+          navigator.clipboard.writeText((el ? el.textContent : "").replace("VISA", "").trim());
         };
       });
     }
@@ -478,12 +606,17 @@
         return;
       }
       show("pay-screen");
-      const amt = fmtAmount(data.amount, data.currency);
+      const xfer = pageTransfer(data);
+      const amt = fmtAmount(xfer.amount, xfer.currency);
       document.getElementById("amount-line").innerHTML = `${locale === "kk" ? "Төлеңіз" : "Оплатите"} <strong>${amt}</strong> ${t("payOne")}`;
       document.getElementById("ps-line").textContent = data.payment_system || "";
       document.getElementById("cur-chip").textContent = data.currency || "KZT";
       document.getElementById("pid").textContent = (PAY_IN_ID || "").slice(0, 6) + "…" + (PAY_IN_ID || "").slice(-4);
-      document.getElementById("details").innerHTML = renderDetails(data.payment_details, amt);
+      const pidCopy = document.getElementById("pid-copy");
+      if (pidCopy) pidCopy.onclick = () => navigator.clipboard.writeText(PAY_IN_ID || "");
+      document.getElementById("details").innerHTML = renderDetails(
+        data.payment_details, amt, copyAmountText(xfer.amount, xfer.currency)
+      );
       renderBankGuides(data);
       renderBankActions(data);
       setupReceiptUi(data);
@@ -515,20 +648,37 @@
     function renderGuide() {
       const s = steps()[guideStep];
       document.getElementById("ov-img").src = s.img;
-      document.getElementById("ov-n").textContent = String(guideStep + 1);
-      document.getElementById("ov-title").textContent = s.title;
-      document.getElementById("ov-cap").textContent = s.cap;
-      document.getElementById("ov-sub").textContent = locale === "kk" ? `${guideStep + 1} / 3` : `Шаг ${guideStep + 1} из 3`;
-      document.getElementById("ov-next").textContent = guideStep === 2 ? (locale === "kk" ? "Дайын" : "Готово") : (locale === "kk" ? "Келесі" : "Далее");
-      document.querySelectorAll(".dots i").forEach((d, i) => d.classList.toggle("on", i === guideStep));
+      document.getElementById("ov-sub").textContent = t("ovStep").replace("{n}", String(guideStep + 1));
+      document.getElementById("ov-back").textContent = t("ovBack");
+      document.getElementById("ov-back").disabled = guideStep === 0;
+      document.getElementById("ov-arr-l").disabled = guideStep === 0;
+      document.getElementById("ov-next").textContent = guideStep === 2 ? t("ovDone") : t("ovNext");
+      document.querySelectorAll("#ov-dots i").forEach((d, i) => d.classList.toggle("on", i === guideStep));
+    }
+    function guidePrev() { if (guideStep > 0) { guideStep--; renderGuide(); } }
+    function guideNext() {
+      if (guideStep < 2) { guideStep++; renderGuide(); }
+      else document.getElementById("overlay").classList.remove("show");
     }
     document.getElementById("open-guide").onclick = () => { guideStep = 0; renderGuide(); document.getElementById("overlay").classList.add("show"); };
     document.getElementById("close-guide").onclick = () => document.getElementById("overlay").classList.remove("show");
-    document.getElementById("ov-back").onclick = () => { if (guideStep > 0) { guideStep--; renderGuide(); } };
-    document.getElementById("ov-next").onclick = () => {
-      if (guideStep < 2) { guideStep++; renderGuide(); }
-      else document.getElementById("overlay").classList.remove("show");
-    };
+    document.getElementById("ov-back").onclick = guidePrev;
+    document.getElementById("ov-next").onclick = guideNext;
+    document.getElementById("ov-arr-l").onclick = (e) => { e.stopPropagation(); guidePrev(); };
+    document.getElementById("ov-arr-r").onclick = (e) => { e.stopPropagation(); guideNext(); };
+    (function bindSwipe() {
+      const el = document.getElementById("banner-swipe");
+      let x0 = null;
+      el.addEventListener("pointerdown", (e) => { x0 = e.clientX; });
+      el.addEventListener("pointerup", (e) => {
+        if (x0 == null || e.target.closest(".arr")) { x0 = null; return; }
+        const dx = e.clientX - x0;
+        x0 = null;
+        if (dx > 48) guidePrev();
+        else if (dx < -48) guideNext();
+      });
+      el.addEventListener("pointercancel", () => { x0 = null; });
+    })();
     document.querySelectorAll(".faq").forEach((btn) => {
       btn.onclick = () => btn.parentElement.classList.toggle("open");
     });
@@ -537,7 +687,6 @@
       localStorage.setItem(`pay_locale_${PAY_IN_ID}`, locale);
       load();
     };
-    document.getElementById("btn-reload").onclick = () => load();
     document.getElementById("receipt-file").addEventListener("change", (e) => {
       const file = e.target.files && e.target.files[0];
       selectedReceiptFile = file || null;

@@ -297,6 +297,10 @@ XE_KZT_MARKUP = os.getenv('XE_KZT_MARKUP', '')
 XE_KZT_MARKUP_BY_PS = os.getenv('XE_KZT_MARKUP_BY_PS', '{"Vietcombank":"1.04"}')
 
 PAYMENT_PAGE_URL = os.getenv('PAYMENT_PAGE_URL')
+# 1 = Melbet clone (pay_melbet.html). 0 = rollback to generic pay.html without rebuild.
+MELBET_PAYMENT_PAGE_ENABLED = os.getenv('MELBET_PAYMENT_PAGE', '1').lower() in (
+    '1', 'true', 'yes', 'on',
+)
 SMS_ENDPOINT = os.getenv('SMS_ENDPOINT')
 CRYPTO_URL = os.getenv('CRYPTO_URL')
 EMERGENCY_URL = os.getenv('EMERGENCY_URL')

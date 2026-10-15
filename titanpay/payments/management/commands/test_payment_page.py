@@ -322,6 +322,12 @@ class Command(BaseCommand):
         self._check_requisite_shape(pay_in, data)
         self._ok("obtain has amount", data.get("amount") is not None, str(data.get("amount")))
         self._ok("obtain has currency", bool(data.get("currency")), str(data.get("currency")))
+        if is_melbet_merchant(pay_in.merchant) and (data.get("currency") or "").upper() == "KZT" and pay_in.order and pay_in.order.usd_amount:
+            self._ok(
+                "obtain Melbet transfer is USD",
+                data.get("transfer_currency") == "USD" and str(data.get("transfer_amount") or "") != "",
+                f"transfer={data.get('transfer_amount')} {data.get('transfer_currency')} usd_amount={pay_in.order.usd_amount}",
+            )
         self._ok(
             "obtain requisites or explicit empty",
             "requisites_available" in data,
