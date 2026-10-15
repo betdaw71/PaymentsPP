@@ -226,26 +226,40 @@ def expire():
                 logging.exception("expire: failed to expire InOrder %s", order.pk)
 
         for order in expired_out_orders:
-            with transaction.atomic():
-                order.deal_expired()
+            try:
+                with transaction.atomic():
+                    locked = OutOrder.objects.select_for_update().get(pk=order.pk)
+                    if locked.status and locked.status.name == "New":
+                        locked.deal_expired()
+            except Exception:
+                logging.exception("expire: failed to expire OutOrder %s", order.pk)
 
         for order in arbitrage_orders_in:
-            with transaction.atomic():
-                order = InOrder.objects.select_for_update().get(id=order.id)
-                if order.status.name == "Arbitrage":
-                    order.complete_after_arbitrage()
+            try:
+                with transaction.atomic():
+                    locked = InOrder.objects.select_for_update().get(id=order.id)
+                    if locked.status.name == "Arbitrage":
+                        locked.complete_after_arbitrage()
+            except Exception:
+                logging.exception("expire: failed to close arbitrage InOrder %s", order.pk)
 
         not_confirmed_time_out = timezone.now() - ps.confirm_time_out
         finished_out_orders = OutOrder.objects.filter(status__name="Money sent by trader", updated_date__lte=not_confirmed_time_out, solution__payment_system=ps, pdf_sent=True, sms_sent=False)
         sms_out_orders = OutOrder.objects.filter(status__name="New", updated_date__lte=time_out, solution__payment_system=ps, pdf_sent=False, sms_sent=True)
 
         for order in finished_out_orders:
-            with transaction.atomic():
-                order.manual_check()
+            try:
+                with transaction.atomic():
+                    order.manual_check()
+            except Exception:
+                logging.exception("expire: failed manual_check OutOrder %s", order.pk)
 
         for order in sms_out_orders:
-            with transaction.atomic():
-                order.manual_check()
+            try:
+                with transaction.atomic():
+                    order.manual_check()
+            except Exception:
+                logging.exception("expire: failed sms manual_check OutOrder %s", order.pk)
 
     # time_fail_out = timezone.now() - ps.constrain_time_out
     # failed_out_orders_new = OutOrder.objects.filter(status=new_out, first_creation_date__lte=time_fail_out)
