@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Melbet — превью платёжной страницы</title>
+  <style>
+    :root {
+      --bg: #e8eef4;
+      --card: #fff;
+      --text: #1c2430;
+      --muted: #8b95a3;
+      --line: #e6ebf1;
+      --teal: #12a8bc;
+      --teal-dark: #0e8fa1;
+      --kaspi: #e30613;
+      --warn-bg: #fff4cc;
+      --warn-text: #5c4a12;
+      --red: #e11d2e;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #0f1419; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
+    .phone {
+      width: 100%;
+      max-width: 430px;
+      min-height: 100vh;
+      background: var(--bg);
+      position: relative;
+    }
+    .nav {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 52px; padding: 0 8px;
+      background: #f7f9fc;
+      border-bottom: 1px solid #edf1f5;
+    }
+    .nav button {
+      width: 40px; height: 40px; border: 0; background: transparent; color: #6b7787;
+      font-size: 22px; cursor: pointer;
+    }
+    .nav h1 { margin: 0; font-size: 17px; font-weight: 500; color: #6b7787; }
+    .sheet { padding: 12px 12px 28px; }
+    .card {
+      background: var(--card);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 0 rgba(16, 24, 40, .04);
+    }
+    .lang {
+      display: flex; justify-content: flex-end; margin-bottom: 8px;
+    }
+    .lang-pill {
+      display: flex; align-items: center; gap: 8px;
+      border: 1px solid #dbe3ec; border-radius: 12px;
+      padding: 6px 10px; font-size: 13px; background: #fff; cursor: pointer;
+    }
+    .flag { width: 22px; height: 16px; border-radius: 3px; overflow: hidden; display: inline-block; }
+    .brand-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .logo { font-weight: 800; letter-spacing: .04em; font-size: 22px; }
+    .logo .bar { width: 54px; height: 4px; background: var(--teal); border-radius: 2px; margin-top: 4px; }
+    .pay-id { font-size: 12px; color: var(--muted); text-align: right; line-height: 1.35; }
+    .pay-id b { color: #6b7787; font-weight: 500; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin: 14px 0 10px;
+      background: #f3c84b; color: #1a1a1a;
+      border-radius: 999px; padding: 5px 12px 5px 8px;
+      font-weight: 800; font-size: 13px;
+    }
+    .chip-ico {
+      width: 22px; height: 22px; border-radius: 50%; background: #2bb24c;
+      display: grid; place-items: center; color: #fff; font-size: 12px;
+    }
+    .pay-line { font-size: 16px; margin: 4px 0 14px; }
+    .pay-line strong { color: var(--teal); font-weight: 700; }
+    .kaspi {
+      width: 100%; border: 0; border-radius: 14px; cursor: pointer;
+      background: var(--kaspi); color: #fff;
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      padding: 14px 12px; font-size: 16px; font-weight: 700;
+    }
+    .kaspi-mark {
+      width: 46px; height: 46px; border-radius: 10px; background: #fff;
+      display: grid; place-items: center; flex-shrink: 0;
+    }
+    .warn {
+      margin-top: 12px; background: var(--warn-bg); color: var(--warn-text);
+      border-radius: 12px; padding: 12px 12px 12px 14px;
+      font-size: 13px; line-height: 1.4; display: flex; gap: 10px;
+    }
+    .warn b { display: block; margin-bottom: 2px; }
+    .guide-link {
+      margin-top: 12px; width: 100%;
+      border: 0; background: transparent; color: #1a8dff;
+      font-size: 16px; font-weight: 700; padding: 10px 4px;
+      display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+    }
+    .req { padding: 6px 4px 2px; }
+    .req-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line);
+    }
+    .req-row:last-child { border-bottom: 0; }
+    .req-label { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .req-val { font-size: 16px; font-weight: 700; }
+    .visa { color: #1a56db; font-style: italic; font-weight: 800; margin-left: 6px; }
+    .copy {
+      width: 36px; height: 36px; border: 0; background: transparent;
+      color: #9aa6b4; font-size: 18px; cursor: pointer; flex-shrink: 0;
+    }
+    .timer {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 8px 16px; color: var(--muted); font-size: 14px;
+    }
+    .timer b { color: var(--text); font-variant-numeric: tabular-nums; }
+    .paid {
+      width: 100%; border: 0; border-radius: 14px; cursor: pointer;
+      background: var(--teal); color: #fff; font-size: 17px; font-weight: 700;
+      padding: 16px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .paid:active { background: var(--teal-dark); }
+    .problems { text-align: center; color: var(--muted); margin: 18px 0 8px; font-size: 15px; }
+    .faq {
+      width: 100%; border: 0; background: transparent; text-align: left;
+      padding: 14px 8px; display: flex; align-items: center; gap: 10px;
+      font-size: 15px; color: #1a8dff; cursor: pointer;
+    }
+    .faq .ico { width: 22px; text-align: center; }
+    .faq-body { display: none; padding: 0 12px 12px 40px; color: #5b6776; font-size: 13px; line-height: 1.45; }
+    .faq.open + .faq-body, .faq-wrap.open .faq-body { display: block; }
+    .cancel {
+      width: 100%; border: 0; background: transparent; color: var(--red);
+      font-size: 15px; font-weight: 600; padding: 14px; cursor: pointer;
+    }
+    .safe { text-align: center; color: #9aa6b4; font-size: 13px; padding: 8px 0 20px; }
+    .overlay {
+      position: fixed; inset: 0; background: #f4f6f8; z-index: 50;
+      display: none; flex-direction: column; max-width: 430px; margin: 0 auto;
+    }
+    .overlay.show { display: flex; }
+    .ov-head {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      padding: 16px 16px 8px;
+    }
+    .ov-head h2 { margin: 0; font-size: 26px; font-weight: 800; line-height: 1.15; }
+    .ov-head small { color: var(--muted); font-size: 14px; }
+    .ov-x { border: 0; background: transparent; font-size: 28px; color: #6b7787; cursor: pointer; }
+    .ov-img-wrap { flex: 1; padding: 8px 16px; overflow: auto; }
+    .ov-img-wrap img { width: 100%; border-radius: 12px; display: block; }
+    .step-card {
+      margin: 8px 16px 12px; background: #fff; border-radius: 18px;
+      padding: 14px; display: flex; gap: 12px; align-items: center;
+    }
+    .step-n {
+      width: 42px; height: 42px; border-radius: 50%; background: #1a8dff; color: #fff;
+      display: grid; place-items: center; font-weight: 800; flex-shrink: 0;
+    }
+    .ov-nav {
+      display: flex; gap: 12px; padding: 12px 16px 24px;
+    }
+    .ov-nav button {
+      flex: 1; border: 0; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    .ov-back { background: #eef2f6; color: #6b7787; }
+    .ov-next { background: #1a8dff; color: #fff; }
+    .dots { display: flex; justify-content: center; gap: 6px; padding-bottom: 4px; }
+    .dots i { width: 7px; height: 7px; border-radius: 50%; background: #cfd8e3; display: block; }
+    .dots i.on { background: #1a8dff; }
+    .toast {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      background: #1c2430; color: #fff; padding: 8px 14px; border-radius: 10px;
+      font-size: 13px; display: none; z-index: 80;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <div class="nav">
+      <button type="button" aria-label="назад">‹</button>
+      <h1>Пополнение счёта</h1>
+      <button type="button" aria-label="обновить">↻</button>
+    </div>
+    <div class="sheet">
+      <div class="card">
+        <div class="lang">
+          <div class="lang-pill">
+            <span class="flag" style="background:linear-gradient(#fff 33%,#0039a6 33% 66%,#d52b1e 66%)"></span>
+            Русский ▾
+          </div>
+        </div>
+        <div class="brand-row">
+          <div class="logo">MELBET<div class="bar"></div></div>
+          <div class="pay-id">ID платежа:<br><b id="pid">gdb56b…ae3t</b> ⎘</div>
+        </div>
+        <div class="chip"><span class="chip-ico">₸</span> KZT</div>
+        <div class="pay-line">Оплатите <strong>10.94 USD</strong> одним платежом</div>
+        <button class="kaspi" type="button" id="kaspi">
+          <span class="kaspi-mark">
+            <svg width="34" height="28" viewBox="0 0 34 28" fill="none">
+              <circle cx="11" cy="9" r="5" fill="#e30613"/>
+              <circle cx="23" cy="9" r="5" fill="#e30613"/>
+              <path d="M4 24c1.5-6 6-8 13-8s11.5 2 13 8" stroke="#e30613" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+          </span>
+          Оплатить через Kaspi Bank
+        </button>
+        <div class="warn">
+          <span>⚠️</span>
+          <div><b>Обратите внимание:</b> сумму перевода указывайте в долларах США ($), чтобы избежать блокировок.</div>
+        </div>
+        <button class="guide-link" type="button" id="open-guide">Пошаговая инструкция <span>›</span></button>
+      </div>
+
+      <div class="card req">
+        <div class="req-row">
+          <div>
+            <div class="req-label">Банк получателя</div>
+            <div class="req-val">Tojiksodirotbonk JSC <span class="visa">VISA</span></div>
+          </div>
+          <button class="copy" data-copy="Tojiksodirotbonk JSC">⎘</button>
+        </div>
+        <div class="req-row">
+          <div>
+            <div class="req-label">Имя получателя</div>
+            <div class="req-val">Rahmatova Rano</div>
+          </div>
+          <button class="copy" data-copy="Rahmatova Rano">⎘</button>
+        </div>
+        <div class="req-row">
+          <div>
+            <div class="req-label">Номер карты для перевода</div>
+            <div class="req-val">4713380055047126</div>
+          </div>
+          <button class="copy" data-copy="4713380055047126">⎘</button>
+        </div>
+        <div class="req-row">
+          <div>
+            <div class="req-label">Точная сумма перевода</div>
+            <div class="req-val">10.94 USD</div>
+          </div>
+          <button class="copy" data-copy="10.94">⎘</button>
+        </div>
+      </div>
+
+      <div class="timer"><span>Осталось времени:</span><span>⏱ <b>14:06</b></span></div>
+      <button class="paid" type="button">✓  Я оплатил</button>
+      <div class="problems">Возникли проблемы?</div>
+      <div class="faq-wrap">
+        <button class="faq" type="button"><span class="ico">⚑</span> Я отправил неправильную сумму</button>
+        <div class="faq-body">Сверьте сумму на экране. Если отправили меньше — дошлите разницу тем же реквизитам. Если больше — напишите в поддержку казино с ID платежа.</div>
+      </div>
+      <div class="faq-wrap">
+        <button class="faq" type="button"><span class="ico">?</span> Я не понимаю, как платить</button>
+        <div class="faq-body">Откройте «Пошаговая инструкция»: Переводы → Международные переводы → карта, имя латиницей, сумма в $.</div>
+      </div>
+      <button class="cancel" type="button">✕  Отменить заявку</button>
+      <div class="safe">🛡 Все платежи защищены</div>
+    </div>
+
+    <div class="overlay" id="overlay">
+      <div class="ov-head">
+        <div></div>
+        <button class="ov-x" type="button" id="close-guide">×</button>
+      </div>
+      <div class="ov-img-wrap"><img id="ov-img" alt="" /></div>
+      <div class="ov-nav">
+        <button class="ov-back" type="button" id="ov-back">Назад</button>
+        <button class="ov-next" type="button" id="ov-next">Далее</button>
+      </div>
+    </div>
+    <div class="toast" id="toast">Скопировано</div>
+  </div>
+  <script>
+    const STEPS = [
+      { img: "pay-preview-shots/kaspi-step-1.jpg", title: "Шаг 1", cap: "Выберите «Переводы»." },
+      { img: "pay-preview-shots/kaspi-step-2.jpg", title: "Шаг 2", cap: "Выберите «Международные переводы»." },
+      { img: "pay-preview-shots/kaspi-step-3.jpg", title: "Шаг 3", cap: "Укажите номер карты, имя и фамилию, сумму перевода." },
+    ];
+    let step = 0;
+    const overlay = document.getElementById("overlay");
+    function renderStep() {
+      const s = STEPS[step];
+      document.getElementById("ov-img").src = s.img;
+      document.getElementById("ov-next").textContent = step === 2 ? "Готово" : "Далее";
+    }
+    document.getElementById("open-guide").onclick = () => { step = 0; renderStep(); overlay.classList.add("show"); };
+    document.getElementById("close-guide").onclick = () => overlay.classList.remove("show");
+    document.getElementById("ov-back").onclick = () => { if (step > 0) { step--; renderStep(); } };
+    document.getElementById("ov-next").onclick = () => {
+      if (step < 2) { step++; renderStep(); } else overlay.classList.remove("show");
+    };
+    document.querySelectorAll(".faq").forEach((btn) => {
+      btn.onclick = () => btn.parentElement.classList.toggle("open");
+    });
+    const toast = document.getElementById("toast");
+    document.querySelectorAll(".copy").forEach((btn) => {
+      btn.onclick = () => {
+        navigator.clipboard.writeText(btn.dataset.copy);
+        toast.style.display = "block";
+        setTimeout(() => { toast.style.display = "none"; }, 1200);
+      };
+    });
+    document.getElementById("kaspi").onclick = () => alert("В проде: deep link в Kaspi + копирование реквизитов");
+  </script>
+</body>
+</html>

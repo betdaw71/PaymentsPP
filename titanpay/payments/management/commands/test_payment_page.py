@@ -44,6 +44,12 @@ class Command(BaseCommand):
         )
         parser.add_argument("--amount", default="10000", help="Сумма для --create (KZT)")
         parser.add_argument("--method", default="card2card_kzt_kaspi", help="Melbet method для --create")
+        parser.add_argument(
+            "--report",
+            action="store_true",
+            help="Сводка последних Melbet заявок: карта vs ссылка vs Cannot process",
+        )
+        parser.add_argument("--report-limit", type=int, default=40, help="Сколько заявок в --report")
 
     def handle(self, *args, **options):
         self._failures = 0
@@ -51,6 +57,18 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.HTTP_INFO("\n=== Payment page smoke test ===\n"))
         self._static_checks()
+        src = (
+            (Path(settings.BASE_DIR) / "templates" / "payment_page" / "pay.html").read_text(encoding="utf-8")
+            if (Path(settings.BASE_DIR) / "templates" / "payment_page" / "pay.html").is_file()
+            else ""
+        )
+        self._ok(
+            "pay.html hides QR link when card/phone present",
+            "const hasH2h" in src and "if (!hasH2h && pd.payment_form_url" in src,
+        )
+
+        if options.get("report"):
+            self._report_recent(options.get("merchant") or "melbet", int(options.get("report_limit") or 40))
 
         pay_in = None
         if options.get("create"):
@@ -301,6 +319,7 @@ class Command(BaseCommand):
                         bool(guides)
                         and "kaspi-international-transfers-guide" in str(guides[0].get("image_url") or ""),
                     )
+        self._check_requisite_shape(pay_in, data)
         self._ok("obtain has amount", data.get("amount") is not None, str(data.get("amount")))
         self._ok("obtain has currency", bool(data.get("currency")), str(data.get("currency")))
         self._ok(
@@ -337,6 +356,76 @@ class Command(BaseCommand):
             halyk.status_code == 200 and str(halyk.get("Content-Type", "")).startswith("image/"),
             f"{halyk.status_code} {halyk.get('Content-Type')}",
         )
+
+    def _check_requisite_shape(self, pay_in: PayIn, data: dict) -> None:
+        pd = data.get("payment_details") or {}
+        ps = (pay_in.payment_system.name or "").upper() if pay_in.payment_system else ""
+        card = str(pd.get("card_number") or "").strip()
+        phone = str(pd.get("phone") or "").strip()
+        url = str(pd.get("payment_form_url") or pd.get("qr_image_url") or "").strip().lower()
+        self.stdout.write(f"    payment_details keys={list(pd.keys())} ps={ps}")
+        if ps in ("C2C", "C2CKZT") and data.get("requisites_available"):
+            self._ok("C2CKZT has card_number", bool(card), f"card={card[:6]+'…' if len(card)>=6 else card or '-'}")
+            self._ok(
+                "C2CKZT is not QR/link instead of card",
+                not (url and not card),
+                url[:80] if url else "no url",
+            )
+            self._ok(
+                "C2CKZT has no qrnspk/lkq link",
+                "qrnspk" not in url and "/lkq" not in url,
+                url[:80] if url else "ok",
+            )
+        if ps in ("PHONEKZT", "PHONEKGS") and data.get("requisites_available"):
+            self._ok("phone method has phone", bool(phone), phone or "-")
+
+    def _report_recent(self, merchant: str, limit: int) -> None:
+        from payments.psp_payin import requisite_for_payin
+
+        names = list(melbet_kzt_usernames()) if merchant in melbet_kzt_usernames() else [merchant]
+        qs = (
+            PayIn.objects.filter(merchant__user__username__in=names)
+            .select_related(
+                "status",
+                "payment_system",
+                "order__status",
+                "order__payment_details__group__trader__user",
+            )
+            .order_by("-created_at")[: max(1, min(limit, 100))]
+        )
+        rows = list(qs)
+        self.stdout.write(self.style.HTTP_INFO(f"\n=== Last {len(rows)} {names} pay-ins ===\n"))
+        n_cp = n_card = n_url_only = n_ok = 0
+        for pay_in in rows:
+            order_st = pay_in.order.status.name if pay_in.order and pay_in.order.status else "-"
+            trader = "-"
+            if pay_in.order and pay_in.order.payment_details_id:
+                trader = pay_in.order.payment_details.group.trader.user.username
+            req = requisite_for_payin(pay_in) or {}
+            card = bool(str(req.get("card_number") or "").strip())
+            phone = bool(str(req.get("phone") or "").strip())
+            url = str(req.get("payment_form_url") or req.get("qr_image_url") or "")
+            url_only = bool(url) and not card and not phone
+            if order_st == "Cannot process":
+                n_cp += 1
+            if card:
+                n_card += 1
+            if url_only:
+                n_url_only += 1
+            if card or phone:
+                n_ok += 1
+            mark = "URL" if url_only else ("CARD" if card else ("PHONE" if phone else order_st))
+            self.stdout.write(
+                f"  {pay_in.created_at:%H:%M} {pay_in.id} {pay_in.payment_system.name if pay_in.payment_system else '-'} "
+                f"{pay_in.status.name if pay_in.status else '-'} / {order_st} {trader} {mark}"
+                f"{' ' + url[:60] if url_only else ''}"
+            )
+        total = len(rows) or 1
+        self.stdout.write(
+            f"\n  card={n_card} phone_or_card={n_ok} url_only={n_url_only} cannot_process={n_cp} / {len(rows)}"
+            f"  url_only%={100*n_url_only/total:.0f} cannot_process%={100*n_cp/total:.0f}"
+        )
+        self._ok("report url_only is not dominant", n_url_only <= max(2, len(rows) // 5), f"{n_url_only}/{len(rows)}")
 
     def _check_unknown_payin_404(self) -> None:
         missing = uuid.uuid4()

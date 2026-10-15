@@ -11,6 +11,9 @@ _ASSETS_DIR = Path(__file__).resolve().parent / "static" / "payment_page"
 _KNOWN = {
     "kaspi-international-transfers-guide.png": "image/png",
     "halyk-foreign-card-guide.jpg": "image/jpeg",
+    "kaspi-step-1.jpg": "image/jpeg",
+    "kaspi-step-2.jpg": "image/jpeg",
+    "kaspi-step-3.jpg": "image/jpeg",
 }
 
 

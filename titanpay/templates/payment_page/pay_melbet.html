@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<!-- pay-page: melbet kaspi-instruction v1 -->
+<html lang="{{ default_locale|default:'ru' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>MELBET — {% if default_locale == 'kk' %}төлем{% else %}оплата{% endif %}</title>
+  <style>
+    :root {
+      --bg: #e8eef4; --card: #fff; --text: #1c2430; --muted: #8b95a3; --line: #e6ebf1;
+      --teal: #12a8bc; --teal-dark: #0e8fa1; --kaspi: #e30613; --warn-bg: #fff4cc;
+      --warn-text: #5c4a12; --red: #e11d2e;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+    .phone { max-width: 430px; margin: 0 auto; min-height: 100vh; background: var(--bg); }
+    .nav {
+      position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between;
+      height: 52px; padding: 0 8px; background: #f7f9fc; border-bottom: 1px solid #edf1f5;
+    }
+    .nav button { width: 40px; height: 40px; border: 0; background: transparent; color: #6b7787; font-size: 22px; cursor: pointer; }
+    .nav h1 { margin: 0; font-size: 17px; font-weight: 500; color: #6b7787; }
+    .sheet { padding: 12px 12px 28px; }
+    .card { background: var(--card); border-radius: 18px; padding: 16px; margin-bottom: 12px; }
+    .lang { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+    .lang-pill {
+      display: flex; align-items: center; gap: 8px; border: 1px solid #dbe3ec; border-radius: 12px;
+      padding: 6px 10px; font-size: 13px; background: #fff; cursor: pointer;
+    }
+    .brand-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .logo { font-weight: 800; letter-spacing: .04em; font-size: 22px; }
+    .logo .bar { width: 54px; height: 4px; background: var(--teal); border-radius: 2px; margin-top: 4px; }
+    .pay-id { font-size: 12px; color: var(--muted); text-align: right; line-height: 1.35; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; margin: 14px 0 10px;
+      background: #f3c84b; color: #1a1a1a; border-radius: 999px; padding: 5px 12px 5px 8px;
+      font-weight: 800; font-size: 13px;
+    }
+    .chip-ico { width: 22px; height: 22px; border-radius: 50%; background: #2bb24c; display: grid; place-items: center; color: #fff; }
+    .pay-line { font-size: 16px; margin: 4px 0 14px; }
+    .pay-line strong { color: var(--teal); }
+    .kaspi, a.kaspi {
+      width: 100%; border: 0; border-radius: 14px; cursor: pointer; text-decoration: none;
+      background: var(--kaspi); color: #fff; display: flex; align-items: center; justify-content: center; gap: 12px;
+      padding: 14px 12px; font-size: 16px; font-weight: 700;
+    }
+    .kaspi-mark { width: 46px; height: 46px; border-radius: 10px; background: #fff; display: grid; place-items: center; }
+    .warn { margin-top: 12px; background: var(--warn-bg); color: var(--warn-text); border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.4; display: flex; gap: 10px; }
+    .guide-link {
+      margin-top: 12px; width: 100%; border: 0; background: transparent; color: #1a8dff;
+      font-size: 16px; font-weight: 700; padding: 10px 4px; display: flex; justify-content: space-between; cursor: pointer;
+    }
+    .req-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line); }
+    .req-row:last-child { border-bottom: 0; }
+    .req-label { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .req-val { font-size: 16px; font-weight: 700; word-break: break-all; }
+    .visa { color: #1a56db; font-style: italic; font-weight: 800; margin-left: 6px; }
+    .copy { width: 36px; height: 36px; border: 0; background: transparent; color: #9aa6b4; font-size: 18px; cursor: pointer; }
+    .timer { display: flex; justify-content: space-between; padding: 8px 8px 16px; color: var(--muted); font-size: 14px; }
+    .timer.expired { color: var(--red); }
+    .timer-value { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 700; }
+    .paid {
+      width: 100%; border: 0; border-radius: 14px; cursor: pointer; background: var(--teal); color: #fff;
+      font-size: 17px; font-weight: 700; padding: 16px;
+    }
+    .paid:disabled { opacity: .5; }
+    .problems { text-align: center; color: var(--muted); margin: 18px 0 8px; }
+    .faq { width: 100%; border: 0; background: transparent; text-align: left; padding: 14px 8px; display: flex; gap: 10px; font-size: 15px; color: #1a8dff; cursor: pointer; }
+    .faq-body { display: none; padding: 0 12px 12px 40px; color: #5b6776; font-size: 13px; line-height: 1.45; }
+    .faq-wrap.open .faq-body { display: block; }
+    .cancel { width: 100%; border: 0; background: transparent; color: var(--red); font-size: 15px; font-weight: 600; padding: 14px; cursor: pointer; }
+    .safe { text-align: center; color: #9aa6b4; font-size: 13px; padding: 8px 0 20px; }
+    .hidden { display: none !important; }
+    .state { text-align: center; padding: 48px 16px; }
+    .spinner { width: 36px; height: 36px; border: 3px solid #dbe3ec; border-top-color: var(--teal); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay { position: fixed; inset: 0; background: #f4f6f8; z-index: 50; display: none; flex-direction: column; max-width: 430px; margin: 0 auto; }
+    .overlay.show { display: flex; }
+    .ov-head { display: flex; justify-content: space-between; padding: 16px; }
+    .ov-head h2 { margin: 0; font-size: 24px; }
+    .ov-img-wrap { flex: 1; padding: 8px 16px; overflow: auto; }
+    .ov-img-wrap img { width: 100%; border-radius: 12px; display: block; }
+    .step-card { margin: 8px 16px; background: #fff; border-radius: 18px; padding: 14px; display: flex; gap: 12px; align-items: center; }
+    .step-n { width: 42px; height: 42px; border-radius: 50%; background: #1a8dff; color: #fff; display: grid; place-items: center; font-weight: 800; }
+    .ov-nav { display: flex; gap: 12px; padding: 12px 16px 24px; }
+    .ov-nav button { flex: 1; border: 0; border-radius: 14px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
+    .ov-back { background: #eef2f6; color: #6b7787; }
+    .ov-next { background: #1a8dff; color: #fff; }
+    .dots { display: flex; justify-content: center; gap: 6px; }
+    .dots i { width: 7px; height: 7px; border-radius: 50%; background: #cfd8e3; display: block; }
+    .dots i.on { background: #1a8dff; }
+    .receipt-box { margin: 12px 0; padding: 12px; border: 1px dashed #dbe3ec; border-radius: 12px; }
+    .bank-hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <div class="nav">
+      <button type="button" onclick="history.back()">‹</button>
+      <h1 id="txt-nav">Пополнение счёта</h1>
+      <button type="button" id="btn-reload">↻</button>
+    </div>
+    <div class="sheet" id="app">
+      <div class="state" id="loading"><div class="spinner"></div><p id="txt-loading"></p></div>
+      <div class="state hidden" id="error"></div>
+
+      <div class="hidden" id="pay-screen">
+        <div class="card">
+          <div class="lang">
+            <button type="button" class="lang-pill" id="lang-toggle">Русский ▾</button>
+          </div>
+          <div class="brand-row">
+            <div class="logo">MELBET<div class="bar"></div></div>
+            <div class="pay-id">ID платежа:<br><b id="pid"></b></div>
+          </div>
+          <div class="chip"><span class="chip-ico">₸</span> <span id="cur-chip">KZT</span></div>
+          <div class="pay-line" id="amount-line"></div>
+          <div id="bank-actions"></div>
+          <div class="warn" id="txt-hint"></div>
+          <button class="guide-link" type="button" id="open-guide">Пошаговая инструкция <span>›</span></button>
+        </div>
+        <div class="card" id="details"></div>
+        <div class="hidden" id="bank-guides"></div>
+        <div class="receipt-box hidden" id="receipt-box">
+          <div id="txt-receipt-label"></div>
+          <input type="file" id="receipt-file" accept="image/*,application/pdf">
+          <div class="hidden" id="receipt-name"></div>
+          <div id="txt-receipt-hint"></div>
+        </div>
+        <div class="timer" id="timer-box"><span id="txt-timer-label"></span><span>⏱ <span class="timer-value" id="timer">—</span></span></div>
+        <button class="paid" id="btn-sent"></button>
+        <div class="problems" id="txt-problems">Возникли проблемы?</div>
+        <div class="faq-wrap">
+          <button class="faq" type="button">⚑  <span id="faq1-q"></span></button>
+          <div class="faq-body" id="faq1-a"></div>
+        </div>
+        <div class="faq-wrap">
+          <button class="faq" type="button">?  <span id="faq2-q"></span></button>
+          <div class="faq-body" id="faq2-a"></div>
+        </div>
+        <button class="cancel" id="btn-cancel"></button>
+        <div class="safe">🛡 <span id="txt-safe"></span></div>
+      </div>
+
+      <div class="state hidden" id="wait-screen">
+        <h2 id="txt-wait-title"></h2>
+        <p id="txt-wait-msg"></p>
+      </div>
+      <div class="state hidden" id="success-screen">
+        <h2 id="txt-ok-title"></h2>
+        <p id="txt-ok-msg"></p>
+      </div>
+      <div class="state hidden" id="fail-screen">
+        <h2 id="fail-title"></h2>
+        <p id="fail-msg"></p>
+      </div>
+    </div>
+
+    <div class="overlay" id="overlay">
+      <div class="ov-head">
+        <div>
+          <h2 id="ov-h">Как выполнить перевод</h2>
+          <small id="ov-sub"></small>
+        </div>
+        <button type="button" id="close-guide" style="border:0;background:transparent;font-size:28px;color:#6b7787">×</button>
+      </div>
+      <div class="ov-img-wrap"><img id="ov-img" alt=""></div>
+      <div class="step-card">
+        <div class="step-n" id="ov-n">1</div>
+        <div>
+          <div style="font-weight:800;font-size:18px" id="ov-title"></div>
+          <div style="color:#5b6776;font-size:15px" id="ov-cap"></div>
+        </div>
+      </div>
+      <div class="dots"><i class="on"></i><i></i><i></i></div>
+      <div class="ov-nav">
+        <button class="ov-back" type="button" id="ov-back">Назад</button>
+        <button class="ov-next" type="button" id="ov-next">Далее</button>
+      </div>
+    </div>
+  </div>
+  <button type="button" id="lang-kk" class="hidden" data-lang="kk"></button>
+  <button type="button" id="lang-ru" class="hidden" data-lang="ru"></button>
+  <p class="hidden" id="ps-line"></p>
+
+  <script>
+    const PAY_IN_ID = "{{ pay_in_id }}";
+    const API_BASE = "{{ api_base }}";
+    const CLIENT_GATE = "{{ client_gate|escapejs }}";
+    const DEFAULT_LOCALE = "{{ default_locale|default:'ru' }}";
+    const SENT_KEY = `pay_sent_${PAY_IN_ID}`;
+    const STEPS = {
+      ru: [
+        { img: "/payment-page-assets/kaspi-step-1.jpg", title: "Шаг 1", cap: "Выберите «Переводы»." },
+        { img: "/payment-page-assets/kaspi-step-2.jpg", title: "Шаг 2", cap: "Выберите «Международные переводы»." },
+        { img: "/payment-page-assets/kaspi-step-3.jpg", title: "Шаг 3", cap: "Укажите номер карты, имя и фамилию, сумму перевода." },
+      ],
+      kk: [
+        { img: "/payment-page-assets/kaspi-step-1.jpg", title: "1-қадам", cap: "«Аударымдар» бөлімін таңдаңыз." },
+        { img: "/payment-page-assets/kaspi-step-2.jpg", title: "2-қадам", cap: "«Халықаралық аударымдар» тармағын таңдаңыз." },
+        { img: "/payment-page-assets/kaspi-step-3.jpg", title: "3-қадам", cap: "Карта нөмірін, аты-жөнін және соманы енгізіңіз." },
+      ],
+    };
+
+    let locale = localStorage.getItem(`pay_locale_${PAY_IN_ID}`) || DEFAULT_LOCALE;
+    let pollTimer = null, countdownTimer = null, guideStep = 0;
+    let receiptRequired = false;
+    let receiptUploaded = false;
+    let selectedReceiptFile = null;
+
+    const I18N = {
+      kk: {
+        loading: "Төлем жүктелуде…", nav: "Шотты толықтыру",
+        timer: "Қалған уақыт:", card: "Аударым картасының нөмірі", phone: "Телефон", account: "Шот",
+        payLink: "Төлем сілтемесі", owner: "Алушының аты", bank: "Алушы банкі", bic: "БИК",
+        amountExact: "Дәл аударым сомасы",
+        copy: "Көшіру", copied: "Көшірілді", copyAll: "Барлығын көшіру",
+        hint: "Назар аударыңыз: соманы доллармен ($) көрсетіңіз, блоктау болмас үшін.",
+        payOne: "Бір төлеммен төлеңіз",
+        sent: "✓  Төледім", cancel: "✕  Өтінімді болдырмау", cancelConfirm: "Өтінімді болдырмау керек пе?",
+        waitTitle: "Растау күтілуде", waitMsg: "Төлем қабылданды. Бетті жабуға болады.",
+        waitVerify: "Төлем тексерілуде.",
+        okTitle: "Төлем сәтті", okMsg: "Дүкен сайтына бағыттауда…",
+        failTitle: "Төлем орындалмады", failDeclined: "Төлем қабылданбады", failMsg: "Бағыттауда…",
+        noReq: "Реквизиттер уақытша жоқ", notFound: "Төлем табылмады",
+        noReqTitle: "Төлем қолжетімсіз", noReqMsg: "Реквизиттер берілмеді.",
+        sentErr: "Растау сәтсіз", cancelErr: "Болдырмау қатесі",
+        bankSection: "Банк қосымшасы",
+        receiptLabel: "Төлем чегі", receiptHint: "Чекті жүктеңіз, содан кейін «Төледім».",
+        receiptRequired: "Алдымен чек жүктеңіз", receiptUploaded: "Чек жүктелді",
+        guide: "Қадамдық нұсқаулық", problems: "Мәселе туындады ма?",
+        faq1q: "Қате сома жібердім", faq1a: "Экрандағы соманы тексеріңіз. Аз жіберсеңіз — қалғанын сол реквизиттерге жіберіңіз.",
+        faq2q: "Қалай төлеуді түсінбеймін", faq2a: "Нұсқаулықты ашыңыз: Аударымдар → Халықаралық аударымдар → карта, аты латынша, сома $.",
+        safe: "Барлық төлемдер қорғалған", lang: "Қазақша ▾",
+        ovH: "Аударымды қалай жасау керек",
+      },
+      ru: {
+        loading: "Загрузка платежа…", nav: "Пополнение счёта",
+        timer: "Осталось времени:", card: "Номер карты для перевода", phone: "Телефон", account: "Счёт",
+        payLink: "Ссылка для оплаты", owner: "Имя получателя", bank: "Банк получателя", bic: "БИК",
+        amountExact: "Точная сумма перевода",
+        copy: "Копировать", copied: "Скопировано", copyAll: "Скопировать всё",
+        hint: "Обратите внимание: сумму перевода указывайте в долларах США ($), чтобы избежать блокировок.",
+        payOne: "одним платежом",
+        sent: "✓  Я оплатил", cancel: "✕  Отменить заявку", cancelConfirm: "Отменить заявку?",
+        waitTitle: "Ожидаем подтверждение", waitMsg: "Платёж принят. Можно закрыть страницу.",
+        waitVerify: "Платёж проверяется.",
+        okTitle: "Оплата успешна", okMsg: "Перенаправляем на сайт магазина…",
+        failTitle: "Платёж не выполнен", failDeclined: "Платёж отклонён", failMsg: "Перенаправляем…",
+        noReq: "Реквизиты временно недоступны", notFound: "Платёж не найден",
+        noReqTitle: "Платёж недоступен", noReqMsg: "Реквизиты не выданы.",
+        sentErr: "Не удалось подтвердить оплату", cancelErr: "Ошибка отмены",
+        bankSection: "Приложение банка",
+        receiptLabel: "Чек об оплате", receiptHint: "Загрузите чек, затем нажмите «Я оплатил».",
+        receiptRequired: "Сначала прикрепите чек", receiptUploaded: "Чек прикреплён",
+        guide: "Пошаговая инструкция", problems: "Возникли проблемы?",
+        faq1q: "Я отправил неправильную сумму", faq1a: "Сверьте сумму на экране. Если отправили меньше — дошлите разницу тем же реквизитам.",
+        faq2q: "Я не понимаю, как платить", faq2a: "Откройте инструкцию: Переводы → Международные переводы → карта, имя латиницей, сумма в $.",
+        safe: "Все платежи защищены", lang: "Русский ▾",
+        ovH: "Как выполнить перевод",
+      },
+    };
+
+    function t(k) { return (I18N[locale] || I18N.ru)[k] || k; }
+    function obtainUrl() { return `${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/obtain/?lang=${locale}`; }
+    function apiHeaders() {
+      const h = { Accept: "application/json" };
+      if (CLIENT_GATE) h.GATE = CLIENT_GATE;
+      return h;
+    }
+    function show(id) {
+      ["loading", "error", "pay-screen", "wait-screen", "success-screen", "fail-screen"].forEach(el => {
+        document.getElementById(el).classList.toggle("hidden", el !== id);
+      });
+    }
+    function applyStaticI18n() {
+      document.documentElement.lang = locale;
+      document.getElementById("lang-kk").classList.toggle("active", locale === "kk");
+      document.getElementById("lang-ru").classList.toggle("active", locale === "ru");
+      document.getElementById("txt-loading").textContent = t("loading");
+      document.getElementById("txt-nav").textContent = t("nav");
+      document.getElementById("txt-timer-label").textContent = t("timer");
+      document.getElementById("txt-hint").innerHTML = "⚠️  " + t("hint");
+      document.getElementById("btn-sent").textContent = t("sent");
+      document.getElementById("btn-cancel").textContent = t("cancel");
+      document.getElementById("txt-wait-title").textContent = t("waitTitle");
+      document.getElementById("txt-wait-msg").textContent = t("waitMsg");
+      document.getElementById("txt-ok-title").textContent = t("okTitle");
+      document.getElementById("txt-ok-msg").textContent = t("okMsg");
+      document.getElementById("open-guide").innerHTML = t("guide") + " <span>›</span>";
+      document.getElementById("txt-problems").textContent = t("problems");
+      document.getElementById("faq1-q").textContent = t("faq1q");
+      document.getElementById("faq1-a").textContent = t("faq1a");
+      document.getElementById("faq2-q").textContent = t("faq2q");
+      document.getElementById("faq2-a").textContent = t("faq2a");
+      document.getElementById("txt-safe").textContent = t("safe");
+      document.getElementById("lang-toggle").textContent = t("lang");
+      document.getElementById("ov-h").textContent = t("ovH");
+      document.getElementById("ov-back").textContent = locale === "kk" ? "Артқа" : "Назад";
+    }
+    function updateSentButtonState() {
+      const btn = document.getElementById("btn-sent");
+      if (!receiptRequired) { btn.disabled = false; return; }
+      btn.disabled = !(receiptUploaded || selectedReceiptFile);
+    }
+    function setupReceiptUi(data) {
+      receiptRequired = Boolean(data.receipt_required);
+      receiptUploaded = Boolean(data.receipt_uploaded);
+      const box = document.getElementById("receipt-box");
+      const fileInput = document.getElementById("receipt-file");
+      const nameEl = document.getElementById("receipt-name");
+      if (!receiptRequired) {
+        box.classList.add("hidden");
+        selectedReceiptFile = null;
+        updateSentButtonState();
+        return;
+      }
+      box.classList.remove("hidden");
+      document.getElementById("txt-receipt-label").textContent = t("receiptLabel");
+      document.getElementById("txt-receipt-hint").textContent = t("receiptHint");
+      if (receiptUploaded) {
+        nameEl.textContent = t("receiptUploaded");
+        nameEl.classList.remove("hidden");
+        fileInput.classList.add("hidden");
+      } else {
+        nameEl.classList.add("hidden");
+        fileInput.classList.remove("hidden");
+        selectedReceiptFile = null;
+      }
+      updateSentButtonState();
+    }
+    function fmtAmount(amount, currency) {
+      const loc = locale === "kk" ? "kk-KZ" : "ru-RU";
+      return `${Number(amount).toLocaleString(loc)} ${currency || ""}`.trim();
+    }
+    function detailField(label, value, copyable, extra) {
+      if (!value) return "";
+      const id = "f-" + Math.random().toString(36).slice(2, 8);
+      return `<div class="req-row"><div><div class="req-label">${label}</div>
+        <div class="req-val" id="${id}">${value}${extra || ""}</div></div>
+        ${copyable ? `<button type="button" class="copy" data-target="${id}">⎘</button>` : ""}</div>`;
+    }
+    function renderDetails(pd, amountLine) {
+      if (!pd || typeof pd !== "object") return `<p>${t("noReq")}</p>`;
+      let html = "";
+      const visa = (pd.card_number || "").replace(/\s/g, "").startsWith("4") ? '<span class="visa">VISA</span>' : "";
+      if (pd.bank) html += detailField(t("bank"), pd.bank, true, visa);
+      if (pd.owner) html += detailField(t("owner"), pd.owner, true);
+      if (pd.card_number) html += detailField(t("card"), pd.card_number, true);
+      if (pd.phone) html += detailField(t("phone"), pd.phone, true);
+      if (pd.deposit_number) html += detailField(t("account"), pd.deposit_number, true);
+      const hasH2h = Boolean(pd.card_number || pd.phone || pd.deposit_number);
+      if (!hasH2h && pd.qr_image_url && /^https?:\/\//i.test(pd.qr_image_url)) {
+        html += `<img alt="QR" src="${pd.qr_image_url}" style="max-width:220px">`;
+      }
+      if (!hasH2h && pd.payment_form_url && /^https?:\/\//i.test(pd.payment_form_url)) {
+        html += `<a class="kaspi" href="${pd.payment_form_url}" rel="noopener noreferrer">${t("payLink")}</a>`;
+      }
+      if (amountLine) html += detailField(t("amountExact"), amountLine, true);
+      if (pd.bic) html += detailField(t("bic"), pd.bic, true);
+      return html || `<p>${t("noReq")}</p>`;
+    }
+    function guideImageSrc(guide) { return (guide && guide.image_url) || ""; }
+    function renderBankGuides() {}
+    function isAndroid() { return /android/i.test(navigator.userAgent || ""); }
+    function copyClipboardQuiet(text) {
+      if (!text || !navigator.clipboard) return;
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    function renderBankActions(data) {
+      const box = document.getElementById("bank-actions");
+      box.innerHTML = "";
+      const actions = data.bank_actions || [];
+      const kaspi = actions.find(a => (a.id || "").toLowerCase().includes("kaspi")) || actions[0];
+      if (!kaspi) return;
+      const httpsUrl = kaspi.url || "";
+      const androidUrl = kaspi.android_url || "";
+      const useAndroidIntent = isAndroid() && androidUrl;
+      const useNativeLink = !useAndroidIntent && /^https:\/\//i.test(httpsUrl);
+      const mark = `<span class="kaspi-mark"><svg width="34" height="28" viewBox="0 0 34 28" fill="none"><circle cx="11" cy="9" r="5" fill="#e30613"/><circle cx="23" cy="9" r="5" fill="#e30613"/><path d="M4 24c1.5-6 6-8 13-8s11.5 2 13 8" stroke="#e30613" stroke-width="4" stroke-linecap="round"/></svg></span>`;
+      const label = kaspi.label || (locale === "kk" ? "Kaspi Bank арқылы төлеу" : "Оплатить через Kaspi Bank");
+      if (useNativeLink) {
+        const el = document.createElement("a");
+        el.className = "kaspi";
+        el.href = httpsUrl;
+        el.innerHTML = mark + label;
+        el.addEventListener("pointerdown", () => copyClipboardQuiet(data.clipboard_text));
+        box.appendChild(el);
+      } else {
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = "kaspi";
+        el.innerHTML = mark + label;
+        el.addEventListener("click", async () => {
+          if (data.clipboard_text) {
+            try { await navigator.clipboard.writeText(data.clipboard_text); } catch (_) {}
+          }
+          if (httpsUrl || androidUrl) window.location.href = useAndroidIntent ? androidUrl : httpsUrl;
+        });
+        box.appendChild(el);
+      }
+    }
+    function wireCopyButtons() {
+      document.querySelectorAll(".copy").forEach(btn => {
+        btn.onclick = () => {
+          const el = document.getElementById(btn.dataset.target);
+          navigator.clipboard.writeText(el.textContent.replace("VISA", "").trim());
+        };
+      });
+    }
+    function startCountdown(expiresAt) {
+      clearInterval(countdownTimer);
+      const box = document.getElementById("timer-box");
+      const el = document.getElementById("timer");
+      function tick() {
+        const left = expiresAt - Math.floor(Date.now() / 1000);
+        if (left <= 0) {
+          el.textContent = "00:00";
+          box.classList.add("expired");
+          clearInterval(countdownTimer);
+          return;
+        }
+        const m = Math.floor(left / 60), s = left % 60;
+        el.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      }
+      tick();
+      countdownTimer = setInterval(tick, 1000);
+    }
+    function markSent() { sessionStorage.setItem(SENT_KEY, "1"); }
+    function wasSent() { return sessionStorage.getItem(SENT_KEY) === "1"; }
+    function shouldStayOnWait(data) {
+      return data.waiting_confirmation || data.pending_verification || wasSent();
+    }
+    function handleTerminal(data) {
+      if (data.status === "Success") {
+        clearInterval(pollTimer);
+        sessionStorage.removeItem(SENT_KEY);
+        show("success-screen");
+        if (data.success_url) window.location.href = data.success_url;
+        return true;
+      }
+      if (data.status === "Failed" || data.status === "Declined") {
+        if (shouldStayOnWait(data)) {
+          show("wait-screen");
+          document.getElementById("txt-wait-msg").textContent = t("waitVerify");
+          startPolling();
+          return true;
+        }
+        clearInterval(pollTimer);
+        sessionStorage.removeItem(SENT_KEY);
+        show("fail-screen");
+        document.getElementById("fail-title").textContent =
+          data.status === "Declined" ? t("failDeclined") : t("failTitle");
+        document.getElementById("fail-msg").textContent = t("failMsg");
+        if (data.failed_url) window.location.href = data.failed_url;
+        return true;
+      }
+      return false;
+    }
+    function renderPay(data) {
+      if (data.locale) locale = data.locale;
+      applyStaticI18n();
+      if (handleTerminal(data)) return;
+      if (data.waiting_confirmation || data.pending_verification || wasSent()) {
+        show("wait-screen");
+        startPolling();
+        return;
+      }
+      if (data.requisites_available === false) {
+        show("fail-screen");
+        document.getElementById("fail-title").textContent = t("noReqTitle");
+        document.getElementById("fail-msg").textContent = t("noReqMsg");
+        if (data.failed_url) window.location.href = data.failed_url;
+        return;
+      }
+      show("pay-screen");
+      const amt = fmtAmount(data.amount, data.currency);
+      document.getElementById("amount-line").innerHTML = `${locale === "kk" ? "Төлеңіз" : "Оплатите"} <strong>${amt}</strong> ${t("payOne")}`;
+      document.getElementById("ps-line").textContent = data.payment_system || "";
+      document.getElementById("cur-chip").textContent = data.currency || "KZT";
+      document.getElementById("pid").textContent = (PAY_IN_ID || "").slice(0, 6) + "…" + (PAY_IN_ID || "").slice(-4);
+      document.getElementById("details").innerHTML = renderDetails(data.payment_details, amt);
+      renderBankGuides(data);
+      renderBankActions(data);
+      setupReceiptUi(data);
+      wireCopyButtons();
+      if (data.expires_at) startCountdown(data.expires_at);
+    }
+    async function fetchObtain() {
+      const res = await fetch(obtainUrl(), { headers: apiHeaders() });
+      if (!res.ok) throw new Error(t("notFound"));
+      return res.json();
+    }
+    async function load() {
+      applyStaticI18n();
+      try { renderPay(await fetchObtain()); }
+      catch (e) { show("error"); document.getElementById("error").textContent = e.message || t("notFound"); }
+    }
+    function startPolling() {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const data = await fetchObtain();
+          if (handleTerminal(data)) return;
+          if (shouldStayOnWait(data)) return;
+          renderPay(data);
+        } catch (_) {}
+      }, 3000);
+    }
+    function steps() { return STEPS[locale] || STEPS.ru; }
+    function renderGuide() {
+      const s = steps()[guideStep];
+      document.getElementById("ov-img").src = s.img;
+      document.getElementById("ov-n").textContent = String(guideStep + 1);
+      document.getElementById("ov-title").textContent = s.title;
+      document.getElementById("ov-cap").textContent = s.cap;
+      document.getElementById("ov-sub").textContent = locale === "kk" ? `${guideStep + 1} / 3` : `Шаг ${guideStep + 1} из 3`;
+      document.getElementById("ov-next").textContent = guideStep === 2 ? (locale === "kk" ? "Дайын" : "Готово") : (locale === "kk" ? "Келесі" : "Далее");
+      document.querySelectorAll(".dots i").forEach((d, i) => d.classList.toggle("on", i === guideStep));
+    }
+    document.getElementById("open-guide").onclick = () => { guideStep = 0; renderGuide(); document.getElementById("overlay").classList.add("show"); };
+    document.getElementById("close-guide").onclick = () => document.getElementById("overlay").classList.remove("show");
+    document.getElementById("ov-back").onclick = () => { if (guideStep > 0) { guideStep--; renderGuide(); } };
+    document.getElementById("ov-next").onclick = () => {
+      if (guideStep < 2) { guideStep++; renderGuide(); }
+      else document.getElementById("overlay").classList.remove("show");
+    };
+    document.querySelectorAll(".faq").forEach((btn) => {
+      btn.onclick = () => btn.parentElement.classList.toggle("open");
+    });
+    document.getElementById("lang-toggle").onclick = () => {
+      locale = locale === "ru" ? "kk" : "ru";
+      localStorage.setItem(`pay_locale_${PAY_IN_ID}`, locale);
+      load();
+    };
+    document.getElementById("btn-reload").onclick = () => load();
+    document.getElementById("receipt-file").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      selectedReceiptFile = file || null;
+      const nameEl = document.getElementById("receipt-name");
+      if (selectedReceiptFile) { nameEl.textContent = selectedReceiptFile.name; nameEl.classList.remove("hidden"); }
+      else nameEl.classList.add("hidden");
+      updateSentButtonState();
+    });
+    document.getElementById("btn-sent").onclick = async () => {
+      const btn = document.getElementById("btn-sent");
+      if (receiptRequired && !receiptUploaded && !selectedReceiptFile) { alert(t("receiptRequired")); return; }
+      btn.disabled = true;
+      try {
+        let res;
+        if (selectedReceiptFile) {
+          const form = new FormData();
+          form.append("file", selectedReceiptFile);
+          res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, { method: "POST", headers: apiHeaders(), body: form });
+        } else {
+          res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, { method: "POST", headers: apiHeaders() });
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.details || err.error || t("sentErr"));
+        }
+        markSent();
+        show("wait-screen");
+        startPolling();
+      } catch (e) { alert(e.message); }
+      finally { updateSentButtonState(); }
+    };
+    document.getElementById("btn-cancel").onclick = async () => {
+      if (!confirm(t("cancelConfirm"))) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/cancel/`, { method: "POST", headers: apiHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.details || data.error || t("cancelErr"));
+        sessionStorage.removeItem(SENT_KEY);
+        const fresh = await fetchObtain();
+        handleTerminal({ ...fresh, status: "Failed", failed_url: fresh.failed_url });
+      } catch (e) { alert(e.message); }
+    };
+    document.getElementById("lang-kk").onclick = () => { locale = "kk"; localStorage.setItem(`pay_locale_${PAY_IN_ID}`, "kk"); load(); };
+    document.getElementById("lang-ru").onclick = () => { locale = "ru"; localStorage.setItem(`pay_locale_${PAY_IN_ID}`, "ru"); load(); };
+    load();
+  </script>
+</body>
+</html>
