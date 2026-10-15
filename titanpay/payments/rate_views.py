@@ -1,7 +1,8 @@
-"""Provider endpoint for PayPlat payout USDT/KZT rate (XE.com)."""
+"""Provider endpoint for PayPlat payout USDT/KZT rate (XE.com, PayPlat-compatible JSON)."""
 from __future__ import annotations
 
 import hmac
+import logging
 from datetime import datetime, timezone as dt_timezone
 
 from decimal import Decimal
@@ -17,8 +18,11 @@ from payments.payoutkzt_rate import (
     fetch_payoutkzt_xe_quote,
     get_payoutkzt_rate,
     payoutkzt_ps_name,
+    payoutkzt_xe_markup,
     store_payoutkzt_rate,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _configured_rate_token() -> str:
@@ -55,20 +59,54 @@ def _ps_updated_at(ps: PaymentSystem | None) -> str | None:
     return datetime.fromtimestamp(ts, tz=dt_timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _xe_method() -> dict:
-    from payments.payoutkzt_rate import payoutkzt_xe_markup
-
+def _payplat_method() -> dict:
+    """Envelope PayPlat already parses (Kaspi book). Rate value itself is XE."""
+    rows_raw = getattr(settings, "BYBIT_KZT_ROWS", "15,16")
+    if isinstance(rows_raw, (list, tuple)):
+        method_rows = [int(x) for x in rows_raw]
+    else:
+        method_rows = [int(p.strip()) for p in str(rows_raw).split(",") if p.strip()]
+    try:
+        method_amount = int(getattr(settings, "BYBIT_KZT_AMOUNT", 50000) or 50000)
+    except (TypeError, ValueError):
+        method_amount = 50000
     return {
+        "amount": method_amount,
+        "payment": "Kaspi",
+        "verified": bool(getattr(settings, "BYBIT_KZT_AUTH_MAKER", True)),
+        "rows": method_rows or [15, 16],
+        "side": "sell",
         "provider": "xe.com",
-        "endpoint": "https://www.xe.com/api/protected/midmarket-converter/",
         "markup": str(payoutkzt_xe_markup()),
     }
 
 
-class PayoutKztRateView(APIView):
-    """GET /api/v1/payments/rate/payoutkzt/ — курс XE.com только для выплат PayPlat.
+def _payplat_payload(*, rate: Decimal, ps_name: str, ps, prices: list | None = None) -> dict:
+    method = _payplat_method()
+    body = {
+        "payment_system": ps_name,
+        "pair": "USDT/KZT",
+        "currency": "KZT",
+        "rate": str(Decimal(str(rate)).quantize(Decimal("0.01"))),
+        "source": "bybit_kaspi",
+        "origin": "xe",
+        "updated_at": _ps_updated_at(ps),
+        "method": method,
+    }
+    if prices is not None:
+        body["live"] = {
+            "prices": [str(p) for p in prices],
+            "rows": method["rows"],
+            "ads_count": len(prices),
+        }
+        body["rate"] = str(rate)
+    return body
 
-    Query: live=1 — свежий запрос xe.com.
+
+class PayoutKztRateView(APIView):
+    """GET /api/v1/payments/rate/payoutkzt/ — курс XE, JSON как ждал PayPlat (live.prices).
+
+    Query: live=1 — свежий xe.com.
     Auth: RATE_API_TOKEN via X-Rate-Token / Authorization: Bearer / ?token= (optional).
     """
 
@@ -82,44 +120,34 @@ class PayoutKztRateView(APIView):
         live = str(request.query_params.get("live") or "").strip().lower() in ("1", "true", "yes")
         ps_name = payoutkzt_ps_name()
         ps = PaymentSystem.objects.filter(name__iexact=ps_name, currency__symbol__iexact="KZT").first()
-        method = _xe_method()
+        logger.info(
+            "PAYOUTKZT rate GET live=%s ua=%s ip=%s",
+            live,
+            request.META.get("HTTP_USER_AGENT", "")[:120],
+            request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR"),
+        )
 
         if live:
             quote = fetch_payoutkzt_xe_quote()
-            if quote is None:
-                rate = get_payoutkzt_rate(live=False)
-                payload = {
-                    "payment_system": ps_name,
-                    "pair": "USDT/KZT",
-                    "currency": "KZT",
-                    "rate": str(rate) if rate is not None else None,
-                    "source": "payoutkzt",
-                    "updated_at": _ps_updated_at(ps),
-                    "method": method,
-                    "live_error": "xe_unavailable",
-                }
-                if rate is None:
-                    return Response(payload, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-                return Response(payload)
-            store_payoutkzt_rate(quote["rate"])
-            ps = PaymentSystem.objects.filter(name__iexact=ps_name, currency__symbol__iexact="KZT").first()
+            if quote is not None:
+                store_payoutkzt_rate(quote["rate"])
+                ps = PaymentSystem.objects.filter(name__iexact=ps_name, currency__symbol__iexact="KZT").first()
+                return Response(
+                    _payplat_payload(
+                        rate=quote["rate"],
+                        ps_name=ps_name,
+                        ps=ps,
+                        prices=[quote["rate"], quote["rate"]],
+                    )
+                )
+            rate = get_payoutkzt_rate(live=False)
+            if rate is None:
+                return Response(
+                    {"error": "payoutkzt_rate_unavailable", "payment_system": ps_name},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             return Response(
-                {
-                    "payment_system": ps_name,
-                    "pair": "USDT/KZT",
-                    "currency": "KZT",
-                    "rate": str(quote["rate"]),
-                    "source": "xe",
-                    "updated_at": _ps_updated_at(ps),
-                    "method": {
-                        **method,
-                        "markup": str(quote["markup"]),
-                    },
-                    "live": {
-                        "base": str(quote["base"]),
-                        "markup": str(quote["markup"]),
-                    },
-                }
+                _payplat_payload(rate=rate, ps_name=ps_name, ps=ps, prices=[rate, rate])
             )
 
         rate = get_payoutkzt_rate(live=False)
@@ -129,14 +157,4 @@ class PayoutKztRateView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         ps = PaymentSystem.objects.filter(name__iexact=ps_name, currency__symbol__iexact="KZT").first()
-        return Response(
-            {
-                "payment_system": ps_name,
-                "pair": "USDT/KZT",
-                "currency": "KZT",
-                "rate": str(Decimal(str(rate)).quantize(Decimal("0.01"))),
-                "source": "xe",
-                "updated_at": _ps_updated_at(ps),
-                "method": method,
-            }
-        )
+        return Response(_payplat_payload(rate=rate, ps_name=ps_name, ps=ps))

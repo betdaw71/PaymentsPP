@@ -40,8 +40,10 @@ class PayoutKztRateViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["rate"], "468.50")
         self.assertEqual(response.data["payment_system"], "PAYOUTKZT")
-        self.assertEqual(response.data["source"], "xe")
-        self.assertEqual(response.data["method"]["provider"], "xe.com")
+        self.assertEqual(response.data["source"], "bybit_kaspi")
+        self.assertEqual(response.data["origin"], "xe")
+        self.assertEqual(response.data["method"]["payment"], "Kaspi")
+        self.assertEqual(response.data["method"]["rows"], [15, 16])
         self.assertNotEqual(response.data["rate"], "540.00")
 
     @override_settings(XE_KZT_MARKUP="1.05", XE_KZT_MARKUP_BY_PS="{}")
@@ -50,10 +52,11 @@ class PayoutKztRateViewTest(TestCase):
         request = self.factory.get("/api/v1/payments/rate/payoutkzt/?live=1")
         response = PayoutKztRateView.as_view()(request)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["source"], "xe")
+        self.assertEqual(response.data["source"], "bybit_kaspi")
+        self.assertEqual(response.data["origin"], "xe")
         self.assertEqual(response.data["rate"], "500.000")
-        self.assertEqual(response.data["method"]["markup"], "1")
-        self.assertEqual(response.data["live"]["base"], "500")
+        self.assertEqual(response.data["live"]["prices"], ["500.000", "500.000"])
+        self.assertEqual(response.data["method"]["payment"], "Kaspi")
 
     @override_settings(RATE_API_TOKEN="secret-rate")
     def test_token_required_when_configured(self):
