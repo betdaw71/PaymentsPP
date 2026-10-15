@@ -56,12 +56,12 @@ def _ps_updated_at(ps: PaymentSystem | None) -> str | None:
 
 
 def _xe_method() -> dict:
-    from basics.utils import xe_kzt_markup_for_ps
+    from payments.payoutkzt_rate import payoutkzt_xe_markup
 
     return {
         "provider": "xe.com",
         "endpoint": "https://www.xe.com/api/protected/midmarket-converter/",
-        "markup": str(xe_kzt_markup_for_ps(payoutkzt_ps_name())),
+        "markup": str(payoutkzt_xe_markup()),
     }
 
 

@@ -51,7 +51,8 @@ class PayoutKztRateViewTest(TestCase):
         response = PayoutKztRateView.as_view()(request)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["source"], "xe")
-        self.assertEqual(response.data["rate"], "525.000")
+        self.assertEqual(response.data["rate"], "500.000")
+        self.assertEqual(response.data["method"]["markup"], "1")
         self.assertEqual(response.data["live"]["base"], "500")
 
     @override_settings(RATE_API_TOKEN="secret-rate")

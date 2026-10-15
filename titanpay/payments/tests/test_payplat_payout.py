@@ -11,6 +11,7 @@ from payments.payplat_client import (
     payplat_payout_create_rejected,
     payplat_webhook_outcome,
     _name_parts_from_payout,
+    _PAYOUT_COMPLETE_FROM,
     _payout_amount_for_payplat,
 )
 from payments.payplat_views import PayplatWebhookView
@@ -67,9 +68,9 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
 
     def test_late_paid_applies_after_failed_or_cannot_process(self):
         src = inspect.getsource(apply_payplat_payout_paid)
-        self.assertIn("Expired", src)
-        self.assertIn("Cannot process", src)
-        self.assertIn("Failed", src)
+        self.assertIn("Expired", _PAYOUT_COMPLETE_FROM)
+        self.assertIn("Cannot process", _PAYOUT_COMPLETE_FROM)
+        self.assertIn("Failed", _PAYOUT_COMPLETE_FROM)
         self.assertIn("PayPlat PAID after expire/fail", src)
         view_src = inspect.getsource(PayplatWebhookView._handle_payout_success)
         self.assertIn("apply_payplat_payout_paid", view_src)

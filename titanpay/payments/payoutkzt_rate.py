@@ -16,6 +16,17 @@ def payoutkzt_ps_name() -> str:
     return (getattr(settings, "PAYOUTKZT_PS_NAME", None) or "PAYOUTKZT").strip() or "PAYOUTKZT"
 
 
+def payoutkzt_xe_markup() -> Decimal:
+    """Payouts use raw XE mid-market. Optional override: XE_KZT_MARKUP_BY_PS.PAYOUTKZT."""
+    from basics.utils import _xe_kzt_markup_map
+
+    by_ps = _xe_kzt_markup_map()
+    name = payoutkzt_ps_name()
+    if name in by_ps:
+        return by_ps[name]
+    return Decimal("1")
+
+
 def cache_payoutkzt_rate(rate: Decimal) -> None:
     try:
         cache.set(CACHE_KEY, str(rate), timeout=15 * 60)
@@ -60,13 +71,13 @@ def store_payoutkzt_rate(rate: Decimal) -> None:
 
 
 def fetch_payoutkzt_xe_quote() -> dict | None:
-    """Live XE USD/KZT (+ markup for PAYOUTKZT / XE_KZT_MARKUP)."""
-    from basics.utils import get_xe_kzt_base_rate, xe_kzt_markup_for_ps
+    """Live XE USD/KZT mid-market (no pay-in markup)."""
+    from basics.utils import get_xe_kzt_base_rate
 
     base = get_xe_kzt_base_rate()
     if base is None or base <= 0:
         return None
-    markup = xe_kzt_markup_for_ps(payoutkzt_ps_name())
+    markup = payoutkzt_xe_markup()
     rate = (base * markup).quantize(Decimal("0.001"))
     return {
         "rate": rate,

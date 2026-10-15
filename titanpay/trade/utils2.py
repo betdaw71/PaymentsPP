@@ -137,7 +137,7 @@ def _liveness_exempt_trader_usernames() -> set[str]:
 
 def update_ps():
     from django.conf import settings
-    from payments.payoutkzt_rate import payoutkzt_ps_name, store_payoutkzt_rate
+    from payments.payoutkzt_rate import payoutkzt_ps_name, payoutkzt_xe_markup, store_payoutkzt_rate
 
     pss = PaymentSystem.objects.all()
     rub_rate = get_bybit_rate("Sber")
@@ -149,7 +149,7 @@ def update_ps():
 
     if kzt_xe_base is not None:
         try:
-            markup = xe_kzt_markup_for_ps(payoutkzt_name)
+            markup = payoutkzt_xe_markup()
             payout_rate = (kzt_xe_base * markup).quantize(Decimal("0.001"))
             store_payoutkzt_rate(payout_rate)
             logging.info(
