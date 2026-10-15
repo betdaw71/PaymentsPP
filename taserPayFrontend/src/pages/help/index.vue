@@ -9,305 +9,355 @@
           {{ $t('knowledge_base') }}
         </h4>
         <p class="text-body-1 mb-0">
-          Как завести карту, что менять в профиле и как пополнять баланс. Жёлтая подсветка — куда нажимать в кабинете.
+          Скрины кабинета: жёлтые номера — куда нажимать. Пополнение USDT — через рабочий чат.
         </p>
       </VCardText>
     </VCard>
 
-    <VRow>
-      <VCol
-        cols="12"
-        md="8"
-      >
-        <VCard
-          id="requisites"
-          class="mb-6"
+    <VCard
+      id="list"
+      class="mb-6"
+    >
+      <VCardItem>
+        <VCardTitle>1. Payment Details → Create</VCardTitle>
+      </VCardItem>
+      <VCardText>
+        <div class="shot-wrap">
+          <img
+            src="/help-shots/01-list.png"
+            alt="Payment Details"
+            class="shot-img"
+          >
+          <div
+            class="pin"
+            style="left: 3%; top: 28%;"
+          >
+            <span class="dot">1</span>
+            <span class="lab">Payment Details</span>
+          </div>
+          <div
+            class="pin"
+            style="left: 20%; top: 49%;"
+          >
+            <span class="dot">2</span>
+            <span class="lab">+ Create</span>
+          </div>
+        </div>
+      </VCardText>
+    </VCard>
+
+    <VCard
+      id="form"
+      class="mb-6"
+    >
+      <VCardItem>
+        <VCardTitle>2. Форма справа</VCardTitle>
+        <VCardSubtitle>Owner → свой банк → KZT → Standard → By Card → Active for Orders In</VCardSubtitle>
+      </VCardItem>
+      <VCardText>
+        <div class="shot-wrap">
+          <img
+            src="/help-shots/02-form.png"
+            alt="Форма создания"
+            class="shot-img"
+          >
+          <div
+            class="pin pin-right"
+            style="left: 72%; top: 16%;"
+          >
+            <span class="dot">3</span>
+            <span class="lab">Owner</span>
+          </div>
+          <div
+            class="pin pin-right"
+            style="left: 72%; top: 40%;"
+          >
+            <span class="dot">4</span>
+            <span class="lab">банк / KZT / Standard / By Card</span>
+          </div>
+          <div
+            class="pin pin-right"
+            style="left: 72%; top: 57%;"
+          >
+            <span class="dot">5</span>
+            <span class="lab">Active for Orders In</span>
+          </div>
+          <div
+            class="pin pin-right"
+            style="left: 72%; top: 88%;"
+          >
+            <span class="dot">6</span>
+            <span class="lab">Add Payment Detail</span>
+          </div>
+        </div>
+        <VAlert
+          class="mt-4"
+          type="info"
+          variant="tonal"
         >
-          <VCardItem>
-            <VCardTitle>Как добавить реквизит</VCardTitle>
-            <VCardSubtitle>Payment Details → Create → банк → KZT → Standard → By card</VCardSubtitle>
-          </VCardItem>
-          <VCardText>
-            <VTimeline
-              density="compact"
-              align="start"
-              line-inset="8"
-            >
-              <VTimelineItem
-                dot-color="primary"
-                size="small"
-              >
-                <div class="font-weight-medium mb-1">
-                  1. Откройте раздел Payment Details
-                </div>
-                <div class="text-medium-emphasis">
-                  Меню слева: «Реквизиты».
-                </div>
-                <VSheet
-                  class="mt-3 pa-3 rounded-lg"
-                  color="grey-lighten-4"
-                >
-                  <div class="d-flex align-center justify-space-between">
-                    <span class="font-weight-medium">💳 Payment Details</span>
-                    <VChip
-                      size="small"
-                      color="warning"
-                      variant="tonal"
-                    >
-                      меню слева
-                    </VChip>
-                  </div>
-                </VSheet>
-              </VTimelineItem>
+          Payment System: Elkard, Kompanion, Mbank, Optima, O bank, Bai-Tushum.
+        </VAlert>
+      </VCardText>
+    </VCard>
 
-              <VTimelineItem
-                dot-color="primary"
-                size="small"
-              >
-                <div class="font-weight-medium mb-1">
-                  2. Нажмите Create
-                </div>
-                <VSheet
-                  class="mt-3 pa-3 rounded-lg"
-                  color="grey-lighten-4"
-                >
-                  <div class="d-flex align-center justify-space-between">
-                    <span>Payment Details</span>
-                    <VBtn
-                      color="primary"
-                      size="small"
-                      prepend-icon="tabler-plus"
-                      class="help-hit"
-                    >
-                      {{ $t('create') }}
-                    </VBtn>
-                  </div>
-                  <div class="text-caption mt-2 text-warning">
-                    Справа откроется форма создания.
-                  </div>
-                </VSheet>
-              </VTimelineItem>
+    <VCard
+      id="card"
+      class="mb-6"
+    >
+      <VCardItem>
+        <VCardTitle>3. Card Number и Save</VCardTitle>
+      </VCardItem>
+      <VCardText>
+        <div class="shot-wrap mb-4">
+          <img
+            src="/help-shots/03-card.png"
+            alt="Card Number и Save"
+            class="shot-img"
+          >
+          <div
+            class="pin pin-right"
+            style="left: 72%; top: 72%;"
+          >
+            <span class="dot">7</span>
+            <span class="lab">Card Number</span>
+          </div>
+          <div
+            class="pin pin-right"
+            style="left: 72%; top: 90%;"
+          >
+            <span class="dot">8</span>
+            <span class="lab">Save</span>
+          </div>
+        </div>
+        <div class="shot-wrap">
+          <img
+            src="/help-shots/04-filled.png"
+            alt="Заполненная форма"
+            class="shot-img"
+          >
+        </div>
+      </VCardText>
+    </VCard>
 
-              <VTimelineItem
-                dot-color="primary"
-                size="small"
-              >
-                <div class="font-weight-medium mb-1">
-                  3. Заполните поля
-                </div>
-                <VSheet
-                  class="mt-3 pa-4 rounded-lg"
-                  color="grey-lighten-4"
-                >
-                  <div class="help-field help-hit mb-3">
-                    <div class="text-caption text-medium-emphasis">
-                      Owner / имя владельца
-                    </div>
-                    <div class="font-weight-medium">
-                      ФИО как на карте
-                    </div>
-                  </div>
-                  <div class="help-field help-hit mb-3">
-                    <div class="text-caption text-medium-emphasis">
-                      Payment system
-                    </div>
-                    <div class="font-weight-medium">
-                      ваш банк из списка (не C2CKZT)
-                    </div>
-                  </div>
-                  <div class="help-field help-hit mb-3">
-                    <div class="text-caption text-medium-emphasis">
-                      Currency
-                    </div>
-                    <div class="font-weight-medium">
-                      Казахские тенге (KZT)
-                    </div>
-                  </div>
-                  <div class="help-field help-hit mb-3">
-                    <div class="text-caption text-medium-emphasis">
-                      Allowed traffic
-                    </div>
-                    <div class="font-weight-medium">
-                      Standard
-                    </div>
-                  </div>
-                  <div class="help-field help-hit mb-3">
-                    <div class="text-caption text-medium-emphasis">
-                      Work type
-                    </div>
-                    <div class="font-weight-medium">
-                      By card
-                    </div>
-                  </div>
-                  <div class="help-field help-hit mb-3">
-                    <div class="text-caption text-medium-emphasis">
-                      Active for Orders In
-                    </div>
-                    <div class="font-weight-medium">
-                      ☑ включено
-                    </div>
-                  </div>
-                  <div class="help-field">
-                    <div class="text-caption text-medium-emphasis">
-                      Лимиты in orders
-                    </div>
-                    <div class="font-weight-medium">
-                      по необходимости
-                    </div>
-                  </div>
-                </VSheet>
-              </VTimelineItem>
+    <VCard
+      id="orders"
+      class="mb-6"
+    >
+      <VCardItem>
+        <VCardTitle>Заявки — Orders In</VCardTitle>
+        <VCardSubtitle>Expired / Money Sent By User / Completed. Frozen — холд по заявке.</VCardSubtitle>
+      </VCardItem>
+      <VCardText>
+        <div class="shot-wrap">
+          <img
+            src="/help-shots/05-orders.png"
+            alt="Список заявок"
+            class="shot-img"
+          >
+          <div
+            class="pin"
+            style="left: 3%; top: 18%;"
+          >
+            <span class="dot">1</span>
+            <span class="lab">Orders In</span>
+          </div>
+          <div
+            class="pin"
+            style="left: 18%; top: 58%;"
+          >
+            <span class="dot">2</span>
+            <span class="lab">Money Sent By User — открыть</span>
+          </div>
+        </div>
+      </VCardText>
+    </VCard>
 
-              <VTimelineItem
-                dot-color="success"
-                size="small"
-              >
-                <div class="font-weight-medium mb-1">
-                  4. Номер карты и сохранить
-                </div>
-                <VSheet
-                  class="mt-3 pa-4 rounded-lg"
-                  color="grey-lighten-4"
-                >
-                  <VBtn
-                    color="primary"
-                    class="help-hit mb-3"
-                    block
-                  >
-                    Add payment details
-                  </VBtn>
-                  <div class="help-field help-hit mb-3">
-                    <div class="text-caption text-medium-emphasis">
-                      Card number
-                    </div>
-                    <div class="font-weight-medium">
-                      16 цифр карты
-                    </div>
-                  </div>
-                  <VBtn
-                    color="success"
-                    variant="tonal"
-                    block
-                  >
-                    Сохранить
-                  </VBtn>
-                </VSheet>
-              </VTimelineItem>
-            </VTimeline>
-
-            <VBtn
-              class="mt-4"
-              color="primary"
-              to="/payment/details"
-              prepend-icon="tabler-credit-card"
-            >
-              Открыть Payment Details
-            </VBtn>
-          </VCardText>
-        </VCard>
-      </VCol>
-
-      <VCol
-        cols="12"
-        md="4"
-      >
-        <VCard class="mb-6">
-          <VCardItem>
-            <VCardTitle>Какой банк выбрать</VCardTitle>
-          </VCardItem>
-          <VCardText>
-            <p class="text-body-2 mb-3">
-              Мерчант шлёт C2CKZT. Вы выбираете банк — клиент увидит его в поле bank.
-            </p>
-            <div class="d-flex flex-wrap gap-2">
-              <VChip
-                v-for="bank in ['Elkard', 'Kompanion', 'Mbank', 'Optima', 'O bank', 'Bai-Tushum']"
-                :key="bank"
-                color="primary"
-                variant="tonal"
-                size="small"
-              >
-                {{ bank }}
-              </VChip>
-            </div>
-            <VAlert
-              class="mt-4"
-              type="warning"
-              variant="tonal"
-            >
-              Не выбирайте C2CKZT — иначе банк у мерчанта будет пустой.
-            </VAlert>
-          </VCardText>
-        </VCard>
-
-        <VCard
-          id="profile"
-          class="mb-6"
+    <VCard
+      id="complete"
+      class="mb-6"
+    >
+      <VCardItem>
+        <VCardTitle>Закрыть заявку</VCardTitle>
+        <VCardSubtitle>Карточка справа → Complete (Double Click)</VCardSubtitle>
+      </VCardItem>
+      <VCardText>
+        <div class="shot-wrap">
+          <img
+            src="/help-shots/06-order.png"
+            alt="Карточка заявки"
+            class="shot-img"
+          >
+          <div
+            class="pin pin-right"
+            style="left: 72%; top: 12%;"
+          >
+            <span class="dot">3</span>
+            <span class="lab">Money Sent By User</span>
+          </div>
+          <div
+            class="pin pin-right"
+            style="left: 72%; top: 88%;"
+          >
+            <span class="dot">4</span>
+            <span class="lab">Complete — два клика</span>
+          </div>
+        </div>
+        <VAlert
+          class="mt-4"
+          type="warning"
+          variant="tonal"
         >
-          <VCardItem>
-            <VCardTitle>Профиль</VCardTitle>
-          </VCardItem>
-          <VCardText>
-            <p class="text-body-2">
-              В правом верхнем углу — ваш email. Оттуда выход из аккаунта.
-            </p>
-            <VAlert
-              type="success"
-              variant="tonal"
-              class="mt-2"
-            >
-              Смена почты, пароля, 2FA, телефона и данных профиля — только через рабочий чат. В кабинете эти поля сами не редактируются.
-            </VAlert>
-          </VCardText>
-        </VCard>
+          Не закрывайте, пока не видите зачисление. Спор — в рабочий чат.
+        </VAlert>
+      </VCardText>
+    </VCard>
 
-        <VCard
-          id="deposit"
-          class="mb-6"
+    <VCard
+      id="filters"
+      class="mb-6"
+    >
+      <VCardItem>
+        <VCardTitle>Фильтры</VCardTitle>
+        <VCardSubtitle>Status = Arbitrage → Search</VCardSubtitle>
+      </VCardItem>
+      <VCardText>
+        <div class="shot-wrap">
+          <img
+            src="/help-shots/07-filters.png"
+            alt="Фильтры"
+            class="shot-img"
+          >
+        </div>
+      </VCardText>
+    </VCard>
+
+    <VCard
+      id="profile"
+      class="mb-6"
+    >
+      <VCardItem>
+        <VCardTitle>Профиль</VCardTitle>
+        <VCardSubtitle>Email сверху справа → Base Info, пароль, 2FA</VCardSubtitle>
+      </VCardItem>
+      <VCardText>
+        <div class="shot-wrap">
+          <img
+            src="/help-shots/08-profile.png"
+            alt="Профиль"
+            class="shot-img"
+          >
+          <div
+            class="pin"
+            style="left: 22%; top: 48%;"
+          >
+            <span class="dot">7</span>
+            <span class="lab">Telegram / Phone → Update User</span>
+          </div>
+          <div
+            class="pin"
+            style="left: 22%; top: 78%;"
+          >
+            <span class="dot">8</span>
+            <span class="lab">Смена пароля</span>
+          </div>
+          <div
+            class="pin pin-right"
+            style="left: 62%; top: 82%;"
+          >
+            <span class="dot">9</span>
+            <span class="lab">2FA Setup</span>
+          </div>
+        </div>
+        <VAlert
+          class="mt-4"
+          type="success"
+          variant="tonal"
         >
-          <VCardItem>
-            <VCardTitle>Пополнение баланса</VCardTitle>
-          </VCardItem>
-          <VCardText>
-            <VAlert
-              type="success"
-              variant="tonal"
-            >
-              Пополнение USDT производится через рабочий чат. Не переводите средства на адрес из кабинета, пока сумма, сеть и адрес не подтверждены в чате.
-            </VAlert>
-            <p class="text-body-2 mt-3 mb-0">
-              Вывод — тоже через рабочий чат, если иное не согласовано с командой.
-            </p>
-          </VCardText>
-        </VCard>
+          Email и имя не меняйте сами. Потеря доступа — рабочий чат.
+        </VAlert>
+      </VCardText>
+    </VCard>
 
-        <VCard id="chat">
-          <VCardItem>
-            <VCardTitle>Рабочий чат</VCardTitle>
-          </VCardItem>
-          <VCardText>
-            <ul class="text-body-2 ps-4 mb-0">
-              <li>пополнение и вывод USDT</li>
-              <li>правки профиля</li>
-              <li>новые банки / лимиты / блокировки карт</li>
-              <li>спорные заявки</li>
-            </ul>
-          </VCardText>
-        </VCard>
-      </VCol>
-    </VRow>
+    <VCard
+      id="tx"
+      class="mb-6"
+    >
+      <VCardItem>
+        <VCardTitle>Транзакции</VCardTitle>
+        <VCardSubtitle>Профиль → Transactions: холд, expire, Complete</VCardSubtitle>
+      </VCardItem>
+      <VCardText>
+        <div class="shot-wrap">
+          <img
+            src="/help-shots/09-tx.png"
+            alt="Транзакции"
+            class="shot-img"
+          >
+        </div>
+      </VCardText>
+    </VCard>
+
+    <VCard class="mb-6">
+      <VCardItem>
+        <VCardTitle>Пополнение</VCardTitle>
+      </VCardItem>
+      <VCardText>
+        <VAlert
+          type="success"
+          variant="tonal"
+        >
+          Пополнение USDT — через рабочий чат. Не слать на адрес из кабинета без подтверждения суммы, сети и адреса.
+        </VAlert>
+      </VCardText>
+    </VCard>
   </div>
 </template>
 
 <style scoped>
-.help-hit {
-  outline: 2px solid rgb(var(--v-theme-warning));
-  box-shadow: 0 0 0 6px rgba(var(--v-theme-warning), 0.18);
-}
-.help-field {
-  background: rgb(var(--v-theme-surface));
+.shot-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.shot-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.pin {
+  position: absolute;
+  transform: translate(-8px, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 46%;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+.pin-right {
+  flex-direction: row-reverse;
+  transform: translate(8px, -50%);
+}
+.dot {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-warning));
+  color: #1f2937;
+  font-weight: 800;
+  font-size: 0.85rem;
+  display: grid;
+  place-items: center;
+  outline: 3px solid #fff;
+}
+.lab {
+  background: #111827;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 10px;
   border-radius: 8px;
-  padding: 10px 12px;
 }
 </style>
