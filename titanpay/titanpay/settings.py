@@ -466,10 +466,10 @@ PAYPLAT_PAYOUT_NAME = os.getenv('PAYPLAT_PAYOUT_NAME', 'IVAN')
 PAYPLAT_PAYOUT_SURNAME = os.getenv('PAYPLAT_PAYOUT_SURNAME', 'PETROV')
 PAYPLAT_PAYOUT_BANK = os.getenv('PAYPLAT_PAYOUT_BANK', 'kaspi')
 PAYPLAT_PAYOUT_BANK_MAP = os.getenv('PAYPLAT_PAYOUT_BANK_MAP', '')
-# usd = KZT / PAYOUTKZT Bybit rate, fiat = pay_out.amount (KZT). Ignored when currency=KZT.
+# usd = KZT / PAYOUTKZT XE rate, fiat = pay_out.amount (KZT). Ignored when currency=KZT.
 PAYPLAT_PAYOUT_AMOUNT_MODE = os.getenv('PAYPLAT_PAYOUT_AMOUNT_MODE', 'usd')
 
-# Bybit P2P red book USDT/KZT: только выплаты PayPlat (не pay-in). Эндпоинт GET /api/v1/payments/rate/payoutkzt/
+# PAYOUTKZT: XE.com USD/KZT (+ XE_KZT_MARKUP / XE_KZT_MARKUP_BY_PS), не Bybit. GET /api/v1/payments/rate/payoutkzt/
 BYBIT_KZT_AMOUNT = os.getenv('BYBIT_KZT_AMOUNT', '50000')
 BYBIT_KZT_AUTH_MAKER = os.getenv('BYBIT_KZT_AUTH_MAKER', 'true').lower() in ('true', '1', 'yes')
 BYBIT_KZT_ROWS = os.getenv('BYBIT_KZT_ROWS', '15,16')

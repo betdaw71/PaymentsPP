@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import time
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
@@ -1065,33 +1066,82 @@ def _bank_from_payout(pay_out: Any, ps_name: str | None) -> str | None:
     return payplat_payout_bank_for(ps_name)
 
 
+_PAYPLAT_LATIN_NAME = re.compile(r"^[A-Za-z]+$")
+_CYR_TO_LATIN = {
+    "а": "A", "б": "B", "в": "V", "г": "G", "д": "D", "е": "E", "ё": "E",
+    "ж": "ZH", "з": "Z", "и": "I", "й": "I", "к": "K", "л": "L", "м": "M",
+    "н": "N", "о": "O", "п": "P", "р": "R", "с": "S", "т": "T", "у": "U",
+    "ф": "F", "х": "H", "ц": "TS", "ч": "CH", "ш": "SH", "щ": "SHCH",
+    "ъ": "", "ы": "Y", "ь": "", "э": "E", "ю": "YU", "я": "YA",
+    "ә": "A", "ғ": "G", "қ": "K", "ң": "NG", "ө": "O", "ұ": "U", "ү": "U",
+    "һ": "H", "і": "I",
+}
+
+
+def _payplat_latinize_token(raw: str | None) -> str:
+    """PayPlat KZT payouts: name/surname must be Latin letters only."""
+    token = (raw or "").strip()
+    if not token:
+        return ""
+    if _PAYPLAT_LATIN_NAME.fullmatch(token):
+        return token.upper()
+    out = []
+    for ch in token:
+        if "A" <= ch <= "Z" or "a" <= ch <= "z":
+            out.append(ch.upper())
+            continue
+        mapped = _CYR_TO_LATIN.get(ch.lower())
+        if mapped:
+            out.append(mapped)
+    letters = "".join(out)
+    return letters if _PAYPLAT_LATIN_NAME.fullmatch(letters) else ""
+
+
+def _payplat_name_tokens(raw: str | None) -> list[str]:
+    parts = re.split(r"[\s,.;/|]+", (raw or "").strip())
+    return [tok for part in parts if (tok := _payplat_latinize_token(part))]
+
+
+def _latin_payout_name(raw: str | None) -> str:
+    tokens = _payplat_name_tokens(raw)
+    return tokens[0] if tokens else ""
+
+
 def _name_parts_from_payout(pay_out: Any) -> tuple[str, str]:
     details = pay_out.details if isinstance(pay_out.details, dict) else {}
-    name = ""
-    surname = ""
-    for key in ("name", "first_name", "firstname"):
-        raw = (details.get(key) or "").strip()
-        if raw:
-            name = raw
-            break
-    for key in ("surname", "last_name", "lastname"):
-        raw = (details.get(key) or "").strip()
-        if raw:
-            surname = raw
-            break
+    tokens: list[str] = []
+    for key in (
+        "name",
+        "first_name",
+        "firstname",
+        "surname",
+        "last_name",
+        "lastname",
+        "recipient_name",
+        "owner",
+        "cardholder",
+        "holder_name",
+        "card_holder",
+    ):
+        tokens.extend(_payplat_name_tokens(details.get(key)))
+    # preserve order, drop duplicate empties; first token = given name, last = surname
+    seen: list[str] = []
+    for tok in tokens:
+        if tok and tok not in seen:
+            seen.append(tok)
+    name = seen[0] if seen else ""
+    surname = seen[-1] if len(seen) >= 2 else ""
+    fallback_name = payplat_payout_name()
+    fallback_surname = payplat_payout_surname()
     if not name or not surname:
-        for key in ("recipient_name", "owner", "cardholder", "holder_name", "card_holder"):
-            raw = (details.get(key) or "").strip()
-            if not raw:
-                continue
-            parts = raw.split()
-            if len(parts) >= 2:
-                name = name or parts[0]
-                surname = surname or parts[-1]
-            elif parts:
-                name = name or parts[0]
-            break
-    return name or payplat_payout_name(), surname or payplat_payout_surname()
+        logger.warning(
+            "PayPlat payout: non-Latin holder name, using %s %s PayOut=%s details=%s",
+            fallback_name,
+            fallback_surname,
+            getattr(pay_out, "id", None),
+            {k: details.get(k) for k in ("name", "surname", "recipient_name", "owner")},
+        )
+    return name or fallback_name, surname or fallback_surname
 
 
 def _payout_amount_for_payplat(pay_out: Any) -> Decimal:

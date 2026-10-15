@@ -142,15 +142,22 @@ def update_ps():
     pss = PaymentSystem.objects.all()
     rub_rate = get_bybit_rate("Sber")
     kzt_xe_base = get_xe_kzt_base_rate()
-    kzt_bybit_kaspi = get_bybit_kzt_rate()
+    kzt_bybit_kaspi = get_bybit_kzt_rate() if kzt_xe_base is None else None
     kzt_binance_halyk = get_binance_kzt_halyk_rate() if kzt_xe_base is None else None
     playments_ps_name = getattr(settings, "PLAYMENTS_C2C_NAME", "C2CTRY")
     payoutkzt_name = payoutkzt_ps_name()
 
-    if kzt_bybit_kaspi is not None:
+    if kzt_xe_base is not None:
         try:
-            store_payoutkzt_rate(kzt_bybit_kaspi)
-            logging.info("PAYOUTKZT Bybit/Kaspi rate: %s", kzt_bybit_kaspi)
+            markup = xe_kzt_markup_for_ps(payoutkzt_name)
+            payout_rate = (kzt_xe_base * markup).quantize(Decimal("0.001"))
+            store_payoutkzt_rate(payout_rate)
+            logging.info(
+                "PAYOUTKZT XE.com rate: base=%s markup=%s result=%s",
+                kzt_xe_base,
+                markup,
+                payout_rate,
+            )
         except Exception:
             logging.info("Updating PAYOUTKZT rate failed", exc_info=True)
 

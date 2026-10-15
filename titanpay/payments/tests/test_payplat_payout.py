@@ -10,6 +10,7 @@ from payments.payplat_client import (
     payplat_is_payout_webhook,
     payplat_payout_create_rejected,
     payplat_webhook_outcome,
+    _name_parts_from_payout,
     _payout_amount_for_payplat,
 )
 from payments.payplat_views import PayplatWebhookView
@@ -90,7 +91,7 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
 
     @override_settings(PAYPLAT_PAYOUT_CURRENCY="", PAYPLAT_PAYOUT_AMOUNT_MODE="usd")
     @patch("payments.payoutkzt_rate.get_payoutkzt_rate", return_value=Decimal("500"))
-    def test_amount_uses_payoutkzt_bybit_rate(self, _rate):
+    def test_amount_uses_payoutkzt_xe_rate(self, _rate):
         pay_out = type(
             "P",
             (),
@@ -151,3 +152,33 @@ class PayplatPayoutHelpersTest(SimpleTestCase):
         self.assertEqual(payload["surname"], "PETROV")
         self.assertEqual(payload["shop_internal_id"], "po-1")
         self.assertEqual(payload["tariff"], "PRIMARY")
+
+    @override_settings(PAYPLAT_PAYOUT_NAME="IVAN", PAYPLAT_PAYOUT_SURNAME="PETROV")
+    def test_numeric_recipient_name_falls_back_to_latin_defaults(self):
+        pay_out = type(
+            "P",
+            (),
+            {
+                "id": "po-mostbet",
+                "details": {
+                    "card_number": "4400430312355685",
+                    "recipient_name": "17885145014881680043 17885145014881680043",
+                },
+            },
+        )()
+        self.assertEqual(_name_parts_from_payout(pay_out), ("IVAN", "PETROV"))
+
+    @override_settings(PAYPLAT_PAYOUT_NAME="IVAN", PAYPLAT_PAYOUT_SURNAME="PETROV")
+    def test_latin_recipient_name_is_kept(self):
+        pay_out = type("P", (), {"details": {"recipient_name": "IVAN IVANOV"}})()
+        self.assertEqual(_name_parts_from_payout(pay_out), ("IVAN", "IVANOV"))
+
+    @override_settings(PAYPLAT_PAYOUT_NAME="IVAN", PAYPLAT_PAYOUT_SURNAME="PETROV")
+    def test_cyrillic_recipient_name_is_transliterated(self):
+        pay_out = type("P", (), {"details": {"recipient_name": "Иван Петров"}})()
+        self.assertEqual(_name_parts_from_payout(pay_out), ("IVAN", "PETROV"))
+
+    @override_settings(PAYPLAT_PAYOUT_NAME="IVAN", PAYPLAT_PAYOUT_SURNAME="PETROV")
+    def test_full_name_in_single_name_field_is_split(self):
+        pay_out = type("P", (), {"details": {"name": "Ivan Petrov"}})()
+        self.assertEqual(_name_parts_from_payout(pay_out), ("IVAN", "PETROV"))

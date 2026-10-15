@@ -1,4 +1,4 @@
-"""Provider endpoint for PayPlat payout USDT/KZT rate (Bybit Kaspi)."""
+"""Provider endpoint for PayPlat payout USDT/KZT rate (XE.com)."""
 from __future__ import annotations
 
 import hmac
@@ -13,8 +13,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from basics.models import PaymentSystem
-from basics.utils import get_bybit_kzt_rate_quote
-from payments.payoutkzt_rate import get_payoutkzt_rate, payoutkzt_ps_name, store_payoutkzt_rate
+from payments.payoutkzt_rate import (
+    fetch_payoutkzt_xe_quote,
+    get_payoutkzt_rate,
+    payoutkzt_ps_name,
+    store_payoutkzt_rate,
+)
 
 
 def _configured_rate_token() -> str:
@@ -51,29 +55,20 @@ def _ps_updated_at(ps: PaymentSystem | None) -> str | None:
     return datetime.fromtimestamp(ts, tz=dt_timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _method_meta() -> dict:
-    rows_raw = getattr(settings, "BYBIT_KZT_ROWS", "15,16")
-    if isinstance(rows_raw, (list, tuple)):
-        method_rows = [int(x) for x in rows_raw]
-    else:
-        method_rows = [int(p.strip()) for p in str(rows_raw).split(",") if p.strip()]
-    try:
-        method_amount = int(getattr(settings, "BYBIT_KZT_AMOUNT", 50000) or 50000)
-    except (TypeError, ValueError):
-        method_amount = 50000
+def _xe_method() -> dict:
+    from basics.utils import xe_kzt_markup_for_ps
+
     return {
-        "amount": method_amount,
-        "payment": "Kaspi",
-        "verified": bool(getattr(settings, "BYBIT_KZT_AUTH_MAKER", True)),
-        "rows": method_rows or [15, 16],
-        "side": "sell",
+        "provider": "xe.com",
+        "endpoint": "https://www.xe.com/api/protected/midmarket-converter/",
+        "markup": str(xe_kzt_markup_for_ps(payoutkzt_ps_name())),
     }
 
 
 class PayoutKztRateView(APIView):
-    """GET /api/v1/payments/rate/payoutkzt/ — курс Bybit Kaspi только для выплат PayPlat.
+    """GET /api/v1/payments/rate/payoutkzt/ — курс XE.com только для выплат PayPlat.
 
-    Query: live=1 — свежий парсинг Bybit.
+    Query: live=1 — свежий запрос xe.com.
     Auth: RATE_API_TOKEN via X-Rate-Token / Authorization: Bearer / ?token= (optional).
     """
 
@@ -87,10 +82,10 @@ class PayoutKztRateView(APIView):
         live = str(request.query_params.get("live") or "").strip().lower() in ("1", "true", "yes")
         ps_name = payoutkzt_ps_name()
         ps = PaymentSystem.objects.filter(name__iexact=ps_name, currency__symbol__iexact="KZT").first()
-        method = _method_meta()
+        method = _xe_method()
 
         if live:
-            quote = get_bybit_kzt_rate_quote()
+            quote = fetch_payoutkzt_xe_quote()
             if quote is None:
                 rate = get_payoutkzt_rate(live=False)
                 payload = {
@@ -101,7 +96,7 @@ class PayoutKztRateView(APIView):
                     "source": "payoutkzt",
                     "updated_at": _ps_updated_at(ps),
                     "method": method,
-                    "live_error": "bybit_unavailable",
+                    "live_error": "xe_unavailable",
                 }
                 if rate is None:
                     return Response(payload, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -114,18 +109,15 @@ class PayoutKztRateView(APIView):
                     "pair": "USDT/KZT",
                     "currency": "KZT",
                     "rate": str(quote["rate"]),
-                    "source": quote.get("source") or "bybit_kaspi",
+                    "source": "xe",
                     "updated_at": _ps_updated_at(ps),
                     "method": {
                         **method,
-                        "amount": quote.get("amount") or method["amount"],
-                        "rows": quote.get("rows") or method["rows"],
-                        "verified": quote.get("verified", method["verified"]),
+                        "markup": str(quote["markup"]),
                     },
                     "live": {
-                        "prices": [str(p) for p in quote.get("prices") or []],
-                        "rows": quote.get("rows"),
-                        "ads_count": quote.get("ads_count"),
+                        "base": str(quote["base"]),
+                        "markup": str(quote["markup"]),
                     },
                 }
             )
@@ -143,7 +135,7 @@ class PayoutKztRateView(APIView):
                 "pair": "USDT/KZT",
                 "currency": "KZT",
                 "rate": str(Decimal(str(rate)).quantize(Decimal("0.01"))),
-                "source": "bybit_kaspi",
+                "source": "xe",
                 "updated_at": _ps_updated_at(ps),
                 "method": method,
             }

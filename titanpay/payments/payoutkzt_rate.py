@@ -1,4 +1,4 @@
-"""Bybit Kaspi USDT/KZT rate used only for PayPlat payouts (PAYOUTKZT)."""
+"""XE.com USD/KZT rate used only for PayPlat payouts (PAYOUTKZT)."""
 from __future__ import annotations
 
 import logging
@@ -9,7 +9,7 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-CACHE_KEY = "payoutkzt_bybit_rate"
+CACHE_KEY = "payoutkzt_xe_rate"
 
 
 def payoutkzt_ps_name() -> str:
@@ -24,7 +24,7 @@ def cache_payoutkzt_rate(rate: Decimal) -> None:
 
 
 def store_payoutkzt_rate(rate: Decimal) -> None:
-    """Persist Bybit payout rate on PS PAYOUTKZT (in/out off — not used for pay-in)."""
+    """Persist XE payout rate on PS PAYOUTKZT (in/out off — not used for pay-in)."""
     from basics.models import Currency, PaymentSystem
 
     if rate is None or rate <= 0:
@@ -59,15 +59,31 @@ def store_payoutkzt_rate(rate: Decimal) -> None:
     ps.update_rate(rate)
 
 
-def get_payoutkzt_rate(*, live: bool = False) -> Decimal | None:
-    """Stored Bybit rate for PayPlat payouts. live=True hits Bybit now and stores."""
-    from basics.utils import get_bybit_kzt_rate
+def fetch_payoutkzt_xe_quote() -> dict | None:
+    """Live XE USD/KZT (+ markup for PAYOUTKZT / XE_KZT_MARKUP)."""
+    from basics.utils import get_xe_kzt_base_rate, xe_kzt_markup_for_ps
 
+    base = get_xe_kzt_base_rate()
+    if base is None or base <= 0:
+        return None
+    markup = xe_kzt_markup_for_ps(payoutkzt_ps_name())
+    rate = (base * markup).quantize(Decimal("0.001"))
+    return {
+        "rate": rate,
+        "base": base,
+        "markup": markup,
+        "source": "xe",
+    }
+
+
+def get_payoutkzt_rate(*, live: bool = False) -> Decimal | None:
+    """Stored XE rate for PayPlat payouts. live=True hits xe.com now and stores."""
     if live:
-        rate = get_bybit_kzt_rate()
-        if rate is not None:
-            store_payoutkzt_rate(rate)
-        return rate
+        quote = fetch_payoutkzt_xe_quote()
+        if quote is not None:
+            store_payoutkzt_rate(quote["rate"])
+            return quote["rate"]
+        return None
 
     from basics.models import PaymentSystem
 
@@ -90,7 +106,8 @@ def get_payoutkzt_rate(*, live: bool = False) -> Decimal | None:
         except Exception:
             pass
 
-    rate = get_bybit_kzt_rate()
-    if rate is not None:
-        store_payoutkzt_rate(rate)
-    return rate
+    quote = fetch_payoutkzt_xe_quote()
+    if quote is not None:
+        store_payoutkzt_rate(quote["rate"])
+        return quote["rate"]
+    return None
