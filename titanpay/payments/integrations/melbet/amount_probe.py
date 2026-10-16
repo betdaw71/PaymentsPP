@@ -25,7 +25,7 @@ from trade.utils import choose_trader_in
 def melbet_amount_probe_enabled(merchant) -> bool:
     if not is_melbet_merchant(merchant):
         return False
-    return bool(getattr(settings, "MELBET_AMOUNT_PROBE_ENABLED", True))
+    return bool(getattr(settings, "MELBET_AMOUNT_PROBE_ENABLED", False))
 
 
 def _parse_deltas(raw: str) -> list[int]:

@@ -148,22 +148,15 @@ def _pay_in(*, username="melbet", amount="5000", usd="10.94", currency="KZT", pi
     )
 
 
-class MelbetUsdTransferQuoteTest(SimpleTestCase):
-    def test_melbet_kzt_shows_usd_not_kzt(self):
+class MelbetKztTransferQuoteTest(SimpleTestCase):
+    def test_melbet_page_shows_kzt(self):
         from payments.payment_page_enrich import transfer_quote_for_page
 
         amt, cur = transfer_quote_for_page(_pay_in(), "KZT")
-        self.assertEqual(cur, "USD")
-        self.assertEqual(amt, Decimal("10.94"))
-
-    def test_other_merchant_keeps_kzt(self):
-        from payments.payment_page_enrich import transfer_quote_for_page
-
-        amt, cur = transfer_quote_for_page(_pay_in(username="aggrepay"), "KZT")
         self.assertEqual(cur, "KZT")
         self.assertEqual(amt, Decimal("5000"))
 
-    def test_enrich_clipboard_and_kaspi_use_usd(self):
+    def test_enrich_clipboard_and_kaspi_use_kzt(self):
         from payments.payment_page_enrich import enrich_for_payment_page
 
         data = {
@@ -177,12 +170,9 @@ class MelbetUsdTransferQuoteTest(SimpleTestCase):
             },
         }
         out = enrich_for_payment_page(data, _pay_in(), locale="ru")
-        self.assertEqual(out["transfer_amount"], "10.94")
-        self.assertEqual(out["transfer_currency"], "USD")
+        self.assertEqual(out["transfer_currency"], "KZT")
         self.assertEqual(out["amount"], "5000.00")
-        self.assertEqual(out["currency"], "KZT")
-        self.assertIn("10.94 USD", out["clipboard_text"])
-        self.assertNotIn("5000", out["clipboard_text"])
+        self.assertIn("5000", out["clipboard_text"])
+        self.assertNotIn("USD", out["clipboard_text"])
         url = (out["bank_actions"] or [{}])[0].get("url") or ""
-        self.assertIn("10.94", url)
-        self.assertNotIn("5000", url)
+        self.assertIn("5000", url)

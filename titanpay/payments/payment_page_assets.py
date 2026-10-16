@@ -18,6 +18,7 @@ _KNOWN = {
     "kaspi-banner-2.jpg": "image/jpeg",
     "kaspi-banner-3.jpg": "image/jpeg",
     "kaspi-mark.png": "image/png",
+    "kz-flag.png": "image/png",
 }
 
 

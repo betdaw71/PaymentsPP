@@ -19,16 +19,28 @@
     }
     .frame { width: 100%; max-width: 430px; margin: 0 auto; min-height: 100vh; padding: 14px 12px 28px; }
     .card { background: var(--card); border-radius: var(--radius); padding: 14px 14px 12px; margin-bottom: 10px; }
-    .lang { display: flex; justify-content: flex-end; }
+    .lang { display: flex; justify-content: flex-end; position: relative; }
     .lang-pill {
       display: inline-flex; align-items: center; gap: 6px; border: 1px solid #dbe3ec; border-radius: 10px;
       padding: 5px 8px 5px 6px; font-size: 13px; color: #3d4654; background: #fff; cursor: pointer;
     }
+    .lang-menu {
+      display: none; position: absolute; top: calc(100% + 4px); right: 0; z-index: 8;
+      min-width: 148px; background: #fff; border: 1px solid #dbe3ec; border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(16,24,40,.12); overflow: hidden;
+    }
+    .lang-menu.open { display: block; }
+    .lang-menu button {
+      display: flex; width: 100%; align-items: center; gap: 8px; border: 0; background: #fff;
+      padding: 10px 12px; font-size: 13px; color: #1c2430; cursor: pointer; text-align: left;
+    }
+    .lang-menu button:hover, .lang-menu button.on { background: #f4f8fb; }
     .ru-flag { width: 20px; height: 14px; border-radius: 2px; overflow: hidden; display: inline-flex; flex-direction: column; }
     .ru-flag i { flex: 1; display: block; }
     .ru-flag i:nth-child(1) { background: #fff; }
     .ru-flag i:nth-child(2) { background: #0039a6; }
     .ru-flag i:nth-child(3) { background: #d52b1e; }
+    .kz-mini { width: 20px; height: 14px; border-radius: 2px; object-fit: cover; object-position: center; display: block; flex-shrink: 0; }
     .brand-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 6px; }
     .melbet-logo { width: 132px; height: auto; display: block; }
     .melbet-bar { width: 52px; height: 3px; background: var(--teal); border-radius: 2px; margin-top: 5px; }
@@ -39,7 +51,7 @@
       background: #1ecad8; color: #fff; border-radius: 999px; padding: 3px 12px 3px 3px;
       font-weight: 800; font-size: 13px;
     }
-    .kz-flag { width: 26px; height: 26px; display: block; }
+    .kz-flag { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; object-position: center; display: block; }
     .pay-line { font-size: 15px; margin: 0 0 12px; color: #3d4654; }
     .pay-line strong { color: var(--teal); }
     .kaspi-box { border: 1px solid #eef1f4; border-radius: 14px; padding: 12px 12px 10px; }
@@ -162,7 +174,14 @@
         <div class="desk-main">
           <div class="card">
             <div class="lang">
-              <button type="button" class="lang-pill" id="lang-toggle"><span class="ru-flag"><i></i><i></i><i></i></span> <span id="lang-label">Русский ▾</span></button>
+              <button type="button" class="lang-pill" id="lang-toggle" aria-haspopup="true" aria-expanded="false">
+                <span id="lang-flag" class="ru-flag"><i></i><i></i><i></i></span>
+                <span id="lang-label">Русский ▾</span>
+              </button>
+              <div class="lang-menu" id="lang-menu">
+                <button type="button" data-lang="ru" id="lang-opt-ru"><span class="ru-flag"><i></i><i></i><i></i></span> Русский</button>
+                <button type="button" data-lang="kk" id="lang-opt-kk"><img class="kz-mini" src="/payment-page-assets/kz-flag.png" alt=""> Қазақша</button>
+              </div>
             </div>
             <div class="brand-row">
               <div>
@@ -173,39 +192,14 @@
                 </svg>
                 <div class="melbet-bar"></div>
               </div>
-              <div class="pay-id">ID платежа:<br><b id="pid"></b>
+              <div class="pay-id"><span id="txt-pay-id">ID платежа</span>:<br><b id="pid"></b>
                 <button type="button" class="id-copy" id="pid-copy" aria-label="copy">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="2"/></svg>
                 </button>
               </div>
             </div>
             <div class="chip">
-              <svg class="kz-flag" viewBox="0 0 32 32" aria-hidden="true">
-                <circle cx="16" cy="16" r="16" fill="#00AFCA"/>
-                <g transform="translate(16 14.2)" fill="#FEC50C">
-                  <circle r="3.5"/>
-                  <g>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(22.5)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(45)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(67.5)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(90)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(112.5)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(135)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(157.5)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(180)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(202.5)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(225)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(247.5)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(270)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(292.5)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(315)"/>
-                    <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(337.5)"/>
-                  </g>
-                  <path d="M-11 5.6c3.4-5.6 7.2-8.2 11-8.2s7.6 2.6 11 8.2c-3.2-3.4-6.8-5.1-11-5.1s-7.8 1.7-11 5.1Z"/>
-                  <path d="M-1.2 2.2 0 8.2 1.2 2.2Z"/>
-                </g>
-              </svg>
+              <img class="kz-flag" src="/payment-page-assets/kz-flag.png" alt="">
               <span id="cur-chip">KZT</span>
             </div>
             <div class="pay-line" id="amount-line"></div>
@@ -309,9 +303,10 @@
         payLink: "Төлем сілтемесі", owner: "Алушының аты", bank: "Алушы банкі", bic: "БИК",
         amountExact: "Дәл аударым сомасы",
         copy: "Көшіру", copied: "Көшірілді", copyAll: "Барлығын көшіру",
-        hint: "Назар аударыңыз: соманы доллармен ($) көрсетіңіз, блоктау болмас үшін.",
+        hint: "«Kaspi.kz» қосымшасын ашыңыз<br>«Аударымдар» → «Халықаралық&nbsp;аударымдар»<br><b>Соманы дәл аудару қажет!</b>",
         kaspiCap: "Жылдам төлеу үшін банкті басыңыз",
-        payOne: "Бір төлеммен төлеңіз",
+        pay: "Төлеңіз", payOne: "бір төлеммен",
+        payId: "Төлем ID",
         sent: "Төледім", cancel: "✕  Өтінімді болдырмау", cancelConfirm: "Өтінімді болдырмау керек пе?",
         waitTitle: "Растау күтілуде", waitMsg: "Төлем қабылданды. Бетті жабуға болады.",
         waitVerify: "Төлем тексерілуде.",
@@ -325,7 +320,7 @@
         receiptRequired: "Алдымен чек жүктеңіз", receiptUploaded: "Чек жүктелді",
         guide: "Қадамдық нұсқаулық", problems: "Мәселе туындады ма?",
         faq1q: "Қате сома жібердім", faq1a: "Экрандағы соманы тексеріңіз. Аз жіберсеңіз — қалғанын сол реквизиттерге жіберіңіз.",
-        faq2q: "Қалай төлеуді түсінбеймін", faq2a: "Нұсқаулықты ашыңыз: Аударымдар → Халықаралық аударымдар → карта, аты латынша, сома $.",
+        faq2q: "Қалай төлеуді түсінбеймін", faq2a: "Нұсқаулықты ашыңыз: Аударымдар → Халықаралық аударымдар → карта, аты латынша.",
         safe: "Барлық төлемдер қорғалған", lang: "Қазақша ▾",
         ovH: "Аударымды қалай жасау керек",
         ovBack: "Артқа", ovNext: "Келесі", ovDone: "Дайын",
@@ -337,9 +332,10 @@
         payLink: "Ссылка для оплаты", owner: "Имя получателя", bank: "Банк получателя", bic: "БИК",
         amountExact: "Точная сумма перевода",
         copy: "Копировать", copied: "Скопировано", copyAll: "Скопировать всё",
-        hint: "Обратите внимание: сумму перевода указывайте в долларах США ($), чтобы избежать блокировок.",
+        hint: "Откройте приложение «Kaspi.kz»<br>«Переводы» → «Международные&nbsp;переводы»<br><b>Сумму необходимо переводить точную!</b>",
         kaspiCap: "Нажмите для быстрой оплаты через банк",
-        payOne: "одним платежом",
+        pay: "Оплатите", payOne: "одним платежом",
+        payId: "ID платежа",
         sent: "Я оплатил", cancel: "✕  Отменить заявку", cancelConfirm: "Отменить заявку?",
         waitTitle: "Ожидаем подтверждение", waitMsg: "Платёж принят. Можно закрыть страницу.",
         waitVerify: "Платёж проверяется.",
@@ -353,7 +349,7 @@
         receiptRequired: "Сначала прикрепите чек", receiptUploaded: "Чек прикреплён",
         guide: "Пошаговая инструкция", problems: "Возникли проблемы?",
         faq1q: "Я отправил неправильную сумму", faq1a: "Сверьте сумму на экране. Если отправили меньше — дошлите разницу тем же реквизитам.",
-        faq2q: "Я не понимаю, как платить", faq2a: "Откройте инструкцию: Переводы → Международные переводы → карта, имя латиницей, сумма в $.",
+        faq2q: "Я не понимаю, как платить", faq2a: "Откройте инструкцию: Переводы → Международные переводы → карта, имя латиницей.",
         safe: "Все платежи защищены", lang: "Русский ▾",
         ovH: "Как выполнить перевод",
         ovBack: "Назад", ovNext: "Далее", ovDone: "Готово",
@@ -379,8 +375,18 @@
       document.getElementById("lang-ru").classList.toggle("active", locale === "ru");
       document.getElementById("txt-loading").textContent = t("loading");
       document.getElementById("txt-timer-label").textContent = t("timer");
-      const hint = t("hint").replace("Обратите внимание:", "<b>Обратите внимание:</b>").replace("Назар аударыңыз:", "<b>Назар аударыңыз:</b>");
-      document.getElementById("txt-hint").innerHTML = '<span class="warn-ico">!</span><div>' + hint + "</div>";
+      document.getElementById("txt-pay-id").textContent = t("payId");
+      document.getElementById("txt-hint").innerHTML = '<span class="warn-ico">!</span><div>' + t("hint") + "</div>";
+      const flagHost = document.getElementById("lang-flag");
+      if (locale === "kk") {
+        flagHost.className = "";
+        flagHost.innerHTML = '<img class="kz-mini" src="/payment-page-assets/kz-flag.png" alt="">';
+      } else {
+        flagHost.className = "ru-flag";
+        flagHost.innerHTML = "<i></i><i></i><i></i>";
+      }
+      document.getElementById("lang-opt-ru").classList.toggle("on", locale === "ru");
+      document.getElementById("lang-opt-kk").classList.toggle("on", locale === "kk");
       document.getElementById("btn-sent").innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#fff" stroke-width="2"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg> ' + t("sent");
       document.getElementById("btn-cancel").textContent = t("cancel");
       document.getElementById("txt-wait-title").textContent = t("waitTitle");
@@ -430,28 +436,19 @@
       updateSentButtonState();
     }
     function pageTransfer(data) {
-      if (data.transfer_amount != null && data.transfer_amount !== "" && data.transfer_currency) {
+      if (data.transfer_currency && data.transfer_currency.toUpperCase() !== "USD"
+          && data.transfer_amount != null && data.transfer_amount !== "") {
         return { amount: data.transfer_amount, currency: data.transfer_currency };
-      }
-      if (data.usd_amount != null && Number(data.usd_amount) > 0) {
-        return { amount: data.usd_amount, currency: "USD" };
       }
       return { amount: data.amount, currency: data.currency || "KZT" };
     }
     function fmtAmount(amount, currency) {
-      const cur = (currency || "").toUpperCase();
-      if (cur === "USD") {
-        const n = Number(amount);
-        return `${Number.isFinite(n) ? n.toFixed(2) : amount} USD`;
-      }
       const loc = locale === "kk" ? "kk-KZ" : "ru-RU";
-      return `${Number(amount).toLocaleString(loc)} ${currency || ""}`.trim();
+      const n = Number(amount);
+      const num = Number.isFinite(n) ? n.toLocaleString(loc, { maximumFractionDigits: 2 }) : amount;
+      return `${num} ${currency || ""}`.trim();
     }
-    function copyAmountText(amount, currency) {
-      if ((currency || "").toUpperCase() === "USD") {
-        const n = Number(amount);
-        return Number.isFinite(n) ? n.toFixed(2) : String(amount);
-      }
+    function copyAmountText(amount) {
       return String(amount);
     }
     function attrEscape(s) {
@@ -540,12 +537,25 @@
         };
       });
     }
+    function parseExpiresAt(raw) {
+      if (raw == null || raw === "") return null;
+      let n = Number(raw);
+      if (!Number.isFinite(n)) {
+        const ms = Date.parse(raw);
+        return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+      }
+      if (n > 1e12) n = n / 1000;
+      return Math.floor(n);
+    }
     function startCountdown(expiresAt) {
+      const ts = parseExpiresAt(expiresAt);
+      if (!ts) return;
       clearInterval(countdownTimer);
       const box = document.getElementById("timer-box");
       const el = document.getElementById("timer");
+      box.classList.remove("expired");
       function tick() {
-        const left = expiresAt - Math.floor(Date.now() / 1000);
+        const left = ts - Math.floor(Date.now() / 1000);
         if (left <= 0) {
           el.textContent = "00:00";
           box.classList.add("expired");
@@ -590,7 +600,6 @@
       return false;
     }
     function renderPay(data) {
-      if (data.locale) locale = data.locale;
       applyStaticI18n();
       if (handleTerminal(data)) return;
       if (data.waiting_confirmation || data.pending_verification || wasSent()) {
@@ -608,14 +617,14 @@
       show("pay-screen");
       const xfer = pageTransfer(data);
       const amt = fmtAmount(xfer.amount, xfer.currency);
-      document.getElementById("amount-line").innerHTML = `${locale === "kk" ? "Төлеңіз" : "Оплатите"} <strong>${amt}</strong> ${t("payOne")}`;
+      document.getElementById("amount-line").innerHTML = `${t("pay")} <strong>${amt}</strong> ${t("payOne")}`;
       document.getElementById("ps-line").textContent = data.payment_system || "";
       document.getElementById("cur-chip").textContent = data.currency || "KZT";
       document.getElementById("pid").textContent = (PAY_IN_ID || "").slice(0, 6) + "…" + (PAY_IN_ID || "").slice(-4);
       const pidCopy = document.getElementById("pid-copy");
       if (pidCopy) pidCopy.onclick = () => navigator.clipboard.writeText(PAY_IN_ID || "");
       document.getElementById("details").innerHTML = renderDetails(
-        data.payment_details, amt, copyAmountText(xfer.amount, xfer.currency)
+        data.payment_details, amt, copyAmountText(xfer.amount)
       );
       renderBankGuides(data);
       renderBankActions(data);
@@ -682,11 +691,25 @@
     document.querySelectorAll(".faq").forEach((btn) => {
       btn.onclick = () => btn.parentElement.classList.toggle("open");
     });
-    document.getElementById("lang-toggle").onclick = () => {
-      locale = locale === "ru" ? "kk" : "ru";
+    function setLocale(next) {
+      locale = next === "kk" ? "kk" : "ru";
       localStorage.setItem(`pay_locale_${PAY_IN_ID}`, locale);
+      document.getElementById("lang-menu").classList.remove("open");
+      document.getElementById("lang-toggle").setAttribute("aria-expanded", "false");
       load();
+    }
+    document.getElementById("lang-toggle").onclick = (e) => {
+      e.stopPropagation();
+      const menu = document.getElementById("lang-menu");
+      const open = menu.classList.toggle("open");
+      document.getElementById("lang-toggle").setAttribute("aria-expanded", open ? "true" : "false");
     };
+    document.getElementById("lang-opt-ru").onclick = (e) => { e.stopPropagation(); setLocale("ru"); };
+    document.getElementById("lang-opt-kk").onclick = (e) => { e.stopPropagation(); setLocale("kk"); };
+    document.addEventListener("click", () => {
+      document.getElementById("lang-menu").classList.remove("open");
+      document.getElementById("lang-toggle").setAttribute("aria-expanded", "false");
+    });
     document.getElementById("receipt-file").addEventListener("change", (e) => {
       const file = e.target.files && e.target.files[0];
       selectedReceiptFile = file || null;

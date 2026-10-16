@@ -59,7 +59,7 @@
       border-radius: 999px; padding: 3px 12px 3px 3px;
       font-weight: 800; font-size: 13px; letter-spacing: .02em;
     }
-    .kz-flag { width: 26px; height: 26px; display: block; }
+    .kz-flag { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; object-position: center; display: block; }
     .pay-line { font-size: 15px; margin: 0 0 12px; color: #3d4654; }
     .pay-line strong { color: var(--teal); font-weight: 700; }
     .kaspi-box {
@@ -228,35 +228,10 @@
           </div>
         </div>
         <div class="chip">
-          <svg class="kz-flag" viewBox="0 0 32 32" aria-label="Kazakhstan">
-            <circle cx="16" cy="16" r="16" fill="#00AFCA"/>
-            <g transform="translate(16 14.2)" fill="#FEC50C">
-              <circle r="3.5"/>
-              <g>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(22.5)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(45)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(67.5)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(90)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(112.5)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(135)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(157.5)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(180)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(202.5)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(225)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(247.5)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(270)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(292.5)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(315)"/>
-                <rect x="-0.32" y="-7.3" width="0.64" height="2.5" rx="0.32" transform="rotate(337.5)"/>
-              </g>
-              <path d="M-11 5.6c3.4-5.6 7.2-8.2 11-8.2s7.6 2.6 11 8.2c-3.2-3.4-6.8-5.1-11-5.1s-7.8 1.7-11 5.1Z"/>
-              <path d="M-1.2 2.2 0 8.2 1.2 2.2Z"/>
-            </g>
-          </svg>
+          <img class="kz-flag" src="pay-preview-shots/kz-flag.png" alt="">
           KZT
         </div>
-        <div class="pay-line">Оплатите <strong>10.94 USD</strong> одним платежом</div>
+        <div class="pay-line">Оплатите <strong>5 000 KZT</strong> одним платежом</div>
         <div class="kaspi-box">
           <div class="kaspi-cap">Нажмите для быстрой оплаты через банк</div>
           <button class="kaspi" type="button" id="kaspi">
@@ -266,7 +241,7 @@
           </button>
           <div class="warn">
             <span class="warn-ico">!</span>
-            <div><b>Обратите внимание:</b> сумму перевода указывайте в долларах США ($), чтобы избежать блокировок.</div>
+            <div>Откройте приложение «Kaspi.kz»<br>«Переводы» → «Международные&nbsp;переводы»<br><b>Сумму необходимо переводить точную!</b></div>
           </div>
         </div>
       </div>
@@ -305,9 +280,9 @@
         <div class="req-row">
           <div>
             <div class="req-label">Точная сумма перевода</div>
-            <div class="req-val">10.94 USD</div>
+            <div class="req-val">5 000 KZT</div>
           </div>
-          <button class="copy" data-copy="10.94" aria-label="copy">
+          <button class="copy" data-copy="5000" aria-label="copy">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M4 16V6a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="1.8"/></svg>
           </button>
         </div>
@@ -324,7 +299,7 @@
       </div>
       <div class="faq-wrap">
         <button class="faq" type="button"><span>?</span> Я не понимаю, как платить <span class="chev">▾</span></button>
-        <div class="faq-body">Откройте инструкцию: Переводы → Международные переводы → карта, имя латиницей, сумма в $.</div>
+        <div class="faq-body">Откройте инструкцию: Переводы → Международные переводы → карта, имя латиницей.</div>
       </div>
       <button class="cancel" type="button">✕  Отменить заявку</button>
       <div class="safe">🛡 Все платежи защищены</div>

@@ -1,7 +1,7 @@
 """Поля платёжной страницы для obtain API."""
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP
 
 from merchant.kzt_settlement import is_melbet_merchant
 from payments.bank_deeplinks import build_bank_actions, build_transfer_clipboard
@@ -27,6 +27,8 @@ def resolve_locale(pay_in: PayIn, lang_hint: str | None = None) -> str:
     hint = (lang_hint or "").strip().lower()
     if hint in ("kk", "ru", "kz"):
         return "kk" if hint in ("kk", "kz") else "ru"
+    if is_melbet_merchant(getattr(pay_in, "merchant", None)):
+        return "ru"
     if pay_in.currency and (pay_in.currency.symbol or "").upper() == "KZT":
         return "kk"
     return "ru"
@@ -51,22 +53,9 @@ def _requisites_available(data: dict, pay_in: PayIn) -> bool:
 
 
 def transfer_quote_for_page(pay_in: PayIn, currency: str) -> tuple[Decimal, str]:
-    """Сумма, которую плательщик вводит в банке.
-
-    Melbet C2CKZT — международный перевод в USD (order.usd_amount).
-    Заявка мерчанта и сверка остаются в KZT (pay_in.amount).
-    """
+    """Сумма на платёжной странице и в deeplink — валюта заявки (KZT)."""
     fiat = pay_in.amount if pay_in.amount is not None else Decimal("0")
     cur = (currency or "").upper()
-    if is_melbet_merchant(getattr(pay_in, "merchant", None)) and cur == "KZT":
-        order = getattr(pay_in, "order", None)
-        raw = getattr(order, "usd_amount", None) if order is not None else None
-        try:
-            usd = Decimal(str(raw)) if raw is not None else Decimal("0")
-        except (InvalidOperation, ValueError, TypeError):
-            usd = Decimal("0")
-        if usd > 0:
-            return usd.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), "USD"
     return fiat, cur or (currency or "")
 
 
@@ -98,6 +87,10 @@ def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = N
     data["requisites_available"] = _requisites_available(data, pay_in)
     data["transfer_amount"] = xfer_amt_text
     data["transfer_currency"] = xfer_cur
+    if not data.get("expires_at") and pay_in.created_at and getattr(pay_in, "payment_system", None):
+        ttl = getattr(pay_in.payment_system, "expired_time_in", None)
+        if ttl is not None:
+            data["expires_at"] = int((pay_in.created_at + ttl).timestamp())
 
     if pd and data.get("status") not in ("Success", "Failed", "Declined"):
         data["bank_actions"] = build_bank_actions(
