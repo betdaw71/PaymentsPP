@@ -38,4 +38,7 @@ python manage.py crontab add
 service cron start
 
 echo "=== Starting Gunicorn ==="
-exec gunicorn --bind 0.0.0.0:8080 --workers=2 --timeout 120 titanpay.wsgi:application
+WORKERS="${GUNICORN_WORKERS:-2}"
+TIMEOUT="${GUNICORN_TIMEOUT:-120}"
+echo "gunicorn workers=${WORKERS} timeout=${TIMEOUT}"
+exec gunicorn --bind 0.0.0.0:8080 --workers="${WORKERS}" --timeout "${TIMEOUT}" titanpay.wsgi:application
