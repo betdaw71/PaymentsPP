@@ -140,6 +140,12 @@ export default [
     role: [1, 2, 4, 5],
   },
   {
+    title: 'knowledge_base',
+    to: { name: 'help' },
+    icon: { icon: 'tabler-book' },
+    role: [1, 2, 4, 5],
+  },
+  {
     title: 'sms',
     to: { name: 'sms-sms' },
     icon: { icon: 'tabler-device-mobile-message' },

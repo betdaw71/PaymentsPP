@@ -7,6 +7,8 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 KASPI_ANDROID_PACKAGE = "kz.kaspi.mobile"
+HALYK_ANDROID_PACKAGE = "kz.kkb.homebank"
+HALYK_FOREIGN_TRANSFER_PATH = "/transfers/foreign_card"
 
 
 def _digits(s: str) -> str:
@@ -29,14 +31,20 @@ def _is_kaspi_recipient_bank(bank: str) -> bool:
     return "kaspi" in b and "halyk" not in b
 
 
-def _android_intent_https(path: str, query: str) -> str:
-    https_url = f"https://kaspi.kz{path}?{query}" if query else f"https://kaspi.kz{path}"
-    host_path = f"kaspi.kz{path}"
+def _android_intent_https(
+    path: str,
+    query: str,
+    *,
+    host: str = "kaspi.kz",
+    package: str = KASPI_ANDROID_PACKAGE,
+) -> str:
+    https_url = f"https://{host}{path}?{query}" if query else f"https://{host}{path}"
+    host_path = f"{host}{path}"
     if query:
         host_path = f"{host_path}?{query}"
     return (
         f"intent://{host_path}#Intent;"
-        f"scheme=https;package={KASPI_ANDROID_PACKAGE};"
+        f"scheme=https;package={package};"
         f"S.browser_fallback_url={quote(https_url, safe='')};end"
     )
 
@@ -157,7 +165,7 @@ def build_kaspi_deeplink_candidates(
         "Android Intent (HTTPS card_to_card)",
         _android_intent_https(https_paths[0], primary_query),
         "intent",
-        5,
+        50,
     )
 
     for idx, (scheme, host_path) in enumerate(custom_schemes[:2]):
@@ -166,11 +174,16 @@ def build_kaspi_deeplink_candidates(
             f"Android Intent ({scheme})",
             _android_intent_custom(scheme, host_path, query),
             "intent",
-            6 + idx,
+            51 + idx,
         )
 
     candidates.sort(key=lambda item: int(item["priority"]))
     return candidates
+
+
+def _fallback_kaspi_https(external_bank: bool) -> str:
+    path = "/kz/transfers/card_to_card" if external_bank else "/kz/transfers/client"
+    return f"https://kaspi.kz{path}"
 
 
 def get_kaspi_primary_deeplink(
@@ -181,6 +194,7 @@ def get_kaspi_primary_deeplink(
     owner: str = "",
     external_bank: bool = True,
 ) -> str:
+    """iOS Universal Link / Android App Link: https://kaspi.kz/.../transfers/..."""
     candidates = build_kaspi_deeplink_candidates(
         card=card,
         phone=phone,
@@ -188,9 +202,81 @@ def get_kaspi_primary_deeplink(
         owner=owner,
         external_bank=external_bank,
     )
-    if not candidates:
-        return "https://kaspi.kz/kz/transfers/card_to_card"
-    return candidates[0]["url"]
+    for item in candidates:
+        url = str(item.get("url") or "")
+        if url.startswith("https://kaspi.kz/") and "/transfers/" in url:
+            return url
+    for item in candidates:
+        url = str(item.get("url") or "")
+        if url.startswith("https://"):
+            return url
+    return _fallback_kaspi_https(external_bank)
+
+
+def get_kaspi_android_intent(
+    *,
+    card: str = "",
+    phone: str = "",
+    amount: str | Decimal = "",
+    owner: str = "",
+    external_bank: bool = True,
+) -> str:
+    """Chrome Intent for Android, where App Links are less reliable than intent://."""
+    candidates = build_kaspi_deeplink_candidates(
+        card=card,
+        phone=phone,
+        amount=amount,
+        owner=owner,
+        external_bank=external_bank,
+    )
+    for item in candidates:
+        if item.get("type") == "intent":
+            return str(item.get("url") or "")
+    path = "/kz/transfers/card_to_card" if external_bank else "/kz/transfers/client"
+    return _android_intent_https(path, "")
+
+
+def _halyk_transfer_query(*, card: str = "", amount: str | Decimal = "") -> str:
+    params: dict[str, str] = {}
+    card = _digits(card)
+    amt = _format_amount(amount)
+    if card:
+        params["card"] = card
+    if amt and amt != "0":
+        params["amount"] = amt
+    return urlencode(params)
+
+
+def get_halyk_primary_deeplink(
+    *,
+    card: str = "",
+    amount: str | Decimal = "",
+) -> str:
+    """
+    iOS Universal Link / Android App Link into Homebank.
+
+    homebank.kz AASA is paths * and /, so any HTTPS path opens the app.
+    /transfers/foreign_card targets «На зарубежную карту» (трансграничный P2P).
+    Query card/amount is best-effort; the app may ignore it.
+    """
+    query = _halyk_transfer_query(card=card, amount=amount)
+    if query:
+        return f"https://homebank.kz{HALYK_FOREIGN_TRANSFER_PATH}?{query}"
+    return f"https://homebank.kz{HALYK_FOREIGN_TRANSFER_PATH}"
+
+
+def get_halyk_android_intent(
+    *,
+    card: str = "",
+    amount: str | Decimal = "",
+) -> str:
+    query = _halyk_transfer_query(card=card, amount=amount)
+    return _android_intent_https(
+        HALYK_FOREIGN_TRANSFER_PATH,
+        query,
+        host="homebank.kz",
+        package=HALYK_ANDROID_PACKAGE,
+    )
 
 
 def build_transfer_clipboard(
@@ -257,8 +343,20 @@ def build_bank_actions(
         owner=owner,
         external_bank=external_bank,
     )
-    kaspi_hint_kk = "Карта мен сома Kaspi-де ашылуы керек"
-    kaspi_hint_ru = "Kaspi откроется с подставленной картой и суммой"
+    kaspi_android = get_kaspi_android_intent(
+        card=card,
+        phone=phone,
+        amount=amount,
+        owner=owner,
+        external_bank=external_bank,
+    )
+    kaspi_https = kaspi_primary if kaspi_primary.startswith("https://") else _fallback_kaspi_https(external_bank)
+    kaspi_hint_kk = (
+        "Kaspi қосымшасы → Аударымдар. Реквизиттер көшірілген — карта мен соманы қойыңыз, егер өрістер бос болса."
+    )
+    kaspi_hint_ru = (
+        "Откроется приложение Kaspi → Переводы. Реквизиты скопированы — вставьте карту и сумму, если поля пустые."
+    )
     if not card and not phone:
         kaspi_hint_kk = "«Барлығын көшіру» → Kaspi → Сыртқы картаға аударым"
         kaspi_hint_ru = "«Скопировать всё» → Kaspi → Перевод на карту другого банка"
@@ -274,6 +372,7 @@ def build_bank_actions(
         hint_ru: str,
         *,
         primary_url: str = "",
+        android_url: str = "",
     ):
         item = {
             "id": action_id,
@@ -283,6 +382,8 @@ def build_bank_actions(
         }
         if primary_url:
             item["primary_url"] = primary_url
+        if android_url:
+            item["android_url"] = android_url
         actions.append(item)
 
     def add_kaspi(action_id: str):
@@ -290,20 +391,24 @@ def build_bank_actions(
             action_id,
             "Kaspi-де ашу",
             "Открыть Kaspi",
-            kaspi_primary if card or phone else "https://kaspi.kz/kz/transfers/card_to_card",
+            kaspi_https,
             kaspi_hint_kk,
             kaspi_hint_ru,
-            primary_url=kaspi_primary,
+            primary_url=kaspi_https,
+            android_url=kaspi_android,
         )
 
     def add_halyk(action_id: str = "halyk"):
+        halyk_https = get_halyk_primary_deeplink(card=card, amount=amount)
         add(
             action_id,
             "Homebank-та ашу",
             "Открыть Homebank",
-            "https://homebank.kz/",
-            "Аудару → карта/by phone",
-            "Перевод → на карту/телефон",
+            halyk_https,
+            "Аударымдар → Барлық аударымдар → Шетел картасына. Реквизиттер көшірілген — карта мен соманы қойыңыз.",
+            "Переводы → Все переводы → На зарубежную карту. Реквизиты скопированы — вставьте карту и сумму.",
+            primary_url=halyk_https,
+            android_url=get_halyk_android_intent(card=card, amount=amount),
         )
 
     preferred = (sender_bank or "").strip().lower()

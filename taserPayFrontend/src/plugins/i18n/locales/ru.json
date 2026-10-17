@@ -385,6 +385,7 @@
   "search_out_order": "Поиск Out-ордера",
   "senior_traders": "Старшие трейдеры",
   "sms": "СМС",
+  "knowledge_base": "База знаний",
   "sms_sent": "SMS отправлено",
   "sms_status": {
     "compr-block": "Компрометация",
@@ -482,9 +483,17 @@
     },
     "balance": {
       "available": "Доступный",
+      "available_kzt": "Доступный (KZT)",
+      "available_kgs": "Доступный (KGS)",
       "deposit_address": "Адрес для депозита (TRC-20)",
       "frozen": "Замороженный",
-      "title": "Баланс"
+      "frozen_kzt": "Замороженный (KZT)",
+      "frozen_kgs": "Замороженный (KGS)",
+      "title": "Баланс",
+      "wallet_kzt": "Баланс KZT (C2CKZT)",
+      "wallet_kgs": "Баланс KGS",
+      "wallet_usdt": "Баланс USDT",
+      "withdraw_usdt_hint": "Вывод только в USDT"
     },
     "info": {
       "first_name": "Имя",

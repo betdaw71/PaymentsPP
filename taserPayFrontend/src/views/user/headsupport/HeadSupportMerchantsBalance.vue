@@ -47,6 +47,12 @@ onMounted(
     updateTeam ()
   },
 )
+
+const hasMerchantKzt = item => item.available_balance_kzt !== undefined
+  && item.available_balance_kzt !== null
+
+const hasMerchantKgs = item => item.available_balance_kgs !== undefined
+  && item.available_balance_kgs !== null
 </script>
 
 <template>
@@ -131,6 +137,70 @@ onMounted(
                           {{ $t('frozen_balance') }}
                         </span>
                       </VTooltip>
+                      <template v-if="hasMerchantKzt(item)">
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="warning"
+                              text-color="white"
+                              small
+                            >
+                              ₸ {{ item.available_balance_kzt }}
+                            </VChip>
+                          </template>
+                          <span>{{ $t('user.balance.available_kzt') }}</span>
+                        </VTooltip>
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="secondary"
+                              text-color="white"
+                              small
+                              append-icon="tabler-snowflake"
+                            >
+                              ₸ {{ item.frozen_balance_kzt }}
+                            </VChip>
+                          </template>
+                          <span>{{ $t('user.balance.frozen_kzt') }}</span>
+                        </VTooltip>
+                      </template>
+                      <template v-if="hasMerchantKgs(item)">
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="success"
+                              variant="tonal"
+                              text-color="white"
+                              small
+                            >
+                              {{ item.available_balance_kgs }} KGS
+                            </VChip>
+                          </template>
+                          <span>{{ $t('user.balance.available_kgs') }}</span>
+                        </VTooltip>
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="secondary"
+                              variant="tonal"
+                              text-color="white"
+                              small
+                              append-icon="tabler-snowflake"
+                            >
+                              {{ item.frozen_balance_kgs }} KGS
+                            </VChip>
+                          </template>
+                          <span>{{ $t('user.balance.frozen_kgs') }}</span>
+                        </VTooltip>
+                      </template>
                     </VListItemTitle>
                   </VListItem>
                 </VList>

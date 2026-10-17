@@ -122,6 +122,10 @@ def get_client_object(client_info, merchant):
 
 
 def check_pending(client, _in=True):
+    from django.conf import settings
+
+    if _in and not getattr(settings, "ENFORCE_PENDING_PAYIN", False):
+        return False
     if _in:
         status = PayInStatus.objects.get(name="In Progress")
         orders = PayIn.objects.filter(client=client, status=status)

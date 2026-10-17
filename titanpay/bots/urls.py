@@ -5,6 +5,7 @@ app_name = 'bots'
 
 
 urlpatterns = [
+    path('appeals/', include('appeals.urls', 'appeals')),
     path(r'add_pdf/', views.add_pdf),
     path(r'check_user/', views.check_user),
     path(r'reject/', views.reject),
