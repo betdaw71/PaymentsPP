@@ -229,7 +229,7 @@ def prochub_create_invoice(
         "callbackKey": callback_key,
         "merchantId": merchant_id,
         "type": invoice_type,
-        "currency": currency,
+        "currencyCode": currency,
         "activeTime": int(getattr(settings, "PROCHUB_INVOICE_LIFETIME_MINUTES", 15) or 15),
     }
     if bank_code:
