@@ -217,6 +217,11 @@ def prochub_create_invoice(
     merchant_id = _merchant_id()
     if not merchant_id:
         return False, "PROCHUB_MERCHANT_ID is empty"
+    currency = "KZT"
+    if pay_in is not None:
+        symbol = getattr(getattr(pay_in, "currency", None), "symbol", None)
+        if symbol:
+            currency = str(symbol).strip().upper() or "KZT"
     payload: dict[str, Any] = {
         "amount": _amount_int(amount),
         "internalRequestId": internal_id,
@@ -224,6 +229,7 @@ def prochub_create_invoice(
         "callbackKey": callback_key,
         "merchantId": merchant_id,
         "type": invoice_type,
+        "currency": currency,
         "activeTime": int(getattr(settings, "PROCHUB_INVOICE_LIFETIME_MINUTES", 15) or 15),
     }
     if bank_code:
