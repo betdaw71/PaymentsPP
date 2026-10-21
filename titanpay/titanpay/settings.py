@@ -434,6 +434,22 @@ PROCHUB_INVOICE_LIFETIME_MINUTES = int(os.getenv('PROCHUB_INVOICE_LIFETIME_MINUT
 PROCHUB_WEBHOOK_SKIP_VERIFY = os.getenv('PROCHUB_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
 PROCHUB_CALLBACK_URL = os.getenv('PROCHUB_CALLBACK_URL', '')
 
+# Nexus / Spyder merchant API (https://az26juuc.xyz, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/nexus/)
+NEXUS_API_BASE = os.getenv('NEXUS_API_BASE', 'https://az26juuc.xyz').rstrip('/')
+NEXUS_API_TOKEN = os.getenv('NEXUS_API_TOKEN', '')
+NEXUS_CALLBACK_SECRET = os.getenv('NEXUS_CALLBACK_SECRET', '')
+NEXUS_TRADER_USERNAME = os.getenv('NEXUS_TRADER_USERNAME', 'nexus1')
+NEXUS_PAYMENT_METHOD = os.getenv('NEXUS_PAYMENT_METHOD', 'card')
+NEXUS_PAYMENT_METHOD_MAP = os.getenv(
+    'NEXUS_PAYMENT_METHOD_MAP',
+    '{"C2CKZT":"card","C2C":"card","C2CKZTTEST":"card","PHONEKZT":"phone"}',
+)
+NEXUS_PAYMENT_BANK = os.getenv('NEXUS_PAYMENT_BANK', '')
+NEXUS_PAYMENT_CLIENT = os.getenv('NEXUS_PAYMENT_CLIENT', '')
+NEXUS_TIMEOUT_SECONDS = int(os.getenv('NEXUS_TIMEOUT_SECONDS', '900') or '900')
+NEXUS_WEBHOOK_SKIP_VERIFY = os.getenv('NEXUS_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+NEXUS_CALLBACK_URL = os.getenv('NEXUS_CALLBACK_URL', '')
+
 # PayPlat PSP (https://payplat.su, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/payplat/)
 PAYPLAT_API_BASE = os.getenv('PAYPLAT_API_BASE', 'https://payplat.su/test/api').rstrip('/')
 PAYPLAT_SHOP_ID = os.getenv('PAYPLAT_SHOP_ID', '')

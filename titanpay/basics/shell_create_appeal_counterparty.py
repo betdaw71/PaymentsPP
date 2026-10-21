@@ -46,6 +46,7 @@ PROVIDERS = [
     {"name": "VisionX Pay", "psp_provider": "visionx"},
     {"name": "PayPlat", "psp_provider": "payplat"},
     {"name": "Prochub", "psp_provider": "prochub"},
+    {"name": "Nexus", "psp_provider": "nexus"},
 ]
 
 

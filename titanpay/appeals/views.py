@@ -23,6 +23,7 @@ def _collect_deal_ids(pay_in) -> dict:
         PayplatPayInSession,
         PatriotpayPayInSession,
         ProchubPayInSession,
+        NexusPayInSession,
         VisionxPayInSession,
         ExpayonePayInSession,
         ProtocolPayInSession,
@@ -49,6 +50,7 @@ def _collect_deal_ids(pay_in) -> dict:
         ("layerone", LayeronePayInSession, "external_id", "provider_payment_id"),
         ("patriotpay", PatriotpayPayInSession, "external_id", "provider_invoice_id"),
         ("prochub", ProchubPayInSession, "external_id", "provider_invoice_id"),
+        ("nexus", NexusPayInSession, "external_id", "provider_order_id"),
         ("botonpay", BotonpayPayInSession, "external_id", "provider_deal_uuid"),  # historical
         ("bitzone", BitzonePayInSession, "external_id", "provider_transaction_id"),
         ("fairpay", FairpayPayInSession, "external_id", "provider_order_id"),

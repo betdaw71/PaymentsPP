@@ -2,6 +2,7 @@
 import json
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from payments.models import (
@@ -15,6 +16,7 @@ from payments.models import (
     PayplatPayInSession,
     PatriotpayPayInSession,
     ProchubPayInSession,
+    NexusPayInSession,
     VisionxPayInSession,
     PayIn,
     PayInTraceLog,
@@ -60,7 +62,7 @@ class Command(BaseCommand):
         )
         try:
             pay_in = qs.get(id=pid)
-        except PayIn.DoesNotExist:
+        except (PayIn.DoesNotExist, ValidationError, ValueError):
             by_moid = qs.filter(merchant_order_id=pid).order_by("-created_at").first()
             if by_moid is None:
                 raise CommandError(
@@ -137,6 +139,7 @@ class Command(BaseCommand):
             ("VisionX", VisionxPayInSession),
             ("PatriotPay", PatriotpayPayInSession),
             ("Prochub", ProchubPayInSession),
+            ("Nexus", NexusPayInSession),
             ("PayPlat", PayplatPayInSession),
             ("Concored", ConcoredPayInSession),
             ("PayMap", PaymapPayInSession),
@@ -404,6 +407,7 @@ class Command(BaseCommand):
             VisionxPayInSession,
             PatriotpayPayInSession,
             ProchubPayInSession,
+            NexusPayInSession,
             PayplatPayInSession,
             ConcoredPayInSession,
             PaymapPayInSession,

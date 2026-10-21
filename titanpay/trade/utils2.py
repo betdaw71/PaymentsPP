@@ -114,6 +114,7 @@ def _psp_trader_usernames() -> list[str]:
         "VISIONX_TRADER_USERNAME",
         "PATRIOTPAY_TRADER_USERNAME",
         "PROCHUB_TRADER_USERNAME",
+        "NEXUS_TRADER_USERNAME",
     ):
         val = (getattr(settings, key, None) or "").strip()
         if val:
