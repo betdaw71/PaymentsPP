@@ -44,7 +44,7 @@ class BalanceAlertTest(TestCase):
 
         melbet_user = User.objects.create_user(username="melbet", password="x")
         melbet_usdt = Balance.objects.create(type=0, amount=Decimal("0"))
-        melbet_kzt = Balance.objects.create(type=0, amount=Decimal("100"))
+        melbet_kzt = Balance.objects.create(type=0, amount=Decimal("-1499999"))
         Merchant.objects.create(user=melbet_user, balance=melbet_usdt, balance_kzt=melbet_kzt)
 
         mostbet_user = User.objects.create_user(username="mostbet", password="x")
@@ -52,7 +52,7 @@ class BalanceAlertTest(TestCase):
         Merchant.objects.create(user=mostbet_user, balance=mostbet_bal)
 
     @patch("payments.admin_alerts.send_admin_alert", return_value=True)
-    def test_panda_high_and_melbet_low(self, send):
+    def test_panda_high_and_melbet_above_negative_threshold(self, send):
         check_merchant_balance_alerts()
         texts = [call.args[0] for call in send.call_args_list]
         self.assertTrue(any("Panda Pay" in t for t in texts))

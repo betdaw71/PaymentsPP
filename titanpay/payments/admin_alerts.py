@@ -97,7 +97,7 @@ def _kzt(merchant) -> Decimal | None:
 def check_merchant_balance_alerts() -> None:
     panda_max = _dec(getattr(settings, "ADMIN_ALERT_PANDAPAY_MAX", 2800), Decimal("2800"))
     aggre_max = _dec(getattr(settings, "ADMIN_ALERT_AGGREPAY_MAX", 4000), Decimal("4000"))
-    melbet_min = _dec(getattr(settings, "ADMIN_ALERT_MELBET_KZT_MIN", 1_500_000), Decimal("1500000"))
+    melbet_max = _dec(getattr(settings, "ADMIN_ALERT_MELBET_KZT_MAX", -1_500_000), Decimal("-1500000"))
     mostbet_min = _dec(getattr(settings, "ADMIN_ALERT_MOSTBET_MIN", 1000), Decimal("1000"))
 
     panda = _merchant(getattr(settings, "ADMIN_ALERT_PANDAPAY_USER", "pandapay"))
@@ -128,11 +128,11 @@ def check_merchant_balance_alerts() -> None:
     melbet_bal = _kzt(melbet)
     if melbet_bal is not None:
         notify_threshold_once(
-            "melbet_kzt_low",
-            melbet_bal < melbet_min,
+            "melbet_kzt_high",
+            melbet_bal > melbet_max,
             (
-                f"Melbet: KZT баланс {melbet_bal:.2f} ₸ меньше {melbet_min:.0f} ₸.\n"
-                "Нужно пополнить тенге."
+                f"Melbet: KZT баланс {melbet_bal:.2f} ₸ выше {melbet_max:.0f} ₸.\n"
+                "Нужно вывести / снизить баланс."
             ),
         )
 
