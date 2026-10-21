@@ -45,3 +45,11 @@ def update_all():
     except Exception as e:
         logging.error("provider appeal nudges failed: %s", e)
 
+    logging.debug("admin balance alerts")
+    try:
+        from payments.admin_alerts import check_merchant_balance_alerts
+
+        check_merchant_balance_alerts()
+    except Exception as e:
+        logging.error("admin balance alerts failed: %s", e)
+

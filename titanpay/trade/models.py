@@ -1554,6 +1554,17 @@ class WithdrawalRequest(models.Model):
         Transaction.create(_from=_from, _to=frozen_balance, value=amount, _transaction_type=tx_type, _comment="Freeze before the withdrawal")
         withdraw_req = cls(status=0, amount=amount, balance=_from, address_to=address_to, comment="", from_user=from_user)
         withdraw_req.save()
+        from django.db import transaction as db_transaction
+
+        def _alert():
+            try:
+                from payments.admin_alerts import notify_withdrawal_created
+
+                notify_withdrawal_created(withdraw_req)
+            except Exception as exc:
+                logging.error("admin alert withdrawal failed: %s", exc)
+
+        db_transaction.on_commit(_alert)
         return withdraw_req
 
     def approve(self, withdraw_tx_id):

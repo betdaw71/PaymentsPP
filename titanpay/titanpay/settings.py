@@ -312,6 +312,18 @@ BUCKET_NAME = os.getenv('BUCKET_NAME')
 # Telegram appeal bot (отправка чеков в чат провайдера)
 APPEAL_TELEGRAM_BOT_TOKEN = os.getenv('APPEAL_TELEBOT_TOKEN', '')
 
+# Админ-алерты площадки (балансы / payout / вывод). Токен бота + chat_id админа.
+ADMIN_ALERT_BOT_TOKEN = os.getenv('ADMIN_ALERT_BOT_TOKEN', '')
+ADMIN_ALERT_CHAT_ID = os.getenv('ADMIN_ALERT_CHAT_ID', '')
+ADMIN_ALERT_PANDAPAY_USER = os.getenv('ADMIN_ALERT_PANDAPAY_USER', 'pandapay')
+ADMIN_ALERT_AGGREPAY_USER = os.getenv('ADMIN_ALERT_AGGREPAY_USER', 'aggrepay')
+ADMIN_ALERT_MELBET_USER = os.getenv('ADMIN_ALERT_MELBET_USER', 'melbet')
+ADMIN_ALERT_MOSTBET_USER = os.getenv('ADMIN_ALERT_MOSTBET_USER', 'mostbet')
+ADMIN_ALERT_PANDAPAY_MAX = os.getenv('ADMIN_ALERT_PANDAPAY_MAX', '2800')
+ADMIN_ALERT_AGGREPAY_MAX = os.getenv('ADMIN_ALERT_AGGREPAY_MAX', '4000')
+ADMIN_ALERT_MELBET_KZT_MIN = os.getenv('ADMIN_ALERT_MELBET_KZT_MIN', '1500000')
+ADMIN_ALERT_MOSTBET_MIN = os.getenv('ADMIN_ALERT_MOSTBET_MIN', '1000')
+
 # Публичный базовый URL API (экспорт, ссылки в логах; переопределите через PUBLIC_API_URL)
 PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'https://api.avapay.net')
 
