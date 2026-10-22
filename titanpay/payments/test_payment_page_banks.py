@@ -149,6 +149,14 @@ def _pay_in(*, username="melbet", amount="5000", usd="10.94", currency="KZT", pi
 
 
 class MelbetKztTransferQuoteTest(SimpleTestCase):
+    def test_melbet_default_locale_is_kazakh(self):
+        from payments.payment_page_enrich import resolve_locale
+
+        pay_in = _pay_in()
+        self.assertEqual(resolve_locale(pay_in), "kk")
+        self.assertEqual(resolve_locale(pay_in, "ru"), "ru")
+        self.assertEqual(resolve_locale(pay_in, "kz"), "kk")
+
     def test_melbet_page_shows_kzt(self):
         from payments.payment_page_enrich import transfer_quote_for_page
 

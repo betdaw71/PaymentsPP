@@ -28,7 +28,7 @@ def resolve_locale(pay_in: PayIn, lang_hint: str | None = None) -> str:
     if hint in ("kk", "ru", "kz"):
         return "kk" if hint in ("kk", "kz") else "ru"
     if is_melbet_merchant(getattr(pay_in, "merchant", None)):
-        return "ru"
+        return "kk"
     if pay_in.currency and (pay_in.currency.symbol or "").upper() == "KZT":
         return "kk"
     return "ru"
