@@ -32,7 +32,7 @@
     }
     .frame {
       width: min(100%, 430px); margin: 0 auto; min-height: 100dvh;
-      padding: calc(10px + env(safe-area-inset-top)) 0 calc(96px + env(safe-area-inset-bottom));
+      padding: calc(10px + env(safe-area-inset-top)) 0 calc(118px + env(safe-area-inset-bottom));
       position: relative;
     }
     .top-row { display: flex; justify-content: flex-end; align-items: center; padding: 4px 16px 10px; }
@@ -134,6 +134,17 @@
     .chip .copy { grid-column: 3; grid-row: 1; justify-self: end; }
     .chip-label { font-size: 12px; color: var(--chip-label); line-height: 1.2; margin-bottom: 2px; }
     .chip-val { font-size: 16px; font-weight: 700; line-height: 1.25; word-break: break-word; }
+    .fx-note {
+      display: flex; gap: 8px; align-items: flex-start;
+      margin: 2px 0 12px; padding: 12px 14px;
+      background: #ffe8a3; color: #7a4e08;
+      border-radius: 16px; font-size: 13.5px; line-height: 1.4; font-weight: 600;
+    }
+    .fx-note .info-ico {
+      border-color: #e09a18; color: #e09a18; background: #fff;
+      width: 20px; height: 20px; font-size: 13px; margin-top: 0;
+    }
+    .fx-note p { margin: 0; }
     @media (max-width: 360px) {
       .pad { padding: 0 12px; }
       .amount { font-size: 22px; }
@@ -213,6 +224,7 @@
             <div id="bank-actions"></div>
           </div>
           <div class="steps" id="details"></div>
+          <div class="fx-note"><span class="info-ico">!</span><p id="txt-fx-note"></p></div>
         </div>
         <div class="receipt-box hidden" id="receipt-box">
           <div id="txt-receipt-label"></div>
@@ -317,6 +329,7 @@
         s5: "Алушының атын латын әріптерімен енгізіңіз",
         s6: "Нақты соманы енгізіңіз",
         s7: "“Аудару” түймесін басыңыз",
+        fxNote: "Құрметті пайдаланушы, банк валютаны айырбастауына байланысты депозитке түсетін сомада шамалы айырмашылық болуы мүмкін.",
       },
       ru: {
         loading: "Загрузка платежа…", nav: "Пополнение счёта",
@@ -348,6 +361,7 @@
         s5: "Введите имя получателя на латинице",
         s6: "Введите точную сумму",
         s7: "Нажмите кнопку “Перевести”",
+        fxNote: "Уважаемый пользователь, из-за конвертации валюты банком могут быть минимальные отличия в сумме зачисления депозита.",
       },
     };
 
@@ -421,6 +435,7 @@
       document.getElementById("txt-timer-label").textContent = t("timer");
       document.getElementById("txt-pay-id").textContent = t("payId");
       document.getElementById("btn-sent").textContent = t("sent");
+      document.getElementById("txt-fx-note").textContent = t("fxNote");
       document.getElementById("txt-wait-title").textContent = t("waitTitle");
       document.getElementById("txt-wait-msg").textContent = t("waitMsg");
       document.getElementById("txt-ok-title").textContent = t("okTitle");
