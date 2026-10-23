@@ -262,6 +262,20 @@ export const useBaseStore = defineStore ({
         error: response.data,
       }
     },
+    async getBalanceSupportTeamlead (params) {
+      const response = await instance.get (`/base/balance/support-teamlead/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
     async getBalanceAgent (params) {
       const response = await instance.get (`/base/balance/agent/`, { params })
       if (response.status === 200) {

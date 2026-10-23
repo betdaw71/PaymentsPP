@@ -294,6 +294,31 @@ class BalanceViewset(viewsets.ModelViewSet):
             })
         return Response(status=status.HTTP_200_OK, data=rows)
 
+    @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="support-teamlead")
+    def support_teamlead(self, request):
+        rows = []
+        teamleads = TeamLead.objects.select_related("user", "balance", "frozen_balance").prefetch_related(
+            "traderteam_set",
+        )
+        for teamlead in teamleads:
+            teams = list(teamlead.traderteam_set.all())
+            percents = [t.teamlead_percentage for t in teams if t.teamlead_percentage is not None]
+            rows.append({
+                "id": teamlead.id,
+                "username": teamlead.user.username if teamlead.user_id else "",
+                "debt": float(teamlead.balance.amount) if teamlead.balance else 0.0,
+                "frozen": float(teamlead.frozen_balance.amount) if teamlead.frozen_balance else 0.0,
+                "commission_percent": str(percents[0]) if len(set(percents)) == 1 else None,
+                "teams": [
+                    {
+                        "name": team.name,
+                        "percentage": str(team.teamlead_percentage),
+                    }
+                    for team in teams
+                ],
+            })
+        return Response(status=status.HTTP_200_OK, data=rows)
+
     @action(detail=False, methods=['GET'], permission_classes=[AgentPermission | DebugPermission])
     def agent(self, request):
         if not hasattr(request.user, 'agent'):

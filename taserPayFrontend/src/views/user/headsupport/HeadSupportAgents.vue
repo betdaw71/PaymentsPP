@@ -10,18 +10,29 @@ const snackbar = ref({
 })
 
 const agents = ref([])
+const teamleads = ref([])
+
+const fail = error => {
+  snackbar.value = { enabled: true, type: 'error', message: error }
+}
 
 const updateAgents = () => {
-  baseStore.getBalanceSupportAgent({}).then(
-    response => {
-      if (response.error) {
-        snackbar.value = { enabled: true, type: 'error', message: response.error }
-        return
-      }
-      agents.value = response.data
-    },
-  ).catch(error => {
-    snackbar.value = { enabled: true, type: 'error', message: error }
+  Promise.all([
+    baseStore.getBalanceSupportAgent({}),
+    baseStore.getBalanceSupportTeamlead({}),
+  ]).then(([agentRes, teamleadRes]) => {
+    if (agentRes.error) {
+      fail(agentRes.error)
+      return
+    }
+    if (teamleadRes.error) {
+      fail(teamleadRes.error)
+      return
+    }
+    agents.value = agentRes.data || []
+    teamleads.value = teamleadRes.data || []
+  }).catch(error => {
+    fail(error)
   })
 }
 
@@ -57,35 +68,92 @@ onMounted(() => {
         />
       </VCardTitle>
       <VCardText>
+        <div class="text-subtitle-1 font-weight-medium mb-2">
+          {{ $t('roles.agent') }}
+        </div>
         <VList>
+          <VListItem v-if="!agents.length">
+            <VListItemTitle class="text-medium-emphasis">
+              {{ $t('no_agents') }}
+            </VListItemTitle>
+          </VListItem>
           <VListItem
             v-for="item in agents"
             :key="item.id"
           >
-            <VListItemTitle>
-              <span class="font-weight-bold">@{{ item.username }}</span>
+            <VListItemTitle class="d-flex flex-wrap align-center ga-1">
+              <span class="font-weight-bold me-1">@{{ item.username }}</span>
               <VChip
-                class="ms-1 p-1"
                 color="warning"
-                small
+                size="small"
               >
                 {{ $t('agent_debt') }}: ${{ Number(item.debt).toFixed(2) }}
               </VChip>
               <VChip
-                class="ms-1 p-1"
                 color="info"
-                small
+                size="small"
               >
                 {{ item.commission_percent }}%
               </VChip>
               <VChip
                 v-for="name in item.merchants"
                 :key="name"
-                class="ms-1 p-1"
                 color="secondary"
-                small
+                size="small"
               >
                 {{ name }}
+              </VChip>
+            </VListItemTitle>
+          </VListItem>
+        </VList>
+
+        <VDivider class="my-4" />
+
+        <div class="text-subtitle-1 font-weight-medium mb-2">
+          {{ $t('tabs.team_leads') }}
+        </div>
+        <VList>
+          <VListItem v-if="!teamleads.length">
+            <VListItemTitle class="text-medium-emphasis">
+              {{ $t('no_teamleads') }}
+            </VListItemTitle>
+          </VListItem>
+          <VListItem
+            v-for="item in teamleads"
+            :key="item.id"
+          >
+            <VListItemTitle class="d-flex flex-wrap align-center ga-1">
+              <span class="font-weight-bold me-1">@{{ item.username }}</span>
+              <VChip
+                color="warning"
+                size="small"
+              >
+                {{ $t('teamlead_balance') }}: ${{ Number(item.debt).toFixed(2) }}
+              </VChip>
+              <VChip
+                v-if="Number(item.frozen)"
+                color="info"
+                size="small"
+              >
+                {{ $t('frozen_balance') }}: ${{ Number(item.frozen).toFixed(2) }}
+              </VChip>
+              <VChip
+                v-if="item.commission_percent"
+                color="primary"
+                size="small"
+              >
+                {{ item.commission_percent }}%
+              </VChip>
+              <VChip
+                v-for="team in item.teams"
+                :key="team.name"
+                color="secondary"
+                size="small"
+              >
+                {{ team.name }}
+                <template v-if="!item.commission_percent && team.percentage">
+                  · {{ team.percentage }}%
+                </template>
               </VChip>
             </VListItemTitle>
           </VListItem>
