@@ -113,6 +113,18 @@ class Trader(models.Model):
     blocked = models.BooleanField(default=False) # TODO: use it
     super_blocked = models.BooleanField(default=False)
     telegram_user_id = models.BigIntegerField(null=True, blank=True)
+    credit_limit = models.DecimalField(
+        max_digits=32,
+        decimal_places=2,
+        default=0,
+        help_text='How far below 0 this trader USDT may go. PSP default 50000. Routing uses available + credit_limit.',
+    )
+    working_deposit = models.DecimalField(
+        max_digits=32,
+        decimal_places=2,
+        default=0,
+        help_text='Prepaid float from the provider (PayPlat 12000). Informational; does not stop inflow.',
+    )
 
 
 class TrafficType(models.Model):
@@ -232,6 +244,14 @@ class PaymentDetails(models.Model):
         self.amount = new_amount
         self.save()
         self.group.update_balance()
+
+
+class PlatformExpense(models.Model):
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    amount = models.DecimalField(max_digits=32, decimal_places=2)
+    comment = models.CharField(max_length=256)
+    created_at = models.DateTimeField(auto_now_add=True)
+    source = models.CharField(max_length=64, default="telegram")
 
 
 

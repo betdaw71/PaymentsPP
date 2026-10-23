@@ -132,7 +132,10 @@ class InOrder(models.Model):
         team_rate = TraderTeamRates.objects.get(team=chosen_detail.group.trader.team, payment_system=payment_system_obj)
         trader_fee = team_rate.mdr_in * usd_amount / Decimal(100)
 
+        from merchant.agent_fee import compute_in_order_agent_fee
+
         order_obj = cls(status=status, amount=amount, usd_amount=usd_amount, solution=solution, payment_details=chosen_detail, merchant_order_id=merchant_order_id, merchant_fee=merchant_fee, trader_fee=trader_fee, agent_fee=Decimal(0))
+        order_obj.agent_fee = compute_in_order_agent_fee(order_obj)
         order_obj.save()
 
         try:
@@ -289,6 +292,10 @@ class InOrder(models.Model):
             teamlead_share = self.trader_fee * trader.team.teamlead_percentage / Decimal(100)
             from_trader_to_teamlead = Transaction.create(_from=trader.balance_usdt, _to=trader.team.teamlead.balance, value=teamlead_share, _transaction_type=transaction_type_1, _linked_in_order=self, _comment="Teamlead commission")
 
+        from merchant.agent_fee import accrue_agent_commission
+
+        accrue_agent_commission(self)
+
         self.payment_details.group.total_volume += self.amount
         self.payment_details.group.save()
         InOrderStatusChange.create(order=self, status=status)
@@ -376,6 +383,9 @@ class InOrder(models.Model):
             solution=self.solution, amount=paid_amount, usd_amount=new_usd
         )
         self.trader_fee = team_rate.mdr_in * new_usd / Decimal(100)
+        from merchant.agent_fee import compute_in_order_agent_fee
+
+        self.agent_fee = compute_in_order_agent_fee(self)
         self.recalculated = True
         self.recalculated_amount = paid_amount
         self.save()
@@ -779,6 +789,9 @@ class InOrder(models.Model):
         self.usd_amount = new_usd_amount
         self.merchant_fee = new_merchant_fee
         self.trader_fee = new_trader_fee
+        from merchant.agent_fee import compute_in_order_agent_fee
+
+        self.agent_fee = compute_in_order_agent_fee(self)
         self.recalculated = True
         self.save()
 
@@ -1436,9 +1449,9 @@ class Transaction(models.Model):
         # to_balance = Balance.objects.get(id=_to.id)
 
         if from_balance.type != 3 and from_balance.amount < value and _comment != "Crypto deposit":
-            from merchant.kzt_settlement import balance_allows_negative_ledger
+            from merchant.kzt_settlement import balance_allows_negative_ledger, psp_available_allows_debit
 
-            if not balance_allows_negative_ledger(from_balance):
+            if not balance_allows_negative_ledger(from_balance) and not psp_available_allows_debit(from_balance, value):
                 raise ValidationError({'details': 'Not enough funds to transfer money'})
 
         from_balance.amount -= value
@@ -1466,6 +1479,8 @@ class Transaction(models.Model):
                 name = self.from_balance.trader_frozen.get().user.username
             elif self.from_balance.teamlead.exists():
                 name = self.from_balance.teamlead.get().user.username
+            elif self.from_balance.frozen_agent.exists():
+                name = self.from_balance.frozen_agent.get().user.username
             else:
                 name = self.from_balance.frozen_merchant.get().user.username
             return f"{name}-frozen"
@@ -1474,6 +1489,8 @@ class Transaction(models.Model):
                 name = self.from_balance.available.get().user.username
             elif self.from_balance.teamlead.exists():
                 name = self.from_balance.teamlead.get().user.username
+            elif self.from_balance.available_agent.exists():
+                name = self.from_balance.available_agent.get().user.username
             else:
                 name = self.from_balance.available_merchant.get().user.username
             return f"{name}-available"
@@ -1488,6 +1505,8 @@ class Transaction(models.Model):
                 name = self.to_balance.trader_frozen.get().user.username
             elif self.from_balance.teamlead.exists():
                 name = self.from_balance.teamlead.get().user.username
+            elif self.to_balance.frozen_agent.exists():
+                name = self.to_balance.frozen_agent.get().user.username
             else:
                 name = self.to_balance.frozen_merchant.get().user.username
             return f"{name}-frozen"
@@ -1502,6 +1521,8 @@ class Transaction(models.Model):
                 name = self.to_balance.available.get().user.username
             elif self.to_balance.available_merchant.exists():
                 name = self.to_balance.available_merchant.get().user.username
+            elif self.to_balance.available_agent.exists():
+                name = self.to_balance.available_agent.get().user.username
             elif self.from_balance.teamlead.exists():
                 name = self.from_balance.teamlead.get().user.username
             else:
@@ -1526,6 +1547,12 @@ def withdrawal_frozen_balance(user: User) -> Balance:
     trader = getattr(user, "trader", None)
     if trader is not None:
         return trader.frozen_balance_usdt
+    agent = getattr(user, "agent", None)
+    if agent is not None:
+        if agent.frozen_balance_id is None:
+            agent.frozen_balance = Balance.objects.create(type=1, amount=Decimal("0"))
+            agent.save(update_fields=["frozen_balance"])
+        return agent.frozen_balance
     raise ValidationError({"details": "Cannot withdraw from this user"})
 
 

@@ -156,7 +156,7 @@ const getWithdrawals = async () => {
   if (dateRange)
     params.date__range = dateRange
   if(filters.value.selectedTarget && filters.value.selectedTarget.length > 0)
-    params.from_user__username = filters.value.selectedTarget.join (",")
+    params.from_user__username__in = filters.value.selectedTarget.join (",")
   tradeStore.getTradeWithdrawalRequest (params).then (response => {
     if (response.error) {
       throw response.error
@@ -205,7 +205,7 @@ const exportWithdrawals = async () => {
     if (dateRange)
       params.date__range = dateRange
     if (filters.value.selectedTarget && filters.value.selectedTarget.length > 0)
-      params.from_user__username = filters.value.selectedTarget.join (",")
+      params.from_user__username__in = filters.value.selectedTarget.join (",")
 
     const response = await tradeStore.exportTradeWithdrawalRequest(params)
     if (response.error)

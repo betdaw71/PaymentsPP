@@ -152,7 +152,13 @@ def get_balances_stats(request, *args, **kwargs):
         for team in sub_teams:
             team_data = {"team_name": team.name, "data": []}
             traders = Trader.objects.filter(team=team).distinct()
-            team_data["data"] = [{"username": trader.user.username,  "available_balance_amount": trader.balance_usdt.amount, "frozen_balance_amount": trader.frozen_balance_usdt.amount} for trader in traders]
+            team_data["data"] = [{
+                "username": trader.user.username,
+                "available_balance_amount": trader.balance_usdt.amount,
+                "frozen_balance_amount": trader.frozen_balance_usdt.amount,
+                "credit_limit": trader.credit_limit,
+                "working_deposit": trader.working_deposit,
+            } for trader in traders]
             team_data["total_amount"] = sum([_trader["available_balance_amount"] for _trader in team_data["data"]])
             team_data["total_frozen"] = sum([_trader["frozen_balance_amount"] for _trader in team_data["data"]])
             team_data["insurance_deposit"] = team.insurance_deposit
@@ -235,6 +241,9 @@ def get_user_filter_support(request, *args, **kwargs):
         users += [{"name": merch.user.username} for merch in merchants]
         teamleads = TeamLead.objects.all()
         users += [{"name": teamlead.user.username} for teamlead in teamleads]
+        from merchant.models import Agent
+
+        users += [{"name": agent.user.username} for agent in Agent.objects.select_related("user")]
 
     return Response(status=status.HTTP_200_OK, data={"users": users})
 

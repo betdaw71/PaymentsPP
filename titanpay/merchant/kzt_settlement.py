@@ -16,6 +16,8 @@ MELBET_TEST_USERNAME = "melbet_test"
 KZT_PS_NAME = "C2CKZT"
 PHONE_KZT_PS_NAME = "PHONEKZT"
 KGS_PS_NAME = "QRKGS"
+C2C_KGS_PS_NAME = "C2CKGS"
+PHONE_KGS_PS_NAME = "PHONEKGS"
 
 
 def melbet_kzt_usernames() -> frozenset[str]:
@@ -44,7 +46,7 @@ def melbet_kgs_ps_names() -> frozenset[str]:
     raw = getattr(settings, "MELBET_KGS_PS_NAMES", None)
     if raw:
         return frozenset(part.strip().upper() for part in str(raw).split(",") if part.strip())
-    return frozenset({KGS_PS_NAME})
+    return frozenset({KGS_PS_NAME, C2C_KGS_PS_NAME, PHONE_KGS_PS_NAME})
 
 
 def melbet_fiat_ledger(merchant: Merchant | None, payment_system) -> str | None:
@@ -72,12 +74,29 @@ def uses_melbet_fiat_settlement(merchant: Merchant, payment_system) -> bool:
 def balance_allows_negative_ledger(balance: Balance) -> bool:
     if balance is None:
         return False
-    return (
+    if (
         Merchant.objects.filter(balance_kzt_id=balance.id).exists()
         or Merchant.objects.filter(frozen_balance_kzt_id=balance.id).exists()
         or Merchant.objects.filter(balance_kgs_id=balance.id).exists()
         or Merchant.objects.filter(frozen_balance_kgs_id=balance.id).exists()
-    )
+    ):
+        return True
+    return False
+
+
+def psp_available_allows_debit(balance: Balance, value) -> bool:
+    """PSP trader available USDT may go negative down to -credit_limit."""
+    if balance is None:
+        return False
+    from basics.models import Trader
+    from payments.psp_payin import is_psp_trader
+
+    trader = Trader.objects.filter(balance_usdt_id=balance.id).first()
+    if trader is None or not is_psp_trader(trader):
+        return False
+    debit = Decimal(str(value or 0))
+    limit = Decimal(str(trader.credit_limit or 0))
+    return Decimal(str(balance.amount)) - debit >= -limit
 
 
 @transaction.atomic

@@ -684,6 +684,20 @@ class TransactionTeamLeadSerializer(serializers.ModelSerializer):
         return representation
 
 
+class TransactionAgentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transaction
+        fields = "__all__"
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['transaction_type'] = instance.transaction_type.name
+        user = self.context['request'].user
+        user_balance = user.agent.balance
+        representation['is_incoming'] = instance.is_incoming(user_balance)
+        return representation
+
+
 class TransactionTraderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction

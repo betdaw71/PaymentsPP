@@ -47,6 +47,14 @@ def user_balance_ids(user) -> list:
             if balance_id is not None
         ]
 
+    agent = getattr(user, "agent", None)
+    if agent is not None:
+        return [
+            balance_id
+            for balance_id in (agent.balance_id, getattr(agent, "frozen_balance_id", None))
+            if balance_id is not None
+        ]
+
     return []
 
 

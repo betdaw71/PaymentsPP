@@ -1,7 +1,7 @@
 from merchant.models import Merchant, MerchantSolution
 from basics.models import PaymentDetails, PaymentSystem, Trader, PaymentDetailsGroup, TrafficType
 from rest_framework.exceptions import ValidationError
-from django.db.models import F, ExpressionWrapper, DecimalField, Q
+from django.db.models import F, ExpressionWrapper, DecimalField, Q, Value
 import random
 import re
 from decimal import Decimal
@@ -18,7 +18,15 @@ class SberRouting:
         psp_users = psp_trader_usernames()
         # PSP-виртуальные группы: не режем по team/traffic — иначе payplat1/gipay1
         # выпадают из каскада, если MerchantSolution.traffic ≠ Standard.
-        balance_ok = Q(trader__balance_usdt__amount__gte=usd_amount)
+        psp_q = Q(trader__user__username__in=psp_users)
+        need = Decimal(str(usd_amount or 0))
+        psp_need = ExpressionWrapper(
+            Value(need) - F("trader__credit_limit"),
+            output_field=DecimalField(max_digits=32, decimal_places=2),
+        )
+        balance_ok = (Q(trader__balance_usdt__amount__gte=need) & ~psp_q) | (
+            psp_q & Q(trader__balance_usdt__amount__gte=psp_need)
+        )
         base = PaymentDetailsGroup.objects.filter(
             work_type="by_card",
             status=1,
@@ -26,7 +34,6 @@ class SberRouting:
             in_active=True,
             trader__blocked=False,
         ).exclude(trader__user__username__in=DISABLED_PSP_TRADER_USERNAMES).filter(balance_ok)
-        psp_q = Q(trader__user__username__in=psp_users)
         regular_q = Q(trader__team__in=teams, allowed_traffic=traffic_type)
         possible_options = base.filter(psp_q | regular_q).distinct()
 
@@ -98,8 +105,9 @@ class SberRouting:
             group_rate = group_ps.get_rate() if group_ps else None
             if group_rate:
                 usd_needed = amount / group_rate
-                trader_bal = getattr(getattr(group.trader, "balance_usdt", None), "amount", None)
-                if trader_bal is not None and trader_bal < usd_needed:
+                from payments.psp_payin import trader_covers_inflow
+
+                if not trader_covers_inflow(group.trader, usd_needed):
                     skipped.append({"trader": uname, "group_id": str(group.id), "skip": "usd_for_group_ps"})
                     continue
             chosen_detail = available_details.order_by('?').first()

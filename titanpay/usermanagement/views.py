@@ -174,6 +174,16 @@ def get_me(request, *args, **kwargs):
         data["object_id"] = user.submerchant.id
         data["payment_systems"] = []
 
+    elif hasattr(user, 'agent'):
+        data["language"] = user.agent.language.name if user.agent.language_id else "Russian"
+        data["telegram"] = user.agent.telegram
+        data["phone"] = None
+        data["role"] = 8
+        data["deposit"] = True
+        data["object_id"] = user.agent.id
+        data["current_balance"] = float(user.agent.balance.amount) if user.agent.balance else 0.0
+        data["hold"] = float(user.agent.frozen_balance.amount) if user.agent.frozen_balance else 0.0
+
     elif hasattr(user, 'teamlead'):
         data["language"] = user.teamlead.language.name
         data["telegram"] = user.teamlead.telegram

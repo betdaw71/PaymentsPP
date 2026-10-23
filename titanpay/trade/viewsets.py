@@ -22,6 +22,7 @@ from trade.serializers import WithdrawalRequestSupportSerializer, WithdrawalRequ
     InOrderTraderBossFullSerializer, InOrderTraderListSerializer, InOrderTraderFullSerializer, \
     OutOrderTraderBossListSerializer, OutOrderTraderBossFullSerializer, OutOrderTraderListSerializer, \
     OutOrderTraderFullSerializer, TransactionSubMerchantSerializer, TransactionTeamLeadSerializer, \
+    TransactionAgentSerializer, \
     InOrderTeamLeadSerializer, OutOrderTeamLeadSerializer, InOrderMerchantListSerializer, InOrderSupportListSerializer, \
     OutOrderMerchantListSerializer, OutOrderSupportListSerializer, OutOrderCheckSerializer, RecalculateTraderSerializer
 from merchant.models import Merchant
@@ -46,7 +47,7 @@ class WithdrawalRequestFilter(django_filters.FilterSet):
             'status': ['in'],
             'amount': ['gte', 'lte'],
             'date': ['range'],
-            'from_user__username': ['in'],
+            'from_user__username': ['exact', 'in'],
             'comment': ['exact'],
             'address_to': ['exact'],
         }
@@ -80,7 +81,11 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
         teams = support_member.controlled_teams.all()
         withdrawal_request = WithdrawalRequest.objects.get(id=id)
 
-        if withdrawal_request.balance.available_merchant.exists() or withdrawal_request.balance.teamlead.exists():
+        if (
+            withdrawal_request.balance.available_merchant.exists()
+            or withdrawal_request.balance.teamlead.exists()
+            or withdrawal_request.balance.available_agent.exists()
+        ):
             if not support_member.is_head:
                 return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'You are not head of support ot do that!'})
 
@@ -118,7 +123,11 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
         teams = support_member.controlled_teams.all()
         withdrawal_request = WithdrawalRequest.objects.get(id=id)
 
-        if withdrawal_request.balance.available_merchant.exists() or withdrawal_request.balance.teamlead.exists():
+        if (
+            withdrawal_request.balance.available_merchant.exists()
+            or withdrawal_request.balance.teamlead.exists()
+            or withdrawal_request.balance.available_agent.exists()
+        ):
             if not support_member.is_head:
                 return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'You are not head of support ot do that!'})
 
@@ -140,7 +149,7 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
         return Response(status=status.HTTP_200_OK)
 
     def get_serializer_class(self):
-        if hasattr(self.request.user, 'trader') or hasattr(self.request.user, 'merchant') or hasattr(self.request.user, 'teamlead'):
+        if hasattr(self.request.user, 'trader') or hasattr(self.request.user, 'merchant') or hasattr(self.request.user, 'teamlead') or hasattr(self.request.user, 'agent'):
             return WithdrawalRequestBasicSerializer
         if hasattr(self.request.user, 'supportmember'):
             return WithdrawalRequestSupportSerializer
@@ -153,6 +162,9 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
 
         if hasattr(self.request.user, 'teamlead'):
             return WithdrawalRequest.objects.filter(balance=self.request.user.teamlead.balance)
+
+        if hasattr(self.request.user, 'agent'):
+            return WithdrawalRequest.objects.filter(balance=self.request.user.agent.balance)
 
         if not hasattr(self.request.user, 'supportmember'):
             return WithdrawalRequest.objects.none()
@@ -171,8 +183,14 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
         merchants = Merchant.objects.all()
         merchant_balances = Balance.objects.filter(available_merchant__in=merchants)
         teamlead_balances = Balance.objects.filter(teamlead__in=TeamLead.objects.all())
+        from merchant.models import Agent
+
+        agent_balances = Balance.objects.filter(available_agent__in=Agent.objects.all())
         query = WithdrawalRequest.objects.filter(
-            Q(balance__in=merchant_balances) | Q(balance__in=balances) | Q(balance__in=teamlead_balances)
+            Q(balance__in=merchant_balances)
+            | Q(balance__in=balances)
+            | Q(balance__in=teamlead_balances)
+            | Q(balance__in=agent_balances)
         )
         return query
 
@@ -206,6 +224,21 @@ class WithdrawalRequestViewset(viewsets.ModelViewSet):
             try:
                 WithdrawalRequest.create(_from=teamlead.balance, amount=serializer_data["amount"],
                                      address_to=serializer_data["address"], from_user=request.user)
+            except ValidationError as e:
+                return Response(status=status.HTTP_400_BAD_REQUEST, data=e.detail)
+            return Response(status=status.HTTP_201_CREATED)
+
+        if hasattr(request.user, 'agent'):
+            agent = request.user.agent
+            if agent.balance is None or agent.balance.amount < serializer_data["amount"]:
+                return Response(status=status.HTTP_400_BAD_REQUEST, data={'error': 'Not enough funds!'})
+            try:
+                WithdrawalRequest.create(
+                    _from=agent.balance,
+                    amount=serializer_data["amount"],
+                    address_to=serializer_data["address"],
+                    from_user=request.user,
+                )
             except ValidationError as e:
                 return Response(status=status.HTTP_400_BAD_REQUEST, data=e.detail)
             return Response(status=status.HTTP_201_CREATED)
@@ -310,6 +343,8 @@ class TransactionViewset(viewsets.ModelViewSet):
             return TransactionSubMerchantSerializer
         if hasattr(self.request.user, 'teamlead'):
             return TransactionTeamLeadSerializer
+        if hasattr(self.request.user, 'agent'):
+            return TransactionAgentSerializer
         if hasattr(self.request.user, 'supportmember'):
             return TransactionSupportSerializer
         return TransactionTraderSerializer

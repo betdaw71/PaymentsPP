@@ -31,6 +31,18 @@ def decline_payin(pay_in: Any, *, send_callback: bool = True) -> None:
             pay_in.save(update_fields=["status", "updated_at"])
 
 
+def trader_covers_inflow(trader, usd_amount) -> bool:
+    """Regular trader: available >= usd. PSP: available + credit_limit >= usd."""
+    if trader is None:
+        return False
+    usd = Decimal(str(usd_amount or 0))
+    bal = Decimal(str(getattr(getattr(trader, "balance_usdt", None), "amount", 0) or 0))
+    if is_psp_trader(trader):
+        limit = Decimal(str(getattr(trader, "credit_limit", 0) or 0))
+        return bal + limit >= usd
+    return bal >= usd
+
+
 def is_psp_trader(trader) -> bool:
     """Виртуальные PSP-трейдеры не используют SMS/liveness — не блокировать по auto_live."""
     if trader is None:

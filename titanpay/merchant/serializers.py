@@ -35,8 +35,8 @@ class MerchantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Merchant
         fields = ('id', 'balance', 'payment_systems', 'language', 'telegram', 'email', 'username', 'phone',
-                  'rolling_reserve')
-        extra_kwargs = {'rolling_reserve': {'read_only': True}}
+                  'rolling_reserve', 'agent')
+        extra_kwargs = {'rolling_reserve': {'read_only': True}, 'agent': {'read_only': True}}
 
     def get_email(self, obj):
         return obj.user.email

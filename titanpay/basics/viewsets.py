@@ -21,7 +21,7 @@ from basics.serializers import LanguageSerializer, CurrencySerializer, PaymentSy
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from basics.permissions import ReadOnly, SupportPermission, TraderPermission, MerchantPermission, HeadSupportPermission, \
-    DebugPermission, TeamLeadPermission
+    DebugPermission, TeamLeadPermission, AgentPermission
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from decimal import Decimal
@@ -209,6 +209,30 @@ class TraderViewSet(viewsets.ModelViewSet):
         trader.save()
         return Response(status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['patch'], permission_classes=[HeadSupportPermission], url_path='credit')
+    def set_credit(self, request, id=None):
+        trader = self.get_object()
+        updates = []
+        if 'credit_limit' in request.data:
+            trader.credit_limit = Decimal(str(request.data.get('credit_limit') or 0))
+            if trader.credit_limit < 0:
+                return Response({'error': 'credit_limit cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
+            updates.append('credit_limit')
+        if 'working_deposit' in request.data:
+            trader.working_deposit = Decimal(str(request.data.get('working_deposit') or 0))
+            if trader.working_deposit < 0:
+                return Response({'error': 'working_deposit cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
+            updates.append('working_deposit')
+        if not updates:
+            return Response({'error': 'credit_limit or working_deposit required'}, status=status.HTTP_400_BAD_REQUEST)
+        trader.save(update_fields=updates)
+        return Response({
+            'id': str(trader.id),
+            'username': trader.user.username,
+            'credit_limit': str(trader.credit_limit),
+            'working_deposit': str(trader.working_deposit),
+        })
+
 
 class BalanceViewset(viewsets.ModelViewSet):
     lookup_field = 'id'
@@ -254,6 +278,33 @@ class BalanceViewset(viewsets.ModelViewSet):
             data_merchants.append(row)
 
         return Response(status=status.HTTP_200_OK, data=data_merchants)
+
+    @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="support-agent")
+    def support_agent(self, request):
+        from merchant.models import Agent
+
+        rows = []
+        for agent in Agent.objects.select_related("user", "balance").prefetch_related("merchants__user"):
+            rows.append({
+                "id": agent.id,
+                "username": agent.user.username,
+                "commission_percent": str(agent.commission_percent),
+                "debt": float(agent.balance.amount) if agent.balance else 0.0,
+                "merchants": [m.user.username for m in agent.merchants.all()],
+            })
+        return Response(status=status.HTTP_200_OK, data=rows)
+
+    @action(detail=False, methods=['GET'], permission_classes=[AgentPermission | DebugPermission])
+    def agent(self, request):
+        if not hasattr(request.user, 'agent'):
+            return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'You are not an agent!'})
+        agent = request.user.agent
+        return Response(status=status.HTTP_200_OK, data={
+            "amount": float(agent.balance.amount) if agent.balance else 0.0,
+            "frozen_amount": float(agent.frozen_balance.amount) if agent.frozen_balance else 0.0,
+            "commission_percent": str(agent.commission_percent),
+            "merchants": [m.user.username for m in agent.merchants.select_related("user")],
+        })
 
     @action(detail=False, methods=['GET'], permission_classes=[TraderPermission | DebugPermission])
     def trader(self, request):
