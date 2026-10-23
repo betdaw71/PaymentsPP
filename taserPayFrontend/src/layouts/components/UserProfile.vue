@@ -7,7 +7,10 @@ const authStore = useAuthStore ()
 const router = useRouter ()
 
 const displayName = computed(() => {
-  return authStore.userData.username || authStore.userData.email || ''
+  const email = (authStore.userData.email || '').trim()
+  const username = (authStore.userData.username || '').trim()
+
+  return email || username
 })
 
 const logout = () => {
