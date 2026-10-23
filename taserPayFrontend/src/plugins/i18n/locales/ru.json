@@ -370,6 +370,7 @@
   "remember_me": "Запомнить меня",
   "required": "Обязательно",
   "roles": {
+    "agent": "Агент",
     "anonymous": "Аноним",
     "banned": "Заблокирован",
     "head_of_support": "Глава поддержки",
