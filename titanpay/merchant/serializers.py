@@ -17,7 +17,8 @@ class MerchantShortSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Merchant
-        fields = ('id', 'username',)
+        fields = ('id', 'username', 'rolling_reserve')
+        extra_kwargs = {'rolling_reserve': {'read_only': True}}
 
     def get_username(self, obj):
         return obj.user.username
@@ -33,7 +34,9 @@ class MerchantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Merchant
-        fields = ('id', 'balance', 'payment_systems', 'language', 'telegram', 'email', 'username', 'phone')
+        fields = ('id', 'balance', 'payment_systems', 'language', 'telegram', 'email', 'username', 'phone',
+                  'rolling_reserve')
+        extra_kwargs = {'rolling_reserve': {'read_only': True}}
 
     def get_email(self, obj):
         return obj.user.email

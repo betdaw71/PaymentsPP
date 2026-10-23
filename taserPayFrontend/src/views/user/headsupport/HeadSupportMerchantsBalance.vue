@@ -137,6 +137,36 @@ const hasMerchantKgs = item => item.available_balance_kgs !== undefined
                           {{ $t('frozen_balance') }}
                         </span>
                       </VTooltip>
+                      <template v-if="Number(item.rolling_reserve) !== 0">
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              color="warning"
+                              text-color="white"
+                              small
+                            >
+                              $ {{ Number(item.rolling_reserve).toFixed(2) }}
+                            </VChip>
+                          </template>
+                          <span>{{ $t('rolling_reserve') }}</span>
+                        </VTooltip>
+                        <VTooltip location="right">
+                          <template #activator="{ props }">
+                            <VChip
+                              v-bind="props"
+                              class="ms-1 p-1"
+                              :color="Number(item.rolling_net) > 0 ? 'warning' : 'success'"
+                              text-color="white"
+                              small
+                            >
+                              $ {{ Number(item.rolling_net).toFixed(2) }}
+                            </VChip>
+                          </template>
+                          <span>{{ $t('rolling_net') }}</span>
+                        </VTooltip>
+                      </template>
                       <template v-if="hasMerchantKzt(item)">
                         <VTooltip location="right">
                           <template #activator="{ props }">

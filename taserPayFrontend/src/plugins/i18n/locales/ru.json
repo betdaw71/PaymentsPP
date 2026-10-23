@@ -215,6 +215,8 @@
   "inactive_count": "Количество неактивных",
   "income": "Доход",
   "insurance_deposit": "Страховой депозит",
+  "rolling_reserve": "Роллинг-резерв",
+  "rolling_net": "Позиция (резерв − баланс)",
   "is_boss": "Является боссом",
   "language": "Язык",
   "last_session_completed": "Количество завершенных",

@@ -216,6 +216,8 @@
   "inactive_count": "Inactive Count",
   "income": "Income",
   "insurance_deposit": "Insurance Deposit",
+  "rolling_reserve": "Rolling reserve",
+  "rolling_net": "Position (reserve − balance)",
   "is_boss": "Is Boss",
   "language": "Language",
   "last_session_completed": "Last Session Completed",

@@ -45,6 +45,13 @@ class Merchant(models.Model):
     language = models.ForeignKey(to=Language, on_delete=models.SET_NULL, null=True)
     telegram = models.CharField(max_length=64, default=None, null=True)
     phone = models.CharField(max_length=64, default=None, null=True)
+    rolling_reserve = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=0,
+        help_text='USDT sent to merchant as rolling reserve. Informational; not part of available balance. '
+                  'Net position = rolling_reserve - available_balance.',
+    )
 
 
 class MerchantSolution(models.Model):

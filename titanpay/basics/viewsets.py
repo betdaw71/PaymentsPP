@@ -231,11 +231,15 @@ class BalanceViewset(viewsets.ModelViewSet):
 
         merchants = Merchant.objects.all()
         for merchant in merchants:
+            available = float(merchant.balance.amount) if merchant.balance else 0.0
+            rolling = float(merchant.rolling_reserve or 0)
             row = {
                 "id": merchant.id,
                 "username": merchant.user.username,
-                "available_balance_amount": merchant.balance.amount if merchant.balance else 0.0,
+                "available_balance_amount": available,
                 "frozen_balance_amount": merchant.frozen_balance.amount if merchant.frozen_balance else 0.0,
+                "rolling_reserve": rolling,
+                "rolling_net": round(rolling - available, 2),
             }
             from merchant.kzt_settlement import ensure_kgs_balances, ensure_kzt_balances, is_melbet_merchant
 
