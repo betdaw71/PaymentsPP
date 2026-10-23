@@ -1,7 +1,6 @@
-"""Создать агентов и начислить 0.2% с completed in их мерчей.
+"""Создать агентов и начислить 0.2% с completed in одним платежом (не по ордеру).
 
-  APPLY=1 AGENT_PASSWORD=...   создать L_payments / CardsMG и привязать мерчей
-  BACKFILL=1                   начислить комиссию по старым Completed (без двойного начисления)
+  APPLY=1 AGENT_PASSWORD=... BACKFILL=1
 """
 from __future__ import annotations
 
@@ -13,22 +12,22 @@ from django.db import transaction
 from django.db.models import Sum
 
 from basics.models import Balance, Language
-from merchant.agent_fee import accrue_agent_commission, compute_in_order_agent_fee
 from merchant.models import Agent, Merchant
-from trade.models import InOrder, Transaction
+from trade.models import InOrder, Transaction, TransactionType
 
 PLAN = (
     ("L_payments", "melbet"),
     ("CardsMG", "pandapay"),
 )
+PCT = Decimal("0.002")
 
 
-def ensure_agents(apply_flag: bool, password: str) -> None:
+def ensure_agents(apply_flag: bool, password: str):
     lang = Language.objects.filter(name="Russian").first()
     for agent_name, merchant_name in PLAN:
         merchant = Merchant.objects.filter(user__username__iexact=merchant_name).first()
         agent = Agent.objects.filter(user__username=agent_name).first()
-        print(f"{agent_name} exists={bool(agent)} merchant={merchant_name} exists={bool(merchant)}")
+        print(f"{agent_name} exists={bool(agent)} merchant={merchant_name} exists={bool(merchant)}", flush=True)
         if not apply_flag:
             continue
         if agent is None:
@@ -45,59 +44,58 @@ def ensure_agents(apply_flag: bool, password: str) -> None:
                 commission_percent=Decimal("0.20"),
                 language=lang,
             )
-            print(f"+ agent {agent_name}")
+            print(f"+ agent {agent_name}", flush=True)
         if merchant is not None and merchant.agent_id != agent.id:
             merchant.agent = agent
             merchant.save(update_fields=["agent"])
-            print(f"+ {merchant_name} → {agent_name}")
+            print(f"+ {merchant_name} → {agent_name}", flush=True)
 
 
-def backfill(apply_flag: bool) -> None:
+def backfill(apply_flag: bool):
+    chain = Balance.objects.get(type=3)
+    deposit = TransactionType.objects.get(name="Deposit")
     for agent_name, merchant_name in PLAN:
-        merchant = Merchant.objects.filter(user__username__iexact=merchant_name).select_related("agent", "agent__balance").first()
-        if merchant is None or merchant.agent_id is None:
-            print(f"skip backfill {merchant_name}: no agent")
+        merchant = Merchant.objects.filter(user__username__iexact=merchant_name).select_related(
+            "agent", "agent__balance"
+        ).first()
+        if merchant is None:
+            print(f"skip {merchant_name}: no merchant", flush=True)
             continue
+        usd = InOrder.objects.filter(
+            solution__merchant=merchant, status__name="Completed"
+        ).aggregate(s=Sum("usd_amount"))["s"] or Decimal("0")
+        gross = (Decimal(str(usd)) * PCT).quantize(Decimal("0.01"))
         agent = merchant.agent
-        qs = (
-            InOrder.objects.filter(solution__merchant=merchant, status__name="Completed")
-            .select_related("solution__merchant__agent", "solution__payment_system")
-            .order_by("completion_date")
-        )
-        done = set(
-            Transaction.objects.filter(
-                comment="Agent commission",
+        already = Decimal("0")
+        if agent and agent.balance_id:
+            already = Transaction.objects.filter(
                 to_balance_id=agent.balance_id,
-            ).values_list("linked_in_order_id", flat=True)
-        )
-        todo = 0
-        total = Decimal("0")
-        for order in qs.iterator(chunk_size=400):
-            if order.id in done:
-                continue
-            fee = compute_in_order_agent_fee(order)
-            if fee <= 0:
-                continue
-            todo += 1
-            total += fee
-            if not apply_flag:
-                continue
-            with transaction.atomic():
-                order.agent_fee = fee
-                order.save(update_fields=["agent_fee"])
-                accrue_agent_commission(order)
-        agent.balance.refresh_from_db()
+                comment__startswith="Agent commission",
+            ).aggregate(s=Sum("value"))["s"] or Decimal("0")
+            already = Decimal(str(already))
+        delta = gross - already
+        if delta < 0:
+            delta = Decimal("0")
         print(
-            f"{agent_name}/{merchant_name}: new_orders={todo} new_usdt={total} "
-            f"balance={agent.balance.amount if agent.balance else None}"
+            f"{agent_name}/{merchant_name}: completed_usd={usd} gross_0.2%={gross} "
+            f"already={already} to_add={delta}",
+            flush=True,
         )
-        paid = Transaction.objects.filter(
-            comment="Agent commission", to_balance_id=agent.balance_id
-        ).aggregate(s=Sum("value"))["s"] or 0
-        print(f"  ledger_commission_sum={paid}")
+        if not apply_flag or delta <= 0 or agent is None or agent.balance_id is None:
+            continue
+        with transaction.atomic():
+            Transaction.create(
+                _from=chain,
+                _to=agent.balance,
+                value=delta,
+                _transaction_type=deposit,
+                _comment="Agent commission backfill",
+            )
+        agent.balance.refresh_from_db()
+        print(f"  applied balance={agent.balance.amount}", flush=True)
 
 
-def run() -> None:
+def run():
     apply_flag = os.environ.get("APPLY", "").strip() in ("1", "true", "yes")
     backfill_flag = os.environ.get("BACKFILL", "").strip() in ("1", "true", "yes")
     password = os.environ.get("AGENT_PASSWORD", "").strip()
@@ -105,10 +103,7 @@ def run() -> None:
     if backfill_flag or apply_flag:
         backfill(apply_flag)
     if not apply_flag:
-        print("DRY-RUN. Создать: APPLY=1 AGENT_PASSWORD=...  Начислить: APPLY=1 BACKFILL=1")
+        print("DRY-RUN. APPLY=1 AGENT_PASSWORD=... BACKFILL=1", flush=True)
 
 
-if __name__ == "__main__":
-    run()
-else:
-    run()
+run()
