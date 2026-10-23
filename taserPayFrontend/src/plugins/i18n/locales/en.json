@@ -216,6 +216,14 @@
   "inactive_count": "Inactive Count",
   "income": "Income",
   "insurance_deposit": "Insurance Deposit",
+  "rolling_reserve": "Rolling reserve",
+  "rolling_net": "Position (reserve − balance)",
+  "credit_limit": "Credit limit",
+  "working_deposit": "Provider deposit",
+  "agent_debt": "Agent debt",
+  "teamlead_balance": "Team lead balance",
+  "no_agents": "No agents",
+  "no_teamleads": "No team leads",
   "is_boss": "Is Boss",
   "language": "Language",
   "last_session_completed": "Last Session Completed",
@@ -366,6 +374,7 @@
   "remember_me": "Remember Me",
   "required": "Required",
   "roles": {
+    "agent": "Agent",
     "anonymous": "Anonymous",
     "banned": "Banned",
     "head_of_support": "Head of Support",
@@ -386,6 +395,7 @@
   "search_out_order": "Search Out Order",
   "senior_traders": "Senior Traders",
   "sms": "SMS",
+  "knowledge_base": "Knowledge base",
   "sms_sent": "SMS Sent",
   "sms_status": {
     "compr-block": "Compromise Block",
@@ -421,6 +431,8 @@
     "manage_supports": "Manage Supports",
     "merchants_api": "API Settings",
     "merchants_balance": "Merchants Balance",
+    "agents": "Agents & team leads",
+    "team_leads": "Team leads",
     "orders_in": "Orders In",
     "orders_out": "Orders Out",
     "payment_details": "Payment Details",
@@ -483,9 +495,17 @@
     },
     "balance": {
       "available": "Available",
+      "available_kzt": "Available (KZT)",
+      "available_kgs": "Available (KGS)",
       "deposit_address": "Deposit Address (TRC-20)",
       "frozen": "Frozen",
-      "title": "Balance"
+      "frozen_kzt": "Frozen (KZT)",
+      "frozen_kgs": "Frozen (KGS)",
+      "title": "Balance",
+      "wallet_kzt": "KZT balance (C2CKZT)",
+      "wallet_kgs": "KGS balance",
+      "wallet_usdt": "USDT balance",
+      "withdraw_usdt_hint": "Withdrawals are in USDT only"
     },
     "info": {
       "first_name": "Name",

@@ -48,7 +48,8 @@ class PaymentSystem(models.Model):
 
     def update_rate(self, rate):
         self.usdt_exchange_rate = rate
-        self.save()
+        self.last_update = int(timezone.now().timestamp())
+        self.save(update_fields=["usdt_exchange_rate", "last_update"])
 
     def __str__(self):
         return self.name
@@ -64,6 +65,9 @@ class TeamLead(models.Model):
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     user = models.OneToOneField(to=User, on_delete=models.CASCADE)
     balance = models.ForeignKey(to=Balance, on_delete=models.DO_NOTHING, null=True, related_name="teamlead")
+    frozen_balance = models.ForeignKey(
+        to=Balance, on_delete=models.DO_NOTHING, null=True, blank=True, related_name="teamlead_frozen"
+    )
     language = models.ForeignKey(to=Language, on_delete=models.SET_NULL, null=True)
     telegram = models.CharField(max_length=64, default=None, null=True)
     phone = models.CharField(max_length=64, default=None, null=True)
@@ -109,6 +113,18 @@ class Trader(models.Model):
     blocked = models.BooleanField(default=False) # TODO: use it
     super_blocked = models.BooleanField(default=False)
     telegram_user_id = models.BigIntegerField(null=True, blank=True)
+    credit_limit = models.DecimalField(
+        max_digits=32,
+        decimal_places=2,
+        default=0,
+        help_text='How far below 0 this trader USDT may go. PSP default 50000. Routing uses available + credit_limit.',
+    )
+    working_deposit = models.DecimalField(
+        max_digits=32,
+        decimal_places=2,
+        default=0,
+        help_text='Prepaid float from the provider (PayPlat 12000). Informational; does not stop inflow.',
+    )
 
 
 class TrafficType(models.Model):
@@ -139,6 +155,9 @@ class PaymentDetailsGroup(models.Model):
 
     min_amount_out = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     max_amount_out = models.DecimalField(default=1000000, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    # Лимит суммы одного pay-in по группе. Дефолт широкий — существующие группы и PSP не режем.
+    min_amount_in = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    max_amount_in = models.DecimalField(default=Decimal("999999999"), validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     amount = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)  # balance
     bic = models.CharField(max_length=9, blank=True, null=True, validators=[bic_validator])
     deposit_number_on = models.BooleanField(default=False)
@@ -225,6 +244,14 @@ class PaymentDetails(models.Model):
         self.amount = new_amount
         self.save()
         self.group.update_balance()
+
+
+class PlatformExpense(models.Model):
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    amount = models.DecimalField(max_digits=32, decimal_places=2)
+    comment = models.CharField(max_length=256)
+    created_at = models.DateTimeField(auto_now_add=True)
+    source = models.CharField(max_length=64, default="telegram")
 
 
 

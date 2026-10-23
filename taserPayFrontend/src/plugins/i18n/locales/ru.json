@@ -215,6 +215,14 @@
   "inactive_count": "Количество неактивных",
   "income": "Доход",
   "insurance_deposit": "Страховой депозит",
+  "rolling_reserve": "Роллинг-резерв",
+  "rolling_net": "Позиция (резерв − баланс)",
+  "credit_limit": "Кредитный лимит",
+  "working_deposit": "Депозит провайдера",
+  "agent_debt": "Долг агенту",
+  "teamlead_balance": "Баланс тимлида",
+  "no_agents": "Нет агентов",
+  "no_teamleads": "Нет тимлидов",
   "is_boss": "Является боссом",
   "language": "Язык",
   "last_session_completed": "Количество завершенных",
@@ -365,6 +373,7 @@
   "remember_me": "Запомнить меня",
   "required": "Обязательно",
   "roles": {
+    "agent": "Агент",
     "anonymous": "Аноним",
     "banned": "Заблокирован",
     "head_of_support": "Глава поддержки",
@@ -385,6 +394,7 @@
   "search_out_order": "Поиск Out-ордера",
   "senior_traders": "Старшие трейдеры",
   "sms": "СМС",
+  "knowledge_base": "База знаний",
   "sms_sent": "SMS отправлено",
   "sms_status": {
     "compr-block": "Компрометация",
@@ -420,6 +430,8 @@
     "manage_supports": "Управление поддержкой",
     "merchants_api": "Настройки API мерчанта",
     "merchants_balance": "Баланс мерчантов",
+    "agents": "Агенты и тимлиды",
+    "team_leads": "Тимлиды",
     "orders_in": "In-ордера",
     "orders_out": "Out-ордера",
     "payment_details": "Реквизиты",
@@ -482,9 +494,17 @@
     },
     "balance": {
       "available": "Доступный",
+      "available_kzt": "Доступный (KZT)",
+      "available_kgs": "Доступный (KGS)",
       "deposit_address": "Адрес для депозита (TRC-20)",
       "frozen": "Замороженный",
-      "title": "Баланс"
+      "frozen_kzt": "Замороженный (KZT)",
+      "frozen_kgs": "Замороженный (KGS)",
+      "title": "Баланс",
+      "wallet_kzt": "Баланс KZT (C2CKZT)",
+      "wallet_kgs": "Баланс KGS",
+      "wallet_usdt": "Баланс USDT",
+      "withdraw_usdt_hint": "Вывод только в USDT"
     },
     "info": {
       "first_name": "Имя",

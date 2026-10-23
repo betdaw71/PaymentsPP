@@ -103,7 +103,7 @@ def run():
             constrain_time_out=datetime.timedelta(hours=4),
         )
         print(f"  + PaymentSystem {ps.name}")
-    team, _ = TraderTeam.objects.get_or_create(name=TEAM_NAME, defaults={"in_rate": Decimal("5"), "out_rate": Decimal("2")})
+    team, _ = TraderTeam.objects.get_or_create(name=TEAM_NAME, defaults={"rate_in": Decimal("5"), "rate_out": Decimal("2")})
     TraderTeamRates.objects.get_or_create(team=team, payment_system=ps, defaults={"mdr_in": Decimal("7"), "mdr_out": Decimal("2.5")})
     traffic, _ = TrafficType.objects.get_or_create(name=TRAFFIC_NAME, defaults={"risk_level": 0})
     user, created = User.objects.get_or_create(

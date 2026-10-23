@@ -64,6 +64,15 @@ class MerchantPermission(BasePermission):
         return False
 
 
+class AgentPermission(BasePermission):
+    def has_permission(self, request, view):
+        if request.user.is_superuser:
+            return True
+        if hasattr(request.user, 'agent'):
+            return True
+        return False
+
+
 class TeamLeadPermission(BasePermission):
     def has_permission(self, request, view):
         if request.user.is_superuser:

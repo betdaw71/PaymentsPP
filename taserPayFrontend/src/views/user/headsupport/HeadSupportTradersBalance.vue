@@ -374,6 +374,40 @@ watch (
                                       {{ $t ('frozen_balance') }}
                                     </span>
                                   </VTooltip>
+                                  <VTooltip
+                                    v-if="Number(person.credit_limit) > 0"
+                                    location="right"
+                                  >
+                                    <template #activator="{ props }">
+                                      <VChip
+                                        v-bind="props"
+                                        class="ms-1 p-1"
+                                        color="warning"
+                                        text-color="white"
+                                        small
+                                      >
+                                        −${{ Number(person.credit_limit).toFixed(0) }}
+                                      </VChip>
+                                    </template>
+                                    <span>{{ $t('credit_limit') }}</span>
+                                  </VTooltip>
+                                  <VTooltip
+                                    v-if="Number(person.working_deposit) > 0"
+                                    location="right"
+                                  >
+                                    <template #activator="{ props }">
+                                      <VChip
+                                        v-bind="props"
+                                        class="ms-1 p-1"
+                                        color="secondary"
+                                        text-color="white"
+                                        small
+                                      >
+                                        $ {{ Number(person.working_deposit).toFixed(0) }}
+                                      </VChip>
+                                    </template>
+                                    <span>{{ $t('working_deposit') }}</span>
+                                  </VTooltip>
                                 </VListItemTitle>
                               </VListItem>
                             </VList>

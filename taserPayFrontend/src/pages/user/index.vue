@@ -37,7 +37,12 @@ import HeadSupportTeam from "@/views/user/headsupport/HeadSupportTeam.vue"
 import HeadSupportTransactions from "@/views/user/headsupport/HeadSupportTransactions.vue"
 import HeadSupportTradersBalance from "@/views/user/headsupport/HeadSupportTradersBalance.vue"
 import HeadSupportMerchantsBalance from "@/views/user/headsupport/HeadSupportMerchantsBalance.vue"
+import HeadSupportAgents from "@/views/user/headsupport/HeadSupportAgents.vue"
 import HeadSupportWithdrawals from "@/views/user/headsupport/HeadSupportWithdrawals.vue"
+import AgentBalance from "@/views/user/agent/AgentBalance.vue"
+import MainAgentInfo from "@/views/user/agent/MainAgentInfo.vue"
+import AgentTransactions from "@/views/user/agent/AgentTransactions.vue"
+import AgentWithdrawals from "@/views/user/agent/AgentWithdrawals.vue"
 
 
 import UserBioPanel from '@/views/user/UserBioPanel.vue'
@@ -130,6 +135,11 @@ const tabs = computed(
       title: t ('tabs.merchants_balance'),
     }
 
+    const agentsTab = {
+      icon: 'tabler-percentage',
+      title: t ('tabs.agents'),
+    }
+
     const merchantsApiTab = {
       icon: 'tabler-api',
       title: t ('tabs.merchants_api'),
@@ -165,6 +175,14 @@ const tabs = computed(
         withdrawalsTab,
       ]
     }
+    if (authStore.is_agent ()) {
+      return [
+        mainInfoTab,
+        balanceTab,
+        transactionsTab,
+        withdrawalsTab,
+      ]
+    }
     if (authStore.is_merchant ()) {
       return [
         mainInfoTab,
@@ -181,6 +199,7 @@ const tabs = computed(
         transactionsTab,
         tradersBalanceTab,
         merchantsBalanceTab,
+        agentsTab,
         withdrawalsTab,
       ]
     }
@@ -329,6 +348,22 @@ const getUser = (polling = true) => {
           </VWindowItem>
         </template>
         <template
+          v-else-if="authStore.is_agent()"
+        >
+          <VWindowItem>
+            <MainAgentInfo />
+          </VWindowItem>
+          <VWindowItem>
+            <AgentBalance />
+          </VWindowItem>
+          <VWindowItem>
+            <AgentTransactions />
+          </VWindowItem>
+          <VWindowItem>
+            <AgentWithdrawals />
+          </VWindowItem>
+        </template>
+        <template
           v-else-if="authStore.is_team_lead()"
         >
           <VWindowItem>
@@ -380,6 +415,9 @@ const getUser = (polling = true) => {
           </VWindowItem>
           <VWindowItem>
             <HeadSupportMerchantsBalance />
+          </VWindowItem>
+          <VWindowItem>
+            <HeadSupportAgents />
           </VWindowItem>
           <VWindowItem>
             <HeadSupportWithdrawals />

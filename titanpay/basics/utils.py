@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from titanpay.settings import CRYPTO_URL
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import requests
 
 
@@ -95,7 +95,10 @@ import requests
 from decimal import Decimal
 
 
-def check_pd_data(data):
+import uuid
+
+
+def check_pd_data(data, *, require_deposit=False):
     if data.get('phone') == '':
         data['phone'] = None
     if data.get('card_number') == '':
@@ -105,8 +108,15 @@ def check_pd_data(data):
     if data.get('sbp_enabled') == '':
         data['sbp_enabled'] = False
 
-    if data['phone'] is None and (data['sbp_enabled'] or data['sberpay_enabled']):
+    if data.get('phone') is None and (data.get('sbp_enabled') or data.get('sberpay_enabled')):
         raise ValidationError({'details': 'Phone cannot be empty if SBP or SberPay is enabled'})
+
+    deposit = data.get('deposit_number')
+    if deposit in (None, ''):
+        if require_deposit:
+            raise ValidationError({'deposit_number': ['This field is required.']})
+        # Колонка NOT NULL + unique среди active — для карт подставляем служебный номер.
+        data['deposit_number'] = str(uuid.uuid4().int % 10**20).zfill(20)
     return data
 
 
@@ -162,113 +172,230 @@ def get_binance_kzt_halyk_rate():
         return None
 
 
+DEFAULT_XE_KZT_MARKUP = Decimal("1.05")
 
 
-def get_bybit_kzt_rate():
+def _xe_kzt_markup_map() -> dict[str, Decimal]:
+    from django.conf import settings
+
+    raw = getattr(settings, "XE_KZT_MARKUP_BY_PS", None) or ""
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        try:
+            data = json.loads(str(raw)) if str(raw).strip() else {}
+        except Exception:
+            logging.warning("XE_KZT_MARKUP_BY_PS is not valid JSON: %s", raw)
+            return {}
+    out = {}
+    for key, val in (data or {}).items():
+        try:
+            out[str(key)] = Decimal(str(val))
+        except Exception:
+            continue
+    return out
+
+
+def xe_kzt_markup_for_ps(ps_name: str | None = None) -> Decimal:
+    """Наценка XE USD/KZT. Сначала XE_KZT_MARKUP_BY_PS, иначе XE_KZT_MARKUP, иначе +5%."""
+    from django.conf import settings
+
+    by_ps = _xe_kzt_markup_map()
+    if ps_name and ps_name in by_ps:
+        return by_ps[ps_name]
+    markup_override = getattr(settings, "XE_KZT_MARKUP", None)
+    if markup_override:
+        try:
+            return Decimal(str(markup_override))
+        except Exception:
+            pass
+    return DEFAULT_XE_KZT_MARKUP
+
+
+def get_xe_kzt_base_rate():
+    """USD/KZT mid-market с xe.com без наценки."""
+    try:
+        response = requests.get(
+            "https://www.xe.com/api/protected/midmarket-converter/",
+            headers={
+                "Authorization": "Basic bG9kZXN0YXI6cHVnc25heA==",
+                "User-Agent": "Mozilla/5.0",
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+        rates = data.get("rates", {})
+        kzt = rates.get("KZT")
+        if kzt is None:
+            logging.error("XE KZT rate: KZT not found in response keys=%s", list(rates.keys())[:10])
+            return None
+        return Decimal(str(kzt))
+    except Exception as exc:
+        logging.error("XE KZT rate failed: %s", exc)
+        return None
+
+
+def get_xe_kzt_rate(markup: Decimal | None = None, ps_name: str | None = None):
     """
-    Парсит курс USDT/KZT с Bybit P2P.
-    Правила: Kaspi Bank, лимит >= 100 000 KZT, проверенные мерчанты,
-    среднее со 2 по 6 объявление.
+    Курс USDT/KZT через xe.com: USD/KZT + наценка (по умолчанию +5%).
+    USDT ≈ 1 USD, поэтому берём USD/KZT напрямую.
+    Наценку: xe_kzt_markup_for_ps (XE_KZT_MARKUP_BY_PS / XE_KZT_MARKUP).
     """
+    if markup is None:
+        markup = xe_kzt_markup_for_ps(ps_name)
+    base_rate = get_xe_kzt_base_rate()
+    if base_rate is None:
+        return None
+    result = (base_rate * markup).quantize(Decimal("0.001"))
+    logging.info("KZT rate XE.com (USD/KZT + %s%%): base=%s result=%s", (markup - 1) * 100, base_rate, result)
+    return result
+
+
+
+
+BYBIT_KZT_KASPI_PAYMENT_ID = "150"
+BYBIT_KZT_DEFAULT_AMOUNT = "50000"
+BYBIT_KZT_DEFAULT_ROWS = (15, 16)
+
+
+def _bybit_kzt_settings():
+    from django.conf import settings
+
+    amount = str(getattr(settings, "BYBIT_KZT_AMOUNT", None) or BYBIT_KZT_DEFAULT_AMOUNT).strip() or BYBIT_KZT_DEFAULT_AMOUNT
+    raw_auth = getattr(settings, "BYBIT_KZT_AUTH_MAKER", True)
+    if isinstance(raw_auth, str):
+        auth_maker = raw_auth.strip().lower() in ("1", "true", "yes")
+    else:
+        auth_maker = bool(raw_auth)
+    rows_raw = getattr(settings, "BYBIT_KZT_ROWS", None)
+    rows = list(BYBIT_KZT_DEFAULT_ROWS)
+    if rows_raw:
+        try:
+            if isinstance(rows_raw, (list, tuple)):
+                parts = [int(x) for x in rows_raw]
+            else:
+                parts = [int(p.strip()) for p in str(rows_raw).split(",") if p.strip()]
+            if parts:
+                rows = parts
+        except (TypeError, ValueError):
+            rows = list(BYBIT_KZT_DEFAULT_ROWS)
+    return amount, auth_maker, rows
+
+
+def _price_from_bybit_item(item) -> Decimal | None:
+    if not isinstance(item, dict):
+        return None
+    try:
+        price = Decimal(str(item.get("price") or "0"))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return price if price > 0 else None
+
+
+def get_bybit_kzt_rate_quote():
+    """
+    Красный стакан Bybit P2P USDT/KZT: Kaspi, сумма 50 000, проверенные мерчанты,
+    среднее по строкам 15–16 (как в стакане, без своей сортировки).
+    """
+    amount, auth_maker, rows = _bybit_kzt_settings()
     json_data = {
-        'userId': '',
-        'tokenId': 'USDT',
-        'currencyId': 'KZT',
-        'payment': ['150'],
-        'side': '1',
-        'size': '50',
-        'page': '1',
-        'amount': '100000',
-        'authMaker': False,
-        'canTrade': False,
+        "userId": "",
+        "tokenId": "USDT",
+        "currencyId": "KZT",
+        "payment": [BYBIT_KZT_KASPI_PAYMENT_ID],
+        "side": "1",
+        "size": "50",
+        "page": "1",
+        "amount": amount,
+        "authMaker": auth_maker,
+        "canTrade": False,
     }
 
     try:
-        response = requests.post('https://api2.bybit.com/fiat/otc/item/online',
-                                 json=json_data, timeout=15)
+        response = requests.post(
+            "https://api2.bybit.com/fiat/otc/item/online",
+            json=json_data,
+            timeout=15,
+        )
         response.raise_for_status()
-    except Exception as e:
-        logging.error(f"Bybit P2P request failed: {e}")
+    except Exception as exc:
+        logging.error("Bybit P2P request failed: %s", exc)
         return None
 
     data = response.json()
-    if data.get('ret_code') != 0:
-        logging.error(f"Bybit API error: {data.get('ret_msg')}")
+    if data.get("ret_code") != 0:
+        logging.error("Bybit API error: %s", data.get("ret_msg"))
         return None
 
-    items = data.get('result', {}).get('items', [])
-    if not items:
-        logging.warning("No items returned")
-        return None
-
-    filtered_prices = []
-
+    items = data.get("result", {}).get("items") or []
+    prices = []
     for item in items:
-        payments = item.get('payments', [])
-        if '150' not in payments:
+        payments = item.get("payments") or []
+        payment_ids = {str(p) for p in payments}
+        if BYBIT_KZT_KASPI_PAYMENT_ID not in payment_ids:
             continue
+        price = _price_from_bybit_item(item)
+        if price is not None:
+            prices.append(price)
 
-        max_amount_str = item.get('maxAmount') or item.get('maxSingleTransAmount') or '0'
-        try:
-            max_amount = Decimal(max_amount_str)
-        except:
-            max_amount = Decimal('0')
-
-        if max_amount < Decimal('100000'):
-            continue
-
-        finish_rate_str = item.get('finishRate') or item.get('recentExecuteRate') or '0'
-        try:
-            finish_rate = Decimal(finish_rate_str)
-        except:
-            finish_rate = Decimal('0')
-
-        total_orders_str = item.get('totalOrderCount') or item.get('recentOrderNum') or '0'
-        try:
-            total_orders = int(total_orders_str)
-        except:
-            total_orders = 0
-
-        if finish_rate <= Decimal('95') or total_orders <= 100:
-            continue
-
-        price_str = item.get('price', '0')
-        try:
-            price = Decimal(price_str)
-        except:
-            continue
-
-        if price > 0:
-            filtered_prices.append(price)
-
-    # Дополнительная защита от пустого списка
-    if not filtered_prices:
-        logging.warning("No valid Kaspi ads found")
+    if not prices:
+        logging.warning("Bybit KZT: no Kaspi ads in red book")
         return None
 
-    if len(filtered_prices) < 6:
-        logging.warning(f"Not enough valid Kaspi ads: {len(filtered_prices)}")
-        if len(filtered_prices) >= 2:
-            avg_price = sum(filtered_prices) / Decimal(len(filtered_prices))
-            logging.info(f"Fallback: average of {len(filtered_prices)} ads = {avg_price}")
-            return avg_price
-        elif len(filtered_prices) == 1:
-            logging.info(f"Using single ad: {filtered_prices[0]}")
-            return filtered_prices[0]
-        else:
-            return None
+    one_based = [r for r in rows if isinstance(r, int) and r >= 1]
+    if not one_based:
+        one_based = list(BYBIT_KZT_DEFAULT_ROWS)
 
-    filtered_prices.sort()
-    selected_prices = filtered_prices[1:6]
-    
-    # Ещё одна защита
-    if not selected_prices:
-        logging.warning("No prices selected after slicing")
+    selected = []
+    used_rows = []
+    for row in one_based:
+        idx = row - 1
+        if idx < len(prices):
+            selected.append(prices[idx])
+            used_rows.append(row)
+
+    if not selected:
+        take = min(len(one_based), len(prices))
+        selected = prices[-take:]
+        used_rows = list(range(len(prices) - take + 1, len(prices) + 1))
+        logging.warning(
+            "Bybit KZT: book has %s Kaspi ads, using last %s as fallback rows=%s",
+            len(prices),
+            take,
+            used_rows,
+        )
+
+    avg_price = (sum(selected) / Decimal(len(selected))).quantize(Decimal("0.01"))
+    logging.info(
+        "Bybit KZT Kaspi red book amount=%s authMaker=%s rows=%s prices=%s avg=%s ads=%s",
+        amount,
+        auth_maker,
+        used_rows,
+        selected,
+        avg_price,
+        len(prices),
+    )
+    return {
+        "rate": avg_price,
+        "prices": selected,
+        "rows": used_rows,
+        "amount": int(Decimal(amount)) if amount.isdigit() else amount,
+        "payment": "Kaspi",
+        "payment_id": BYBIT_KZT_KASPI_PAYMENT_ID,
+        "verified": auth_maker,
+        "side": "sell",
+        "ads_count": len(prices),
+        "source": "bybit_kaspi",
+    }
+
+
+def get_bybit_kzt_rate():
+    """Среднее USDT/KZT с красного стакана Bybit (Kaspi, 50k, строки 15–16)."""
+    quote = get_bybit_kzt_rate_quote()
+    if not quote:
         return None
-        
-    avg_price = sum(selected_prices) / Decimal(len(selected_prices))
-    logging.info(f"Bybit KZT rate (orders 2-6): {avg_price}")
-    return avg_price
+    return quote["rate"]
 
 def get_bybit_rate(payment_system_name):
     json_data = {

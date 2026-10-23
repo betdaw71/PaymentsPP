@@ -175,14 +175,23 @@ def _norm_state(raw: str | None) -> str:
     return (raw or "").strip().lower()
 
 
+def protocol_webhook_ids(body: dict | None) -> tuple[str, str]:
+    from payments.aggrepay_webhook import webhook_ids
+
+    return webhook_ids(body)
+
+
+def protocol_webhook_state(body: dict | None) -> str:
+    from payments.aggrepay_webhook import webhook_state
+
+    return webhook_state(body)
+
+
 def protocol_webhook_outcome(body: dict) -> str | None:
     """success | fail | None (ignore intermediate)."""
-    state = _norm_state(body.get("state"))
-    if state == "finished":
-        return "success"
-    if state in ("canceled", "cancelled", "expired", "failed"):
-        return "fail"
-    return None
+    from payments.aggrepay_webhook import webhook_outcome
+
+    return webhook_outcome(body)
 
 
 def protocol_map_requisite(create_body: dict) -> dict:
