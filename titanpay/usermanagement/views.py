@@ -330,7 +330,10 @@ class MyObtainTokenPairView(TokenObtainPairView):
         data.update({"stay_signed": stay_signed})
 
         decoded = jwt.decode(str(data["access"]), algorithms=["HS256"], options={"verify_signature": False})
-        data.update({"username": decoded['username'], "role": decoded['role']})
+        data.update({
+            "username": decoded.get("username") or user.username,
+            "role": decoded.get("role"),
+        })
 
         return Response(data, status=status.HTTP_200_OK)
 
