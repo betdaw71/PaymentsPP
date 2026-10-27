@@ -201,7 +201,27 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(data["liabilities"]["merchants_total"], "1420.72")
 
     @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
-    def test_melbet_kzt_prepaid_is_asset(self, _wallet):
+    def test_melbet_negative_kzt_is_receivable(self, _wallet):
+        user = User.objects.create_user(username="melbet", password="x")
+        Merchant.objects.create(
+            user=user,
+            balance=Balance.objects.create(type=0, amount=Decimal("0")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0")),
+            balance_kzt=Balance.objects.create(type=0, amount=Decimal("-105000.00")),
+            frozen_balance_kzt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        data = snapshot()
+        self.assertEqual(data["kzt_usdt_rate"], "500.00")
+        row = next(item for item in data["assets"]["receivables"] if item["username"] == "melbet")
+        self.assertEqual(row["kzt"], "-105000.00")
+        self.assertEqual(row["available"], "210.00")
+        self.assertEqual(data["assets"]["receivables_total"], "210.00")
+        names = [item["username"] for item in data["liabilities"]["merchants"]]
+        self.assertNotIn("melbet", names)
+        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
+
+    @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
+    def test_melbet_positive_kzt_is_liability(self, _wallet):
         user = User.objects.create_user(username="melbet", password="x")
         Merchant.objects.create(
             user=user,
@@ -211,14 +231,11 @@ class CashRegisterSnapshotTest(TestCase):
             frozen_balance_kzt=Balance.objects.create(type=1, amount=Decimal("0")),
         )
         data = snapshot()
-        self.assertEqual(data["kzt_usdt_rate"], "500.00")
-        row = next(item for item in data["assets"]["receivables"] if item["username"] == "melbet")
-        self.assertEqual(row["kzt"], "105000.00")
-        self.assertEqual(row["available"], "210.00")
-        self.assertEqual(data["assets"]["receivables_total"], "210.00")
-        names = [item["username"] for item in data["liabilities"]["merchants"]]
-        self.assertIn("melbet", names)
-        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
+        row = next(item for item in data["liabilities"]["merchants"] if item["username"] == "melbet")
+        self.assertEqual(row["net"], "210.00")
+        self.assertEqual(data["liabilities"]["merchants_total"], "310.00")
+        recv_names = [item["username"] for item in data["assets"]["receivables"]]
+        self.assertNotIn("melbet", recv_names)
 
     def test_day_pnl_includes_fx_and_expense(self, _wallet):
         data = snapshot()

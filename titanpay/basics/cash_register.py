@@ -286,30 +286,35 @@ def snapshot(now=None) -> dict:
             kzt = money(_bal(merchant, "balance_kzt") + _bal(merchant, "frozen_balance_kzt"))
             kgs = money(_bal(merchant, "balance_kgs") + _bal(merchant, "frozen_balance_kgs"))
             kzt_usd = kzt_to_usd(kzt, rate=kzt_rate)
-            receivable_total += kzt_usd
-            recv = {
-                "username": username,
-                "kind": "melbet_kzt",
-                "kzt": money_str(kzt),
-                "kgs": money_str(kgs),
-                "rate": money_str(kzt_rate),
-                "available": money_str(kzt_usd),
-                "frozen": money_str(_bal(merchant, "frozen_balance_kzt")),
-                "rolling_reserve": "0.00",
-                "net": money_str(kzt_usd),
-                "note": "prepaid_kzt",
-            }
-            receivable_rows.append(recv)
-            merchant_rows.append({
-                "username": username,
-                "available": "0.00",
-                "frozen": "0.00",
-                "rolling_reserve": "0.00",
-                "net": "0.00",
-                "kzt": money_str(kzt),
-                "kzt_usd": money_str(kzt_usd),
-                "note": "prepaid_kzt",
-            })
+            frozen_kzt = money_str(_bal(merchant, "frozen_balance_kzt"))
+            # KZT < 0: prepaid/оборот, нам должны (актив). KZT > 0: мы должны Melbet (пассив).
+            if kzt_usd < 0:
+                owed = money(-kzt_usd)
+                receivable_total += owed
+                receivable_rows.append({
+                    "username": username,
+                    "kind": "melbet_kzt",
+                    "kzt": money_str(kzt),
+                    "kgs": money_str(kgs),
+                    "rate": money_str(kzt_rate),
+                    "available": money_str(owed),
+                    "frozen": frozen_kzt,
+                    "rolling_reserve": "0.00",
+                    "net": money_str(owed),
+                    "note": "melbet_owes_us",
+                })
+            elif kzt_usd > 0:
+                merchant_total += kzt_usd
+                merchant_rows.append({
+                    "username": username,
+                    "available": "0.00",
+                    "frozen": "0.00",
+                    "rolling_reserve": "0.00",
+                    "net": money_str(kzt_usd),
+                    "kzt": money_str(kzt),
+                    "kzt_usd": money_str(kzt_usd),
+                    "note": "we_owe_melbet",
+                })
             continue
         net = merchant_usdt_net(available, frozen, rolling)
         row = {

@@ -224,7 +224,7 @@
   "teamlead_balance": "Team lead balance",
   "no_agents": "No agents",
   "cash_register": {
-    "hint": "Assets: |PSP cabinet| + wallet + Melbet KZT. Liability: Mostbet net and unused prepaid still on the PSP.",
+    "hint": "Assets: |PSP cabinet| + wallet + Melbet KZT they owe us. Liability: Mostbet net and unused PayPlat prepaid.",
     "cash": "Cash",
     "day": "Today",
     "month": "This month",
