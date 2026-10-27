@@ -223,7 +223,7 @@
   "teamlead_balance": "Баланс тимлида",
   "no_agents": "Нет агентов",
   "cash_register": {
-    "hint": "Активы: |кабинет PSP| + кошелёк + Melbet KZT. Пассив: Mostbet net и депозит − баланс PSP.",
+    "hint": "Активы: |кабинет PSP| + кошелёк + Melbet KZT. Пассив: Mostbet net и остаток предоплаты в ЛК PSP.",
     "cash": "Касса",
     "day": "Сегодня",
     "month": "Месяц",

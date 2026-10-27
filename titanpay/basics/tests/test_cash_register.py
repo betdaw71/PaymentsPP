@@ -63,9 +63,10 @@ class CashRegisterMathTest(SimpleTestCase):
         self.assertEqual(psp_held_usdt("-200.00"), Decimal("200.00"))
         self.assertEqual(psp_held_usdt("985220.69"), Decimal("985220.69"))
 
-    def test_psp_deposit_owed_is_deposit_minus_balance(self):
-        self.assertEqual(psp_deposit_owed("12000", "-200"), Decimal("12200.00"))
-        self.assertEqual(psp_deposit_owed("12000", "638800"), Decimal("0.00"))
+    def test_psp_deposit_owed_is_unused_prepaid(self):
+        self.assertEqual(psp_deposit_owed("12000", "4146.93"), Decimal("4146.93"))
+        self.assertEqual(psp_deposit_owed("12000", "-200"), Decimal("0.00"))
+        self.assertEqual(psp_deposit_owed("12000", "638800"), Decimal("12000.00"))
         self.assertEqual(psp_deposit_owed("0", "-200"), Decimal("0.00"))
 
 
@@ -156,19 +157,33 @@ class CashRegisterSnapshotTest(TestCase):
 
     def test_cash_is_assets_minus_liabilities(self, _wallet):
         data = snapshot()
-        # PSP -200 в ЛК = 200 на сайте; депозит 12000 → должны 12200
+        # PSP -200 в ЛК = 200 на сайте; предоплата уже съедена → пассив депозита 0
         # assets: 200 + trader 50 = 250
-        # liabilities: merchant 100 + agent 5 + teamlead 3 + deposit 12200 = 12308
-        # cash = -12058
+        # liabilities: merchant 100 + agent 5 + teamlead 3 = 108
+        # cash = 142
         self.assertEqual(data["assets"]["psp_total"], "200.00")
         self.assertEqual(data["assets"]["traders_total"], "50.00")
         self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
-        self.assertEqual(data["liabilities"]["psp_deposits_total"], "12200.00")
+        self.assertEqual(data["liabilities"]["psp_deposits_total"], "0.00")
         self.assertEqual(data["liabilities"]["agents_total"], "5.00")
         self.assertEqual(data["liabilities"]["teamleads_total"], "3.00")
-        self.assertEqual(data["cash"], "-12058.00")
+        self.assertEqual(data["cash"], "142.00")
         self.assertEqual(data["memo"]["rolling_reserve"], "2217.00")
         self.assertEqual(data["memo"]["working_deposit"], "12000.00")
+
+    def test_payplat_prepaid_liability_is_remaining_lk(self, _wallet):
+        from basics.models import Trader
+
+        trader = Trader.objects.get(user__username="payplat1")
+        trader.balance_usdt.amount = Decimal("4146.93")
+        trader.balance_usdt.save(update_fields=["amount"])
+        data = snapshot()
+        row = next(item for item in data["liabilities"]["psp_deposits"] if item["username"] == "payplat1")
+        self.assertEqual(row["available"], "4146.93")
+        self.assertEqual(row["working_deposit"], "12000.00")
+        self.assertEqual(row["net"], "4146.93")
+        self.assertEqual(data["liabilities"]["psp_deposits_total"], "4146.93")
+        self.assertEqual(data["assets"]["psp_total"], "0.00")
 
     def test_mostbet_liability_nets_rolling(self, _wallet):
         user = User.objects.create_user(username="mostbet", password="x")

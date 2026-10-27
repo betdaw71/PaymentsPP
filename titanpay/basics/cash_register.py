@@ -59,12 +59,16 @@ def psp_held_usdt(available, frozen=0) -> Decimal:
 
 
 def psp_deposit_owed(deposit, available) -> Decimal:
-    """Предоплата провайдера минус его текущий баланс. >0 — мы должны провайдеру."""
+    """Неизрасходованная предоплата в ЛК PSP (остаток), не «депозит − баланс».
+
+    PayPlat 12000, в ЛК 4146.93 → в пассив 4146.93 (деньги ещё у провайдера).
+    Уже прогнанные 7853 в долг не ставим: они ушли в оборот.
+    """
     dep = money(deposit)
-    if dep <= 0:
+    avail = money(available)
+    if dep <= 0 or avail <= 0:
         return ZERO
-    diff = money(dep - money(available))
-    return diff if diff > 0 else ZERO
+    return money(min(dep, avail))
 
 
 def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
@@ -234,6 +238,8 @@ def snapshot(now=None) -> dict:
         if is_psp_trader(trader):
             held = psp_held_usdt(available, frozen)
             owed = psp_deposit_owed(trader.working_deposit, available)
+            if owed > 0:
+                held = money(max(held - owed, ZERO))
             row["held"] = money_str(held)
             row["deposit_owed"] = money_str(owed)
             psp_rows.append(row)
