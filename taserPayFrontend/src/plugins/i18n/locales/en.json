@@ -224,7 +224,7 @@
   "teamlead_balance": "Team lead balance",
   "no_agents": "No agents",
   "cash_register": {
-    "hint": "Assets minus liabilities. Mostbet net = available − rolling. Melbet KZT is a receivable at the C2CKZT rate.",
+    "hint": "Assets: |PSP cabinet| + platform wallet + Melbet KZT. Mostbet net = available − rolling.",
     "cash": "Cash",
     "day": "Today",
     "month": "This month",
@@ -239,7 +239,8 @@
     "expenses": "Bot expenses",
     "net": "Net",
     "memo": "Not in cash",
-    "receivable": "owes us"
+    "receivable": "owes us",
+    "wallet": "Wallet"
   },
   "no_teamleads": "No team leads",
   "is_boss": "Is Boss",

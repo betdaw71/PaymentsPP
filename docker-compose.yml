@@ -150,7 +150,10 @@ services:
       - project_network
 
   app:
-    build: ./titanpay
+    build:
+      context: ./titanpay
+      provenance: false
+      sbom: false
     container_name: titanpay_app
     restart: unless-stopped
     env_file:
@@ -259,6 +262,8 @@ services:
   frontend:
     build:
       context: ./taserPayFrontend
+      provenance: false
+      sbom: false
       args:
         # Keep production API host if .env omits VITE_API_URL (avoids hang on rebuild)
         VITE_API_URL: ${VITE_API_URL:-https://api.avapay.net/api/v1}

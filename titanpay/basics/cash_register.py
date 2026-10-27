@@ -1,9 +1,12 @@
 """Касса = активы − пассивы. День = MDR + FX-спред − комиссия PSP − агент − расходы бота."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, Sum, Value, When
 from django.db.models.functions import Coalesce
@@ -48,6 +51,46 @@ def kzt_to_usd(kzt, *, rate=None) -> Decimal:
 def merchant_usdt_net(available, frozen, rolling) -> Decimal:
     """Mostbet: available − rolling. >0 мы должны мерчу, <0 предоплата нам."""
     return money(money(available) + money(frozen) - money(rolling))
+
+
+def psp_held_usdt(available, frozen=0) -> Decimal:
+    """Баланс в ЛК PSP: минус = деньги на сайте провайдера, их можно вывести. В кассу — модуль."""
+    return money(abs(money(available)))
+
+
+def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
+    """USDT TRC-20 на кошельке площадки через TronGrid. Сбой сети → 0, кассу не роняем."""
+    from django.conf import settings
+
+    wallet = (address or getattr(settings, "CASH_REGISTER_TRC20_WALLET", "") or "").strip()
+    if not wallet:
+        return ZERO, ""
+    contract = (getattr(settings, "USDT_TRC20_CONTRACT", None) or "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t").strip()
+    headers = {}
+    api_key = (getattr(settings, "TRONGRID_API_KEY", None) or "").strip()
+    if api_key:
+        headers["TRON-PRO-API-KEY"] = api_key
+    try:
+        import requests
+
+        response = requests.get(
+            f"https://api.trongrid.io/v1/accounts/{wallet}",
+            headers=headers,
+            timeout=12,
+        )
+        response.raise_for_status()
+        rows = (response.json() or {}).get("data") or []
+        account = rows[0] if rows else {}
+        for item in account.get("trc20") or []:
+            if not isinstance(item, dict):
+                continue
+            raw = item.get(contract)
+            if raw is None:
+                continue
+            return money(Decimal(str(raw)) / Decimal("1000000")), wallet
+    except Exception:
+        logger.warning("cash register wallet fetch failed for %s", wallet, exc_info=True)
+    return ZERO, wallet
 
 
 def fx_spread(usd_amount, psp_usd_amount) -> Decimal:
@@ -169,7 +212,6 @@ def snapshot(now=None) -> dict:
     for trader in traders:
         available = _bal(trader, "balance_usdt")
         frozen = _bal(trader, "frozen_balance_usdt")
-        held = money(available + frozen)
         row = {
             "username": trader.user.username if trader.user_id else "",
             "available": money_str(available),
@@ -179,11 +221,13 @@ def snapshot(now=None) -> dict:
         }
         deposit_total += money(trader.working_deposit)
         if is_psp_trader(trader):
+            held = psp_held_usdt(available, frozen)
+            row["held"] = money_str(held)
             psp_rows.append(row)
             psp_total += held
         else:
             trader_rows.append(row)
-            trader_total += held
+            trader_total += money(available + frozen)
 
     from merchant.kzt_settlement import is_melbet_merchant
 
@@ -213,13 +257,27 @@ def snapshot(now=None) -> dict:
             kgs = money(_bal(merchant, "balance_kgs") + _bal(merchant, "frozen_balance_kgs"))
             kzt_usd = kzt_to_usd(kzt, rate=kzt_rate)
             receivable_total += kzt_usd
-            receivable_rows.append({
+            recv = {
                 "username": username,
                 "kind": "melbet_kzt",
                 "kzt": money_str(kzt),
                 "kgs": money_str(kgs),
                 "rate": money_str(kzt_rate),
                 "available": money_str(kzt_usd),
+                "frozen": money_str(_bal(merchant, "frozen_balance_kzt")),
+                "rolling_reserve": "0.00",
+                "net": money_str(kzt_usd),
+                "note": "prepaid_kzt",
+            }
+            receivable_rows.append(recv)
+            merchant_rows.append({
+                "username": username,
+                "available": "0.00",
+                "frozen": "0.00",
+                "rolling_reserve": "0.00",
+                "net": "0.00",
+                "kzt": money_str(kzt),
+                "kzt_usd": money_str(kzt_usd),
                 "note": "prepaid_kzt",
             })
             continue
@@ -267,7 +325,17 @@ def snapshot(now=None) -> dict:
             "frozen": money_str(frozen),
         })
 
-    assets_total = money(psp_total + trader_total + receivable_total)
+    wallet_usdt, wallet_address = fetch_platform_wallet_usdt()
+    wallet_rows = []
+    if wallet_address:
+        wallet_rows.append({
+            "username": "platform_wallet",
+            "address": wallet_address,
+            "available": money_str(wallet_usdt),
+            "kind": "trc20_usdt",
+        })
+
+    assets_total = money(psp_total + trader_total + receivable_total + wallet_usdt)
     liabilities_total = money(merchant_total + agent_total + teamlead_total)
     cash = money(assets_total - liabilities_total)
     end = current
@@ -281,9 +349,11 @@ def snapshot(now=None) -> dict:
             "psp_total": money_str(psp_total),
             "traders_total": money_str(trader_total),
             "receivables_total": money_str(receivable_total),
+            "wallet_total": money_str(wallet_usdt),
             "psp": sorted(psp_rows, key=lambda row: row["username"]),
             "traders": sorted(trader_rows, key=lambda row: row["username"]),
             "receivables": sorted(receivable_rows, key=lambda row: row["username"]),
+            "wallets": wallet_rows,
         },
         "liabilities": {
             "total": money_str(liabilities_total),
@@ -312,8 +382,10 @@ def format_telegram(data: dict | None = None) -> str:
     return (
         f"Касса {data['cash']} USDT ({data['timezone']})\n"
         f"активы {data['assets']['total']} − пассивы {data['liabilities']['total']}\n"
-        f"PSP {data['assets']['psp_total']} · трейдеры {data['assets']['traders_total']} · "
-        f"дебиторка {data['assets'].get('receivables_total', '0.00')}\n"
+        f"PSP {data['assets']['psp_total']} (|баланс| на сайте) · "
+        f"кошелёк {data['assets'].get('wallet_total', '0.00')} · "
+        f"трейдеры {data['assets']['traders_total']} · "
+        f"Melbet KZT {data['assets'].get('receivables_total', '0.00')}\n"
         f"мерчи {data['liabilities']['merchants_total']} (net − rolling) · "
         f"агенты {data['liabilities']['agents_total']} · "
         f"тимлиды {data['liabilities']['teamleads_total']}\n"

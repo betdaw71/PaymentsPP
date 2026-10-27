@@ -335,6 +335,14 @@ ADMIN_ALERT_MOSTBET_MIN = os.getenv('ADMIN_ALERT_MOSTBET_MIN', '1000')
 # Публичный базовый URL API (экспорт, ссылки в логах; переопределите через PUBLIC_API_URL)
 PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'https://api.avapay.net')
 
+# Касса: USDT TRC-20 кошелёк площадки (TronGrid).
+CASH_REGISTER_TRC20_WALLET = os.getenv(
+    'CASH_REGISTER_TRC20_WALLET',
+    'TEPKpVsAUyrkLx38ueFzSQP1HXGX8XK1Tt',
+)
+USDT_TRC20_CONTRACT = os.getenv('USDT_TRC20_CONTRACT', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t')
+TRONGRID_API_KEY = os.getenv('TRONGRID_API_KEY', os.getenv('TRONGRID_KEY', ''))
+
 # FairPay PSP (колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/fairpay/)
 FAIRPAY_API_BASE = os.getenv('FAIRPAY_API_BASE', 'https://api.fairpay.cc').rstrip('/')
 FAIRPAY_API_TOKEN = os.getenv('FAIRPAY_API_TOKEN', '')

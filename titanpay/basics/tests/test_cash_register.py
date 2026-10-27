@@ -1,10 +1,19 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
-from basics.cash_register import fx_spread, kzt_to_usd, merchant_usdt_net, payin_pnl, payout_pnl, snapshot
+from basics.cash_register import (
+    fx_spread,
+    kzt_to_usd,
+    merchant_usdt_net,
+    payin_pnl,
+    payout_pnl,
+    psp_held_usdt,
+    snapshot,
+)
 from basics.models import (
     Balance,
     Currency,
@@ -49,8 +58,13 @@ class CashRegisterMathTest(SimpleTestCase):
     def test_kzt_to_usd_uses_c2ckzt_rate(self):
         self.assertEqual(kzt_to_usd("105000", rate="525"), Decimal("200.00"))
 
+    def test_psp_negative_counts_as_held(self):
+        self.assertEqual(psp_held_usdt("-200.00"), Decimal("200.00"))
+        self.assertEqual(psp_held_usdt("985220.69"), Decimal("985220.69"))
+
 
 @override_settings(PAYPLAT_TRADER_USERNAME="payplat1")
+@patch("basics.cash_register.fetch_platform_wallet_usdt", return_value=(Decimal("0"), "TEPKpVsAUyrkLx38ueFzSQP1HXGX8XK1Tt"))
 class CashRegisterSnapshotTest(TestCase):
     def setUp(self):
         Language.objects.create(name="Russian")
@@ -134,21 +148,22 @@ class CashRegisterSnapshotTest(TestCase):
         )
         PlatformExpense.objects.create(amount=Decimal("1.00"), comment="hosting", source="telegram")
 
-    def test_cash_is_assets_minus_liabilities(self):
+    def test_cash_is_assets_minus_liabilities(self, _wallet):
         data = snapshot()
-        # assets: PSP -200 + own trader 50 = -150
+        # PSP -200 в ЛК = 200 на сайте провайдера
+        # assets: 200 + trader 50 = 250
         # liabilities: merchant 100 + agent 5 + teamlead 3 = 108
-        # cash = -258
-        self.assertEqual(data["assets"]["psp_total"], "-200.00")
+        # cash = 142
+        self.assertEqual(data["assets"]["psp_total"], "200.00")
         self.assertEqual(data["assets"]["traders_total"], "50.00")
         self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
         self.assertEqual(data["liabilities"]["agents_total"], "5.00")
         self.assertEqual(data["liabilities"]["teamleads_total"], "3.00")
-        self.assertEqual(data["cash"], "-258.00")
+        self.assertEqual(data["cash"], "142.00")
         self.assertEqual(data["memo"]["rolling_reserve"], "2217.00")
         self.assertEqual(data["memo"]["working_deposit"], "12000.00")
 
-    def test_mostbet_liability_nets_rolling(self):
+    def test_mostbet_liability_nets_rolling(self, _wallet):
         user = User.objects.create_user(username="mostbet", password="x")
         Merchant.objects.create(
             user=user,
@@ -164,7 +179,7 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(data["liabilities"]["merchants_total"], "1420.72")
 
     @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
-    def test_melbet_kzt_prepaid_is_asset(self):
+    def test_melbet_kzt_prepaid_is_asset(self, _wallet):
         user = User.objects.create_user(username="melbet", password="x")
         Merchant.objects.create(
             user=user,
@@ -179,9 +194,11 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(row["kzt"], "105000.00")
         self.assertEqual(row["available"], "210.00")
         self.assertEqual(data["assets"]["receivables_total"], "210.00")
-        self.assertFalse(any(item["username"] == "melbet" for item in data["liabilities"]["merchants"]))
+        names = [item["username"] for item in data["liabilities"]["merchants"]]
+        self.assertIn("melbet", names)
+        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
 
-    def test_day_pnl_includes_fx_and_expense(self):
+    def test_day_pnl_includes_fx_and_expense(self, _wallet):
         data = snapshot()
         day = data["pnl"]["day"]
         # 7 + 2 + 0.16 - 5.70 - 0.10 - 0.20 - 1.00 = 2.16

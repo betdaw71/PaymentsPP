@@ -13,7 +13,7 @@ const snackbar = ref({
 const empty = () => ({
   cash: '0.00',
   kzt_usdt_rate: '0.00',
-  assets: { total: '0.00', psp_total: '0.00', traders_total: '0.00', receivables_total: '0.00', psp: [], traders: [], receivables: [] },
+  assets: { total: '0.00', psp_total: '0.00', traders_total: '0.00', receivables_total: '0.00', wallet_total: '0.00', psp: [], traders: [], receivables: [], wallets: [] },
   liabilities: {
     total: '0.00',
     merchants_total: '0.00',
@@ -184,30 +184,15 @@ onMounted(() => {
               </thead>
               <tbody>
                 <tr
-                  v-for="row in data.assets.psp"
-                  :key="`psp-${row.username}`"
+                  v-for="row in data.assets.wallets"
+                  :key="`wal-${row.address}`"
                 >
-                  <td>{{ row.username }}</td>
-                  <td
-                    class="text-end"
-                    :class="moneyClass(row.available)"
-                  >
-                    {{ row.available }}
-                  </td>
-                  <td class="text-end">
-                    {{ row.credit_limit }}
-                  </td>
-                </tr>
-                <tr
-                  v-for="row in data.assets.traders"
-                  :key="`tr-${row.username}`"
-                >
-                  <td>{{ row.username }}</td>
+                  <td>{{ t('cash_register.wallet') }} {{ row.address }}</td>
                   <td class="text-end">
                     {{ row.available }}
                   </td>
                   <td class="text-end">
-                    —
+                    TRC-20
                   </td>
                 </tr>
                 <tr
@@ -226,6 +211,39 @@ onMounted(() => {
                     >
                       · {{ row.kzt }} KZT / {{ data.kzt_usdt_rate }}
                     </span>
+                  </td>
+                  <td class="text-end">
+                    —
+                  </td>
+                </tr>
+                <tr
+                  v-for="row in data.assets.psp"
+                  :key="`psp-${row.username}`"
+                >
+                  <td>{{ row.username }}</td>
+                  <td
+                    class="text-end"
+                    :class="moneyClass(row.held || row.available)"
+                  >
+                    {{ row.held || row.available }}
+                    <span
+                      v-if="row.held && row.held !== row.available"
+                      class="text-caption text-medium-emphasis"
+                    >
+                      · ЛК {{ row.available }}
+                    </span>
+                  </td>
+                  <td class="text-end">
+                    {{ row.credit_limit }}
+                  </td>
+                </tr>
+                <tr
+                  v-for="row in data.assets.traders"
+                  :key="`tr-${row.username}`"
+                >
+                  <td>{{ row.username }}</td>
+                  <td class="text-end">
+                    {{ row.available }}
                   </td>
                   <td class="text-end">
                     —
@@ -276,6 +294,12 @@ onMounted(() => {
                   </td>
                   <td class="text-end font-weight-medium">
                     {{ row.net || row.available }}
+                    <span
+                      v-if="row.kzt"
+                      class="text-caption text-medium-emphasis d-block"
+                    >
+                      {{ row.kzt }} KZT → {{ row.kzt_usd }} USDT
+                    </span>
                   </td>
                 </tr>
                 <tr
