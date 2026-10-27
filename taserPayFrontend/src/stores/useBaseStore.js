@@ -248,6 +248,20 @@ export const useBaseStore = defineStore ({
         error: response.data,
       }
     },
+    async getCashRegister (params) {
+      const response = await instance.get (`/base/balance/cash-register/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: {},
+        error: response.data,
+      }
+    },
     async getBalanceSupportAgent (params) {
       const response = await instance.get (`/base/balance/support-agent/`, { params })
       if (response.status === 200) {

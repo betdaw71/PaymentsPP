@@ -13,6 +13,10 @@ class AdminBotParseTest(SimpleTestCase):
         self.assertEqual(cmd["username"], "payplat1")
         self.assertEqual(cmd["amount"], Decimal("1234.56"))
 
+    def test_cash(self):
+        cmd = parse_command("касса")
+        self.assertEqual(cmd["op"], "cash")
+
     def test_expense(self):
         cmd = parse_command("расход 40 хостинг")
         self.assertEqual(cmd["op"], "expense")

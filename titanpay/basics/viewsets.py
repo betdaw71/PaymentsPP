@@ -294,6 +294,12 @@ class BalanceViewset(viewsets.ModelViewSet):
             })
         return Response(status=status.HTTP_200_OK, data=rows)
 
+    @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="cash-register")
+    def cash_register(self, request):
+        from basics.cash_register import snapshot
+
+        return Response(status=status.HTTP_200_OK, data=snapshot())
+
     @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="support-teamlead")
     def support_teamlead(self, request):
         rows = []

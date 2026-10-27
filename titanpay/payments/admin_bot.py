@@ -17,6 +17,7 @@ OFFSET_KEY = "admin_bot:update_offset"
 
 HELP = (
     "Касса / балансы:\n"
+    "касса\n"
     "обнови баланс провайдера payplat1 на 1234.56\n"
     "обнови баланс мерча mostbet на 2800\n"
     "пополни провайдера payplat1 100 комментарий\n"
@@ -39,6 +40,8 @@ def parse_command(text: str) -> dict | None:
     low = raw.lower()
     if low in ("/help", "help", "помощь"):
         return {"op": "help"}
+    if low in ("касса", "/касса", "cash"):
+        return {"op": "cash"}
     m = re.match(
         r"^(?:обнови\s+баланс|обновить\s+баланс)\s+(провайдера|мерча|мерчанта)\s+(\S+)\s+на\s+([-\d.,]+)\s*$",
         raw,
@@ -115,6 +118,10 @@ def _move(balance, delta: Decimal, comment: str):
 def handle_command(cmd: dict) -> str:
     if cmd["op"] == "help":
         return HELP
+    if cmd["op"] == "cash":
+        from basics.cash_register import format_telegram
+
+        return format_telegram()
     if cmd["op"] == "expense":
         from basics.models import PlatformExpense
 
