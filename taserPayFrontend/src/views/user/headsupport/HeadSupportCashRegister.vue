@@ -19,9 +19,11 @@ const empty = () => ({
     merchants_total: '0.00',
     agents_total: '0.00',
     teamleads_total: '0.00',
+    psp_deposits_total: '0.00',
     merchants: [],
     agents: [],
     teamleads: [],
+    psp_deposits: [],
   },
   memo: { rolling_reserve: '0.00', working_deposit: '0.00' },
   pnl: {
@@ -278,6 +280,24 @@ onMounted(() => {
                 </tr>
               </thead>
               <tbody>
+                <tr
+                  v-for="row in data.liabilities.psp_deposits"
+                  :key="`dep-${row.username}`"
+                >
+                  <td>{{ row.username }} ({{ t('cash_register.psp_deposit') }})</td>
+                  <td class="text-end">
+                    {{ row.available }}
+                  </td>
+                  <td class="text-end">
+                    —
+                  </td>
+                  <td class="text-end">
+                    {{ row.working_deposit }}
+                  </td>
+                  <td class="text-end font-weight-medium">
+                    {{ row.net }}
+                  </td>
+                </tr>
                 <tr
                   v-for="row in data.liabilities.merchants"
                   :key="`m-${row.username}`"

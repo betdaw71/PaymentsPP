@@ -223,7 +223,7 @@
   "teamlead_balance": "Баланс тимлида",
   "no_agents": "Нет агентов",
   "cash_register": {
-    "hint": "Активы: |кабинет PSP| + кошелёк + Melbet KZT. Mostbet: available − роллинг.",
+    "hint": "Активы: |кабинет PSP| + кошелёк + Melbet KZT. Пассив: Mostbet net и депозит − баланс PSP.",
     "cash": "Касса",
     "day": "Сегодня",
     "month": "Месяц",
@@ -239,7 +239,8 @@
     "net": "Итого",
     "memo": "Не в кассе",
     "receivable": "нам должны",
-    "wallet": "Кошелёк"
+    "wallet": "Кошелёк",
+    "psp_deposit": "предоплата PSP"
   },
   "no_teamleads": "Нет тимлидов",
   "is_boss": "Является боссом",
