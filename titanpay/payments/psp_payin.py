@@ -88,8 +88,11 @@ def psp_order_usd_ledger_amount(order) -> Decimal:
     """
     USDT для Freeze/Charge у PSP: Transaction.value хранит 2 знака после запятой.
     Микросуммы (< 0.01 USDT) иначе округляются до 0 и complete падает на проверке frozen.
+    Для KZT dual FX берём psp_usd_amount (курс провайдера), не merchant usd.
     """
-    raw = Decimal(str(getattr(order, "usd_amount", 0) or 0))
+    from payments.dual_fx import order_psp_usd
+
+    raw = order_psp_usd(order)
     if raw <= 0:
         return Decimal("0")
     q = raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -923,7 +926,19 @@ def _swap_inorder_payment_details(pay_in: Any, new_detail, amount: Decimal) -> N
     with transaction.atomic():
         od = InOrder.objects.select_for_update().get(pk=order.pk)
         od.payment_details = new_detail
-        od.save(update_fields=["payment_details"])
+        trader = new_detail.group.trader if new_detail.group_id else None
+        from payments.dual_fx import apply_dual_fx_to_order
+
+        quote = apply_dual_fx_to_order(od, trader)
+        from basics.models import TraderTeamRates
+
+        if trader is not None and od.solution_id:
+            team_rate = TraderTeamRates.objects.filter(
+                team=trader.team, payment_system=od.solution.payment_system
+            ).first()
+            if team_rate is not None:
+                od.trader_fee = team_rate.mdr_in * quote.psp_usd / Decimal("100")
+        od.save(update_fields=["payment_details", "merchant_rate", "psp_rate", "psp_usd_amount", "trader_fee"])
         if old_detail and old_detail.group_id != new_detail.group_id:
             PaymentDetailsGroup.objects.filter(pk=old_detail.group_id).update(
                 current_volume=F("current_volume") - amount,

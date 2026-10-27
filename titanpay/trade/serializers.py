@@ -119,7 +119,8 @@ class InOrderTraderListSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        from payments.dual_fx import expose_usd_amount
+        return expose_usd_amount(representation, instance, audience="psp")
 
 
 class InOrderTraderFullSerializer(serializers.ModelSerializer):
@@ -150,7 +151,8 @@ class InOrderTraderFullSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return _attach_pic_url(representation, instance)
+        from payments.dual_fx import expose_usd_amount
+        return expose_usd_amount(_attach_pic_url(representation, instance), instance, audience="psp")
 
 
 class InOrderTraderBossListSerializer(serializers.ModelSerializer):
@@ -178,7 +180,8 @@ class InOrderTraderBossListSerializer(serializers.ModelSerializer):
             representation['expires_at'] = (instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return representation
+        from payments.dual_fx import expose_usd_amount
+        return expose_usd_amount(representation, instance, audience="psp")
 
 
 class InOrderTraderBossFullSerializer(serializers.ModelSerializer):
@@ -212,7 +215,8 @@ class InOrderTraderBossFullSerializer(serializers.ModelSerializer):
                         instance.solution.payment_system.expired_time_in + money_sent_status_change.first().created_at).timestamp()
         else:
             representation['expires_at'] = 0
-        return _attach_pic_url(representation, instance)
+        from payments.dual_fx import expose_usd_amount
+        return expose_usd_amount(_attach_pic_url(representation, instance), instance, audience="psp")
 
 
 def _attach_psp_reference(representation: dict, in_order) -> dict:
@@ -383,7 +387,8 @@ class InOrderTeamLeadSerializer(serializers.ModelSerializer):
         representation['currency'] = instance.solution.payment_system.currency.symbol
         representation['payment_system'] = instance.solution.payment_system.name
         representation['traffic_type'] = instance.solution.traffic.name
-        return representation
+        from payments.dual_fx import expose_usd_amount
+        return expose_usd_amount(representation, instance, audience="psp")
 
 
 class InOrderCreateSerializer(serializers.ModelSerializer):

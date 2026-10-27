@@ -120,14 +120,8 @@ def check_pd_data(data, *, require_deposit=False):
     return data
 
 
-def get_binance_kzt_halyk_rate():
-    """
-    USDT/KZT с Binance P2P: Halyk Bank, среднее со 2–4 объявления (индексы 1–3).
-    payTypes задаётся PROTOCOL_BINANCE_PAY_TYPE (по умолчанию HalykBank).
-    """
-    from django.conf import settings
-
-    pay_type = getattr(settings, "PROTOCOL_BINANCE_PAY_TYPE", "HalykBank")
+def get_binance_kzt_p2p_rate(pay_type: str, ranks=(2, 3, 4)):
+    """USDT/KZT Binance P2P. ranks — 1-based места в стакане (2 и 4 = среднее 2-го и 4-го)."""
     json_data = {
         "fiat": "KZT",
         "page": 1,
@@ -158,18 +152,40 @@ def get_binance_kzt_halyk_rate():
             response.raise_for_status()
             data = response.json().get("data") or []
         if len(data) < 2:
-            logging.warning("Binance KZT Halyk: not enough ads (%s)", len(data))
+            logging.warning("Binance KZT %s: not enough ads (%s)", pay_type, len(data))
             return None
-        slice_end = min(4, len(data))
-        prices = [float(adv["adv"]["price"]) for adv in data[1:slice_end]]
+        prices = []
+        for rank in ranks:
+            idx = int(rank) - 1
+            if 0 <= idx < len(data):
+                prices.append(float(data[idx]["adv"]["price"]))
         if not prices:
             return None
         avg = sum(prices) / len(prices)
-        logging.info("Binance KZT Halyk rate (ads 2-%s): %s", slice_end, avg)
+        logging.info("Binance KZT %s rate (ranks %s): %s", pay_type, ranks, avg)
         return Decimal(str(round(avg, 3)))
     except Exception as exc:
-        logging.error("Binance KZT Halyk rate failed: %s", exc)
+        logging.error("Binance KZT %s rate failed: %s", pay_type, exc)
         return None
+
+
+def get_binance_kzt_halyk_rate():
+    """
+    USDT/KZT с Binance P2P: Halyk Bank, среднее со 2–4 объявления (индексы 1–3).
+    payTypes задаётся PROTOCOL_BINANCE_PAY_TYPE (по умолчанию HalykBank).
+    """
+    from django.conf import settings
+
+    pay_type = getattr(settings, "PROTOCOL_BINANCE_PAY_TYPE", "HalykBank")
+    return get_binance_kzt_p2p_rate(pay_type)
+
+
+def get_binance_kzt_kaspi_rate():
+    """Bitzone: Binance P2P KZT Kaspi, среднее 2-го и 4-го объявления."""
+    from django.conf import settings
+
+    pay_type = getattr(settings, "BITZONE_BINANCE_PAY_TYPE", "KaspiBank")
+    return get_binance_kzt_p2p_rate(pay_type, ranks=(2, 4))
 
 
 DEFAULT_XE_KZT_MARKUP = Decimal("1.05")

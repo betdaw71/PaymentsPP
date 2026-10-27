@@ -295,6 +295,14 @@ KZT_C2C_BANK_PS_NAMES = os.getenv(
 # Глобальная наценка XE USD/KZT (пусто = +5%). Пер-PS перекрывает: XE_KZT_MARKUP_BY_PS.
 XE_KZT_MARKUP = os.getenv('XE_KZT_MARKUP', '')
 XE_KZT_MARKUP_BY_PS = os.getenv('XE_KZT_MARKUP_BY_PS', '{"Vietcombank":"1.04"}')
+# JSON: username PSP-трейдера → его XE-наценка (1.03 = xe+3). Нет ключа = как у мерчанта.
+# Сетка из тетради (мерч xe+5). Bitzone не здесь — Binance P2P Kaspi 2–4.
+# Мерчанту/провайдеру чужой курс не отдаём.
+PSP_XE_MARKUP_BY_TRADER = os.getenv(
+    'PSP_XE_MARKUP_BY_TRADER',
+    '{"payplat1":"1.05","patriot1":"1.03","gipay1":"1.04","visionx1":"1.03",'
+    '"layerone1":"1.02","prochub1":"1.02","nexus1":"1.04","plutus1":"1.03"}',
+)
 
 PAYMENT_PAGE_URL = os.getenv('PAYMENT_PAGE_URL')
 # 1 = Melbet clone (pay_melbet.html). 0 = rollback to generic pay.html without rebuild.
@@ -545,6 +553,8 @@ PROTOCOL_BINANCE_PAY_TYPE = os.getenv('PROTOCOL_BINANCE_PAY_TYPE', 'HalykBank')
 BITZONE_API_BASE = os.getenv('BITZONE_API_BASE', 'https://api.bitzone.space').rstrip('/')
 BITZONE_API_KEY = os.getenv('BITZONE_API_KEY', '')
 BITZONE_TRADER_USERNAME = os.getenv('BITZONE_TRADER_USERNAME', 'bitzone1')
+# Binance P2P payType for Bitzone FX (среднее 2-го и 4-го объявления).
+BITZONE_BINANCE_PAY_TYPE = os.getenv('BITZONE_BINANCE_PAY_TYPE', 'KaspiBank')
 # method: card, sbp, cross_card, cross_sbp, … — см. https://developers.bitzone.space/docs/pay-in/
 BITZONE_PAYIN_METHOD = os.getenv('BITZONE_PAYIN_METHOD', 'cross_card')
 BITZONE_BANK = os.getenv('BITZONE_BANK', '')

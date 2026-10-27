@@ -32,6 +32,11 @@ def is_alemkredit_payin(pay_in) -> bool:
 
 
 def _deal_rate(pay_in):
+    from payments.dual_fx import merchant_visible_rate
+
+    stored = merchant_visible_rate(pay_in)
+    if stored is not None:
+        return stored
     order = getattr(pay_in, "order", None)
     detail = getattr(order, "payment_details", None) if order is not None else None
     group = getattr(detail, "group", None) if detail is not None else None
@@ -54,11 +59,13 @@ def deal_quote_fields(pay_in) -> dict:
     if is_aggrepay_merchant(pay_in):
         solution = getattr(order, "solution", None)
         fee_percent = effective_mdr_in(solution, order.amount) if solution is not None else None
-        return {
+        quote = {
             "rate": _as_float(_deal_rate(pay_in)),
             "fee": _as_float(getattr(order, "merchant_fee", None)),
             "fee_percent": _as_float(fee_percent),
         }
+        quote.pop("psp_rate", None)
+        return quote
 
     if is_alemkredit_payin(pay_in):
         rate = _deal_rate(pay_in)

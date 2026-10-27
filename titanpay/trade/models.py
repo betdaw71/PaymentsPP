@@ -68,6 +68,9 @@ class InOrder(models.Model):
 
     amount = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     usd_amount = models.DecimalField(default=0, editable=False, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    merchant_rate = models.DecimalField(default=0, max_digits=32, decimal_places=6)
+    psp_rate = models.DecimalField(default=0, max_digits=32, decimal_places=6)
+    psp_usd_amount = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
 
     solution = models.ForeignKey(to=MerchantSolution, on_delete=models.CASCADE)
 
@@ -121,20 +124,44 @@ class InOrder(models.Model):
             order_obj = cls(status=status, amount=amount, usd_amount=usd_amount,
                             solution=solution, payment_details=None,
                             merchant_order_id=merchant_order_id, agent_fee=Decimal(0))
+            from payments.dual_fx import apply_dual_fx_to_order
+
+            apply_dual_fx_to_order(order_obj, None, amount=amount, payment_system=payment_system_obj)
             order_obj.save()
             return order_obj
 
         status = InOrderStatus.objects.get(name="New")
 
         from merchant.tiered_mdr import merchant_payin_fee
+        from payments.dual_fx import quote_dual_fx
+
+        quote = quote_dual_fx(
+            amount=amount,
+            payment_system=payment_system_obj,
+            trader=chosen_detail.group.trader,
+        )
+        usd_amount = quote.merchant_usd
 
         merchant_fee = merchant_payin_fee(solution=solution, amount=amount, usd_amount=usd_amount)
         team_rate = TraderTeamRates.objects.get(team=chosen_detail.group.trader.team, payment_system=payment_system_obj)
-        trader_fee = team_rate.mdr_in * usd_amount / Decimal(100)
+        trader_fee = team_rate.mdr_in * quote.psp_usd / Decimal(100)
 
         from merchant.agent_fee import compute_in_order_agent_fee
 
-        order_obj = cls(status=status, amount=amount, usd_amount=usd_amount, solution=solution, payment_details=chosen_detail, merchant_order_id=merchant_order_id, merchant_fee=merchant_fee, trader_fee=trader_fee, agent_fee=Decimal(0))
+        order_obj = cls(
+            status=status,
+            amount=amount,
+            usd_amount=usd_amount,
+            merchant_rate=quote.merchant_rate,
+            psp_rate=quote.psp_rate,
+            psp_usd_amount=quote.psp_usd,
+            solution=solution,
+            payment_details=chosen_detail,
+            merchant_order_id=merchant_order_id,
+            merchant_fee=merchant_fee,
+            trader_fee=trader_fee,
+            agent_fee=Decimal(0),
+        )
         order_obj.agent_fee = compute_in_order_agent_fee(order_obj)
         order_obj.save()
 
@@ -370,9 +397,15 @@ class InOrder(models.Model):
         paid_amount = Decimal(str(paid_amount)).quantize(Decimal("0.01"))
         if paid_amount <= 0 or paid_amount == self.amount:
             return False
-        new_usd = paid_amount / self.solution.payment_system.get_rate()
+        from payments.dual_fx import apply_dual_fx_to_order
+
+        trader = self.payment_details.group.trader
+        quote = apply_dual_fx_to_order(
+            self, trader, amount=paid_amount, payment_system=self.solution.payment_system
+        )
+        new_usd = quote.merchant_usd
         team_rate = TraderTeamRates.objects.get(
-            team=self.payment_details.group.trader.team,
+            team=trader.team,
             payment_system=self.solution.payment_system,
         )
         from merchant.tiered_mdr import merchant_payin_fee
@@ -382,7 +415,7 @@ class InOrder(models.Model):
         self.merchant_fee = merchant_payin_fee(
             solution=self.solution, amount=paid_amount, usd_amount=new_usd
         )
-        self.trader_fee = team_rate.mdr_in * new_usd / Decimal(100)
+        self.trader_fee = team_rate.mdr_in * quote.psp_usd / Decimal(100)
         from merchant.agent_fee import compute_in_order_agent_fee
 
         self.agent_fee = compute_in_order_agent_fee(self)
@@ -528,8 +561,12 @@ class InOrder(models.Model):
         old_for_merchant = self._merchant_credit_amount()
         old_for_trader = self.trader_fee
 
-        rate = self.solution.payment_system.get_rate()
-        new_usd = paid_amount / rate
+        from payments.dual_fx import apply_dual_fx_to_order
+
+        quote = apply_dual_fx_to_order(
+            self, trader, amount=paid_amount, payment_system=self.solution.payment_system
+        )
+        new_usd = quote.merchant_usd
         team_rate = TraderTeamRates.objects.get(
             team=trader.team,
             payment_system=self.solution.payment_system,
@@ -539,7 +576,7 @@ class InOrder(models.Model):
         new_merchant_fee = merchant_payin_fee(
             solution=self.solution, amount=paid_amount, usd_amount=new_usd
         )
-        new_trader_fee = team_rate.mdr_in * new_usd / Decimal(100)
+        new_trader_fee = team_rate.mdr_in * quote.psp_usd / Decimal(100)
 
         self.amount = paid_amount
         self.usd_amount = new_usd
