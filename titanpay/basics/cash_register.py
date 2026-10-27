@@ -30,6 +30,26 @@ def _bal(obj, field: str) -> Decimal:
     return money(getattr(rel, "amount", 0))
 
 
+def c2ckzt_usdt_rate() -> Decimal:
+    from basics.models import PaymentSystem
+
+    ps = PaymentSystem.objects.filter(name="C2CKZT").only("usdt_exchange_rate").first()
+    rate = money(getattr(ps, "usdt_exchange_rate", 0) if ps is not None else 0)
+    return rate if rate > 0 else Decimal("1")
+
+
+def kzt_to_usd(kzt, *, rate=None) -> Decimal:
+    fx = c2ckzt_usdt_rate() if rate is None else money(rate)
+    if fx <= 0:
+        return ZERO
+    return money(money(kzt) / fx)
+
+
+def merchant_usdt_net(available, frozen, rolling) -> Decimal:
+    """Mostbet: available − rolling. >0 мы должны мерчу, <0 предоплата нам."""
+    return money(money(available) + money(frozen) - money(rolling))
+
+
 def fx_spread(usd_amount, psp_usd_amount) -> Decimal:
     merchant_usd = money(usd_amount)
     psp_usd = money(psp_usd_amount)
@@ -165,21 +185,63 @@ def snapshot(now=None) -> dict:
             trader_rows.append(row)
             trader_total += held
 
+    from merchant.kzt_settlement import is_melbet_merchant
+
     merchant_rows = []
+    receivable_rows = []
     merchant_total = ZERO
+    receivable_total = ZERO
     rolling_total = ZERO
-    for merchant in Merchant.objects.select_related("user", "balance", "frozen_balance"):
+    kzt_rate = c2ckzt_usdt_rate()
+    merchants = Merchant.objects.select_related(
+        "user",
+        "balance",
+        "frozen_balance",
+        "balance_kzt",
+        "frozen_balance_kzt",
+        "balance_kgs",
+        "frozen_balance_kgs",
+    )
+    for merchant in merchants:
         available = _bal(merchant, "balance")
         frozen = _bal(merchant, "frozen_balance")
         rolling = money(merchant.rolling_reserve)
-        merchant_total += money(available + frozen)
         rolling_total += rolling
-        merchant_rows.append({
-            "username": merchant.user.username if merchant.user_id else "",
+        username = merchant.user.username if merchant.user_id else ""
+        if is_melbet_merchant(merchant):
+            kzt = money(_bal(merchant, "balance_kzt") + _bal(merchant, "frozen_balance_kzt"))
+            kgs = money(_bal(merchant, "balance_kgs") + _bal(merchant, "frozen_balance_kgs"))
+            kzt_usd = kzt_to_usd(kzt, rate=kzt_rate)
+            receivable_total += kzt_usd
+            receivable_rows.append({
+                "username": username,
+                "kind": "melbet_kzt",
+                "kzt": money_str(kzt),
+                "kgs": money_str(kgs),
+                "rate": money_str(kzt_rate),
+                "available": money_str(kzt_usd),
+                "note": "prepaid_kzt",
+            })
+            continue
+        net = merchant_usdt_net(available, frozen, rolling)
+        row = {
+            "username": username,
             "available": money_str(available),
             "frozen": money_str(frozen),
             "rolling_reserve": money_str(rolling),
-        })
+            "net": money_str(net),
+        }
+        if net >= 0:
+            merchant_total += net
+            merchant_rows.append(row)
+        else:
+            receivable_total += money(-net)
+            receivable_rows.append({
+                **row,
+                "kind": "rolling_prepaid",
+                "available": money_str(-net),
+                "note": "rolling_gt_available",
+            })
 
     agent_rows = []
     agent_total = ZERO
@@ -205,7 +267,7 @@ def snapshot(now=None) -> dict:
             "frozen": money_str(frozen),
         })
 
-    assets_total = money(psp_total + trader_total)
+    assets_total = money(psp_total + trader_total + receivable_total)
     liabilities_total = money(merchant_total + agent_total + teamlead_total)
     cash = money(assets_total - liabilities_total)
     end = current
@@ -213,12 +275,15 @@ def snapshot(now=None) -> dict:
         "as_of": current.isoformat(),
         "timezone": "Europe/Moscow",
         "cash": money_str(cash),
+        "kzt_usdt_rate": money_str(kzt_rate),
         "assets": {
             "total": money_str(assets_total),
             "psp_total": money_str(psp_total),
             "traders_total": money_str(trader_total),
+            "receivables_total": money_str(receivable_total),
             "psp": sorted(psp_rows, key=lambda row: row["username"]),
             "traders": sorted(trader_rows, key=lambda row: row["username"]),
+            "receivables": sorted(receivable_rows, key=lambda row: row["username"]),
         },
         "liabilities": {
             "total": money_str(liabilities_total),
@@ -247,8 +312,10 @@ def format_telegram(data: dict | None = None) -> str:
     return (
         f"Касса {data['cash']} USDT ({data['timezone']})\n"
         f"активы {data['assets']['total']} − пассивы {data['liabilities']['total']}\n"
-        f"PSP {data['assets']['psp_total']} · трейдеры {data['assets']['traders_total']}\n"
-        f"мерчи {data['liabilities']['merchants_total']} · агенты {data['liabilities']['agents_total']} · "
+        f"PSP {data['assets']['psp_total']} · трейдеры {data['assets']['traders_total']} · "
+        f"дебиторка {data['assets'].get('receivables_total', '0.00')}\n"
+        f"мерчи {data['liabilities']['merchants_total']} (net − rolling) · "
+        f"агенты {data['liabilities']['agents_total']} · "
         f"тимлиды {data['liabilities']['teamleads_total']}\n"
         f"день {day['net']} (MDR {day['payin_mdr']}+{day['payout_mdr']} · FX {day['payin_fx']} · "
         f"PSP {day['trader_fee']} · агент {day['agent_fee']} · расход {day['expenses']})\n"

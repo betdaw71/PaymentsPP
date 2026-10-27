@@ -223,7 +223,7 @@
   "teamlead_balance": "Баланс тимлида",
   "no_agents": "Нет агентов",
   "cash_register": {
-    "hint": "Активы минус пассивы. День и месяц — Completed по Москве.",
+    "hint": "Активы минус пассивы. Mostbet: available − роллинг. Melbet KZT — нам должны, курс C2CKZT.",
     "cash": "Касса",
     "day": "Сегодня",
     "month": "Месяц",
@@ -237,7 +237,8 @@
     "agent_fee": "Комиссия агента",
     "expenses": "Расходы бота",
     "net": "Итого",
-    "memo": "Не в кассе"
+    "memo": "Не в кассе",
+    "receivable": "нам должны"
   },
   "no_teamleads": "Нет тимлидов",
   "is_boss": "Является боссом",

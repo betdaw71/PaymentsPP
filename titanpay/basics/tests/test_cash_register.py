@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
-from basics.cash_register import fx_spread, payin_pnl, payout_pnl, snapshot
+from basics.cash_register import fx_spread, kzt_to_usd, merchant_usdt_net, payin_pnl, payout_pnl, snapshot
 from basics.models import (
     Balance,
     Currency,
@@ -43,6 +43,12 @@ class CashRegisterMathTest(SimpleTestCase):
     def test_payout_pnl(self):
         self.assertEqual(payout_pnl(merchant_fee="8.00", trader_fee="6.50"), Decimal("1.50"))
 
+    def test_mostbet_net_is_available_minus_rolling(self):
+        self.assertEqual(merchant_usdt_net("6320.71", "0.01", "5000.00"), Decimal("1320.72"))
+
+    def test_kzt_to_usd_uses_c2ckzt_rate(self):
+        self.assertEqual(kzt_to_usd("105000", rate="525"), Decimal("200.00"))
+
 
 @override_settings(PAYPLAT_TRADER_USERNAME="payplat1")
 class CashRegisterSnapshotTest(TestCase):
@@ -75,7 +81,7 @@ class CashRegisterSnapshotTest(TestCase):
             balance_usdt=Balance.objects.create(type=0, amount=Decimal("50.00")),
             frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
         )
-        merchant_user = User.objects.create_user(username="melbet", password="x")
+        merchant_user = User.objects.create_user(username="pandapay", password="x")
         self.merchant = Merchant.objects.create(
             user=merchant_user,
             balance=Balance.objects.create(type=0, amount=Decimal("80.00")),
@@ -141,6 +147,39 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(data["cash"], "-258.00")
         self.assertEqual(data["memo"]["rolling_reserve"], "2217.00")
         self.assertEqual(data["memo"]["working_deposit"], "12000.00")
+
+    def test_mostbet_liability_nets_rolling(self):
+        user = User.objects.create_user(username="mostbet", password="x")
+        Merchant.objects.create(
+            user=user,
+            balance=Balance.objects.create(type=0, amount=Decimal("6320.71")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0.01")),
+            rolling_reserve=Decimal("5000.00"),
+        )
+        data = snapshot()
+        row = next(item for item in data["liabilities"]["merchants"] if item["username"] == "mostbet")
+        self.assertEqual(row["net"], "1320.72")
+        self.assertEqual(row["rolling_reserve"], "5000.00")
+        # previous merchants_total 100 + mostbet 1320.72
+        self.assertEqual(data["liabilities"]["merchants_total"], "1420.72")
+
+    @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
+    def test_melbet_kzt_prepaid_is_asset(self):
+        user = User.objects.create_user(username="melbet", password="x")
+        Merchant.objects.create(
+            user=user,
+            balance=Balance.objects.create(type=0, amount=Decimal("0")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0")),
+            balance_kzt=Balance.objects.create(type=0, amount=Decimal("105000.00")),
+            frozen_balance_kzt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        data = snapshot()
+        self.assertEqual(data["kzt_usdt_rate"], "500.00")
+        row = next(item for item in data["assets"]["receivables"] if item["username"] == "melbet")
+        self.assertEqual(row["kzt"], "105000.00")
+        self.assertEqual(row["available"], "210.00")
+        self.assertEqual(data["assets"]["receivables_total"], "210.00")
+        self.assertFalse(any(item["username"] == "melbet" for item in data["liabilities"]["merchants"]))
 
     def test_day_pnl_includes_fx_and_expense(self):
         data = snapshot()

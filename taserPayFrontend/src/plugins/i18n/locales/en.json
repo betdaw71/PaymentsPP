@@ -224,7 +224,7 @@
   "teamlead_balance": "Team lead balance",
   "no_agents": "No agents",
   "cash_register": {
-    "hint": "Assets minus liabilities. Daily P&L uses completed deals in Moscow time.",
+    "hint": "Assets minus liabilities. Mostbet net = available − rolling. Melbet KZT is a receivable at the C2CKZT rate.",
     "cash": "Cash",
     "day": "Today",
     "month": "This month",
@@ -238,7 +238,8 @@
     "agent_fee": "Agent fee",
     "expenses": "Bot expenses",
     "net": "Net",
-    "memo": "Not in cash"
+    "memo": "Not in cash",
+    "receivable": "owes us"
   },
   "no_teamleads": "No team leads",
   "is_boss": "Is Boss",

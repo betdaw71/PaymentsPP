@@ -12,7 +12,8 @@ const snackbar = ref({
 
 const empty = () => ({
   cash: '0.00',
-  assets: { total: '0.00', psp_total: '0.00', traders_total: '0.00', psp: [], traders: [] },
+  kzt_usdt_rate: '0.00',
+  assets: { total: '0.00', psp_total: '0.00', traders_total: '0.00', receivables_total: '0.00', psp: [], traders: [], receivables: [] },
   liabilities: {
     total: '0.00',
     merchants_total: '0.00',
@@ -209,6 +210,27 @@ onMounted(() => {
                     —
                   </td>
                 </tr>
+                <tr
+                  v-for="row in data.assets.receivables"
+                  :key="`recv-${row.username}`"
+                >
+                  <td>{{ row.username }} ({{ t('cash_register.receivable') }})</td>
+                  <td
+                    class="text-end"
+                    :class="moneyClass(row.available)"
+                  >
+                    {{ row.available }}
+                    <span
+                      v-if="row.kzt"
+                      class="text-caption text-medium-emphasis"
+                    >
+                      · {{ row.kzt }} KZT / {{ data.kzt_usdt_rate }}
+                    </span>
+                  </td>
+                  <td class="text-end">
+                    —
+                  </td>
+                </tr>
               </tbody>
             </VTable>
           </VCol>
@@ -229,6 +251,12 @@ onMounted(() => {
                   <th class="text-end">
                     {{ t('user.balance.frozen') }}
                   </th>
+                  <th class="text-end">
+                    {{ t('rolling_reserve') }}
+                  </th>
+                  <th class="text-end">
+                    {{ t('cash_register.net') }}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -243,6 +271,12 @@ onMounted(() => {
                   <td class="text-end">
                     {{ row.frozen }}
                   </td>
+                  <td class="text-end">
+                    {{ row.rolling_reserve || '0.00' }}
+                  </td>
+                  <td class="text-end font-weight-medium">
+                    {{ row.net || row.available }}
+                  </td>
                 </tr>
                 <tr
                   v-for="row in data.liabilities.agents"
@@ -255,6 +289,12 @@ onMounted(() => {
                   <td class="text-end">
                     {{ row.frozen }}
                   </td>
+                  <td class="text-end">
+                    —
+                  </td>
+                  <td class="text-end">
+                    —
+                  </td>
                 </tr>
                 <tr
                   v-for="row in data.liabilities.teamleads"
@@ -266,6 +306,12 @@ onMounted(() => {
                   </td>
                   <td class="text-end">
                     {{ row.frozen }}
+                  </td>
+                  <td class="text-end">
+                    —
+                  </td>
+                  <td class="text-end">
+                    —
                   </td>
                 </tr>
               </tbody>
