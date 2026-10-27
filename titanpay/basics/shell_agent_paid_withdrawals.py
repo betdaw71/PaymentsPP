@@ -1,13 +1,12 @@
 """Сверка агентов + заявки на уже выплаченное вне ЛК (апрув в headsupport).
 
-  docker-compose exec -T -e APPLY=1 \
-    -e CARDSMG_AMOUNT=264 \
-    -e L_PAYMENTS_AMOUNT=0 \
-    app python3 manage.py shell < /app/basics/shell_agent_paid_withdrawals.py
+CardsMG 264 за pandapay deals=7349 USD=131995.41
+L_payments 466 за свой закрытый кусок оборота Melbet.
 
-Хеш в заявку не пишется: его ставишь при апруве в headsupport.
-CardsMG tx:
-  eb9ee76a6c4bafe7ebf523c8b7540aca0273710ea22241dcee86cdf2a097d833
+Остаток долга = 0.2% всего completed − эти выплаты ≈ 78 + 106.
+
+  docker-compose exec -T -e APPLY=1 -e CORRECT=1 \
+    app python3 manage.py shell < titanpay/basics/shell_agent_paid_withdrawals.py
 """
 from __future__ import annotations
 
@@ -18,8 +17,9 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Q, Sum
 
+from basics.models import Balance
 from merchant.models import Agent
-from trade.models import InOrder, Transaction, WithdrawalRequest
+from trade.models import InOrder, Transaction, TransactionType, WithdrawalRequest
 
 PCT = Decimal("0.002")
 Q2 = Decimal("0.01")
@@ -34,18 +34,20 @@ PLAN = (
     (
         "L_payments",
         "melbet",
-        Decimal(os.environ.get("L_PAYMENTS_AMOUNT") or "0"),
-        (os.environ.get("L_PAYMENTS_TX") or "").strip(),
+        Decimal(os.environ.get("L_PAYMENTS_AMOUNT") or "466"),
+        os.environ.get("L_PAYMENTS_TX")
+        or "6af4ea76877ad88fd9d82fd59e0a479440f41e384ad28d7d167b986266ba0878",
     ),
 )
 APPLY = os.environ.get("APPLY", "").strip() in ("1", "true", "yes")
+CORRECT = os.environ.get("CORRECT", "").strip() in ("1", "true", "yes")
 
 
 def D(x) -> Decimal:
     return Decimal(str(x or 0)).quantize(Q2)
 
 
-def diagnose(agent: Agent, merchant_name: str, offchain: Decimal) -> None:
+def diagnose(agent: Agent, merchant_name: str, offchain: Decimal) -> dict:
     usd = InOrder.objects.filter(
         solution__merchant__user__username__iexact=merchant_name,
         status__name="Completed",
@@ -85,21 +87,12 @@ def diagnose(agent: Agent, merchant_name: str, offchain: Decimal) -> None:
     ) if agent.frozen_balance_id else D(0)
     lk = D(agent.balance.amount if agent.balance_id else 0)
     frozen = D(agent.frozen_balance.amount if agent.frozen_balance_id else 0)
-    accrued = live + backfill
-    overlap = D(accrued - fair) if accrued > fair else D(0)
-    leftover_now = D(lk + frozen - fair)
-    leftover_after_offchain = D(lk + frozen - offchain - fair)
+    should_owe = D(fair - offchain) if fair > offchain else D(0)
     print(f"\n=== {agent.user.username} / {merchant_name} ===")
     print(f"  completed_usd={usd}  fair_0.2%={fair}")
-    print(f"  live_commission={live}  backfill={backfill}  live+backfill={accrued}")
-    print(f"  overlap_live_and_backfill={overlap}")
+    print(f"  live_commission={live}  backfill={backfill}  live+backfill={D(live + backfill)}")
     print(f"  lk_available={lk}  lk_frozen={frozen}  lk_withdrawn={wr_out}")
-    print(f"  offchain_to_write_off={offchain}")
-    print(f"  leftover_vs_fair_now={leftover_now}  (плюс = лишнее в ЛК относительно 0.2%)")
-    print(
-        f"  leftover_after_this_wr={leftover_after_offchain}  "
-        f"(после списания {offchain}: плюс = всё ещё лишнее, часто live+backfill на одни сделки)"
-    )
+    print(f"  already_paid_offchain={offchain}  should_owe_after={should_owe}")
     print("  ledger:")
     for key, val in sorted(by.items(), key=lambda kv: -abs(kv[1])):
         if val:
@@ -110,6 +103,7 @@ def diagnose(agent: Agent, merchant_name: str, offchain: Decimal) -> None:
         print("    (none)")
     for item in wr:
         print(f"    {item.id} status={item.status} amount={item.amount} addr={item.address_to} tx={item.comment!r}")
+    return {"fair": fair, "should_owe": should_owe}
 
 
 def make_request(agent: Agent, amount: Decimal) -> WithdrawalRequest | None:
@@ -134,16 +128,54 @@ def make_request(agent: Agent, amount: Decimal) -> WithdrawalRequest | None:
     return req
 
 
-print(f"APPLY={int(APPLY)} wallet={WALLET}", flush=True)
+def align_available(agent: Agent, target: Decimal) -> None:
+    """После фриза заявки available = remaining debt (fair − off-chain)."""
+    agent.balance.refresh_from_db()
+    current = D(agent.balance.amount)
+    delta = D(target - current)
+    print(f"  align available {current} → {target} delta={delta}")
+    if delta == 0:
+        return
+    if not CORRECT:
+        print("  DRY/skip align. CORRECT=1 спишет live+backfill overlap или доначислит недобор")
+        return
+    if not APPLY:
+        return
+    chain = Balance.objects.get(type=3)
+    if delta > 0:
+        tx_type = TransactionType.objects.get(name="Deposit")
+        Transaction.create(
+            _from=chain,
+            _to=agent.balance,
+            value=delta,
+            _transaction_type=tx_type,
+            _comment="Agent remaining after off-chain pay",
+        )
+        print(f"  credited {delta}")
+        return
+    tx_type = TransactionType.objects.get(name="Charge")
+    Transaction.create(
+        _from=agent.balance,
+        _to=chain,
+        value=-delta,
+        _transaction_type=tx_type,
+        _comment="Agent overlap live+backfill correction",
+    )
+    print(f"  charged {-delta}")
+
+
+print(f"APPLY={int(APPLY)} CORRECT={int(CORRECT)} wallet={WALLET}", flush=True)
 created = []
 for agent_name, merchant_name, amount, tx_hash in PLAN:
     agent = Agent.objects.select_related("user", "balance", "frozen_balance").filter(user__username=agent_name).first()
     if agent is None:
         print(f"\n{agent_name}: NOT FOUND")
         continue
-    diagnose(agent, merchant_name, D(amount))
+    stats = diagnose(agent, merchant_name, D(amount))
     with transaction.atomic():
         req = make_request(agent, amount)
+        if req is not None or (APPLY and D(amount) > 0):
+            align_available(agent, stats["should_owe"])
     if req is not None:
         created.append((req, tx_hash))
         if tx_hash:
@@ -151,7 +183,7 @@ for agent_name, merchant_name, amount, tx_hash in PLAN:
 
 print("\n=== REQUESTS ===")
 if not created and not APPLY:
-    print("DRY-RUN. APPLY=1 создаёт заявки. L_payments: сумма вне ЛК так и не была в чате — L_PAYMENTS_AMOUNT=0")
+    print("DRY-RUN. APPLY=1 создаёт заявки, CORRECT=1 выравнивает остаток под 0.2% − выплата")
 for req, tx_hash in created:
     extra = f"  approve_tx={tx_hash}" if tx_hash else "  approve_tx=UNKNOWN"
     print(f"  {req.from_user.username}  {req.amount}  id={req.id}{extra}")
