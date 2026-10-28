@@ -1,6 +1,7 @@
 """Найти PayIn по id из кабинета PSP и показать, уходил ли колбек мерчу."""
 from django.apps import apps
 from django.db.models import Q
+from django.db.models.fields import IntegerField
 
 from payments.models import PayInTraceLog
 
@@ -49,13 +50,17 @@ for raw in RAW.splitlines():
     print("PSP id:", " | ".join(keys))
     found = []
     for model in sessions:
-        names = {f.name for f in model._meta.get_fields()}
         q = Q()
-        for field in FIELDS:
-            if field not in names:
+        for field in model._meta.fields:
+            if field.name not in FIELDS:
                 continue
             for key in keys:
-                q |= Q(**{field: key})
+                if isinstance(field, IntegerField):
+                    if not key.isdigit():
+                        continue
+                    q |= Q(**{field.name: int(key)})
+                else:
+                    q |= Q(**{field.name: key})
         if not q:
             continue
         for row in model.objects.filter(q).select_related(
