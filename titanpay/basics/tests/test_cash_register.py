@@ -66,7 +66,7 @@ class CashRegisterMathTest(SimpleTestCase):
     def test_psp_deposit_owed_is_unused_prepaid(self):
         self.assertEqual(psp_deposit_owed("12000", "4146.93"), Decimal("4146.93"))
         self.assertEqual(psp_deposit_owed("12000", "-200"), Decimal("0.00"))
-        self.assertEqual(psp_deposit_owed("12000", "638800"), Decimal("12000.00"))
+        self.assertEqual(psp_deposit_owed("0", "3903.25"), Decimal("3903.25"))
         self.assertEqual(psp_deposit_owed("0", "-200"), Decimal("0.00"))
 
 
@@ -92,6 +92,15 @@ class CashRegisterSnapshotTest(TestCase):
             credit_limit=Decimal("50000"),
             working_deposit=Decimal("12000"),
             balance_usdt=Balance.objects.create(type=0, amount=Decimal("-200.00")),
+            frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        gipay_user = User.objects.create_user(username="gipay1", password="x")
+        Trader.objects.create(
+            user=gipay_user,
+            team=team,
+            currency=kzt,
+            credit_limit=Decimal("50000"),
+            balance_usdt=Balance.objects.create(type=0, amount=Decimal("-150.00")),
             frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
         )
         own_user = User.objects.create_user(username="trader_own", password="x")
@@ -157,19 +166,35 @@ class CashRegisterSnapshotTest(TestCase):
 
     def test_cash_is_assets_minus_liabilities(self, _wallet):
         data = snapshot()
-        # PSP -200 в ЛК = 200 на сайте; предоплата уже съедена → пассив депозита 0
-        # assets: 200 + trader 50 = 250
-        # liabilities: merchant 100 + agent 5 + teamlead 3 = 108
-        # cash = 142
-        self.assertEqual(data["assets"]["psp_total"], "200.00")
-        self.assertEqual(data["assets"]["traders_total"], "50.00")
+        # gipay -150 = 150 предоплата нам; payplat в минусе — депозит съеден
+        # pandapay 80+20 без rolling; свой трейдер и mostbet не в кассе
+        self.assertEqual(data["assets"]["psp_total"], "150.00")
+        self.assertEqual(data["assets"]["traders_total"], "0.00")
         self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
         self.assertEqual(data["liabilities"]["psp_deposits_total"], "0.00")
         self.assertEqual(data["liabilities"]["agents_total"], "5.00")
         self.assertEqual(data["liabilities"]["teamleads_total"], "3.00")
-        self.assertEqual(data["cash"], "142.00")
+        self.assertEqual(data["cash"], "42.00")
         self.assertEqual(data["memo"]["rolling_reserve"], "2217.00")
         self.assertEqual(data["memo"]["working_deposit"], "12000.00")
+
+    def test_prochub_remaining_lk_is_liability(self, _wallet):
+        from basics.models import Trader
+
+        team = TraderTeam.objects.get(name="psp-cr")
+        kzt = Currency.objects.get(symbol="KZTCR")
+        user = User.objects.create_user(username="prochub1", password="x")
+        Trader.objects.create(
+            user=user,
+            team=team,
+            currency=kzt,
+            balance_usdt=Balance.objects.create(type=0, amount=Decimal("500.00")),
+            frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        data = snapshot()
+        row = next(item for item in data["liabilities"]["psp_deposits"] if item["username"] == "prochub1")
+        self.assertEqual(row["net"], "500.00")
+        self.assertEqual(data["liabilities"]["psp_deposits_total"], "500.00")
 
     def test_payplat_prepaid_liability_is_remaining_lk(self, _wallet):
         from basics.models import Trader
@@ -185,7 +210,7 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(data["liabilities"]["psp_deposits_total"], "4146.93")
         self.assertEqual(data["assets"]["psp_total"], "0.00")
 
-    def test_mostbet_liability_nets_rolling(self, _wallet):
+    def test_mostbet_is_not_in_cash_liabilities(self, _wallet):
         user = User.objects.create_user(username="mostbet", password="x")
         Merchant.objects.create(
             user=user,
@@ -194,11 +219,9 @@ class CashRegisterSnapshotTest(TestCase):
             rolling_reserve=Decimal("5000.00"),
         )
         data = snapshot()
-        row = next(item for item in data["liabilities"]["merchants"] if item["username"] == "mostbet")
-        self.assertEqual(row["net"], "1320.72")
-        self.assertEqual(row["rolling_reserve"], "5000.00")
-        # previous merchants_total 100 + mostbet 1320.72
-        self.assertEqual(data["liabilities"]["merchants_total"], "1420.72")
+        names = [item["username"] for item in data["liabilities"]["merchants"]]
+        self.assertNotIn("mostbet", names)
+        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
 
     @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
     def test_melbet_negative_kzt_is_receivable(self, _wallet):
@@ -221,7 +244,7 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
 
     @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
-    def test_melbet_positive_kzt_is_liability(self, _wallet):
+    def test_melbet_positive_kzt_is_not_our_debt(self, _wallet):
         user = User.objects.create_user(username="melbet", password="x")
         Merchant.objects.create(
             user=user,
@@ -231,11 +254,11 @@ class CashRegisterSnapshotTest(TestCase):
             frozen_balance_kzt=Balance.objects.create(type=1, amount=Decimal("0")),
         )
         data = snapshot()
-        row = next(item for item in data["liabilities"]["merchants"] if item["username"] == "melbet")
-        self.assertEqual(row["net"], "210.00")
-        self.assertEqual(data["liabilities"]["merchants_total"], "310.00")
+        names = [item["username"] for item in data["liabilities"]["merchants"]]
+        self.assertNotIn("melbet", names)
         recv_names = [item["username"] for item in data["assets"]["receivables"]]
         self.assertNotIn("melbet", recv_names)
+        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
 
     def test_day_pnl_includes_fx_and_expense(self, _wallet):
         data = snapshot()

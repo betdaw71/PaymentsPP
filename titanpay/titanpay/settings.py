@@ -340,6 +340,19 @@ CASH_REGISTER_TRC20_WALLET = os.getenv(
     'CASH_REGISTER_TRC20_WALLET',
     'TEPKpVsAUyrkLx38ueFzSQP1HXGX8XK1Tt',
 )
+# Кому заливаем наперёд → актив. Кто дал депозит нам → пассив (остаток трафика).
+CASH_REGISTER_PREPAID_TO_PSP = os.getenv(
+    'CASH_REGISTER_PREPAID_TO_PSP',
+    'gipay1,visionx1,bitzone1,patriot1,layerone1',
+)
+CASH_REGISTER_DEPOSIT_FROM_PSP = os.getenv(
+    'CASH_REGISTER_DEPOSIT_FROM_PSP',
+    'payplat1,prochub1',
+)
+CASH_REGISTER_LIABILITY_MERCHANTS = os.getenv(
+    'CASH_REGISTER_LIABILITY_MERCHANTS',
+    'alemkredit,pandapay,aggrepay',
+)
 USDT_TRC20_CONTRACT = os.getenv('USDT_TRC20_CONTRACT', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t')
 TRONGRID_API_KEY = os.getenv('TRONGRID_API_KEY', os.getenv('TRONGRID_KEY', ''))
 

@@ -224,7 +224,7 @@
   "teamlead_balance": "Team lead balance",
   "no_agents": "No agents",
   "cash_register": {
-    "hint": "Assets: |PSP cabinet| + wallet + Melbet KZT they owe us. Liability: Mostbet net and unused PayPlat prepaid.",
+    "hint": "Assets: wallet + prepaid PSP (GiPay, VisionX, Bitzone, Patriot, LayerOne) + Melbet still to deposit. Liabilities: Alemkredit, PandaPay, AggrePay + leftover PayPlat/Prochub traffic + agents and team leads.",
     "cash": "Cash",
     "day": "Today",
     "month": "This month",

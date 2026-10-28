@@ -54,21 +54,33 @@ def merchant_usdt_net(available, frozen, rolling) -> Decimal:
 
 
 def psp_held_usdt(available, frozen=0) -> Decimal:
-    """Баланс в ЛК PSP: минус = деньги на сайте провайдера, их можно вывести. В кассу — модуль."""
-    return money(abs(money(available)))
+    """Провайдеры, куда заливаем наперёд: в кассу модуль ЛК (деньги на их сайте)."""
+    return money(abs(money(available) + money(frozen)))
 
 
 def psp_deposit_owed(deposit, available) -> Decimal:
-    """Неизрасходованная предоплата в ЛК PSP (остаток), не «депозит − баланс».
-
-    PayPlat 12000, в ЛК 4146.93 → в пассив 4146.93 (деньги ещё у провайдера).
-    Уже прогнанные 7853 в долг не ставим: они ушли в оборот.
-    """
-    dep = money(deposit)
+    """Остаток трафика по депозиту, который провайдер дал нам (PayPlat, Prochub)."""
     avail = money(available)
-    if dep <= 0 or avail <= 0:
-        return ZERO
-    return money(min(dep, avail))
+    return avail if avail > 0 else ZERO
+
+
+def _name_set(setting: str, default: str) -> frozenset[str]:
+    from django.conf import settings
+
+    raw = getattr(settings, setting, None) or default
+    return frozenset(part.strip() for part in str(raw).split(",") if part.strip())
+
+
+def prepaid_to_psp_names() -> frozenset[str]:
+    return _name_set("CASH_REGISTER_PREPAID_TO_PSP", "gipay1,visionx1,bitzone1,patriot1,layerone1")
+
+
+def deposit_from_psp_names() -> frozenset[str]:
+    return _name_set("CASH_REGISTER_DEPOSIT_FROM_PSP", "payplat1,prochub1")
+
+
+def liability_merchant_names() -> frozenset[str]:
+    return _name_set("CASH_REGISTER_LIABILITY_MERCHANTS", "alemkredit,pandapay,aggrepay")
 
 
 def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
@@ -212,9 +224,11 @@ def _period_pnl(start: datetime, end: datetime) -> dict:
 def snapshot(now=None) -> dict:
     from basics.models import TeamLead, Trader
     from merchant.models import Agent, Merchant
-    from payments.psp_payin import is_psp_trader
 
     current, day_start, month_start = moscow_bounds(now)
+    prepaid_psp = prepaid_to_psp_names()
+    deposit_psp = deposit_from_psp_names()
+    merchant_names = liability_merchant_names()
 
     psp_rows = []
     trader_rows = []
@@ -227,37 +241,37 @@ def snapshot(now=None) -> dict:
     for trader in traders:
         available = _bal(trader, "balance_usdt")
         frozen = _bal(trader, "frozen_balance_usdt")
+        username = trader.user.username if trader.user_id else ""
         row = {
-            "username": trader.user.username if trader.user_id else "",
+            "username": username,
             "available": money_str(available),
             "frozen": money_str(frozen),
             "credit_limit": money_str(trader.credit_limit),
             "working_deposit": money_str(trader.working_deposit),
         }
         deposit_total += money(trader.working_deposit)
-        if is_psp_trader(trader):
+        if username in prepaid_psp:
             held = psp_held_usdt(available, frozen)
-            owed = psp_deposit_owed(trader.working_deposit, available)
-            if owed > 0:
-                held = money(max(held - owed, ZERO))
             row["held"] = money_str(held)
-            row["deposit_owed"] = money_str(owed)
+            row["deposit_owed"] = "0.00"
             psp_rows.append(row)
             psp_total += held
+        elif username in deposit_psp:
+            owed = psp_deposit_owed(trader.working_deposit, available)
+            row["held"] = "0.00"
+            row["deposit_owed"] = money_str(owed)
             if owed > 0:
                 psp_deposit_owed_total += owed
                 psp_deposit_rows.append({
-                    "username": row["username"],
+                    "username": username,
                     "available": money_str(available),
                     "working_deposit": money_str(trader.working_deposit),
                     "net": money_str(owed),
                     "frozen": "0.00",
                     "rolling_reserve": "0.00",
-                    "note": "psp_prepaid",
+                    "note": "deposit_from_psp",
                 })
-        else:
-            trader_rows.append(row)
-            trader_total += money(available + frozen)
+        # остальные трейдеры/PSP в кассу не входят
 
     from merchant.kzt_settlement import is_melbet_merchant
 
@@ -282,12 +296,10 @@ def snapshot(now=None) -> dict:
         rolling = money(merchant.rolling_reserve)
         rolling_total += rolling
         username = merchant.user.username if merchant.user_id else ""
-        if is_melbet_merchant(merchant):
+        if is_melbet_merchant(merchant) and not username.endswith("_test"):
             kzt = money(_bal(merchant, "balance_kzt") + _bal(merchant, "frozen_balance_kzt"))
             kgs = money(_bal(merchant, "balance_kgs") + _bal(merchant, "frozen_balance_kgs"))
             kzt_usd = kzt_to_usd(kzt, rate=kzt_rate)
-            frozen_kzt = money_str(_bal(merchant, "frozen_balance_kzt"))
-            # KZT < 0: prepaid/оборот, нам должны (актив). KZT > 0: мы должны Melbet (пассив).
             if kzt_usd < 0:
                 owed = money(-kzt_usd)
                 receivable_total += owed
@@ -298,43 +310,25 @@ def snapshot(now=None) -> dict:
                     "kgs": money_str(kgs),
                     "rate": money_str(kzt_rate),
                     "available": money_str(owed),
-                    "frozen": frozen_kzt,
+                    "frozen": money_str(_bal(merchant, "frozen_balance_kzt")),
                     "rolling_reserve": "0.00",
                     "net": money_str(owed),
                     "note": "melbet_owes_us",
                 })
-            elif kzt_usd > 0:
-                merchant_total += kzt_usd
-                merchant_rows.append({
-                    "username": username,
-                    "available": "0.00",
-                    "frozen": "0.00",
-                    "rolling_reserve": "0.00",
-                    "net": money_str(kzt_usd),
-                    "kzt": money_str(kzt),
-                    "kzt_usd": money_str(kzt_usd),
-                    "note": "we_owe_melbet",
-                })
             continue
-        net = merchant_usdt_net(available, frozen, rolling)
-        row = {
+        if username not in merchant_names:
+            continue
+        net = money(available + frozen)
+        if net <= 0:
+            continue
+        merchant_total += net
+        merchant_rows.append({
             "username": username,
             "available": money_str(available),
             "frozen": money_str(frozen),
             "rolling_reserve": money_str(rolling),
             "net": money_str(net),
-        }
-        if net >= 0:
-            merchant_total += net
-            merchant_rows.append(row)
-        else:
-            receivable_total += money(-net)
-            receivable_rows.append({
-                **row,
-                "kind": "rolling_prepaid",
-                "available": money_str(-net),
-                "note": "rolling_gt_available",
-            })
+        })
 
     agent_rows = []
     agent_total = ZERO
@@ -419,11 +413,10 @@ def format_telegram(data: dict | None = None) -> str:
     return (
         f"Касса {data['cash']} USDT ({data['timezone']})\n"
         f"активы {data['assets']['total']} − пассивы {data['liabilities']['total']}\n"
-        f"PSP {data['assets']['psp_total']} (|баланс| на сайте) · "
+        f"PSP предоплата {data['assets']['psp_total']} · "
         f"кошелёк {data['assets'].get('wallet_total', '0.00')} · "
-        f"трейдеры {data['assets']['traders_total']} · "
-        f"Melbet KZT {data['assets'].get('receivables_total', '0.00')}\n"
-        f"мерчи {data['liabilities']['merchants_total']} (net − rolling) · "
+        f"Melbet {data['assets'].get('receivables_total', '0.00')}\n"
+        f"мерчи {data['liabilities']['merchants_total']} · "
         f"депозит PSP {data['liabilities'].get('psp_deposits_total', '0.00')} · "
         f"агенты {data['liabilities']['agents_total']} · "
         f"тимлиды {data['liabilities']['teamleads_total']}\n"
