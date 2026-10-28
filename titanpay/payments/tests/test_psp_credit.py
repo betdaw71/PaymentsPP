@@ -85,3 +85,20 @@ class PspCreditRoutingTest(TestCase):
         )
         self.trader.balance_usdt.refresh_from_db()
         self.assertEqual(self.trader.balance_usdt.amount, Decimal("-100"))
+
+    def test_ensure_frozen_for_complete_uses_credit_limit(self):
+        from payments.psp_payin import ensure_psp_frozen_for_complete
+
+        details = PaymentDetails.objects.get(group=self.group)
+
+        class Order:
+            payment_details_id = details.id
+            payment_details = details
+            psp_usd_amount = Decimal("10.63")
+            usd_amount = Decimal("10.20")
+
+        ensure_psp_frozen_for_complete(Order())
+        self.trader.balance_usdt.refresh_from_db()
+        self.trader.frozen_balance_usdt.refresh_from_db()
+        self.assertEqual(self.trader.frozen_balance_usdt.amount, Decimal("10.63"))
+        self.assertEqual(self.trader.balance_usdt.amount, Decimal("-10.63"))

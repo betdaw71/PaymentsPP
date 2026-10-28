@@ -416,8 +416,14 @@ def _positive_decimal(raw) -> Decimal | None:
     return val if val > 0 else None
 
 
+def _crypto_currency(raw) -> bool:
+    return str(raw or "").strip().upper() in {"USDT", "USDC", "TETHER"}
+
+
 def _amount_from_source(source: dict) -> Decimal | None:
     if not isinstance(source, dict):
+        return None
+    if _crypto_currency(source.get("currency")):
         return None
     for key in (
         "paidAmount",
@@ -432,6 +438,8 @@ def _amount_from_source(source: dict) -> Decimal | None:
     for nested_key in ("sum", "receivedSumFromTaker", "receivedSumFromMaker"):
         nested = source.get(nested_key)
         if isinstance(nested, dict):
+            if _crypto_currency(nested.get("currency")):
+                continue
             paid = _positive_decimal(nested.get("amount"))
             if paid is not None:
                 return paid

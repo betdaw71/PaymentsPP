@@ -113,6 +113,8 @@ def ensure_psp_frozen_for_complete(order) -> None:
         return
 
     from basics.models import Balance
+    from merchant.kzt_settlement import psp_available_allows_debit
+    from trade.models import InOrder as InOrderModel
     from trade.models import Transaction, TransactionType
 
     frozen_bal = Balance.objects.select_for_update().get(pk=trader.frozen_balance_usdt_id)
@@ -127,12 +129,14 @@ def ensure_psp_frozen_for_complete(order) -> None:
         return
 
     available_bal = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
-    if available_bal.amount < shortfall:
+
+    if not psp_available_allows_debit(available_bal, shortfall):
         raise ValidationError(
             {
                 "details": (
                     f"PSP trader {trader.user.username}: frozen balance insufficient for complete "
-                    f"(order={need}, frozen={frozen_bal.amount}, available={available_bal.amount})"
+                    f"(order={need}, frozen={frozen_bal.amount}, available={available_bal.amount}, "
+                    f"credit={trader.credit_limit})"
                 )
             }
         )
@@ -143,7 +147,7 @@ def ensure_psp_frozen_for_complete(order) -> None:
         _to=trader.frozen_balance_usdt,
         value=shortfall,
         _transaction_type=transaction_type,
-        _linked_in_order=order,
+        _linked_in_order=order if isinstance(order, InOrderModel) else None,
         _comment="PSP replenish frozen before complete",
     )
 
@@ -1357,23 +1361,31 @@ def handle_psp_success_webhook(order, webhook_body: dict | None) -> str:
     if state == "Completed":
         from payments.bitzone_client import bitzone_completed_recalc_paid_amount
 
-        bz_paid = bitzone_completed_recalc_paid_amount(webhook_body, order.amount)
-        if bz_paid is not None:
-            paid_amount = bz_paid
-        allow_recalc = psp_success_webhook_allows_completed_recalc(webhook_body)
-        paid_q = paid_amount.quantize(Decimal("0.01")) if paid_amount is not None else None
-        order_q = Decimal(str(order.amount or 0)).quantize(Decimal("0.01"))
-        if allow_recalc and paid_q and paid_q != order_q:
-            old_amount = order.amount
-            if order.apply_psp_completed_recalc(paid_amount):
-                logger.info(
-                    "PSP completed recalc order_id=%s old=%s new=%s",
-                    order.pk,
-                    old_amount,
-                    paid_amount,
-                )
-                return "recalculated"
-        return "idempotent"
+        try:
+            bz_paid = bitzone_completed_recalc_paid_amount(webhook_body, order.amount)
+            if bz_paid is not None:
+                paid_amount = bz_paid
+            allow_recalc = psp_success_webhook_allows_completed_recalc(webhook_body)
+            paid_q = paid_amount.quantize(Decimal("0.01")) if paid_amount is not None else None
+            order_q = Decimal(str(order.amount or 0)).quantize(Decimal("0.01"))
+            if allow_recalc and paid_q and paid_q != order_q:
+                old_amount = order.amount
+                if order.apply_psp_completed_recalc(paid_amount):
+                    logger.info(
+                        "PSP completed recalc order_id=%s old=%s new=%s",
+                        order.pk,
+                        old_amount,
+                        paid_amount,
+                    )
+                    return "recalculated"
+            return "idempotent"
+        except ValidationError as exc:
+            logger.warning(
+                "PSP success webhook: completed order_id=%s recalc skipped detail=%s",
+                order.pk,
+                getattr(exc, "detail", exc),
+            )
+            return "idempotent"
 
     order.complete_from_psp_success(paid_amount)
     return "completed"
