@@ -223,7 +223,7 @@
   "teamlead_balance": "Баланс тимлида",
   "no_agents": "Нет агентов",
   "cash_register": {
-    "hint": "Активы: кошелёк + предоплата PSP (GiPay, VisionX, Bitzone, Patriot, LayerOne) + сколько Melbet ещё должен залить. Пассивы: Alemkredit, PandaPay, AggrePay + остаток трафика PayPlat/Prochub + агенты и тимлиды.",
+    "hint": "Активы: кошелёк + предоплата PSP + сколько Melbet ещё должен залить. Пассивы: Alemkredit, PandaPay, AggrePay, Mostbet (баланс − rolling) + остаток PayPlat/Prochub + агенты и тимлиды.",
     "cash": "Касса",
     "day": "Сегодня",
     "month": "Месяц",

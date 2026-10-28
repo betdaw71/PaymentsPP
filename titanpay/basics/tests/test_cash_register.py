@@ -210,18 +210,19 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(data["liabilities"]["psp_deposits_total"], "4146.93")
         self.assertEqual(data["assets"]["psp_total"], "0.00")
 
-    def test_mostbet_is_not_in_cash_liabilities(self, _wallet):
+    def test_mostbet_liability_is_balance_minus_rolling(self, _wallet):
         user = User.objects.create_user(username="mostbet", password="x")
         Merchant.objects.create(
             user=user,
-            balance=Balance.objects.create(type=0, amount=Decimal("6320.71")),
+            balance=Balance.objects.create(type=0, amount=Decimal("6892.55")),
             frozen_balance=Balance.objects.create(type=1, amount=Decimal("0.01")),
             rolling_reserve=Decimal("5000.00"),
         )
         data = snapshot()
-        names = [item["username"] for item in data["liabilities"]["merchants"]]
-        self.assertNotIn("mostbet", names)
-        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
+        row = next(item for item in data["liabilities"]["merchants"] if item["username"] == "mostbet")
+        self.assertEqual(row["net"], "1892.56")
+        self.assertEqual(row["rolling_reserve"], "5000.00")
+        self.assertEqual(data["liabilities"]["merchants_total"], "1992.56")
 
     @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
     def test_melbet_negative_kzt_is_receivable(self, _wallet):

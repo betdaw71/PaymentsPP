@@ -224,7 +224,7 @@
   "teamlead_balance": "Team lead balance",
   "no_agents": "No agents",
   "cash_register": {
-    "hint": "Assets: wallet + prepaid PSP (GiPay, VisionX, Bitzone, Patriot, LayerOne) + Melbet still to deposit. Liabilities: Alemkredit, PandaPay, AggrePay + leftover PayPlat/Prochub traffic + agents and team leads.",
+    "hint": "Assets: wallet + prepaid PSP + Melbet still to deposit. Liabilities: Alemkredit, PandaPay, AggrePay, Mostbet (balance − rolling) + leftover PayPlat/Prochub + agents and team leads.",
     "cash": "Cash",
     "day": "Today",
     "month": "This month",

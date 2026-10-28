@@ -83,6 +83,10 @@ def liability_merchant_names() -> frozenset[str]:
     return _name_set("CASH_REGISTER_LIABILITY_MERCHANTS", "alemkredit,pandapay,aggrepay")
 
 
+def rolling_merchant_names() -> frozenset[str]:
+    return _name_set("CASH_REGISTER_ROLLING_MERCHANTS", "mostbet")
+
+
 def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
     """USDT TRC-20 на кошельке площадки через TronGrid. Сбой сети → 0, кассу не роняем."""
     from django.conf import settings
@@ -229,6 +233,7 @@ def snapshot(now=None) -> dict:
     prepaid_psp = prepaid_to_psp_names()
     deposit_psp = deposit_from_psp_names()
     merchant_names = liability_merchant_names()
+    rolling_names = rolling_merchant_names()
 
     psp_rows = []
     trader_rows = []
@@ -315,6 +320,19 @@ def snapshot(now=None) -> dict:
                     "net": money_str(owed),
                     "note": "melbet_owes_us",
                 })
+            continue
+        if username in rolling_names:
+            net = merchant_usdt_net(available, frozen, rolling)
+            if net <= 0:
+                continue
+            merchant_total += net
+            merchant_rows.append({
+                "username": username,
+                "available": money_str(available),
+                "frozen": money_str(frozen),
+                "rolling_reserve": money_str(rolling),
+                "net": money_str(net),
+            })
             continue
         if username not in merchant_names:
             continue
