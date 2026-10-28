@@ -39,7 +39,7 @@ for moid in IDS:
     if not cbs:
         print("  callback: НЕ УХОДИЛ")
     for t in cbs:
-        print(f"    {t.created_at} http={t.http_status} note={t.note!r}")
+        print(f"    {t.created_at} http={t.status_code} note={t.note!r}")
         print(f"    url={t.url}")
         body = t.body if isinstance(t.body, dict) else {}
         if body:
