@@ -79,6 +79,26 @@ def deposit_from_psp_names() -> frozenset[str]:
     return _name_set("CASH_REGISTER_DEPOSIT_FROM_PSP", "payplat1,prochub1")
 
 
+def psp_free_withdrawal_names() -> frozenset[str]:
+    """Провайдеры с бесплатным выводом с сайта (PayPlat и т.п.)."""
+    names = _name_set("CASH_REGISTER_PSP_FREE_WITHDRAWAL", "")
+    return names or deposit_from_psp_names()
+
+
+def psp_site_withdrawal_fee(username: str) -> Decimal:
+    """Комиссия вывода с сайта PSP. У PayPlat/free-list — 0, иначе ~5 USDT."""
+    from django.conf import settings
+
+    name = (username or "").strip().lower()
+    if not name or name in {n.lower() for n in psp_free_withdrawal_names()}:
+        return ZERO
+    raw = getattr(settings, "CASH_REGISTER_PSP_SITE_WITHDRAWAL_FEE", None)
+    if raw is None or str(raw).strip() == "":
+        raw = "5"
+    fee = money(raw)
+    return fee if fee > 0 else ZERO
+
+
 def liability_merchant_names() -> frozenset[str]:
     return _name_set("CASH_REGISTER_LIABILITY_MERCHANTS", "alemkredit,pandapay,aggrepay")
 

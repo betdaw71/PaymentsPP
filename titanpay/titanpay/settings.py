@@ -349,6 +349,15 @@ CASH_REGISTER_DEPOSIT_FROM_PSP = os.getenv(
     'CASH_REGISTER_DEPOSIT_FROM_PSP',
     'payplat1,prochub1',
 )
+# Комиссия вывода с сайта провайдера (USDT). PayPlat/Prochub — бесплатно.
+CASH_REGISTER_PSP_SITE_WITHDRAWAL_FEE = os.getenv(
+    'CASH_REGISTER_PSP_SITE_WITHDRAWAL_FEE',
+    '5',
+)
+CASH_REGISTER_PSP_FREE_WITHDRAWAL = os.getenv(
+    'CASH_REGISTER_PSP_FREE_WITHDRAWAL',
+    'payplat1,prochub1',
+)
 CASH_REGISTER_LIABILITY_MERCHANTS = os.getenv(
     'CASH_REGISTER_LIABILITY_MERCHANTS',
     'alemkredit,pandapay,aggrepay',
