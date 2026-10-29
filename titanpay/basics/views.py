@@ -5,7 +5,7 @@ from basics.serializers import TraderShortSupportSerializer, TraderToTransferSer
     TraderTeamRatesSerializer
 from rest_framework import status
 from rest_framework.response import Response
-from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates
+from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates, TeamLead
 from basics.permissions import TraderPermission, DebugPermission, SupportPermission, HeadSupportPermission
 from basics.serializers import TraderShortSerializer
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
@@ -152,7 +152,13 @@ def get_balances_stats(request, *args, **kwargs):
         for team in sub_teams:
             team_data = {"team_name": team.name, "data": []}
             traders = Trader.objects.filter(team=team).distinct()
-            team_data["data"] = [{"username": trader.user.username,  "available_balance_amount": trader.balance_usdt.amount, "frozen_balance_amount": trader.frozen_balance_usdt.amount} for trader in traders]
+            team_data["data"] = [{
+                "username": trader.user.username,
+                "available_balance_amount": trader.balance_usdt.amount,
+                "frozen_balance_amount": trader.frozen_balance_usdt.amount,
+                "credit_limit": trader.credit_limit,
+                "working_deposit": trader.working_deposit,
+            } for trader in traders]
             team_data["total_amount"] = sum([_trader["available_balance_amount"] for _trader in team_data["data"]])
             team_data["total_frozen"] = sum([_trader["frozen_balance_amount"] for _trader in team_data["data"]])
             team_data["insurance_deposit"] = team.insurance_deposit
@@ -233,6 +239,11 @@ def get_user_filter_support(request, *args, **kwargs):
     if user.supportmember.is_head:
         merchants = Merchant.objects.all()
         users += [{"name": merch.user.username} for merch in merchants]
+        teamleads = TeamLead.objects.all()
+        users += [{"name": teamlead.user.username} for teamlead in teamleads]
+        from merchant.models import Agent
+
+        users += [{"name": agent.user.username} for agent in Agent.objects.select_related("user")]
 
     return Response(status=status.HTTP_200_OK, data={"users": users})
 
@@ -252,14 +263,37 @@ def get_pdgroup_creation_data(request, *args, **kwargs):
     return Response(status=status.HTTP_200_OK, data=data)
 
 
+_SBER_LIKE_PD_FIELDS = {
+    "phone": {"type": "text", "unique": True, "cash": False},
+    "card_number": {"type": "number", "unique": False, "cash": False},
+    "deposit_number": {"type": "number", "unique": False, "cash": True},
+    "sberpay_enabled": {"type": "bool", "unique": True, "cash": False},
+    "sbp_enabled": {"type": "bool", "unique": True, "cash": False},
+}
+_CARD_PD_FIELDS = {
+    "card_number": {"type": "number", "unique": False, "cash": False},
+}
+
+
+def _pd_fields_for_payment_system(ps: PaymentSystem) -> dict:
+    if ps.name in (SBER_NAME, TBANK_NAME):
+        return dict(_SBER_LIKE_PD_FIELDS)
+    req = ps.required_fields if isinstance(ps.required_fields, dict) else {}
+    fields = {}
+    if "card_number" in req:
+        fields["card_number"] = dict(_CARD_PD_FIELDS["card_number"])
+    if "phone" in req:
+        fields["phone"] = {"type": "text", "unique": True, "cash": False}
+    if "deposit_number" in req:
+        fields["deposit_number"] = {"type": "number", "unique": False, "cash": True}
+    return fields or dict(_CARD_PD_FIELDS)
+
+
 @api_view(['GET'])
 @permission_classes([TraderPermission | DebugPermission])
 def get_pd_creation_data(request, *args, **kwargs):
-    ps1 = PaymentSystem.objects.get(name=SBER_NAME)
-    ps2 = PaymentSystem.objects.get(name=TBANK_NAME)
-
-    data = {str(ps1.id): {"phone": {"type": "text", "unique": True, "cash": False}, "card_number": {"type": "number", "unique": False, "cash": False}, "deposit_number": {"type": "number", "unique": False, "cash": True}, "sberpay_enabled": {"type": "bool", "unique": True, "cash": False}, "sbp_enabled": {"type": "bool", "unique": True, "cash": False}}}
-    data[str(ps2.id)] = {"phone": {"type": "text", "unique": True}, "card_number": {"type": "number", "unique": False}, "deposit_number": {"type": "number", "unique": False}, "sberpay_enabled": {"type": "bool", "unique": True}, "sbp_enabled": {"type": "bool", "unique": True}}
+    """Схема полей карты/телефона по id PaymentSystem — кабинет трейдера Add Payment Detail."""
+    data = {str(ps.id): _pd_fields_for_payment_system(ps) for ps in PaymentSystem.objects.all()}
     return Response(status=status.HTTP_200_OK, data=data)
 
 

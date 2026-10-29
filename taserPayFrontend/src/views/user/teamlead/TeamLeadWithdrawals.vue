@@ -3,6 +3,7 @@ import { useAuthStore } from "@/stores/useAuthStore"
 import { useTradeStore } from "@/stores/useTradeStore"
 import { useBaseStore } from "@/stores/useBaseStore"
 import { formatUUID, resolveWithdrawalStatusVariantAndIcon } from "@core/utils/formatters"
+import { toDjangoDateTimeRange } from "@core/utils/dateRange"
 
 const { t } = useI18n ()
 const tradeStore = useTradeStore ()
@@ -149,8 +150,9 @@ const getWithdrawals = async () => {
     params.amount__gte = filters.value.minAmount
   if (filters.value.maxAmount)
     params.amount__lte = filters.value.maxAmount
-  if (filters.value.dateRange && filters.value.dateRange.includes (" to "))
-    params.date__range = filters.value.dateRange.replace (" to ", ",")
+  const dateRange = toDjangoDateTimeRange(filters.value.dateRange)
+  if (dateRange)
+    params.date__range = dateRange
   tradeStore.getTradeWithdrawalRequest (params).then (response => {
     if (response.error) {
       throw response.error
@@ -175,6 +177,50 @@ const getWithdrawals = async () => {
   })
 }
 
+const exportLoading = ref(false)
+
+const exportWithdrawals = async () => {
+  exportLoading.value = true
+  try {
+    const params = {}
+    if (filters.value.ordering)
+      params.ordering = filters.value.ordering
+    if (filters.value.searchQueryId)
+      params.id = filters.value.searchQueryId
+    if (filters.value.searchQueryAddress)
+      params.address_to = filters.value.searchQueryAddress
+    if (filters.value.searchQueryComment)
+      params.comment = filters.value.searchQueryComment
+    if (filters.value.selectedType && filters.value.selectedType.length > 0)
+      params.status__in = filters.value.selectedType.join (",")
+    if (filters.value.minAmount)
+      params.amount__gte = filters.value.minAmount
+    if (filters.value.maxAmount)
+      params.amount__lte = filters.value.maxAmount
+    const dateRange = toDjangoDateTimeRange(filters.value.dateRange)
+    if (dateRange)
+      params.date__range = dateRange
+    if (filters.value.selectedTarget && filters.value.selectedTarget.length > 0)
+      params.from_user__username = filters.value.selectedTarget.join (",")
+
+    const response = await tradeStore.exportTradeWithdrawalRequest(params)
+    if (response.error)
+      throw response.error
+    snackbar.value = {
+      enabled: true,
+      type: "success",
+      message: t('data.exported'),
+    }
+  } catch (error) {
+    snackbar.value = {
+      enabled: true,
+      type: "error",
+      message: typeof error === "string" ? error : (error?.message || error),
+    }
+  } finally {
+    exportLoading.value = false
+  }
+}
 
 watch (
   () => {
@@ -406,6 +452,8 @@ const switchSelection = (values, name, key) => {
                     variant="tonal"
                     color="secondary"
                     prepend-icon="tabler-screen-share"
+                    :loading="exportLoading"
+                    @click="exportWithdrawals"
                   >
                     {{ $t('export') }}
                   </VBtn>

@@ -65,8 +65,9 @@ export default ({ mode }) => {
       obfuscator({
         global: true,
         options: {
-          debugProtection: true,
-          deadCodeInjectionThreshold: 10,
+          // debugProtection / deadCodeInjection вешают 4GB VPS на rendering chunks.
+          debugProtection: false,
+          deadCodeInjection: false,
           stringArray: true,
         },
       }),

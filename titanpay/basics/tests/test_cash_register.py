@@ -1,0 +1,276 @@
+from decimal import Decimal
+from unittest.mock import patch
+
+from django.contrib.auth.models import User
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
+
+from basics.cash_register import (
+    fx_spread,
+    kzt_to_usd,
+    merchant_usdt_net,
+    payin_pnl,
+    payout_pnl,
+    psp_deposit_owed,
+    psp_held_usdt,
+    snapshot,
+)
+from basics.models import (
+    Balance,
+    Currency,
+    Language,
+    PaymentSystem,
+    PlatformExpense,
+    TeamLead,
+    Trader,
+    TraderTeam,
+    TrafficType,
+)
+from merchant.models import Agent, Merchant, MerchantSolution
+from trade.models import InOrder, InOrderStatus, OutOrder, OutOrderStatus
+
+
+class CashRegisterMathTest(SimpleTestCase):
+    def test_fx_spread_uses_psp_usd(self):
+        self.assertEqual(fx_spread("100.00", "102.00"), Decimal("2.00"))
+
+    def test_missing_psp_usd_is_zero_spread(self):
+        self.assertEqual(fx_spread("100.00", "0"), Decimal("0.00"))
+
+    def test_payin_pnl(self):
+        # MDR 7 + FX 2 - PSP 5.7 - agent 0.20
+        self.assertEqual(
+            payin_pnl(
+                merchant_fee="7.00",
+                trader_fee="5.70",
+                agent_fee="0.20",
+                usd_amount="100.00",
+                psp_usd_amount="102.00",
+            ),
+            Decimal("3.10"),
+        )
+
+    def test_payout_pnl(self):
+        self.assertEqual(payout_pnl(merchant_fee="8.00", trader_fee="6.50"), Decimal("1.50"))
+
+    def test_mostbet_net_is_available_minus_rolling(self):
+        self.assertEqual(merchant_usdt_net("6320.71", "0.01", "5000.00"), Decimal("1320.72"))
+
+    def test_kzt_to_usd_uses_c2ckzt_rate(self):
+        self.assertEqual(kzt_to_usd("105000", rate="525"), Decimal("200.00"))
+
+    def test_psp_negative_counts_as_held(self):
+        self.assertEqual(psp_held_usdt("-200.00"), Decimal("200.00"))
+        self.assertEqual(psp_held_usdt("985220.69"), Decimal("985220.69"))
+
+    def test_psp_deposit_owed_is_unused_prepaid(self):
+        self.assertEqual(psp_deposit_owed("12000", "4146.93"), Decimal("4146.93"))
+        self.assertEqual(psp_deposit_owed("12000", "-200"), Decimal("0.00"))
+        self.assertEqual(psp_deposit_owed("0", "3903.25"), Decimal("3903.25"))
+        self.assertEqual(psp_deposit_owed("0", "-200"), Decimal("0.00"))
+
+
+@override_settings(PAYPLAT_TRADER_USERNAME="payplat1")
+@patch("basics.cash_register.fetch_platform_wallet_usdt", return_value=(Decimal("0"), "TEPKpVsAUyrkLx38ueFzSQP1HXGX8XK1Tt"))
+class CashRegisterSnapshotTest(TestCase):
+    def setUp(self):
+        Language.objects.create(name="Russian")
+        kzt = Currency.objects.create(name="Tenge CR", symbol="KZTCR")
+        self.ps = PaymentSystem.objects.create(
+            name="C2CKZT",
+            currency=kzt,
+            required_fields={},
+            usdt_exchange_rate=Decimal("500"),
+        )
+        traffic = TrafficType.objects.create(name="Standard CR")
+        team = TraderTeam.objects.create(name="psp-cr")
+        psp_user = User.objects.create_user(username="payplat1", password="x")
+        Trader.objects.create(
+            user=psp_user,
+            team=team,
+            currency=kzt,
+            credit_limit=Decimal("50000"),
+            working_deposit=Decimal("12000"),
+            balance_usdt=Balance.objects.create(type=0, amount=Decimal("-200.00")),
+            frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        gipay_user = User.objects.create_user(username="gipay1", password="x")
+        Trader.objects.create(
+            user=gipay_user,
+            team=team,
+            currency=kzt,
+            credit_limit=Decimal("50000"),
+            balance_usdt=Balance.objects.create(type=0, amount=Decimal("-150.00")),
+            frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        own_user = User.objects.create_user(username="trader_own", password="x")
+        Trader.objects.create(
+            user=own_user,
+            team=team,
+            currency=kzt,
+            balance_usdt=Balance.objects.create(type=0, amount=Decimal("50.00")),
+            frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        merchant_user = User.objects.create_user(username="pandapay", password="x")
+        self.merchant = Merchant.objects.create(
+            user=merchant_user,
+            balance=Balance.objects.create(type=0, amount=Decimal("80.00")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("20.00")),
+            rolling_reserve=Decimal("2217.00"),
+        )
+        self.solution = MerchantSolution.objects.create(
+            merchant=self.merchant,
+            payment_system=self.ps,
+            traffic=traffic,
+            mdr_in=Decimal("7.00"),
+        )
+        agent_user = User.objects.create_user(username="L_payments", password="x")
+        Agent.objects.create(
+            user=agent_user,
+            balance=Balance.objects.create(type=0, amount=Decimal("5.00")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        tl_user = User.objects.create_user(username="tl1", password="x")
+        TeamLead.objects.create(
+            user=tl_user,
+            balance=Balance.objects.create(type=0, amount=Decimal("3.00")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        completed_in = InOrderStatus.objects.create(name="Completed")
+        completed_out = OutOrderStatus.objects.create(name="Completed")
+        now = timezone.now()
+        InOrder.objects.create(
+            status=completed_in,
+            amount=Decimal("50000.00"),
+            usd_amount=Decimal("100.00"),
+            psp_usd_amount=Decimal("102.00"),
+            solution=self.solution,
+            merchant_fee=Decimal("7.00"),
+            trader_fee=Decimal("5.70"),
+            agent_fee=Decimal("0.20"),
+            completion_date=now,
+            arbitrage_comment="",
+            pic="https://example.com/in",
+        )
+        OutOrder.objects.create(
+            status=completed_out,
+            amount=Decimal("1000.00"),
+            usd_amount=Decimal("2.00"),
+            solution=self.solution,
+            merchant_fee=Decimal("0.16"),
+            trader_fee=Decimal("0.10"),
+            completion_date=now,
+            pic="https://example.com/out",
+        )
+        PlatformExpense.objects.create(amount=Decimal("1.00"), comment="hosting", source="telegram")
+
+    def test_cash_is_assets_minus_liabilities(self, _wallet):
+        data = snapshot()
+        # gipay -150 = 150 предоплата нам; payplat в минусе — депозит съеден
+        # pandapay 80+20 без rolling; свой трейдер и mostbet не в кассе
+        self.assertEqual(data["assets"]["psp_total"], "150.00")
+        self.assertEqual(data["assets"]["traders_total"], "0.00")
+        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
+        self.assertEqual(data["liabilities"]["psp_deposits_total"], "0.00")
+        self.assertEqual(data["liabilities"]["agents_total"], "5.00")
+        self.assertEqual(data["liabilities"]["teamleads_total"], "3.00")
+        self.assertEqual(data["cash"], "42.00")
+        self.assertEqual(data["memo"]["rolling_reserve"], "2217.00")
+        self.assertEqual(data["memo"]["working_deposit"], "12000.00")
+
+    def test_prochub_remaining_lk_is_liability(self, _wallet):
+        from basics.models import Trader
+
+        team = TraderTeam.objects.get(name="psp-cr")
+        kzt = Currency.objects.get(symbol="KZTCR")
+        user = User.objects.create_user(username="prochub1", password="x")
+        Trader.objects.create(
+            user=user,
+            team=team,
+            currency=kzt,
+            balance_usdt=Balance.objects.create(type=0, amount=Decimal("500.00")),
+            frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        data = snapshot()
+        row = next(item for item in data["liabilities"]["psp_deposits"] if item["username"] == "prochub1")
+        self.assertEqual(row["net"], "500.00")
+        self.assertEqual(data["liabilities"]["psp_deposits_total"], "500.00")
+
+    def test_payplat_prepaid_liability_is_remaining_lk(self, _wallet):
+        from basics.models import Trader
+
+        trader = Trader.objects.get(user__username="payplat1")
+        trader.balance_usdt.amount = Decimal("4146.93")
+        trader.balance_usdt.save(update_fields=["amount"])
+        data = snapshot()
+        row = next(item for item in data["liabilities"]["psp_deposits"] if item["username"] == "payplat1")
+        self.assertEqual(row["available"], "4146.93")
+        self.assertEqual(row["working_deposit"], "12000.00")
+        self.assertEqual(row["net"], "4146.93")
+        self.assertEqual(data["liabilities"]["psp_deposits_total"], "4146.93")
+        self.assertEqual(data["assets"]["psp_total"], "0.00")
+
+    def test_mostbet_liability_is_balance_minus_rolling(self, _wallet):
+        user = User.objects.create_user(username="mostbet", password="x")
+        Merchant.objects.create(
+            user=user,
+            balance=Balance.objects.create(type=0, amount=Decimal("6892.55")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0.01")),
+            rolling_reserve=Decimal("5000.00"),
+        )
+        data = snapshot()
+        row = next(item for item in data["liabilities"]["merchants"] if item["username"] == "mostbet")
+        self.assertEqual(row["net"], "1892.56")
+        self.assertEqual(row["rolling_reserve"], "5000.00")
+        self.assertEqual(data["liabilities"]["merchants_total"], "1992.56")
+
+    @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
+    def test_melbet_negative_kzt_is_receivable(self, _wallet):
+        user = User.objects.create_user(username="melbet", password="x")
+        Merchant.objects.create(
+            user=user,
+            balance=Balance.objects.create(type=0, amount=Decimal("0")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0")),
+            balance_kzt=Balance.objects.create(type=0, amount=Decimal("-105000.00")),
+            frozen_balance_kzt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        data = snapshot()
+        self.assertEqual(data["kzt_usdt_rate"], "500.00")
+        row = next(item for item in data["assets"]["receivables"] if item["username"] == "melbet")
+        self.assertEqual(row["kzt"], "-105000.00")
+        self.assertEqual(row["available"], "210.00")
+        self.assertEqual(data["assets"]["receivables_total"], "210.00")
+        names = [item["username"] for item in data["liabilities"]["merchants"]]
+        self.assertNotIn("melbet", names)
+        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
+
+    @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", PAYPLAT_TRADER_USERNAME="payplat1")
+    def test_melbet_positive_kzt_is_not_our_debt(self, _wallet):
+        user = User.objects.create_user(username="melbet", password="x")
+        Merchant.objects.create(
+            user=user,
+            balance=Balance.objects.create(type=0, amount=Decimal("0")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0")),
+            balance_kzt=Balance.objects.create(type=0, amount=Decimal("105000.00")),
+            frozen_balance_kzt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        data = snapshot()
+        names = [item["username"] for item in data["liabilities"]["merchants"]]
+        self.assertNotIn("melbet", names)
+        recv_names = [item["username"] for item in data["assets"]["receivables"]]
+        self.assertNotIn("melbet", recv_names)
+        self.assertEqual(data["liabilities"]["merchants_total"], "100.00")
+
+    def test_day_pnl_includes_fx_and_expense(self, _wallet):
+        data = snapshot()
+        day = data["pnl"]["day"]
+        # 7 + 2 + 0.16 - 5.70 - 0.10 - 0.20 - 1.00 = 2.16
+        self.assertEqual(day["orders_in"], 1)
+        self.assertEqual(day["orders_out"], 1)
+        self.assertEqual(day["payin_mdr"], "7.00")
+        self.assertEqual(day["payin_fx"], "2.00")
+        self.assertEqual(day["payout_mdr"], "0.16")
+        self.assertEqual(day["trader_fee"], "5.80")
+        self.assertEqual(day["agent_fee"], "0.20")
+        self.assertEqual(day["expenses"], "1.00")
+        self.assertEqual(day["net"], "2.16")

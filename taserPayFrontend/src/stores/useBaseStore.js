@@ -9,8 +9,8 @@ export const useBaseStore = defineStore ({
       searchQueryId: "",
       rowsPerPage: 20,
       selectedType: [],
-      minAmount: 0,
-      maxAmount: 0,
+      minAmount: null,
+      maxAmount: null,
       searchQueryIn: "",
       searchQueryOut: "",
       dateRange: "",
@@ -33,8 +33,8 @@ export const useBaseStore = defineStore ({
       searchQueryId: "",
       rowsPerPage: 20,
       selectedType: [],
-      minAmount: 0,
-      maxAmount: 0,
+      minAmount: null,
+      maxAmount: null,
       searchQueryComment: "",
       searchQueryAddress: "",
       dateRange: "",
@@ -236,6 +236,62 @@ export const useBaseStore = defineStore ({
     },
     async getBalanceSupport (params) {
       const response = await instance.get (`/base/balance/support/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
+    async getCashRegister (params) {
+      const response = await instance.get (`/base/balance/cash-register/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: {},
+        error: response.data,
+      }
+    },
+    async getBalanceSupportAgent (params) {
+      const response = await instance.get (`/base/balance/support-agent/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
+    async getBalanceSupportTeamlead (params) {
+      const response = await instance.get (`/base/balance/support-teamlead/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
+    async getBalanceAgent (params) {
+      const response = await instance.get (`/base/balance/agent/`, { params })
       if (response.status === 200) {
         return {
           data: response.data,

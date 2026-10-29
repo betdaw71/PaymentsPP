@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<!-- pay-page: competitor-clone kaspi steps v1 -->
+<html lang="{{ default_locale|default:'kk' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>{% if default_locale == 'kk' %}Шотты толықтыру{% else %}Пополнение счёта{% endif %}</title>
+  <style>
+    :root {
+      --bg: #f2f4f8;
+      --card: #ffffff;
+      --text: #1c1f26;
+      --muted: #8e96a3;
+      --kaspi: #f04c3c;
+      --kaspi-press: #de3d2e;
+      --paid-bg: #ffd4d7;
+      --paid-text: #ef4d55;
+      --banner: #fff6d8;
+      --banner-text: #9a7428;
+      --chip: #eef5ff;
+      --chip-label: #8a97ab;
+      --step: #a7b0bd;
+      --rail: #e4e9f0;
+      --shadow: 0 8px 24px rgba(28, 36, 52, .06);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .frame {
+      width: min(100%, 430px); margin: 0 auto; min-height: 100dvh;
+      padding: calc(10px + env(safe-area-inset-top)) 0 calc(118px + env(safe-area-inset-bottom));
+      position: relative;
+    }
+    .top-row { display: flex; justify-content: flex-end; align-items: center; padding: 4px 16px 10px; }
+    .lang { position: relative; }
+    .lang-pill {
+      display: inline-flex; align-items: center; gap: 8px; border: 1px solid #e6ebf2;
+      background: #fff; border-radius: 14px; padding: 8px 12px; font-size: 13px; font-weight: 600;
+      color: #3d4654; cursor: pointer; box-shadow: 0 1px 0 rgba(255,255,255,.8);
+    }
+    .lang-pill:active { transform: scale(.98); }
+    .lang-menu {
+      display: none; position: absolute; top: calc(100% + 4px); right: 0; z-index: 8;
+      min-width: 148px; background: #fff; border: 1px solid #e3e8ef; border-radius: 12px;
+      box-shadow: 0 10px 28px rgba(16,24,40,.12); overflow: hidden;
+    }
+    .lang-menu.open { display: block; }
+    .lang-menu button {
+      display: flex; width: 100%; align-items: center; gap: 8px; border: 0; background: #fff;
+      padding: 10px 12px; font-size: 13px; color: #1c2430; cursor: pointer; text-align: left;
+    }
+    .lang-menu button:hover, .lang-menu button.on { background: #f4f8fb; }
+    .ru-flag { width: 22px; height: 16px; border-radius: 3px; overflow: hidden; display: inline-flex; flex-direction: column; box-shadow: 0 0 0 1px #e6e6e6; }
+    .ru-flag i { flex: 1; display: block; }
+    .ru-flag i:nth-child(1) { background: #fff; }
+    .ru-flag i:nth-child(2) { background: #0039a6; }
+    .ru-flag i:nth-child(3) { background: #d52b1e; }
+    .kz-mini { width: 22px; height: 16px; border-radius: 3px; object-fit: cover; display: block; }
+    .pad { padding: 0 16px; }
+    .banner {
+      display: flex; gap: 8px; align-items: flex-start;
+      background: var(--banner); color: var(--banner-text);
+      border-radius: 16px; padding: 11px 12px; font-size: 13.5px; line-height: 1.35; margin-bottom: 10px;
+    }
+    .banner b { color: #7a5a16; font-weight: 700; }
+    .info-ico {
+      width: 18px; height: 18px; border-radius: 50%; border: 1.7px solid #d2aa4a; color: #d2aa4a;
+      display: grid; place-items: center; font-size: 11px; font-weight: 800; flex-shrink: 0; margin-top: 1px;
+    }
+    .pay-card, .steps {
+      background: var(--card); border-radius: 20px; padding: 16px 16px 18px; margin-bottom: 12px;
+      box-shadow: var(--shadow);
+    }
+    .pay-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+    .pay-label { font-size: 14px; color: #7a8290; }
+    .timer {
+      display: inline-flex; align-items: center; gap: 6px; color: #9aa3b0; font-size: 13px; font-weight: 600;
+    }
+    .timer.expired { color: #ef4d55; }
+    .timer-value { font-variant-numeric: tabular-nums; }
+    .x-btn {
+      width: 22px; height: 22px; border: 0; background: transparent; color: #d0b8bc;
+      font-size: 22px; line-height: 1; cursor: pointer; padding: 0; border-radius: 50%;
+    }
+    .x-btn:active { background: #f4e9ea; }
+    .amount-row { display: flex; align-items: center; gap: 8px; margin: 2px 0 14px; }
+    .amount { font-size: clamp(24px, 7vw, 30px); font-weight: 800; letter-spacing: -.7px; }
+    .copy {
+      width: 36px; height: 36px; border: 0; background: transparent; color: #b7c0cc; cursor: pointer;
+      display: grid; place-items: center; padding: 0; border-radius: 10px; flex-shrink: 0;
+      transition: transform .12s ease, background .12s ease, color .12s ease;
+    }
+    .copy:hover { color: #7d8b9c; background: #f4f7fb; }
+    .copy:active { transform: scale(.9); background: #eaf1fb; color: #4f8fe8; }
+    .copy.ok { color: #2f9e62; background: #e9f8ef; }
+    .kaspi, a.kaspi {
+      width: 100%; border: 0; border-radius: 16px; cursor: pointer; text-decoration: none;
+      background: var(--kaspi); color: #fff; min-height: 54px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-size: 18px; font-weight: 700; box-shadow: 0 8px 18px rgba(240, 76, 60, .28);
+    }
+    .kaspi:active, a.kaspi:active { background: var(--kaspi-press); transform: translateY(1px); }
+    .kaspi-word {
+      font-family: Arial, Helvetica, sans-serif; font-weight: 800; font-style: italic;
+      letter-spacing: -.4px; font-size: 18px;
+    }
+    .kaspi-mark { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; }
+    .steps { padding-top: 14px; padding-bottom: 8px; }
+    .step { display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: start; position: relative; padding: 5px 0 11px; }
+    .step:not(:last-child)::before {
+      content: ""; position: absolute; left: 10px; top: 24px; bottom: -8px; width: 2px;
+      background: #d4dae3; border-radius: 2px;
+    }
+    .num {
+      width: 22px; height: 22px; border-radius: 50%; background: #eef1f6; color: var(--step);
+      display: grid; place-items: center; font-size: 12px; font-weight: 700; position: relative; z-index: 1;
+    }
+    .step-body { min-width: 0; font-size: 15px; line-height: 1.4; color: #2a3140; padding-top: 1px; }
+    .chip {
+      margin-top: 8px; background: var(--chip); border-radius: 16px;
+      padding: 10px 6px 10px 14px;
+      display: grid; grid-template-columns: 22px minmax(0, 1fr) 36px;
+      column-gap: 10px; align-items: center;
+    }
+    .chip-ico {
+      grid-column: 1; grid-row: 1; color: #7ea3cf;
+      display: grid; place-items: center; align-self: center;
+    }
+    .chip-text { grid-column: 2; grid-row: 1; min-width: 0; }
+    .chip .copy { grid-column: 3; grid-row: 1; justify-self: end; }
+    .chip-label { font-size: 12px; color: var(--chip-label); line-height: 1.2; margin-bottom: 2px; }
+    .chip-val { font-size: 16px; font-weight: 700; line-height: 1.25; word-break: break-word; }
+    .fx-note {
+      display: flex; gap: 8px; align-items: flex-start;
+      margin: 2px 0 12px; padding: 12px 14px;
+      background: #ffe8a3; color: #7a4e08;
+      border-radius: 16px; font-size: 13.5px; line-height: 1.4; font-weight: 600;
+    }
+    .fx-note .info-ico {
+      border-color: #e09a18; color: #e09a18; background: #fff;
+      width: 20px; height: 20px; font-size: 13px; margin-top: 0;
+    }
+    .fx-note p { margin: 0; }
+    @media (max-width: 360px) {
+      .pad { padding: 0 12px; }
+      .amount { font-size: 22px; }
+      .step-body { font-size: 14px; }
+      .chip-val { font-size: 14px; }
+      .kaspi, .paid { font-size: 16px; }
+    }
+    .dock {
+      position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 30;
+      width: min(100%, 430px);
+      padding: 8px 16px calc(14px + env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, rgba(242,244,248,0) 0%, var(--bg) 28%);
+    }
+    .paid {
+      width: 100%; border: 0; border-radius: 18px; cursor: pointer;
+      background: var(--paid-bg); color: var(--paid-text); font-size: 17px; font-weight: 700;
+      padding: 16px; box-shadow: 0 10px 24px rgba(239, 77, 85, .12);
+    }
+    .paid:active { transform: scale(.985); }
+    .paid:disabled { opacity: .55; }
+    @media (min-width: 768px) {
+      body { background: #dfe5ee; }
+      .frame { box-shadow: 0 0 0 1px #e6ebf2, 0 24px 60px rgba(20,30,50,.12); background: var(--bg); min-height: 100dvh; }
+    }
+    .hidden { display: none !important; }
+    .state { text-align: center; padding: 64px 20px; }
+    .spinner { width: 36px; height: 36px; border: 3px solid #dbe3ec; border-top-color: var(--kaspi); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .receipt-box { margin: 0 14px 10px; padding: 12px; border: 1px dashed #dbe3ec; border-radius: 12px; background: #fff; font-size: 13px; }
+    .overlay {
+      position: fixed; inset: 0; z-index: 50; display: none;
+      background: rgba(20,28,38,.45); align-items: flex-end; justify-content: center;
+    }
+    .overlay.show { display: flex; }
+    .ov-panel { width: min(430px, 100%); background: #fff; border-radius: 20px 20px 0 0; padding: 16px 14px 18px; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div id="app">
+      <div class="state" id="loading"><div class="spinner"></div><p id="txt-loading"></p></div>
+      <div class="state hidden" id="error"></div>
+
+      <div class="hidden" id="pay-screen">
+        <span class="hidden" id="txt-nav"></span>
+        <div class="top-row">
+          <div class="lang">
+            <button type="button" class="lang-pill" id="lang-toggle" aria-haspopup="true" aria-expanded="false">
+              <span id="lang-flag" class="ru-flag"><i></i><i></i><i></i></span>
+              <span id="lang-label">RU</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#8b93a1" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <div class="lang-menu" id="lang-menu">
+              <button type="button" data-lang="ru" id="lang-opt-ru"><span class="ru-flag"><i></i><i></i><i></i></span> Русский</button>
+              <button type="button" data-lang="kk" id="lang-opt-kk"><img class="kz-mini" src="/payment-page-assets/kz-flag.png" alt=""> Қазақша</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pad">
+          <div class="banner"><span class="info-ico">i</span><div id="txt-banner"></div></div>
+          <div class="pay-card">
+            <div class="pay-head">
+              <div class="pay-label" id="txt-to-pay">К оплате</div>
+              <div class="timer" id="timer-box">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                <span class="timer-value" id="timer">—</span>
+                <button type="button" class="x-btn" id="btn-cancel" aria-label="cancel">×</button>
+              </div>
+            </div>
+            <div class="amount-row">
+              <div class="amount" id="amount-value">—</div>
+              <button type="button" class="copy" id="copy-amount" aria-label="copy">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M4 16V6a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="1.8"/></svg>
+              </button>
+            </div>
+            <div id="bank-actions"></div>
+          </div>
+          <div class="steps" id="details"></div>
+          <div class="fx-note"><span class="info-ico">!</span><p id="txt-fx-note"></p></div>
+        </div>
+        <div class="receipt-box hidden" id="receipt-box">
+          <div id="txt-receipt-label"></div>
+          <input type="file" id="receipt-file" accept="image/*,application/pdf">
+          <div class="hidden" id="receipt-name"></div>
+          <div id="txt-receipt-hint"></div>
+        </div>
+        <div class="dock"><button class="paid" id="btn-sent"></button></div>
+      </div>
+
+      <div class="state hidden" id="wait-screen">
+        <h2 id="txt-wait-title"></h2>
+        <p id="txt-wait-msg"></p>
+      </div>
+      <div class="state hidden" id="success-screen">
+        <h2 id="txt-ok-title"></h2>
+        <p id="txt-ok-msg"></p>
+      </div>
+      <div class="state hidden" id="fail-screen">
+        <h2 id="fail-title"></h2>
+        <p id="fail-msg"></p>
+      </div>
+    </div>
+    <div class="overlay" id="overlay">
+      <div class="ov-panel">
+        <button class="ov-x" type="button" id="close-guide" style="border:0;background:0;font-size:28px">×</button>
+        <div class="ov-head"><h2 id="ov-h"></h2></div>
+        <div class="ov-sub" id="ov-sub"></div>
+        <div class="banner-swipe" id="banner-swipe"><img id="ov-img" alt=""></div>
+        <div id="ov-dots"></div>
+        <button type="button" id="ov-back"></button>
+        <button type="button" id="ov-next"></button>
+        <button type="button" id="ov-arr-l"></button>
+        <button type="button" id="ov-arr-r"></button>
+      </div>
+    </div>
+  </div>
+  <button type="button" id="lang-kk" class="hidden" data-lang="kk"></button>
+  <button type="button" id="lang-ru" class="hidden" data-lang="ru"></button>
+  <p class="hidden" id="ps-line"></p>
+  <span class="hidden" id="txt-timer-label"></span>
+  <span class="hidden" id="txt-pay-id"></span>
+  <span class="hidden" id="pid"></span>
+  <button type="button" class="hidden" id="pid-copy"></button>
+  <div class="hidden" id="txt-hint"></div>
+  <div class="hidden" id="kaspi-cap"></div>
+  <span class="hidden" id="cur-chip"></span>
+  <span class="hidden" id="amount-line"></span>
+  <button type="button" class="hidden" id="open-guide"></button>
+  <div class="hidden" id="bank-guides"></div>
+  <div class="hidden" id="txt-problems"></div>
+  <span class="hidden" id="faq1-q"></span>
+  <span class="hidden" id="faq1-a"></span>
+  <span class="hidden" id="faq2-q"></span>
+  <span class="hidden" id="faq2-a"></span>
+  <span class="hidden" id="txt-safe"></span>
+  <span class="hidden" id="lang-label-full"></span>
+
+  <script>
+    const PAY_IN_ID = "{{ pay_in_id }}";
+    const API_BASE = "{{ api_base }}";
+    const CLIENT_GATE = "{{ client_gate|escapejs }}";
+    const DEFAULT_LOCALE = "{{ default_locale|default:'kk' }}";
+    const SENT_KEY = `pay_sent_${PAY_IN_ID}`;
+    const STEPS = { ru: [], kk: [] };
+
+    let locale = localStorage.getItem(`pay_locale_${PAY_IN_ID}`) || DEFAULT_LOCALE;
+    let pollTimer = null, countdownTimer = null, guideStep = 0;
+    let receiptRequired = false;
+    let receiptUploaded = false;
+    let selectedReceiptFile = null;
+    let lastAmountCopy = "";
+
+    const I18N = {
+      kk: {
+        loading: "Төлем жүктелуде…", nav: "Шотты толықтыру",
+        timer: "Қалған уақыт:", card: "Карта мәліметтері", phone: "Телефон", account: "Шот",
+        payLink: "Төлем сілтемесі", owner: "Алушының толық аты-жөні", bank: "Алушы банкі", bic: "БИК",
+        amountExact: "Төлем сомасы",
+        copy: "Көшіру", copied: "Көшірілді",
+        hint: "", kaspiCap: "", pay: "Төлеңіз", payOne: "",
+        payId: "Төлем ID", toPay: "Төлем үшін",
+        banner: "Бір аударыммен дәл <b>{amt}</b> төлеңіз",
+        kaspiPay: "Төлеу",
+        sent: "Мен төледім", cancel: "Өтінімді болдырмау", cancelConfirm: "Өтінімді болдырмау керек пе?",
+        waitTitle: "Растау күтілуде", waitMsg: "Төлем қабылданды. Бетті жабуға болады.",
+        waitVerify: "Төлем тексерілуде.",
+        okTitle: "Төлем сәтті", okMsg: "Дүкен сайтына бағыттауда…",
+        failTitle: "Төлем орындалмады", failDeclined: "Төлем қабылданбады", failMsg: "Бағыттауда…",
+        noReq: "Реквизиттер уақытша жоқ", notFound: "Төлем табылмады",
+        noReqTitle: "Төлем қолжетімсіз", noReqMsg: "Реквизиттер берілмеді.",
+        sentErr: "Растау сәтсіз", cancelErr: "Болдырмау қатесі",
+        bankSection: "Банк қосымшасы",
+        receiptLabel: "Төлем чегі", receiptHint: "Чекті жүктеңіз, содан кейін «Мен төледім».",
+        receiptRequired: "Алдымен чек жүктеңіз", receiptUploaded: "Чек жүктелді",
+        guide: "", problems: "", faq1q: "", faq1a: "", faq2q: "", faq2a: "", safe: "",
+        lang: "KZ", ovH: "", ovBack: "", ovNext: "", ovDone: "", ovStep: "",
+        s1: "Карта нөмірін көшіріп алыңыз",
+        s2: "Қолданбаны ашыңыз “Kaspi.kz”",
+        s3: "“Аудармалар” → “Халықаралық аударымдар”",
+        s4: "Карта нөмірін енгізіп, түймесін басыңыз “Келесі”",
+        s5: "Алушының атын латын әріптерімен енгізіңіз",
+        s6: "Нақты соманы енгізіңіз",
+        s7: "“Аудару” түймесін басыңыз",
+        fxNote: "Құрметті пайдаланушы, банк валютаны айырбастауына байланысты депозитке түсетін сомада шамалы айырмашылық болуы мүмкін.",
+      },
+      ru: {
+        loading: "Загрузка платежа…", nav: "Пополнение счёта",
+        timer: "Осталось времени:", card: "Реквизиты карты", phone: "Телефон", account: "Счёт",
+        payLink: "Ссылка для оплаты", owner: "Полное имя получателя", bank: "Банк получателя", bic: "БИК",
+        amountExact: "Сумма платежа",
+        copy: "Копировать", copied: "Скопировано",
+        hint: "", kaspiCap: "", pay: "Оплатите", payOne: "",
+        payId: "ID платежа", toPay: "К оплате",
+        banner: "Оплатите одним переводом ровно <b>{amt}</b>",
+        kaspiPay: "Оплатить",
+        sent: "Я оплатил", cancel: "Отменить заявку", cancelConfirm: "Отменить заявку?",
+        waitTitle: "Ожидаем подтверждение", waitMsg: "Платёж принят. Можно закрыть страницу.",
+        waitVerify: "Платёж проверяется.",
+        okTitle: "Оплата успешна", okMsg: "Перенаправляем на сайт магазина…",
+        failTitle: "Платёж не выполнен", failDeclined: "Платёж отклонён", failMsg: "Перенаправляем…",
+        noReq: "Реквизиты временно недоступны", notFound: "Платёж не найден",
+        noReqTitle: "Платёж недоступен", noReqMsg: "Реквизиты не выданы.",
+        sentErr: "Не удалось подтвердить оплату", cancelErr: "Ошибка отмены",
+        bankSection: "Приложение банка",
+        receiptLabel: "Чек об оплате", receiptHint: "Загрузите чек, затем нажмите «Я оплатил».",
+        receiptRequired: "Сначала прикрепите чек", receiptUploaded: "Чек прикреплён",
+        guide: "", problems: "", faq1q: "", faq1a: "", faq2q: "", faq2a: "", safe: "",
+        lang: "RU", ovH: "", ovBack: "", ovNext: "", ovDone: "", ovStep: "",
+        s1: "Скопируйте номер карты",
+        s2: "Откройте приложение “Kaspi.kz”",
+        s3: "“Переводы” → “Международные переводы”",
+        s4: "Вставьте номер карты и нажмите “Далее”",
+        s5: "Введите имя получателя на латинице",
+        s6: "Введите точную сумму",
+        s7: "Нажмите кнопку “Перевести”",
+        fxNote: "Уважаемый пользователь, из-за конвертации валюты банком могут быть минимальные отличия в сумме зачисления депозита.",
+      },
+    };
+
+    function t(k) { return (I18N[locale] || I18N.ru)[k] || k; }
+    function obtainUrl() { return `${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/obtain/?lang=${locale}`; }
+    function apiHeaders() {
+      const h = { Accept: "application/json" };
+      if (CLIENT_GATE) h.GATE = CLIENT_GATE;
+      return h;
+    }
+    function show(id) {
+      ["loading", "error", "pay-screen", "wait-screen", "success-screen", "fail-screen"].forEach(el => {
+        document.getElementById(el).classList.toggle("hidden", el !== id);
+      });
+    }
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function spaceCard(raw) {
+      const d = String(raw || "").replace(/\s/g, "");
+      return d.replace(/(\d{4})(?=\d)/g, "$1 ");
+    }
+    function fmtAmount(amount, currency) {
+      const n = Number(amount);
+      const num = Number.isFinite(n)
+        ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : String(amount);
+      const cur = (currency || "KZT").toUpperCase() === "KZT" ? "₸" : (currency || "");
+      return `${num} ${cur}`.trim();
+    }
+    function copyAmountText(amount) { return String(amount); }
+    function copySvg() {
+      return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M4 16V6a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="1.8"/></svg>`;
+    }
+    function checkSvg() {
+      return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.2 4.2L19 7.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    }
+    function copyText(value) {
+      const v = String(value || "");
+      if (!v) return Promise.reject();
+      const fallback = () => {
+        const ta = document.createElement("textarea");
+        ta.value = v; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.left = "-9999px";
+        document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, v.length);
+        try { document.execCommand("copy"); } finally { document.body.removeChild(ta); }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(v).catch(fallback);
+      }
+      fallback();
+      return Promise.resolve();
+    }
+    function flashCopy(btn) {
+      if (!btn) return;
+      btn.classList.add("ok");
+      const prev = btn.innerHTML;
+      btn.innerHTML = checkSvg();
+      btn.setAttribute("aria-label", t("copied"));
+      setTimeout(() => {
+        btn.classList.remove("ok");
+        btn.innerHTML = copySvg();
+        btn.setAttribute("aria-label", t("copy"));
+      }, 1200);
+    }
+    function applyStaticI18n() {
+      document.documentElement.lang = locale;
+      document.getElementById("txt-loading").textContent = t("loading");
+      document.getElementById("txt-nav").textContent = t("nav");
+      document.getElementById("txt-to-pay").textContent = t("toPay");
+      document.getElementById("txt-timer-label").textContent = t("timer");
+      document.getElementById("txt-pay-id").textContent = t("payId");
+      document.getElementById("btn-sent").textContent = t("sent");
+      document.getElementById("txt-fx-note").textContent = t("fxNote");
+      document.getElementById("txt-wait-title").textContent = t("waitTitle");
+      document.getElementById("txt-wait-msg").textContent = t("waitMsg");
+      document.getElementById("txt-ok-title").textContent = t("okTitle");
+      document.getElementById("txt-ok-msg").textContent = t("okMsg");
+      document.getElementById("lang-label").textContent = t("lang");
+      const flagHost = document.getElementById("lang-flag");
+      if (locale === "kk") {
+        flagHost.className = "";
+        flagHost.innerHTML = '<img class="kz-mini" src="/payment-page-assets/kz-flag.png" alt="">';
+      } else {
+        flagHost.className = "ru-flag";
+        flagHost.innerHTML = "<i></i><i></i><i></i>";
+      }
+      document.getElementById("lang-opt-ru").classList.toggle("on", locale === "ru");
+      document.getElementById("lang-opt-kk").classList.toggle("on", locale === "kk");
+    }
+    function updateSentButtonState() {
+      const btn = document.getElementById("btn-sent");
+      if (!receiptRequired) { btn.disabled = false; return; }
+      btn.disabled = !(receiptUploaded || selectedReceiptFile);
+    }
+    function setupReceiptUi(data) {
+      receiptRequired = Boolean(data.receipt_required);
+      receiptUploaded = Boolean(data.receipt_uploaded);
+      const box = document.getElementById("receipt-box");
+      const fileInput = document.getElementById("receipt-file");
+      const nameEl = document.getElementById("receipt-name");
+      if (!receiptRequired) {
+        box.classList.add("hidden");
+        selectedReceiptFile = null;
+        updateSentButtonState();
+        return;
+      }
+      box.classList.remove("hidden");
+      document.getElementById("txt-receipt-label").textContent = t("receiptLabel");
+      document.getElementById("txt-receipt-hint").textContent = t("receiptHint");
+      if (receiptUploaded) {
+        nameEl.textContent = t("receiptUploaded");
+        nameEl.classList.remove("hidden");
+        fileInput.classList.add("hidden");
+      } else {
+        nameEl.classList.add("hidden");
+        fileInput.classList.remove("hidden");
+        selectedReceiptFile = null;
+      }
+      updateSentButtonState();
+    }
+    function pageTransfer(data) {
+      if (data.transfer_currency && data.transfer_currency.toUpperCase() !== "USD"
+          && data.transfer_amount != null && data.transfer_amount !== "") {
+        return { amount: data.transfer_amount, currency: data.transfer_currency };
+      }
+      return { amount: data.amount, currency: data.currency || "KZT" };
+    }
+    function copyBtn(payload) {
+      return `<button type="button" class="copy" data-copy="${esc(payload)}" aria-label="${esc(t("copy"))}">${copySvg()}</button>`;
+    }
+    function chip(icon, label, value, payload) {
+      if (!value) return "";
+      return `<div class="chip"><span class="chip-ico">${icon}</span>
+        <div class="chip-text"><div class="chip-label">${esc(label)}</div>
+        <div class="chip-val">${esc(value)}</div></div>${copyBtn(payload != null ? payload : value)}</div>`;
+    }
+    function step(n, text, extra) {
+      return `<div class="step"><div class="num">${n}</div><div class="step-body">${text}${extra || ""}</div></div>`;
+    }
+    function icoCard() {
+      return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M3 10h18" stroke="currentColor" stroke-width="1.7"/></svg>`;
+    }
+    function icoUser() {
+      return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M5 19c1.4-3.2 3.8-5 7-5s5.6 1.8 7 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+    }
+    function icoBag() {
+      return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M7 8h10l1 12H6L7 8z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8V7a3 3 0 0 1 6 0v1" stroke="currentColor" stroke-width="1.7"/></svg>`;
+    }
+    function renderDetails(pd, amountLine, amountCopy) {
+      const card = pd && (pd.card_number || pd.phone || pd.deposit_number);
+      const owner = pd && pd.owner;
+      let html = "";
+      html += step(1, t("s1"), chip(icoCard(), t("card"), card ? spaceCard(card) : "", card ? String(card).replace(/\s/g, "") : ""));
+      html += step(2, t("s2"));
+      html += step(3, t("s3"));
+      html += step(4, t("s4"));
+      html += step(5, t("s5"), chip(icoUser(), t("owner"), owner || "", owner || ""));
+      html += step(6, t("s6"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      html += step(7, t("s7"));
+      if (pd && pd.payment_form_url && /^https?:\/\//i.test(pd.payment_form_url) && !card) {
+        html += `<p><a class="kaspi" href="${esc(pd.payment_form_url)}" rel="noopener noreferrer">${esc(t("payLink"))}</a></p>`;
+      }
+      return html;
+    }
+    function isAndroid() { return /android/i.test(navigator.userAgent || ""); }
+    function copyClipboardQuiet(text) {
+      if (!text || !navigator.clipboard) return;
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    function renderBankActions(data) {
+      const box = document.getElementById("bank-actions");
+      box.innerHTML = "";
+      const actions = data.bank_actions || [];
+      const kaspi = actions.find(a => (a.id || "").toLowerCase().includes("kaspi")) || actions[0];
+      const httpsUrl = kaspi && kaspi.url || "";
+      const androidUrl = kaspi && kaspi.android_url || "";
+      const useAndroidIntent = isAndroid() && androidUrl;
+      const useNativeLink = !useAndroidIntent && /^https:\/\//i.test(httpsUrl);
+      const inner = `${esc(t("kaspiPay"))} <img class="kaspi-mark" src="/payment-page-assets/kaspi-mark.png" alt=""><span class="kaspi-word">kaspi</span>`;
+      const el = document.createElement(useNativeLink ? "a" : "button");
+      if (useNativeLink) { el.href = httpsUrl; }
+      else el.type = "button";
+      el.className = "kaspi";
+      el.innerHTML = inner;
+      const go = async () => {
+        if (data.clipboard_text) {
+          try { await navigator.clipboard.writeText(data.clipboard_text); } catch (_) {}
+        }
+        if (!useNativeLink && (httpsUrl || androidUrl)) window.location.href = useAndroidIntent ? androidUrl : httpsUrl;
+      };
+      if (useNativeLink) el.addEventListener("pointerdown", () => copyClipboardQuiet(data.clipboard_text));
+      else el.addEventListener("click", go);
+      box.appendChild(el);
+    }
+    function wireCopyButtons() {
+      document.querySelectorAll(".copy").forEach(btn => {
+        btn.onclick = () => {
+          const v = btn.dataset.copy || lastAmountCopy;
+          if (!v) return;
+          flashCopy(btn);
+          copyText(v).catch(() => {});
+        };
+      });
+    }
+    function parseExpiresAt(raw) {
+      if (raw == null || raw === "") return null;
+      let n = Number(raw);
+      if (!Number.isFinite(n)) {
+        const ms = Date.parse(raw);
+        return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+      }
+      if (n > 1e12) n = n / 1000;
+      return Math.floor(n);
+    }
+    function startCountdown(expiresAt) {
+      const ts = parseExpiresAt(expiresAt);
+      if (!ts) return;
+      clearInterval(countdownTimer);
+      const box = document.getElementById("timer-box");
+      const el = document.getElementById("timer");
+      box.classList.remove("expired");
+      function tick() {
+        const left = ts - Math.floor(Date.now() / 1000);
+        if (left <= 0) {
+          el.textContent = "00:00";
+          box.classList.add("expired");
+          clearInterval(countdownTimer);
+          return;
+        }
+        const m = Math.floor(left / 60), s = left % 60;
+        el.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      }
+      tick();
+      countdownTimer = setInterval(tick, 1000);
+    }
+    function markSent() { sessionStorage.setItem(SENT_KEY, "1"); }
+    function wasSent() { return sessionStorage.getItem(SENT_KEY) === "1"; }
+    function shouldStayOnWait(data) {
+      return data.waiting_confirmation || data.pending_verification || wasSent();
+    }
+    function handleTerminal(data) {
+      if (data.status === "Success") {
+        clearInterval(pollTimer);
+        sessionStorage.removeItem(SENT_KEY);
+        show("success-screen");
+        if (data.success_url) window.location.href = data.success_url;
+        return true;
+      }
+      if (data.status === "Failed" || data.status === "Declined") {
+        if (shouldStayOnWait(data)) {
+          show("wait-screen");
+          document.getElementById("txt-wait-msg").textContent = t("waitVerify");
+          startPolling();
+          return true;
+        }
+        clearInterval(pollTimer);
+        sessionStorage.removeItem(SENT_KEY);
+        show("fail-screen");
+        document.getElementById("fail-title").textContent =
+          data.status === "Declined" ? t("failDeclined") : t("failTitle");
+        document.getElementById("fail-msg").textContent = t("failMsg");
+        if (data.failed_url) window.location.href = data.failed_url;
+        return true;
+      }
+      return false;
+    }
+    function renderPay(data) {
+      applyStaticI18n();
+      if (handleTerminal(data)) return;
+      if (data.waiting_confirmation || data.pending_verification || wasSent()) {
+        show("wait-screen");
+        startPolling();
+        return;
+      }
+      if (data.requisites_available === false) {
+        show("fail-screen");
+        document.getElementById("fail-title").textContent = t("noReqTitle");
+        document.getElementById("fail-msg").textContent = t("noReqMsg");
+        if (data.failed_url) window.location.href = data.failed_url;
+        return;
+      }
+      show("pay-screen");
+      const xfer = pageTransfer(data);
+      const amt = fmtAmount(xfer.amount, xfer.currency);
+      lastAmountCopy = copyAmountText(xfer.amount);
+      document.getElementById("amount-value").textContent = amt;
+      document.getElementById("amount-line").textContent = amt;
+      document.getElementById("txt-banner").innerHTML = t("banner").replace("{amt}", amt);
+      document.getElementById("ps-line").textContent = data.payment_system || "";
+      document.getElementById("cur-chip").textContent = data.currency || "KZT";
+      document.getElementById("pid").textContent = (PAY_IN_ID || "").slice(0, 6) + "…" + (PAY_IN_ID || "").slice(-4);
+      document.getElementById("details").innerHTML = renderDetails(
+        data.payment_details, amt, lastAmountCopy
+      );
+      renderBankActions(data);
+      setupReceiptUi(data);
+      wireCopyButtons();
+      document.getElementById("copy-amount").onclick = () => {
+        if (!lastAmountCopy) return;
+        flashCopy(document.getElementById("copy-amount"));
+        copyText(lastAmountCopy).catch(() => {});
+      };
+      if (data.expires_at) startCountdown(data.expires_at);
+    }
+    async function fetchObtain() {
+      const res = await fetch(obtainUrl(), { headers: apiHeaders() });
+      if (!res.ok) throw new Error(t("notFound"));
+      return res.json();
+    }
+    async function load() {
+      applyStaticI18n();
+      try { renderPay(await fetchObtain()); }
+      catch (e) { show("error"); document.getElementById("error").textContent = e.message || t("notFound"); }
+    }
+    function startPolling() {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const data = await fetchObtain();
+          if (handleTerminal(data)) return;
+          if (shouldStayOnWait(data)) return;
+          renderPay(data);
+        } catch (_) {}
+      }, 3000);
+    }
+    function renderGuide() {}
+    function guidePrev() {}
+    function guideNext() {}
+    function setLocale(next) {
+      locale = next === "kk" ? "kk" : "ru";
+      localStorage.setItem(`pay_locale_${PAY_IN_ID}`, locale);
+      document.getElementById("lang-menu").classList.remove("open");
+      document.getElementById("lang-toggle").setAttribute("aria-expanded", "false");
+      load();
+    }
+    document.getElementById("lang-toggle").onclick = (e) => {
+      e.stopPropagation();
+      const menu = document.getElementById("lang-menu");
+      const open = menu.classList.toggle("open");
+      document.getElementById("lang-toggle").setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    document.getElementById("lang-opt-ru").onclick = (e) => { e.stopPropagation(); setLocale("ru"); };
+    document.getElementById("lang-opt-kk").onclick = (e) => { e.stopPropagation(); setLocale("kk"); };
+    document.addEventListener("click", () => {
+      document.getElementById("lang-menu").classList.remove("open");
+      document.getElementById("lang-toggle").setAttribute("aria-expanded", "false");
+    });
+    document.getElementById("receipt-file").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      selectedReceiptFile = file || null;
+      const nameEl = document.getElementById("receipt-name");
+      if (selectedReceiptFile) { nameEl.textContent = selectedReceiptFile.name; nameEl.classList.remove("hidden"); }
+      else nameEl.classList.add("hidden");
+      updateSentButtonState();
+    });
+    document.getElementById("btn-sent").onclick = async () => {
+      const btn = document.getElementById("btn-sent");
+      if (receiptRequired && !receiptUploaded && !selectedReceiptFile) { alert(t("receiptRequired")); return; }
+      btn.disabled = true;
+      try {
+        let res;
+        if (selectedReceiptFile) {
+          const form = new FormData();
+          form.append("file", selectedReceiptFile);
+          res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, { method: "POST", headers: apiHeaders(), body: form });
+        } else {
+          res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/sent/`, { method: "POST", headers: apiHeaders() });
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.details || err.error || t("sentErr"));
+        }
+        markSent();
+        show("wait-screen");
+        startPolling();
+      } catch (e) { alert(e.message); }
+      finally { updateSentButtonState(); }
+    };
+    document.getElementById("btn-cancel").onclick = async () => {
+      if (!confirm(t("cancelConfirm"))) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/payments/in/invoice/${PAY_IN_ID}/cancel/`, { method: "POST", headers: apiHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.details || data.error || t("cancelErr"));
+        sessionStorage.removeItem(SENT_KEY);
+        const fresh = await fetchObtain();
+        handleTerminal({ ...fresh, status: "Failed", failed_url: fresh.failed_url });
+      } catch (e) { alert(e.message); }
+    };
+    document.getElementById("lang-kk").onclick = () => { locale = "kk"; localStorage.setItem(`pay_locale_${PAY_IN_ID}`, "kk"); load(); };
+    document.getElementById("lang-ru").onclick = () => { locale = "ru"; localStorage.setItem(`pay_locale_${PAY_IN_ID}`, "ru"); load(); };
+    document.getElementById("open-guide").onclick = () => {};
+    document.getElementById("close-guide").onclick = () => document.getElementById("overlay").classList.remove("show");
+    load();
+  </script>
+</body>
+</html>

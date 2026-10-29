@@ -1,5 +1,8 @@
+from decimal import Decimal, InvalidOperation
+
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.decorators import action
 
 from basics.models import PaymentSystem
 from merchant.serializers import MerchantSerializer, MerchantCreateSerializer, MerchantSolutionSerializer, \
@@ -60,6 +63,22 @@ class MerchantViewSet(viewsets.ModelViewSet):
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=True, methods=['patch'], url_path='rolling-reserve')
+    def set_rolling_reserve(self, request, id=None):
+        merchant = self.get_object()
+        raw = request.data.get('rolling_reserve')
+        if raw is None:
+            return Response({'error': 'rolling_reserve is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            value = Decimal(str(raw))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'rolling_reserve must be a number'}, status=status.HTTP_400_BAD_REQUEST)
+        if value < 0:
+            return Response({'error': 'rolling_reserve cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
+        merchant.rolling_reserve = value
+        merchant.save(update_fields=['rolling_reserve'])
+        return Response({'id': str(merchant.id), 'rolling_reserve': str(merchant.rolling_reserve)})
 
 
 class MerchantSolutionViewset(viewsets.ModelViewSet):
