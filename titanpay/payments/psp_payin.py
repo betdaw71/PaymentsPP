@@ -13,8 +13,8 @@ from rest_framework.exceptions import ValidationError
 logger = logging.getLogger(__name__)
 
 # Retired / broken PSP traders: never route, never treat as virtual providers.
-# protocol1: 401 Unauthenticated on create — keep out of cascade until keys fixed.
-DISABLED_PSP_TRADER_USERNAMES = frozenset({"botonpay1", "paymap_kzt", "protocol1"})
+# protocol1: 401 Unauthenticated. expayone1: min amount 10000 / noisey — out of cascade.
+DISABLED_PSP_TRADER_USERNAMES = frozenset({"botonpay1", "paymap_kzt", "protocol1", "expayone1"})
 
 
 def decline_payin(pay_in: Any, *, send_callback: bool = True) -> None:
