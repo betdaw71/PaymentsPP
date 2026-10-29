@@ -13,6 +13,7 @@ from basics.cash_register import (
     payout_pnl,
     psp_deposit_owed,
     psp_held_usdt,
+    psp_site_withdrawal_fee,
     snapshot,
 )
 from basics.models import (
@@ -68,6 +69,16 @@ class CashRegisterMathTest(SimpleTestCase):
         self.assertEqual(psp_deposit_owed("12000", "-200"), Decimal("0.00"))
         self.assertEqual(psp_deposit_owed("0", "3903.25"), Decimal("3903.25"))
         self.assertEqual(psp_deposit_owed("0", "-200"), Decimal("0.00"))
+
+
+    @override_settings(
+        CASH_REGISTER_PSP_SITE_WITHDRAWAL_FEE="5",
+        CASH_REGISTER_PSP_FREE_WITHDRAWAL="payplat1,prochub1",
+    )
+    def test_psp_site_withdrawal_fee_defaults(self):
+        self.assertEqual(psp_site_withdrawal_fee("gipay1"), Decimal("5.00"))
+        self.assertEqual(psp_site_withdrawal_fee("payplat1"), Decimal("0.00"))
+        self.assertEqual(psp_site_withdrawal_fee("prochub1"), Decimal("0.00"))
 
 
 @override_settings(PAYPLAT_TRADER_USERNAME="payplat1")
