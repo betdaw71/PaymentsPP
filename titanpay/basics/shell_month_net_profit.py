@@ -84,7 +84,7 @@ def melbet_fiat_merchant_fee_usd_expr():
         return _shared()
     except ImportError:
         pass
-    melbet_names = sorted(melbet_kzt_usernames())
+    melbet_names = sorted(melbet_kzt_usernames()) or ["melbet", "melbet_test"]
     fiat_ps = sorted({*(n.upper() for n in melbet_kzt_ps_names()), *(n.upper() for n in melbet_kgs_ps_names())})
     fiat_fee_usd = ExpressionWrapper(
         F("merchant_fee") * F("usd_amount") / F("amount"),
@@ -94,6 +94,20 @@ def melbet_fiat_merchant_fee_usd_expr():
         When(
             solution__merchant__user__username__in=melbet_names,
             solution__payment_system__name__in=fiat_ps,
+            amount__gt=0,
+            usd_amount__gt=0,
+            then=fiat_fee_usd,
+        ),
+        When(
+            solution__merchant__user__username__in=melbet_names,
+            solution__payment_system__currency__symbol__in=["KZT", "KGS"],
+            amount__gt=0,
+            usd_amount__gt=0,
+            then=fiat_fee_usd,
+        ),
+        When(
+            solution__merchant__user__username__in=melbet_names,
+            merchant_fee__gt=F("usd_amount"),
             amount__gt=0,
             usd_amount__gt=0,
             then=fiat_fee_usd,
