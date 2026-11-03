@@ -286,3 +286,44 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(day["agent_fee"], "0.20")
         self.assertEqual(day["expenses"], "1.00")
         self.assertEqual(day["net"], "2.16")
+
+    @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", MELBET_KZT_PS_NAMES="C2CKZT,PHONEKZT")
+    def test_day_pnl_converts_melbet_kzt_merchant_fee(self, _wallet):
+        from basics.models import Currency, PaymentSystem
+        from trade.models import InOrder, InOrderStatus
+
+        kzt = Currency.objects.get(symbol="KZTCR")
+        ps = PaymentSystem.objects.create(name="C2CKZT", currency=kzt, usdt_exchange_rate=Decimal("500"))
+        traffic = TrafficType.objects.get(name="primary-cr")
+        user = User.objects.create_user(username="melbet", password="x")
+        merchant = Merchant.objects.create(
+            user=user,
+            balance=Balance.objects.create(type=0, amount=Decimal("0")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        solution = MerchantSolution.objects.create(
+            merchant=merchant,
+            payment_system=ps,
+            traffic=traffic,
+            mdr_in=Decimal("7.50"),
+        )
+        completed = InOrderStatus.objects.get(name="Completed")
+        # 7.5% of 10000 KZT = 750 KZT fee; at 20 USD → fee_usd = 1.50
+        InOrder.objects.create(
+            status=completed,
+            amount=Decimal("10000.00"),
+            usd_amount=Decimal("20.00"),
+            psp_usd_amount=Decimal("20.00"),
+            solution=solution,
+            merchant_fee=Decimal("750.00"),
+            trader_fee=Decimal("1.00"),
+            agent_fee=Decimal("0.04"),
+            completion_date=timezone.now(),
+            arbitrage_comment="",
+            pic="https://example.com/melbet",
+        )
+        day = snapshot()["pnl"]["day"]
+        # previous pandapay 7.00 + melbet 1.50 = 8.50
+        self.assertEqual(day["payin_mdr"], "8.50")
+        # net was 2.16; +1.50 MDR -1.00 trader -0.04 agent = +0.46 → 2.62
+        self.assertEqual(day["net"], "2.62")

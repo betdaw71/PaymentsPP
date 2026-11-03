@@ -171,25 +171,47 @@ def _psp_effective_usd():
 
 
 def melbet_fiat_merchant_fee_usd_expr():
-    """SQL: Melbet KZT/KGS merchant_fee → USDT via fee * usd_amount / amount; else fee as-is."""
+    """SQL: Melbet KZT/KGS merchant_fee → USDT via fee * usd_amount / amount; else fee as-is.
+
+    Matches by PS name, currency symbol, or safety heuristic (fee > usd_amount —
+    USDT MDR cannot exceed deal USD at normal rates).
+    """
     from merchant.kzt_settlement import (
         melbet_kgs_ps_names,
         melbet_kzt_ps_names,
         melbet_kzt_usernames,
     )
 
-    melbet_names = sorted(melbet_kzt_usernames())
-    fiat_ps = sorted({*(n.upper() for n in melbet_kzt_ps_names()), *(n.upper() for n in melbet_kgs_ps_names())})
+    melbet_names = sorted(melbet_kzt_usernames()) or ["melbet", "melbet_test"]
+    fiat_ps = sorted(
+        {
+            *(n.upper() for n in melbet_kzt_ps_names()),
+            *(n.upper() for n in melbet_kgs_ps_names()),
+        }
+    ) or ["C2CKZT", "PHONEKZT", "QRKGS", "C2CKGS", "PHONEKGS"]
     fiat_fee_usd = ExpressionWrapper(
         F("merchant_fee") * F("usd_amount") / F("amount"),
         output_field=DEC,
     )
+    melbet = {"solution__merchant__user__username__in": melbet_names}
+    positive = {"amount__gt": 0, "usd_amount__gt": 0}
     return Case(
         When(
-            solution__merchant__user__username__in=melbet_names,
+            **melbet,
             solution__payment_system__name__in=fiat_ps,
-            amount__gt=0,
-            usd_amount__gt=0,
+            **positive,
+            then=fiat_fee_usd,
+        ),
+        When(
+            **melbet,
+            solution__payment_system__currency__symbol__in=["KZT", "KGS"],
+            **positive,
+            then=fiat_fee_usd,
+        ),
+        When(
+            **melbet,
+            merchant_fee__gt=F("usd_amount"),
+            **positive,
             then=fiat_fee_usd,
         ),
         default=F("merchant_fee"),
