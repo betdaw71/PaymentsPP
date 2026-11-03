@@ -104,10 +104,11 @@ def _day_bounds(day: date) -> tuple[datetime, datetime]:
 
 def _agg_in_qs(qs):
     mdr = _mdr_usd_expr()
+    # Do not alias aggregates as `amount`/`usd_amount` — clashes with F() inside Melbet MDR expr.
     return qs.aggregate(
         count=Count("id"),
-        amount=Sum("amount"),
-        amount_usd=Sum("usd_amount"),
+        fiat_sum=Sum("amount"),
+        usd_sum=Sum("usd_amount"),
         merchant_fee_raw=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
         merchant_fee=Coalesce(Sum(mdr), Value(ZERO, output_field=DEC)),
         trader_fee=Sum("trader_fee"),
@@ -133,8 +134,8 @@ def _agg_out_qs(qs):
     mdr = _mdr_usd_expr()
     return qs.aggregate(
         count=Count("id"),
-        amount=Sum("amount"),
-        amount_usd=Sum("usd_amount"),
+        fiat_sum=Sum("amount"),
+        usd_sum=Sum("usd_amount"),
         merchant_fee_raw=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
         merchant_fee=Coalesce(Sum(mdr), Value(ZERO, output_field=DEC)),
         trader_fee=Sum("trader_fee"),
@@ -143,8 +144,8 @@ def _agg_out_qs(qs):
 
 def _print_agg_row(label: str, agg: dict, currency_sym: str = "", *, show_raw: bool = False):
     cnt = agg.get("count") or 0
-    amt = _d(agg.get("amount"))
-    usd = _d(agg.get("amount_usd"))
+    amt = _d(agg.get("fiat_sum"))
+    usd = _d(agg.get("usd_sum"))
     mf = _d(agg.get("merchant_fee"))
     tf = _d(agg.get("trader_fee"))
     fiat = f" {amt:,.2f} {currency_sym}".strip() if currency_sym else f" {amt:,.2f}"
@@ -164,8 +165,8 @@ def _group_in(qs, *fields):
     return list(
         qs.values(*fields).annotate(
             count=Count("id"),
-            amount=Sum("amount"),
-            amount_usd=Sum("usd_amount"),
+            fiat_sum=Sum("amount"),
+            usd_sum=Sum("usd_amount"),
             merchant_fee_raw=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
             merchant_fee=Coalesce(Sum(mdr), Value(ZERO, output_field=DEC)),
             trader_fee=Sum("trader_fee"),
@@ -178,8 +179,8 @@ def _group_out(qs, *fields):
     return list(
         qs.values(*fields).annotate(
             count=Count("id"),
-            amount=Sum("amount"),
-            amount_usd=Sum("usd_amount"),
+            fiat_sum=Sum("amount"),
+            usd_sum=Sum("usd_amount"),
             merchant_fee=Coalesce(Sum(mdr), Value(ZERO, output_field=DEC)),
             trader_fee=Sum("trader_fee"),
         )
@@ -290,19 +291,22 @@ def run(target: date | None = None, *, yesterday: bool = False, merchant: str | 
     _print_agg_row("OUT", out_agg, show_raw=True)
 
     print("\n=== ПО PAYMENT SYSTEM (IN) ===")
-    for row in sorted(_group_in(in_qs, "solution__payment_system__name"), key=lambda r: -_d(r["amount_usd"])):
+    for row in sorted(_group_in(in_qs, "solution__payment_system__name"), key=lambda r: -_d(r["usd_sum"])):
         ps = row["solution__payment_system__name"]
         _print_agg_row(ps, row, show_raw=True)
 
     print("\n=== ПО ВАЛЮТЕ (IN) ===")
-    for row in sorted(_group_in(in_qs, "solution__payment_system__currency__symbol"), key=lambda r: -_d(r["amount"])):
+    for row in sorted(
+        _group_in(in_qs, "solution__payment_system__currency__symbol"),
+        key=lambda r: -_d(r["fiat_sum"]),
+    ):
         sym = row["solution__payment_system__currency__symbol"] or "?"
         _print_agg_row(sym, row, currency_sym=sym, show_raw=True)
 
     print("\n=== МЕРЧАНТЫ (IN, top 20 по USD) ===")
     for row in sorted(
         _group_in(in_qs, "solution__merchant__user__username"),
-        key=lambda r: -_d(r["amount_usd"]),
+        key=lambda r: -_d(r["usd_sum"]),
     )[:20]:
         name = row["solution__merchant__user__username"]
         _print_agg_row(name, row, show_raw=True)
@@ -310,7 +314,7 @@ def run(target: date | None = None, *, yesterday: bool = False, merchant: str | 
     print("\n=== ТРЕЙДЕРЫ (IN, top 20 по USD) ===")
     for row in sorted(
         _group_in(in_qs, "payment_details__group__trader__user__username"),
-        key=lambda r: -_d(r["amount_usd"]),
+        key=lambda r: -_d(r["usd_sum"]),
     )[:20]:
         name = row["payment_details__group__trader__user__username"] or "(no trader)"
         _print_agg_row(name, row, show_raw=True)
@@ -318,7 +322,7 @@ def run(target: date | None = None, *, yesterday: bool = False, merchant: str | 
     print("\n=== КОМАНДЫ (IN) ===")
     for row in sorted(
         _group_in(in_qs, "payment_details__group__trader__team__name"),
-        key=lambda r: -_d(r["amount_usd"]),
+        key=lambda r: -_d(r["usd_sum"]),
     ):
         name = row["payment_details__group__trader__team__name"] or "(no team)"
         _print_agg_row(name, row, show_raw=True)
