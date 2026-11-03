@@ -7,6 +7,9 @@
 
 NET = MDR_in_usd + FX + MDR_out_usd − trader_fee − agent_fee − PlatformExpense
 
+В отчёте — разбивка по PSP (all-in): MDR, FX, PSP_fee, agent, NET, margin%,
+eff_psp cost% = (PSP_fee − FX) / USD. PayPlat с xe+5 обычно FX≈0.
+
 Октябрь 2026:
   docker compose exec -T -e YEAR=2026 -e MONTH=10 app python manage.py shell \\
     < titanpay/basics/shell_month_net_profit.py
