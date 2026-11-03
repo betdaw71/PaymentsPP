@@ -53,6 +53,14 @@ def update_all():
     except Exception as e:
         logging.error("admin balance alerts failed: %s", e)
 
+    logging.debug("admin ops health alerts")
+    try:
+        from payments.admin_alerts import check_ops_health_alerts
+
+        check_ops_health_alerts()
+    except Exception as e:
+        logging.error("admin ops health alerts failed: %s", e)
+
     logging.debug("admin bot commands")
     try:
         from payments.admin_bot import poll_admin_bot

@@ -1,5 +1,5 @@
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
@@ -7,7 +7,12 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from basics.models import Balance
 from merchant.models import Merchant
-from payments.admin_alerts import check_merchant_balance_alerts, notify_threshold_once
+from payments.admin_alerts import (
+    check_merchant_balance_alerts,
+    note_payplat_issuance_failure,
+    notify_threshold_once,
+    notify_with_cooldown,
+)
 
 
 class ThresholdLatchTest(SimpleTestCase):
@@ -61,3 +66,35 @@ class BalanceAlertTest(TestCase):
         self.assertFalse(any("Mostbet" in t for t in texts))
         check_merchant_balance_alerts()
         self.assertEqual(send.call_count, 2)
+
+
+class CooldownAndPayplatBurstTest(SimpleTestCase):
+    def setUp(self):
+        cache.clear()
+
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    def test_cooldown_blocks_repeat(self, send):
+        self.assertTrue(notify_with_cooldown("x", "hi", 600))
+        self.assertFalse(notify_with_cooldown("x", "hi", 600))
+        self.assertEqual(send.call_count, 1)
+
+    @override_settings(
+        ADMIN_ALERT_PAYPLAT_FAIL_BURST=3,
+        ADMIN_ALERT_PAYPLAT_FAIL_WINDOW_SEC=300,
+        ADMIN_ALERT_PAYPLAT_COOLDOWN_SEC=600,
+        ADMIN_ALERT_BOT_TOKEN="t",
+        ADMIN_ALERT_CHAT_ID="1",
+    )
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    def test_payplat_burst_alerts_on_third_fail(self, send):
+        pay_in = MagicMock()
+        pay_in.id = "abc"
+        pay_in.amount = Decimal("5000")
+        pay_in.merchant.user.username = "mostbet"
+        pay_in.payment_system.name = "C2CKZT"
+        note_payplat_issuance_failure(pay_in, reason="no_requisite")
+        note_payplat_issuance_failure(pay_in, reason="no_requisite")
+        self.assertEqual(send.call_count, 0)
+        note_payplat_issuance_failure(pay_in, reason="no_requisite")
+        self.assertEqual(send.call_count, 1)
+        self.assertIn("PayPlat", send.call_args.args[0])
