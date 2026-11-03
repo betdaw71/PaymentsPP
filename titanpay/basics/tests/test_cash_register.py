@@ -8,6 +8,7 @@ from django.utils import timezone
 from basics.cash_register import (
     fx_spread,
     kzt_to_usd,
+    merchant_fee_to_usd,
     merchant_usdt_net,
     payin_pnl,
     payout_pnl,
@@ -68,6 +69,17 @@ class CashRegisterMathTest(SimpleTestCase):
         self.assertEqual(psp_deposit_owed("12000", "-200"), Decimal("0.00"))
         self.assertEqual(psp_deposit_owed("0", "3903.25"), Decimal("3903.25"))
         self.assertEqual(psp_deposit_owed("0", "-200"), Decimal("0.00"))
+
+    def test_melbet_merchant_fee_kzt_to_usd(self):
+        # 2% of 10000 KZT at ~500 rate → fee 200 KZT ≈ 0.40 USDT on 40 USD
+        self.assertEqual(
+            merchant_fee_to_usd("200", "10000", "40", fiat_settlement=True),
+            Decimal("0.80"),
+        )
+        self.assertEqual(
+            merchant_fee_to_usd("7.00", "10000", "40", fiat_settlement=False),
+            Decimal("7.00"),
+        )
 
 
 @override_settings(PAYPLAT_TRADER_USERNAME="payplat1")

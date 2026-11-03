@@ -143,6 +143,18 @@ def payout_pnl(*, merchant_fee, trader_fee) -> Decimal:
     return money(money(merchant_fee) - money(trader_fee))
 
 
+def merchant_fee_to_usd(merchant_fee, amount, usd_amount, *, fiat_settlement: bool) -> Decimal:
+    """Melbet fiat settlement stores merchant_fee in KZT/KGS; convert to USDT for PnL."""
+    fee = money(merchant_fee)
+    if not fiat_settlement:
+        return fee
+    amt = money(amount)
+    usd = money(usd_amount)
+    if amt <= 0 or usd <= 0:
+        return ZERO
+    return money(fee * usd / amt)
+
+
 def moscow_bounds(now=None):
     current = (now or timezone.now()).astimezone(MSK)
     day_start = current.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -158,16 +170,44 @@ def _psp_effective_usd():
     )
 
 
+def _melbet_fiat_merchant_fee_usd_expr():
+    """SQL: Melbet KZT/KGS merchant_fee → USDT via fee * usd_amount / amount; else fee as-is."""
+    from merchant.kzt_settlement import (
+        melbet_kgs_ps_names,
+        melbet_kzt_ps_names,
+        melbet_kzt_usernames,
+    )
+
+    melbet_names = sorted(melbet_kzt_usernames())
+    fiat_ps = sorted({*(n.upper() for n in melbet_kzt_ps_names()), *(n.upper() for n in melbet_kgs_ps_names())})
+    fiat_fee_usd = ExpressionWrapper(
+        F("merchant_fee") * F("usd_amount") / F("amount"),
+        output_field=DEC,
+    )
+    return Case(
+        When(
+            solution__merchant__user__username__in=melbet_names,
+            solution__payment_system__name__in=fiat_ps,
+            amount__gt=0,
+            usd_amount__gt=0,
+            then=fiat_fee_usd,
+        ),
+        default=F("merchant_fee"),
+        output_field=DEC,
+    )
+
+
 def _period_pnl(start: datetime, end: datetime) -> dict:
     from basics.models import PlatformExpense
     from trade.models import InOrder, OutOrder
 
+    mdr_usd = _melbet_fiat_merchant_fee_usd_expr()
     in_agg = InOrder.objects.filter(
         status__name="Completed",
         completion_date__gte=start,
         completion_date__lt=end,
     ).aggregate(
-        merchant_fee=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
+        merchant_fee=Coalesce(Sum(mdr_usd), Value(ZERO, output_field=DEC)),
         trader_fee=Coalesce(Sum("trader_fee"), Value(ZERO, output_field=DEC)),
         agent_fee=Coalesce(Sum("agent_fee"), Value(ZERO, output_field=DEC)),
         fx_spread=Coalesce(
@@ -182,7 +222,7 @@ def _period_pnl(start: datetime, end: datetime) -> dict:
         completion_date__gte=start,
         completion_date__lt=end,
     ).aggregate(
-        merchant_fee=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
+        merchant_fee=Coalesce(Sum(mdr_usd), Value(ZERO, output_field=DEC)),
         trader_fee=Coalesce(Sum("trader_fee"), Value(ZERO, output_field=DEC)),
         turnover=Coalesce(Sum("usd_amount"), Value(ZERO, output_field=DEC)),
         count=Count("id"),

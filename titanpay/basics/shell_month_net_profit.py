@@ -1,10 +1,11 @@
 """
-Чистая прибыль площадки за месяц (формула кассы).
+Чистая прибыль площадки за месяц (формула кассы), MDR Melbet в USDT.
 
-NET = MDR_in + FX + MDR_out − trader_fee(in+out) − agent_fee − PlatformExpense
+У Melbet (KZT/KGS ledger) merchant_fee хранится в фиате — конвертируем:
+  fee_usd = merchant_fee * usd_amount / amount
+Иначе merchant_fee уже USDT.
 
-Оборот и доход только по Completed (InOrder/OutOrder.completion_date).
-Расходы бота — PlatformExpense.created_at в том же окне (МСК).
+NET = MDR_in_usd + FX + MDR_out_usd − trader_fee − agent_fee − PlatformExpense
 
 Октябрь 2026:
   docker compose exec -T -e YEAR=2026 -e MONTH=10 app python manage.py shell \\
@@ -13,7 +14,7 @@ NET = MDR_in + FX + MDR_out − trader_fee(in+out) − agent_fee − PlatformExp
 Из контейнера (/app):
   YEAR=2026 MONTH=10 python manage.py shell < basics/shell_month_net_profit.py
 
-Опционально: MERCHANT=melbet  (только один мерч)
+Опционально: MERCHANT=melbet
 """
 from __future__ import annotations
 
@@ -23,15 +24,20 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
-from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, Sum, Value, When
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum, Value
 from django.db.models.functions import Coalesce
-from django.utils import timezone
 
+from basics.cash_register import (
+    _melbet_fiat_merchant_fee_usd_expr,
+    _psp_effective_usd,
+    merchant_fee_to_usd,
+    money,
+)
 from basics.models import PlatformExpense
+from merchant.kzt_settlement import uses_melbet_fiat_settlement
 from trade.models import InOrder, OutOrder
 
 MSK = ZoneInfo("Europe/Moscow")
-Q2 = Decimal("0.01")
 ZERO = Decimal("0.00")
 DEC = DecimalField(max_digits=32, decimal_places=2)
 
@@ -40,33 +46,18 @@ MONTH = int(os.environ.get("MONTH") or "10")
 MERCHANT = (os.environ.get("MERCHANT") or "").strip()
 
 
-def money(raw) -> Decimal:
-    return Decimal(str(raw or 0)).quantize(Q2, rounding=ROUND_HALF_UP)
-
-
 def money_str(raw) -> str:
     return f"{money(raw):,.2f}"
 
 
 def month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
-    last = monthrange(year, month)[1]
+    _ = monthrange(year, month)[1]
     start = datetime(year, month, 1, 0, 0, 0, tzinfo=MSK)
     if month == 12:
         end = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=MSK)
     else:
         end = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=MSK)
-    # sanity: last day exists
-    assert start.day == 1 and end > start
-    _ = last
     return start, end
-
-
-def psp_effective_usd():
-    return Case(
-        When(psp_usd_amount__gt=0, then=F("psp_usd_amount")),
-        default=F("usd_amount"),
-        output_field=DEC,
-    )
 
 
 def run() -> None:
@@ -76,7 +67,8 @@ def run() -> None:
     print(f"  window: {start.isoformat()} → {end.isoformat()}")
     if MERCHANT:
         print(f"  merchant: {MERCHANT}")
-    print("  formula: MDR_in + FX + MDR_out − PSP − agent − expenses")
+    print("  formula: MDR_usd + FX + MDR_out_usd − PSP − agent − expenses")
+    print("  note: Melbet merchant_fee (KZT/KGS) → USDT via fee*usd/amount")
     print("=" * 72)
 
     in_qs = InOrder.objects.filter(
@@ -93,12 +85,14 @@ def run() -> None:
         in_qs = in_qs.filter(solution__merchant__user__username=MERCHANT)
         out_qs = out_qs.filter(solution__merchant__user__username=MERCHANT)
 
+    mdr_usd = _melbet_fiat_merchant_fee_usd_expr()
     in_agg = in_qs.aggregate(
-        merchant_fee=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
+        merchant_fee_usd=Coalesce(Sum(mdr_usd), Value(ZERO, output_field=DEC)),
+        merchant_fee_raw=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
         trader_fee=Coalesce(Sum("trader_fee"), Value(ZERO, output_field=DEC)),
         agent_fee=Coalesce(Sum("agent_fee"), Value(ZERO, output_field=DEC)),
         fx_spread=Coalesce(
-            Sum(ExpressionWrapper(psp_effective_usd() - F("usd_amount"), output_field=DEC)),
+            Sum(ExpressionWrapper(_psp_effective_usd() - F("usd_amount"), output_field=DEC)),
             Value(ZERO, output_field=DEC),
         ),
         turnover=Coalesce(Sum("usd_amount"), Value(ZERO, output_field=DEC)),
@@ -106,24 +100,24 @@ def run() -> None:
         count=Count("id"),
     )
     out_agg = out_qs.aggregate(
-        merchant_fee=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
+        merchant_fee_usd=Coalesce(Sum(mdr_usd), Value(ZERO, output_field=DEC)),
+        merchant_fee_raw=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
         trader_fee=Coalesce(Sum("trader_fee"), Value(ZERO, output_field=DEC)),
         turnover=Coalesce(Sum("usd_amount"), Value(ZERO, output_field=DEC)),
         fiat=Coalesce(Sum("amount"), Value(ZERO, output_field=DEC)),
         count=Count("id"),
     )
 
-    exp_qs = PlatformExpense.objects.filter(created_at__gte=start, created_at__lt=end)
-    expenses = exp_qs.aggregate(
+    expenses = PlatformExpense.objects.filter(created_at__gte=start, created_at__lt=end).aggregate(
         total=Coalesce(Sum("amount"), Value(ZERO, output_field=DEC)),
         count=Count("id"),
     )
 
-    payin_mdr = money(in_agg["merchant_fee"])
+    payin_mdr = money(in_agg["merchant_fee_usd"])
     payin_fx = money(in_agg["fx_spread"])
     payin_trader = money(in_agg["trader_fee"])
     agent = money(in_agg["agent_fee"])
-    payout_mdr = money(out_agg["merchant_fee"])
+    payout_mdr = money(out_agg["merchant_fee_usd"])
     payout_trader = money(out_agg["trader_fee"])
     expense_total = money(expenses["total"])
     turnover = money(in_agg["turnover"]) + money(out_agg["turnover"])
@@ -143,10 +137,10 @@ def run() -> None:
     print(f"  OUT: n={out_agg['count']}  USD={money_str(out_agg['turnover'])}  fiat={money_str(out_agg['fiat'])}")
     print(f"  TOTAL USD: {money_str(turnover)}")
 
-    print("\n=== ДОХОД ПЛОЩАДКИ ===")
-    print(f"  + MDR pay-in:     {money_str(payin_mdr)}")
+    print("\n=== ДОХОД ПЛОЩАДКИ (USDT) ===")
+    print(f"  + MDR pay-in USD: {money_str(payin_mdr)}  (raw fee sum={money_str(in_agg['merchant_fee_raw'])})")
     print(f"  + FX-спред:       {money_str(payin_fx)}")
-    print(f"  + MDR pay-out:    {money_str(payout_mdr)}")
+    print(f"  + MDR pay-out USD:{money_str(payout_mdr)}  (raw fee sum={money_str(out_agg['merchant_fee_raw'])})")
     print(f"  − PSP (trader):   {money_str(payin_trader + payout_trader)}")
     print(f"  − агент:          {money_str(agent)}")
     print(f"  − расходы бота:   {money_str(expense_total)}  (n={expenses['count']})")
@@ -156,31 +150,47 @@ def run() -> None:
         print(f"  маржа от оборота: {100 * net / turnover:.2f}%")
         print(f"  оценка 2% оборота:{money_str(turnover * Decimal('0.02'))} USDT")
 
-    # top merchants by NET contribution (pay-in only approximation)
-    print("\n=== TOP мерчанты по NET pay-in (MDR+FX−PSP−agent) ===")
-    rows = list(
-        in_qs.values("solution__merchant__user__username").annotate(
-            n=Count("id"),
-            usd=Coalesce(Sum("usd_amount"), Value(ZERO, output_field=DEC)),
-            mdr=Coalesce(Sum("merchant_fee"), Value(ZERO, output_field=DEC)),
-            trader=Coalesce(Sum("trader_fee"), Value(ZERO, output_field=DEC)),
-            agent_fee=Coalesce(Sum("agent_fee"), Value(ZERO, output_field=DEC)),
-            fx=Coalesce(
-                Sum(ExpressionWrapper(psp_effective_usd() - F("usd_amount"), output_field=DEC)),
-                Value(ZERO, output_field=DEC),
-            ),
-        )
+    print("\n=== TOP мерчанты по NET pay-in (MDR_usd+FX−PSP−agent) ===")
+    # Python-side conversion for correct Melbet rows (annotate Case already used above for totals)
+    by_m: dict[str, dict] = {}
+    qs = in_qs.select_related(
+        "solution__merchant__user",
+        "solution__payment_system",
+    ).only(
+        "amount",
+        "usd_amount",
+        "psp_usd_amount",
+        "merchant_fee",
+        "trader_fee",
+        "agent_fee",
+        "solution__merchant__user__username",
+        "solution__payment_system__name",
     )
-    ranked = []
-    for row in rows:
-        contrib = money(row["mdr"]) + money(row["fx"]) - money(row["trader"]) - money(row["agent_fee"])
-        ranked.append((contrib, row))
-    ranked.sort(key=lambda x: -x[0])
-    for contrib, row in ranked[:15]:
-        name = row["solution__merchant__user__username"] or "?"
+    for order in qs.iterator(chunk_size=500):
+        merchant = order.solution.merchant if order.solution_id else None
+        username = merchant.user.username if merchant and merchant.user_id else "?"
+        fiat = uses_melbet_fiat_settlement(merchant, order.solution.payment_system if order.solution_id else None)
+        mdr = merchant_fee_to_usd(
+            order.merchant_fee,
+            order.amount,
+            order.usd_amount,
+            fiat_settlement=fiat,
+        )
+        psp_usd = order.psp_usd_amount if order.psp_usd_amount and order.psp_usd_amount > 0 else order.usd_amount
+        fx = money(psp_usd) - money(order.usd_amount)
+        cell = by_m.setdefault(
+            username,
+            {"n": 0, "usd": ZERO, "net": ZERO},
+        )
+        cell["n"] += 1
+        cell["usd"] += money(order.usd_amount)
+        cell["net"] += money(mdr + fx - money(order.trader_fee) - money(order.agent_fee))
+
+    ranked = sorted(by_m.items(), key=lambda kv: -kv[1]["net"])
+    for name, cell in ranked[:15]:
         print(
-            f"  {name:<16} n={row['n']:5} USD={money_str(row['usd']):>12}  "
-            f"net≈{money_str(contrib):>10}"
+            f"  {name:<16} n={cell['n']:5} USD={money_str(cell['usd']):>12}  "
+            f"net≈{money_str(cell['net']):>10}"
         )
 
     print("\n" + "=" * 72)
