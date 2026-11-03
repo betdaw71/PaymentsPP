@@ -1127,6 +1127,17 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
                 pay_in.order.refresh_from_db()
             return
 
+        if provider_name == "payplat":
+            try:
+                from payments.admin_alerts import note_payplat_issuance_failure
+
+                note_payplat_issuance_failure(
+                    pay_in,
+                    reason=psp_create_failure_reason_internal(pay_in) or "payplat_attach_failed",
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("payplat issuance alert failed pay_in=%s", getattr(pay_in, "id", None))
+
         if try_psp_provider_fallback(pay_in, failed_provider=provider_name):
             return
 
