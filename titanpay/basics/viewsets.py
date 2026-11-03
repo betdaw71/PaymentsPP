@@ -300,6 +300,22 @@ class BalanceViewset(viewsets.ModelViewSet):
 
         return Response(status=status.HTTP_200_OK, data=snapshot())
 
+    @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="ops-dashboard")
+    def ops_dashboard(self, request):
+        from basics.ops_dashboard import snapshot as ops_snapshot
+
+        params = request.query_params
+        data = ops_snapshot(
+            preset=params.get("preset"),
+            date_from=params.get("date_from") or params.get("from"),
+            date_to=params.get("date_to") or params.get("to"),
+            merchant=params.get("merchant"),
+            psp=params.get("psp"),
+            ps=params.get("ps"),
+            direction=params.get("direction"),
+        )
+        return Response(status=status.HTTP_200_OK, data=data)
+
     @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="support-teamlead")
     def support_teamlead(self, request):
         rows = []

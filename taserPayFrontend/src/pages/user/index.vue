@@ -39,6 +39,7 @@ import HeadSupportTradersBalance from "@/views/user/headsupport/HeadSupportTrade
 import HeadSupportMerchantsBalance from "@/views/user/headsupport/HeadSupportMerchantsBalance.vue"
 import HeadSupportAgents from "@/views/user/headsupport/HeadSupportAgents.vue"
 import HeadSupportCashRegister from "@/views/user/headsupport/HeadSupportCashRegister.vue"
+import HeadSupportDashboard from "@/views/user/headsupport/HeadSupportDashboard.vue"
 import HeadSupportWithdrawals from "@/views/user/headsupport/HeadSupportWithdrawals.vue"
 import AgentBalance from "@/views/user/agent/AgentBalance.vue"
 import MainAgentInfo from "@/views/user/agent/MainAgentInfo.vue"
@@ -141,6 +142,11 @@ const tabs = computed(
       title: t ('tabs.agents'),
     }
 
+    const opsDashboardTab = {
+      icon: 'tabler-chart-bar',
+      title: t ('tabs.ops_dashboard'),
+    }
+
     const cashRegisterTab = {
       icon: 'tabler-report-money',
       title: t ('tabs.cash_register'),
@@ -201,6 +207,7 @@ const tabs = computed(
     if (authStore.is_head_of_support ()) {
       return [
         mainInfoTab,
+        opsDashboardTab,
         cashRegisterTab,
         teamTab,
         transactionsTab,
@@ -410,6 +417,9 @@ const getUser = (polling = true) => {
         >
           <VWindowItem>
             <MainHeadSupportInfo />
+          </VWindowItem>
+          <VWindowItem>
+            <HeadSupportDashboard />
           </VWindowItem>
           <VWindowItem>
             <HeadSupportCashRegister />
