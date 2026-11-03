@@ -216,13 +216,6 @@ def on_payout_saved(sender, instance, created, **kwargs):
     transaction.on_commit(_send)
 
 
-def _payplat_usernames() -> set[str]:
-    from payments.payplat_client import payplat_trader_username
-
-    names = {payplat_trader_username().strip().lower(), "payplat1"}
-    return {n for n in names if n}
-
-
 def note_payplat_issuance_failure(pay_in, *, reason: str | None = None) -> None:
     """Учесть отказ PayPlat выдать реквизит; при пачке отказов — алерт в Telegram."""
     window = _int(getattr(settings, "ADMIN_ALERT_PAYPLAT_FAIL_WINDOW_SEC", 300), 300)
