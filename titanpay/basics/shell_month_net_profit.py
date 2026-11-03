@@ -200,15 +200,32 @@ def run() -> None:
         print(f"  маржа от оборота: {100 * net / turnover:.2f}%")
         print(f"  оценка 2% оборота:{money_str(turnover * Decimal('0.02'))} USDT")
 
-    print("\n=== TOP мерчанты по NET pay-in (MDR_usd+FX−PSP−agent) ===")
+    def _empty_cell():
+        return {
+            "n": 0,
+            "usd": ZERO,
+            "psp_usd": ZERO,
+            "mdr": ZERO,
+            "fx": ZERO,
+            "trader": ZERO,
+            "agent": ZERO,
+            "net": ZERO,
+        }
+
     by_m: dict[str, dict] = {}
+    by_psp: dict[str, dict] = {}
     qs = in_qs.select_related(
         "solution__merchant__user",
         "solution__payment_system",
+        "payment_details__group__trader__user",
     )
     for order in qs.iterator(chunk_size=500):
         merchant = order.solution.merchant if order.solution_id else None
         username = merchant.user.username if merchant and merchant.user_id else "?"
+        try:
+            psp_name = order.payment_details.group.trader.user.username
+        except Exception:  # noqa: BLE001
+            psp_name = "(no_psp)"
         fiat = uses_melbet_fiat_settlement(
             merchant,
             order.solution.payment_system if order.solution_id else None,
@@ -219,18 +236,69 @@ def run() -> None:
             order.usd_amount,
             fiat_settlement=fiat,
         )
-        psp_usd = order.psp_usd_amount if order.psp_usd_amount and order.psp_usd_amount > 0 else order.usd_amount
-        fx = money(psp_usd) - money(order.usd_amount)
-        cell = by_m.setdefault(username, {"n": 0, "usd": ZERO, "net": ZERO})
-        cell["n"] += 1
-        cell["usd"] += money(order.usd_amount)
-        cell["net"] += money(mdr + fx - money(order.trader_fee) - money(order.agent_fee))
+        usd = money(order.usd_amount)
+        psp_usd = (
+            money(order.psp_usd_amount)
+            if order.psp_usd_amount and order.psp_usd_amount > 0
+            else usd
+        )
+        fx = money(psp_usd - usd)
+        trader_fee = money(order.trader_fee)
+        agent_fee = money(order.agent_fee)
+        deal_net = money(mdr + fx - trader_fee - agent_fee)
 
-    ranked = sorted(by_m.items(), key=lambda kv: -kv[1]["net"])
-    for name, cell in ranked[:15]:
+        for bucket, key in ((by_m, username), (by_psp, psp_name or "(no_psp)")):
+            cell = bucket.setdefault(key, _empty_cell())
+            cell["n"] += 1
+            cell["usd"] += usd
+            cell["psp_usd"] += psp_usd
+            cell["mdr"] += mdr
+            cell["fx"] += fx
+            cell["trader"] += trader_fee
+            cell["agent"] += agent_fee
+            cell["net"] += deal_net
+
+    def _pct(part, whole) -> str:
+        if whole <= 0:
+            return "   -"
+        return f"{100 * part / whole:5.2f}%"
+
+    print("\n=== ПО PSP (all-in: MDR + FX − trader − agent) ===")
+    print(
+        "  "
+        f"{'psp':<12} {'n':>5} {'USD':>12} {'share':>6}  "
+        f"{'MDR':>10} {'FX':>9} {'PSP_fee':>10} {'agent':>8}  "
+        f"{'NET':>10} {'margin':>7} {'eff_psp':>8}"
+    )
+    print(
+        "  "
+        f"{'':<12} {'':>5} {'':>12} {'':>6}  "
+        f"{'':>10} {'':>9} {'':>10} {'':>8}  "
+        f"{'':>10} {'':>7} {'cost%':>8}"
+    )
+    # eff_psp cost% = (trader_fee - FX) / merchant_usd — all-in cost of this PSP to the platform
+    for name, cell in sorted(by_psp.items(), key=lambda kv: -kv[1]["usd"]):
+        usd = cell["usd"]
+        eff_cost = money(cell["trader"] - cell["fx"])
+        print(
+            f"  {name:<12} {cell['n']:5} {money_str(usd):>12} {_pct(usd, money(in_agg['turnover'])):>6}  "
+            f"{money_str(cell['mdr']):>10} {money_str(cell['fx']):>9} "
+            f"{money_str(cell['trader']):>10} {money_str(cell['agent']):>8}  "
+            f"{money_str(cell['net']):>10} {_pct(cell['net'], usd):>7} "
+            f"{_pct(eff_cost, usd):>8}"
+        )
+    print(
+        "  eff_psp cost% = (PSP_fee − FX) / USD мерчанта — чем выше, тем дороже PSP all-in.\n"
+        "  PayPlat обычно FX≈0 → cost% ≈ его MDR; у xe+2/+3 cost% ниже за счёт курса."
+    )
+
+    print("\n=== TOP мерчанты по NET pay-in (MDR_usd+FX−PSP−agent) ===")
+    for name, cell in sorted(by_m.items(), key=lambda kv: -kv[1]["net"])[:15]:
         print(
             f"  {name:<16} n={cell['n']:5} USD={money_str(cell['usd']):>12}  "
-            f"net≈{money_str(cell['net']):>10}"
+            f"MDR={money_str(cell['mdr']):>9} FX={money_str(cell['fx']):>8}  "
+            f"PSP={money_str(cell['trader']):>9} net≈{money_str(cell['net']):>10} "
+            f"({_pct(cell['net'], cell['usd']).strip()})"
         )
 
     print("\n" + "=" * 72)
