@@ -1,6 +1,8 @@
 """
 Django shell: статистика за день по Completed InOrder / OutOrder + конверсия PayIn.
 
+merchant_fee для Melbet (KZT/KGS) конвертируется в USDT: fee * usd_amount / amount.
+
   docker compose exec app python manage.py daily_stats --yesterday
   docker compose exec app python manage.py daily_stats 2026-07-24
   docker compose exec app python manage.py daily_stats --yesterday --merchant pandapay
@@ -11,23 +13,58 @@ Shell:
 """
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-from django.db.models import Count, Sum
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from payments.models import PayIn
 from trade.models import InOrder, OutOrder
 
 PSP_TRADER_USERNAMES = frozenset({"protocol1", "expayone1", "fairpay1", "playments1"})
+ZERO = Decimal("0.00")
+DEC = DecimalField(max_digits=32, decimal_places=2)
 
 
 def _d(val) -> Decimal:
     if val is None:
         return Decimal("0")
     return Decimal(str(val))
+
+
+def _mdr_usd_expr():
+    try:
+        from basics.cash_register import melbet_fiat_merchant_fee_usd_expr
+
+        return melbet_fiat_merchant_fee_usd_expr()
+    except ImportError:
+        from merchant.kzt_settlement import (
+            melbet_kgs_ps_names,
+            melbet_kzt_ps_names,
+            melbet_kzt_usernames,
+        )
+
+        melbet_names = sorted(melbet_kzt_usernames())
+        fiat_ps = sorted(
+            {*(n.upper() for n in melbet_kzt_ps_names()), *(n.upper() for n in melbet_kgs_ps_names())}
+        )
+        fiat_fee_usd = ExpressionWrapper(
+            F("merchant_fee") * F("usd_amount") / F("amount"),
+            output_field=DEC,
+        )
+        return Case(
+            When(
+                solution__merchant__user__username__in=melbet_names,
+                solution__payment_system__name__in=fiat_ps,
+                amount__gt=0,
+                usd_amount__gt=0,
+                then=fiat_fee_usd,
+            ),
+            default=F("merchant_fee"),
+            output_field=DEC,
+        )
 
 
 def _resolve_day(target: date | None, *, yesterday: bool) -> date:
@@ -46,21 +83,23 @@ def _day_bounds(day: date) -> tuple[datetime, datetime]:
 
 
 def _agg_in_qs(qs):
+    mdr = _mdr_usd_expr()
     return qs.aggregate(
         count=Count("id"),
         amount=Sum("amount"),
         amount_usd=Sum("usd_amount"),
-        merchant_fee=Sum("merchant_fee"),
+        merchant_fee=Coalesce(Sum(mdr), Value(ZERO, output_field=DEC)),
         trader_fee=Sum("trader_fee"),
     )
 
 
 def _agg_out_qs(qs):
+    mdr = _mdr_usd_expr()
     return qs.aggregate(
         count=Count("id"),
         amount=Sum("amount"),
         amount_usd=Sum("usd_amount"),
-        merchant_fee=Sum("merchant_fee"),
+        merchant_fee=Coalesce(Sum(mdr), Value(ZERO, output_field=DEC)),
         trader_fee=Sum("trader_fee"),
     )
 
@@ -74,29 +113,31 @@ def _print_agg_row(label: str, agg: dict, currency_sym: str = ""):
     fiat = f" {amt:,.2f} {currency_sym}".strip() if currency_sym else f" {amt:,.2f}"
     print(
         f"  {label}: count={cnt} | fiat={fiat} | USD={usd:,.2f} | "
-        f"merchant_fee={mf:,.2f} | trader_fee={tf:,.2f}"
+        f"merchant_fee_usd={mf:,.2f} | trader_fee={tf:,.2f}"
     )
 
 
 def _group_in(qs, *fields):
+    mdr = _mdr_usd_expr()
     return list(
         qs.values(*fields).annotate(
             count=Count("id"),
             amount=Sum("amount"),
             amount_usd=Sum("usd_amount"),
-            merchant_fee=Sum("merchant_fee"),
+            merchant_fee=Coalesce(Sum(mdr), Value(ZERO, output_field=DEC)),
             trader_fee=Sum("trader_fee"),
         )
     )
 
 
 def _group_out(qs, *fields):
+    mdr = _mdr_usd_expr()
     return list(
         qs.values(*fields).annotate(
             count=Count("id"),
             amount=Sum("amount"),
             amount_usd=Sum("usd_amount"),
-            merchant_fee=Sum("merchant_fee"),
+            merchant_fee=Coalesce(Sum(mdr), Value(ZERO, output_field=DEC)),
             trader_fee=Sum("trader_fee"),
         )
     )
@@ -148,6 +189,7 @@ def run(target: date | None = None, *, yesterday: bool = False, merchant: str | 
     print(f"DAILY STATS  {day.isoformat()}  ({timezone.get_current_timezone()})")
     if merchant:
         print(f"  merchant filter: {merchant}")
+    print("  merchant_fee_usd: Melbet KZT/KGS fee → USDT (fee*usd/amount)")
     print("=" * 72)
 
     in_qs = InOrder.objects.filter(

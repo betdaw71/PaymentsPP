@@ -170,7 +170,7 @@ def _psp_effective_usd():
     )
 
 
-def _melbet_fiat_merchant_fee_usd_expr():
+def melbet_fiat_merchant_fee_usd_expr():
     """SQL: Melbet KZT/KGS merchant_fee → USDT via fee * usd_amount / amount; else fee as-is."""
     from merchant.kzt_settlement import (
         melbet_kgs_ps_names,
@@ -197,11 +197,15 @@ def _melbet_fiat_merchant_fee_usd_expr():
     )
 
 
+# Back-compat alias for older shells.
+_melbet_fiat_merchant_fee_usd_expr = melbet_fiat_merchant_fee_usd_expr
+
+
 def _period_pnl(start: datetime, end: datetime) -> dict:
     from basics.models import PlatformExpense
     from trade.models import InOrder, OutOrder
 
-    mdr_usd = _melbet_fiat_merchant_fee_usd_expr()
+    mdr_usd = melbet_fiat_merchant_fee_usd_expr()
     in_agg = InOrder.objects.filter(
         status__name="Completed",
         completion_date__gte=start,
