@@ -69,9 +69,10 @@ SESSION_ATTRS = (
     "astrum_session",
 )
 
-# success-ветка до сих пор early-return на Completed (повторный колбек глотается)
+# success-ветка early-return на Completed (повторный колбек глотается).
+# layerone убран после фикса handle_psp_success_webhook в layerone_views.
 EARLY_RETURN_PSPS = frozenset({
-    "layerone", "protocol", "plutus", "botonpay", "paymap", "concored",
+    "protocol", "plutus", "botonpay", "paymap", "concored",
     "playments", "fairpay", "expayone", "astrum", "syndicate",
 })
 
