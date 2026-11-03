@@ -109,8 +109,8 @@ def run() -> None:
         print("\nLayerOne session: НЕТ")
     else:
         print("\nLayerOne session:")
-        print(f"  provider_order:  {getattr(sess, 'provider_order_id', None) or getattr(sess, 'layerone_order_id', None)}")
-        print(f"  provider_payment:{getattr(sess, 'provider_payment_id', None) or getattr(sess, 'layerone_payment_id', None)}")
+        print(f"  external_id:     {sess.external_id}")
+        print(f"  provider_payment:{sess.provider_payment_id}")
         print(f"  last_state:      {sess.last_notified_state}")
         print(f"  updated:         {when(sess.updated_at)}")
         last = payload_dict(sess.last_webhook_payload)
