@@ -1,4 +1,4 @@
-"""Telegram-уведомления админу о балансах, payout, невыдаче PayPlat и низкой конверсии."""
+"""Telegram-уведомления админу: балансы, payout, PayPlat, конверсия, апелляции."""
 from __future__ import annotations
 
 import logging
@@ -305,9 +305,114 @@ def check_merchant_conversion_alerts() -> None:
         notify_with_cooldown(f"conv_low:{name}", text, cooldown)
 
 
+def _appeal_closure_stats(since, until, merchants: list[str]) -> dict[str, dict[str, int]]:
+    """Success за [since, until) и сколько из них закрыты через approved-апелляцию."""
+    from collections import defaultdict
+
+    from appeals.models import PayInAppeal, PayInAppealStatus
+    from payments.models import PayIn
+
+    qs = PayIn.objects.filter(
+        status__name="Success",
+        updated_at__gte=since,
+        updated_at__lt=until,
+    ).select_related("merchant__user")
+    if merchants:
+        qs = qs.filter(merchant__user__username__in=merchants)
+
+    rows = [(p.id, p.merchant.user.username if p.merchant_id and p.merchant.user_id else "") for p in qs.iterator(chunk_size=500)]
+    pay_ids = [pid for pid, _ in rows]
+    approved_ids = set(
+        PayInAppeal.objects.filter(
+            pay_in_id__in=pay_ids,
+            status=PayInAppealStatus.APPROVED,
+        )
+        .values_list("pay_in_id", flat=True)
+        .distinct()
+    ) if pay_ids else set()
+
+    stats: dict[str, dict[str, int]] = defaultdict(lambda: {"success": 0, "appeal_ok": 0})
+    for pid, name in rows:
+        if not name:
+            continue
+        cell = stats[name]
+        cell["success"] += 1
+        if pid in approved_ids:
+            cell["appeal_ok"] += 1
+    return stats
+
+
+def check_appeal_closure_alerts() -> None:
+    """Рост доли Success, закрытых через одобренную апелляцию (апелляционное закрытие)."""
+    window_min = _int(getattr(settings, "ADMIN_ALERT_APPEAL_WINDOW_MIN", 60), 60)
+    min_success = _int(getattr(settings, "ADMIN_ALERT_APPEAL_MIN_SUCCESS", 8), 8)
+    min_appeal = _int(getattr(settings, "ADMIN_ALERT_APPEAL_MIN_APPROVED", 2), 2)
+    max_pct = _dec(getattr(settings, "ADMIN_ALERT_APPEAL_PCT_MAX", 20), Decimal("20"))
+    growth_pp = _dec(getattr(settings, "ADMIN_ALERT_APPEAL_GROWTH_PP", 10), Decimal("10"))
+    cooldown = _int(getattr(settings, "ADMIN_ALERT_APPEAL_COOLDOWN_SEC", 1800), 1800)
+    raw_merchants = str(
+        getattr(settings, "ADMIN_ALERT_APPEAL_MERCHANTS", "melbet,mostbet") or ""
+    )
+    merchants = [p.strip() for p in raw_merchants.split(",") if p.strip()]
+    if window_min <= 0 or min_success <= 0:
+        return
+
+    now = timezone.now()
+    cur_since = now - timedelta(minutes=window_min)
+    prev_since = cur_since - timedelta(minutes=window_min)
+
+    current = _appeal_closure_stats(cur_since, now, merchants)
+    previous = _appeal_closure_stats(prev_since, cur_since, merchants)
+
+    for name, cell in current.items():
+        success = cell["success"]
+        appeal_ok = cell["appeal_ok"]
+        if success < min_success or appeal_ok < min_appeal:
+            continue
+        pct = (Decimal(appeal_ok) * Decimal("100") / Decimal(success)).quantize(Decimal("0.01"))
+
+        prev = previous.get(name) or {"success": 0, "appeal_ok": 0}
+        prev_success = prev["success"]
+        prev_pct = None
+        if prev_success >= min_success:
+            prev_pct = (
+                Decimal(prev["appeal_ok"]) * Decimal("100") / Decimal(prev_success)
+            ).quantize(Decimal("0.01"))
+
+        high = pct >= max_pct
+        grew = prev_pct is not None and (pct - prev_pct) >= growth_pp
+        if not high and not grew:
+            continue
+
+        reasons = []
+        if high:
+            reasons.append(f"≥ порога {max_pct}%")
+        if grew:
+            reasons.append(f"рост +{(pct - prev_pct):.2f} п.п. (порог +{growth_pp})")
+        prev_line = (
+            f"Пред. окно: appeal={prev['appeal_ok']}/{prev_success} = {prev_pct}%\n"
+            if prev_pct is not None
+            else "Пред. окно: мало Success для сравнения\n"
+        )
+        text = (
+            f"⚠ Рост апелляционного закрытия {name}\n"
+            f"Окно: последние {window_min} мин\n"
+            f"Success={success}  через апелляцию={appeal_ok}  "
+            f"appeal%= {pct}%\n"
+            f"{prev_line}"
+            f"Триггер: {', '.join(reasons)}\n"
+            "Проверь качество реквизитов / чеки / дашборд."
+        )
+        notify_with_cooldown(f"appeal_closure_high:{name}", text, cooldown)
+
+
 def check_ops_health_alerts() -> None:
-    """Периодические ops-алерты (конверсия). PayPlat burst — event-driven."""
+    """Периодические ops-алерты (конверсия, апелляции). PayPlat burst — event-driven."""
     try:
         check_merchant_conversion_alerts()
     except Exception as exc:
         logger.error("conversion alerts failed: %s", exc)
+    try:
+        check_appeal_closure_alerts()
+    except Exception as exc:
+        logger.error("appeal closure alerts failed: %s", exc)

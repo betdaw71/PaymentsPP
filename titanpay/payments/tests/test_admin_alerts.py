@@ -8,6 +8,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from basics.models import Balance
 from merchant.models import Merchant
 from payments.admin_alerts import (
+    check_appeal_closure_alerts,
     check_merchant_balance_alerts,
     note_payplat_issuance_failure,
     notify_threshold_once,
@@ -98,3 +99,76 @@ class CooldownAndPayplatBurstTest(SimpleTestCase):
         note_payplat_issuance_failure(pay_in, reason="no_requisite")
         self.assertEqual(send.call_count, 1)
         self.assertIn("PayPlat", send.call_args.args[0])
+
+
+class AppealClosureAlertTest(SimpleTestCase):
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(
+        ADMIN_ALERT_APPEAL_WINDOW_MIN=60,
+        ADMIN_ALERT_APPEAL_MIN_SUCCESS=8,
+        ADMIN_ALERT_APPEAL_MIN_APPROVED=2,
+        ADMIN_ALERT_APPEAL_PCT_MAX=20,
+        ADMIN_ALERT_APPEAL_GROWTH_PP=10,
+        ADMIN_ALERT_APPEAL_MERCHANTS="mostbet",
+        ADMIN_ALERT_APPEAL_COOLDOWN_SEC=1800,
+        ADMIN_ALERT_BOT_TOKEN="t",
+        ADMIN_ALERT_CHAT_ID="1",
+    )
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    @patch("payments.admin_alerts._appeal_closure_stats")
+    def test_alerts_on_high_appeal_pct(self, stats, send):
+        # each check() calls stats twice: current, previous
+        high = {"mostbet": {"success": 10, "appeal_ok": 4}}  # 40%
+        low = {"mostbet": {"success": 10, "appeal_ok": 1}}  # 10%
+        stats.side_effect = [high, low, high, low]
+        check_appeal_closure_alerts()
+        self.assertEqual(send.call_count, 1)
+        text = send.call_args.args[0]
+        self.assertIn("апелляционного закрытия mostbet", text)
+        self.assertIn("40%", text)
+        check_appeal_closure_alerts()
+        self.assertEqual(send.call_count, 1)  # cooldown
+
+    @override_settings(
+        ADMIN_ALERT_APPEAL_WINDOW_MIN=60,
+        ADMIN_ALERT_APPEAL_MIN_SUCCESS=8,
+        ADMIN_ALERT_APPEAL_MIN_APPROVED=2,
+        ADMIN_ALERT_APPEAL_PCT_MAX=50,
+        ADMIN_ALERT_APPEAL_GROWTH_PP=10,
+        ADMIN_ALERT_APPEAL_MERCHANTS="mostbet",
+        ADMIN_ALERT_APPEAL_COOLDOWN_SEC=1800,
+        ADMIN_ALERT_BOT_TOKEN="t",
+        ADMIN_ALERT_CHAT_ID="1",
+    )
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    @patch("payments.admin_alerts._appeal_closure_stats")
+    def test_alerts_on_growth_even_below_max(self, stats, send):
+        stats.side_effect = [
+            {"mostbet": {"success": 10, "appeal_ok": 3}},  # 30% < 50 max
+            {"mostbet": {"success": 10, "appeal_ok": 1}},  # 10% → +20pp
+        ]
+        check_appeal_closure_alerts()
+        self.assertEqual(send.call_count, 1)
+        self.assertIn("рост", send.call_args.args[0].lower())
+
+    @override_settings(
+        ADMIN_ALERT_APPEAL_WINDOW_MIN=60,
+        ADMIN_ALERT_APPEAL_MIN_SUCCESS=8,
+        ADMIN_ALERT_APPEAL_MIN_APPROVED=2,
+        ADMIN_ALERT_APPEAL_PCT_MAX=20,
+        ADMIN_ALERT_APPEAL_GROWTH_PP=10,
+        ADMIN_ALERT_APPEAL_MERCHANTS="mostbet",
+        ADMIN_ALERT_BOT_TOKEN="t",
+        ADMIN_ALERT_CHAT_ID="1",
+    )
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    @patch("payments.admin_alerts._appeal_closure_stats")
+    def test_no_alert_when_below_thresholds(self, stats, send):
+        stats.side_effect = [
+            {"mostbet": {"success": 10, "appeal_ok": 1}},  # 10%
+            {"mostbet": {"success": 10, "appeal_ok": 1}},
+        ]
+        check_appeal_closure_alerts()
+        self.assertEqual(send.call_count, 0)
