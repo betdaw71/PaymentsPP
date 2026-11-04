@@ -19,6 +19,7 @@ from django.conf import settings
 from basics.models import Trader, TraderTeamRates
 from merchant.models import Merchant, MerchantSolution
 from payments.dual_fx import merchant_fx_markup, psp_fx_markup_for_trader
+# merchant_fx_markup already respects XE_KZT_MARKUP_BY_MERCHANT
 
 MERCHANTS = [
     p.strip()
@@ -105,7 +106,7 @@ def run() -> None:
 
         print(f"\n### {uname}  agent={agent}%")
         for sol in sols:
-            mm = merchant_fx_markup(sol.payment_system) or default_mm
+            mm = merchant_fx_markup(sol.payment_system, merchant=merchant) or default_mm
             m_fx = fx_pp(mm)
             traffic = getattr(getattr(sol, "traffic", None), "name", None) or "—"
             cur_m = Decimal(str(sol.mdr_in))
