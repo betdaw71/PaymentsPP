@@ -1,7 +1,8 @@
-"""Матрица доходности: текущий MDR мерчанта vs PSP при цели ≥ TARGET%.
+"""Матрица зазора: (MDR+FX) мерча − (MDR+FX) PSP − агент ≥ TARGET%.
 
-Показывает live MerchantSolution.mdr_in / агента и минимальную ставку,
-до которой можно опуститься на каждом провайдере без падения ниже TARGET.
+Считаем как в тетради: комиссия и курсовая наценка пакетом с каждой стороны,
+между пакетами должен оставаться зазор (по умолчанию 1.5%).
+Дополнительно колонка exact% — как в кассе (fee±FX на USDT).
 
   docker compose exec -T app python manage.py shell \\
     < titanpay/basics/shell_merchant_rate_cut_matrix.py
@@ -10,14 +11,13 @@
 """
 from __future__ import annotations
 
-import json
 import os
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
 
 from basics.models import Trader, TraderTeamRates
-from merchant.models import Agent, Merchant, MerchantSolution
+from merchant.models import Merchant, MerchantSolution
 from payments.dual_fx import merchant_fx_markup, psp_fx_markup_for_trader
 
 MERCHANTS = [
@@ -44,33 +44,46 @@ def _q(x: Decimal, places="0.01") -> Decimal:
     return x.quantize(Decimal(places), rounding=ROUND_HALF_UP)
 
 
+def fx_pp(markup: Decimal) -> Decimal:
+    return (markup - Decimal("1")) * Decimal("100")
+
+
 def agent_pct(merchant: Merchant) -> Decimal:
-    row = Agent.objects.filter(merchant=merchant).order_by("id").first()
-    if row is None:
+    agent = getattr(merchant, "agent", None)
+    if agent is None:
         return Decimal("0")
-    return Decimal(str(row.commission_percent or 0))
+    return Decimal(str(agent.commission_percent or 0))
 
 
-def yield_pct(mdr: Decimal, trader_mdr: Decimal, ratio: Decimal, agent: Decimal) -> Decimal:
-    # pnl% of merchant_usd = M - T*r + 100*(r-1) - A
+def notebook_gap(mdr: Decimal, trader_mdr: Decimal, m_fx: Decimal, p_fx: Decimal, agent: Decimal) -> Decimal:
+    """(MDR_m + FX_m) − (MDR_p + FX_p) − agent."""
+    return (mdr + m_fx) - (trader_mdr + p_fx) - agent
+
+
+def min_mdr_notebook(trader_mdr: Decimal, m_fx: Decimal, p_fx: Decimal, agent: Decimal, target: Decimal) -> Decimal:
+    # M + m_fx - T - p_fx - A >= target → M >= target + T + p_fx - m_fx + A
+    return target + trader_mdr + p_fx - m_fx + agent
+
+
+def exact_pnl_pct(mdr: Decimal, trader_mdr: Decimal, ratio: Decimal, agent: Decimal) -> Decimal:
+    """Касса: (merchant_fee - trader_fee + fx_spread - agent) / merchant_usd * 100."""
     return mdr - trader_mdr * ratio + Decimal("100") * (ratio - Decimal("1")) - agent
 
 
-def min_mdr(trader_mdr: Decimal, ratio: Decimal, agent: Decimal, target: Decimal) -> Decimal:
-    return target + trader_mdr * ratio - Decimal("100") * (ratio - Decimal("1")) + agent
-
-
 def run() -> None:
-    print("=" * 78)
-    print(f"RATE CUT MATRIX  PS={PS_NAME}  TARGET≥{TARGET}%  merchants={','.join(MERCHANTS)}")
-    print("=" * 78)
+    print("=" * 88)
+    print(
+        f"RATE CUT MATRIX (пакет MDR+FX)  PS={PS_NAME}  "
+        f"TARGET gap≥{TARGET}%  merchants={','.join(MERCHANTS)}"
+    )
+    print("  gap = (MDR_merch + FX_merch) − (MDR_psp + FX_psp) − agent")
+    print("=" * 88)
 
-    # resolve PS markup from a sample solution later; default xe+5
     default_mm = Decimal("1.05")
 
     for uname in MERCHANTS:
         merchant = (
-            Merchant.objects.select_related("user")
+            Merchant.objects.select_related("user", "agent")
             .filter(user__username__iexact=uname)
             .first()
         )
@@ -93,16 +106,18 @@ def run() -> None:
         print(f"\n### {uname}  agent={agent}%")
         for sol in sols:
             mm = merchant_fx_markup(sol.payment_system) or default_mm
+            m_fx = fx_pp(mm)
             traffic = getattr(getattr(sol, "traffic", None), "name", None) or "—"
+            cur_m = Decimal(str(sol.mdr_in))
+            merch_pack = cur_m + m_fx
             print(
                 f"  solution id={sol.id}  ftd={sol.ftd}  traffic={traffic}  "
-                f"mdr_in={sol.mdr_in}%  fx_markup={mm}  "
+                f"mdr_in={cur_m}%  FX=+{m_fx}%  pack={merch_pack}%  "
                 f"limits={sol.min_limit_in}…{sol.max_limit_in}"
             )
-            cur_m = Decimal(str(sol.mdr_in))
             print(
-                f"  {'PSP':12} {'T%':>5} {'FX':>5} {'r':>6} {'now%':>6} "
-                f"{'minM':>6} {'maxCut':>7}  note"
+                f"  {'PSP':12} {'T%':>5} {'FX_p':>5} {'pack_p':>7} "
+                f"{'gap':>6} {'exact':>6} {'minM':>6} {'maxCut':>7}  note"
             )
             binding = None
             binding_min = Decimal("0")
@@ -126,31 +141,35 @@ def run() -> None:
                     continue
                 T = Decimal(str(rate.mdr_in))
                 pm = psp_fx_markup_for_trader(trader, fallback=mm)
-                # bitzone may use P2P — if markup equals merchant, r=1
                 if pm <= 0:
                     pm = mm
+                p_fx = fx_pp(pm)
+                psp_pack = T + p_fx
+                gap = notebook_gap(cur_m, T, m_fx, p_fx, agent)
                 ratio = (mm / pm) if pm else Decimal("1")
-                y = yield_pct(cur_m, T, ratio, agent)
-                floor = min_mdr(T, ratio, agent, TARGET)
+                exact = exact_pnl_pct(cur_m, T, ratio, agent)
+                floor = min_mdr_notebook(T, m_fx, p_fx, agent, TARGET)
                 cut = cur_m - floor
-                flag = "OK" if y >= TARGET else "BELOW 1.5"
+                flag = "OK" if gap >= TARGET else f"BELOW {TARGET}"
                 if binding is None or floor > binding_min:
                     binding = psp
                     binding_min = floor
                 print(
-                    f"  {psp:12} {T:5.2f} {pm:5.3f} {ratio:6.4f} {_q(y):6.2f} "
-                    f"{_q(floor):6.2f} {_q(cut):7.2f}  {flag}"
+                    f"  {psp:12} {T:5.2f} {p_fx:5.2f} {psp_pack:7.2f} "
+                    f"{_q(gap):6.2f} {_q(exact):6.2f} {_q(floor):6.2f} {_q(cut):7.2f}  {flag}"
                 )
             print(
                 f"  → единый MDR не ниже {_q(binding_min)}% "
-                f"(жёсткий PSP={binding}), иначе режь только дешёвый каскад"
+                f"(жёсткий PSP={binding} по пакетному зазору), "
+                f"иначе сужай каскад"
             )
 
-    # cascade hint from env
-    raw_pri = getattr(settings, "PSP_CASCADE_PRIORITY", None) or ""
+    raw_pri = getattr(settings, "PSP_CASCADE_PRIORITY", None) or getattr(
+        settings, "PSP_ROUTING_PRIORITY_MAP", None
+    ) or ""
     raw_share = getattr(settings, "PSP_ROUTING_SHARE_MAP", None) or ""
     print("\n=== cascade env (global, не per-merchant) ===")
-    print(f"  PSP_CASCADE_PRIORITY={raw_pri}")
+    print(f"  priority={raw_pri}")
     print(f"  PSP_ROUTING_SHARE_MAP={raw_share}")
     print("\nDONE")
 
