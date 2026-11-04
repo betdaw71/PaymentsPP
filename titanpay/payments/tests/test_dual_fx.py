@@ -44,6 +44,23 @@ class DualFxQuoteTest(SimpleTestCase):
         self.assertGreater(quote.psp_usd, quote.merchant_usd)
         self.assertEqual(quote.merchant_usd, Decimal("10.00"))
 
+    @override_settings(XE_KZT_MARKUP_BY_MERCHANT={"pandapay": "1.04"})
+    def test_pandapay_merchant_xe_plus_4_rescales_from_stored_ps_rate(self):
+        # PS stores xe+5 (=525); pandapay contract xe+4 → merchant_rate=520
+        ps = _PS("525")
+        merchant = SimpleNamespace(user=SimpleNamespace(username="pandapay"))
+        quote = quote_dual_fx(
+            amount=Decimal("5200"),
+            payment_system=ps,
+            trader=_trader("patriot1"),
+            merchant=merchant,
+        )
+        self.assertEqual(quote.merchant_markup, Decimal("1.04"))
+        self.assertEqual(quote.merchant_rate, Decimal("520.000"))
+        self.assertEqual(quote.psp_markup, Decimal("1.03"))
+        self.assertGreater(quote.merchant_rate, quote.psp_rate)
+        self.assertEqual(quote.merchant_usd, Decimal("10.00"))
+
     def test_patriot_is_xe_plus_3(self):
         ps = _PS("525")
         quote = quote_dual_fx(amount=Decimal("5250"), payment_system=ps, trader=_trader("patriot1"))

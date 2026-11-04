@@ -178,3 +178,66 @@ class ApplyPreferredPspOrderTest(SimpleTestCase):
             [g.trader.user.username for g in ordered],
             ["gipay1", "payplat1", "bitzone1"],
         )
+
+
+@override_settings(
+    PSP_ROUTING_PRIORITY_MAP={"payplat1": 1, "gipay1": 2, "bitzone1": 3},
+    PSP_ROUTING_SHARE_MAP={"payplat1": 70, "gipay1": 30},
+    PSP_ROUTING_PRIORITY_BY_MERCHANT={
+        "pandapay": {
+            "patriot1": 1,
+            "gipay1": 2,
+            "payplat1": 3,
+            "prochub1": 4,
+            "layerone1": 5,
+            "plutus1": 6,
+        }
+    },
+)
+@patch("payments.psp_payin._team_mdr_in_map", return_value={})
+class MerchantCascadeOverrideTest(SimpleTestCase):
+    def test_pandapay_ignores_share_and_uses_custom_order(self, _mdr):
+        groups = [
+            _group("payplat1", 1),
+            _group("plutus1", 6),
+            _group("gipay1", 2),
+            _group("patriot1", 10),
+            _group("prochub1", 4),
+            _group("layerone1", 5),
+            _group("bitzone1", 3),
+        ]
+        merchant = SimpleNamespace(user=SimpleNamespace(username="pandapay"))
+        ordered = sort_groups_for_routing(groups, merchant=merchant, rng=_ScriptedRng([0.0]))
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            [
+                "patriot1",
+                "gipay1",
+                "payplat1",
+                "prochub1",
+                "layerone1",
+                "plutus1",
+                "bitzone1",
+            ],
+        )
+
+    def test_preferred_order_skipped_for_pandapay(self, _mdr):
+        groups = [_group("gipay1", 2), _group("payplat1", 1), _group("patriot1", 10)]
+        merchant = SimpleNamespace(user=SimpleNamespace(username="pandapay"))
+        sorted_g = sort_groups_for_routing(groups, merchant=merchant)
+        ordered = apply_preferred_psp_order(sorted_g, merchant=merchant)
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            ["patriot1", "gipay1", "payplat1"],
+        )
+
+    def test_other_merchant_keeps_share_map(self, _mdr):
+        groups = [_group("payplat1", 1), _group("gipay1", 2)]
+        merchant = SimpleNamespace(user=SimpleNamespace(username="aggrepay"))
+        ordered = sort_groups_for_routing(
+            groups, merchant=merchant, rng=_ScriptedRng([0.99, 0.0])
+        )
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            ["gipay1", "payplat1"],
+        )

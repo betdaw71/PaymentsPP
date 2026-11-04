@@ -228,6 +228,39 @@ def xe_kzt_markup_for_ps(ps_name: str | None = None) -> Decimal:
     return DEFAULT_XE_KZT_MARKUP
 
 
+def _xe_kzt_markup_by_merchant_map() -> dict[str, Decimal]:
+    from django.conf import settings
+
+    raw = getattr(settings, "XE_KZT_MARKUP_BY_MERCHANT", None) or ""
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        try:
+            data = json.loads(str(raw)) if str(raw).strip() else {}
+        except Exception:
+            logging.warning("XE_KZT_MARKUP_BY_MERCHANT is not valid JSON: %s", raw)
+            return {}
+    out = {}
+    for key, val in (data or {}).items():
+        name = str(key).strip().lower()
+        if not name:
+            continue
+        try:
+            out[name] = Decimal(str(val))
+        except Exception:
+            continue
+    return out
+
+
+def xe_kzt_markup_for_merchant(merchant_username: str | None, ps_name: str | None = None) -> Decimal:
+    """Per-merchant XE markup (e.g. pandapay xe+4), иначе как у PS."""
+    by_m = _xe_kzt_markup_by_merchant_map()
+    key = (merchant_username or "").strip().lower()
+    if key and key in by_m:
+        return by_m[key]
+    return xe_kzt_markup_for_ps(ps_name)
+
+
 def get_xe_kzt_base_rate():
     """USD/KZT mid-market с xe.com без наценки."""
     try:

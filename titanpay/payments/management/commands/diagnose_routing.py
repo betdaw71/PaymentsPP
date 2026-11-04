@@ -96,6 +96,7 @@ class Command(BaseCommand):
         sorted_groups = sort_groups_for_routing(
             options_qs.select_related("trader", "trader__user", "trader__team", "payment_system"),
             amount,
+            merchant=merchant,
         )
         if sorted_groups:
             from payments.psp_payin import is_psp_trader

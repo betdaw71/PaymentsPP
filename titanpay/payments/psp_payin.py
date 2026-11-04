@@ -283,11 +283,7 @@ def _team_mdr_in_map(groups) -> dict[tuple[int, int], Decimal]:
     }
 
 
-def _psp_routing_priority_map() -> dict[str, int]:
-    """username PSP-трейдера → приоритет каскада (меньше = раньше). Не трогает mdr_in."""
-    from django.conf import settings
-
-    raw = getattr(settings, "PSP_ROUTING_PRIORITY_MAP", None)
+def _parse_priority_map(raw) -> dict[str, int]:
     if isinstance(raw, dict):
         data = raw
     else:
@@ -302,10 +298,19 @@ def _psp_routing_priority_map() -> dict[str, int]:
         name = str(key).strip()
         if not name:
             continue
+        name = _SHARE_USERNAME_ALIASES.get(name.lower(), name)
         try:
             out[name] = int(val)
         except (TypeError, ValueError):
             continue
+    return out
+
+
+def _psp_routing_priority_map() -> dict[str, int]:
+    """username PSP-трейдера → приоритет каскада (меньше = раньше). Не трогает mdr_in."""
+    from django.conf import settings
+
+    out = _parse_priority_map(getattr(settings, "PSP_ROUTING_PRIORITY_MAP", None))
     from payments.bitzone_client import bitzone_trader_username
     from payments.gipay_client import gipay_trader_username
     from payments.payplat_client import payplat_trader_username
@@ -326,14 +331,57 @@ def _psp_routing_priority_map() -> dict[str, int]:
     return out
 
 
-def psp_routing_priority_for_trader(trader) -> int:
+def _merchant_routing_username(merchant) -> str:
+    if merchant is None:
+        return ""
+    if isinstance(merchant, str):
+        return merchant.strip().lower()
+    user = getattr(merchant, "user", None)
+    return (getattr(user, "username", None) or "").strip().lower()
+
+
+def _psp_routing_priority_by_merchant_maps() -> dict[str, dict[str, int]]:
+    """merchant_username(lower) → {psp_username: priority}."""
+    from django.conf import settings
+
+    raw = getattr(settings, "PSP_ROUTING_PRIORITY_BY_MERCHANT", None)
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        import json
+
+        try:
+            data = json.loads(str(raw or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            data = {}
+    out: dict[str, dict[str, int]] = {}
+    for merchant_key, mapping in (data or {}).items():
+        mname = str(merchant_key).strip().lower()
+        if not mname or not isinstance(mapping, dict):
+            continue
+        parsed = _parse_priority_map(mapping)
+        if parsed:
+            out[mname] = parsed
+    return out
+
+
+def merchant_psp_priority_map(merchant) -> dict[str, int] | None:
+    """Кастомный каскад мерчанта или None (глобальный)."""
+    key = _merchant_routing_username(merchant)
+    if not key:
+        return None
+    return _psp_routing_priority_by_merchant_maps().get(key)
+
+
+def psp_routing_priority_for_trader(trader, merchant=None) -> int:
     """Приоритет в PSP-каскаде (1 = первый). По умолчанию 100."""
     if trader is None or not getattr(trader, "user", None):
         return 100
     username = (trader.user.username or "").strip()
     if not username:
         return 100
-    mapping = _psp_routing_priority_map()
+    custom = merchant_psp_priority_map(merchant)
+    mapping = custom if custom is not None else _psp_routing_priority_map()
     if username in mapping:
         return mapping[username]
     lower = {str(k).lower(): v for k, v in mapping.items()}
@@ -536,7 +584,7 @@ def _weighted_shuffle(groups, shares: dict[str, Decimal], *, rng=None):
     return ordered
 
 
-def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None):
+def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None, merchant=None):
     """
     Порядок выбора группы.
 
@@ -544,6 +592,9 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     с долей > 0 порядок взвешенно-случайный (70/30 значит ~70% заявок
     первым слотом payplat). Не используем объём за окно для выбора:
     догон истории отдаёт весь поток отстающему.
+
+    Если у мерчанта есть PSP_ROUTING_PRIORITY_BY_MERCHANT — только его каскад,
+    SHARE_MAP для него не применяется.
 
     Провайдеры без доли (0 / не указаны) — после weighted, по приоритету.
     Обычные трейдеры — после всех PSP, по current_volume.
@@ -557,16 +608,31 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     psp = [g for g in groups if is_psp_trader(g.trader) or is_preferred_payin_psp(g.trader)]
     rest = [g for g in groups if g not in psp]
     mdr_map = _team_mdr_in_map(psp) if psp else {}
+    custom_map = merchant_psp_priority_map(merchant)
 
     def cascade_key(group):
         trader = group.trader
         team_id = getattr(trader, "team_id", None) if trader else None
         return (
-            psp_routing_priority_for_trader(trader),
+            psp_routing_priority_for_trader(trader, merchant=merchant),
             mdr_map.get((team_id, group.payment_system_id), Decimal("999")),
             group.current_volume or Decimal(0),
             _group_username(group),
         )
+
+    # Per-merchant каскад: строго по priority, без глобальных долей.
+    if custom_map is not None:
+        psp_sorted = sorted(psp, key=cascade_key)
+        rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))
+        try:
+            logger.info(
+                "PSP_MERCHANT_CASCADE merchant=%s order=%s",
+                _merchant_routing_username(merchant),
+                [_group_username(g) for g in psp_sorted[:8]],
+            )
+        except Exception:
+            pass
+        return psp_sorted + rest_sorted
 
     shares = get_routing_share_map()
     weighted = [
@@ -620,15 +686,16 @@ def is_preferred_payin_psp(trader) -> bool:
     return actual in {n.lower() for n in preferred_payin_psp_usernames()}
 
 
-def apply_preferred_psp_order(groups):
+def apply_preferred_psp_order(groups, merchant=None):
     """
     payplat затем gipay всегда раньше остальных preferred.
 
     Если включён PSP_ROUTING_SHARE_MAP — не переставляем: иначе доли
     из sort_groups_for_routing сбросятся в payplat-first.
+    Per-merchant каскад тоже не трогаем.
     """
     groups = list(groups)
-    if not groups or psp_routing_share_enabled():
+    if not groups or psp_routing_share_enabled() or merchant_psp_priority_map(merchant) is not None:
         return groups
     pref_order = {n.lower(): i for i, n in enumerate(preferred_payin_psp_usernames())}
     preferred = []
@@ -977,7 +1044,11 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
         .select_related("trader", "trader__user", "trader__team", "trader__balance_usdt")
     )
     seen_trader_ids: set[int] = set()
-    for group in sort_groups_for_routing(groups, amount):
+    merchant = None
+    if order is not None:
+        solution = getattr(order, "solution", None)
+        merchant = getattr(solution, "merchant", None) if solution is not None else None
+    for group in sort_groups_for_routing(groups, amount, merchant=merchant):
         if exclude_trader_id is not None and group.trader_id == exclude_trader_id:
             continue
         if group.trader_id in seen_trader_ids:

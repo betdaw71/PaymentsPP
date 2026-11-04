@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from basics.utils import xe_kzt_markup_for_ps
+from basics.utils import xe_kzt_markup_for_merchant, xe_kzt_markup_for_ps
 
 logger = logging.getLogger(__name__)
 TWOPLACES = Decimal("0.01")
@@ -56,7 +56,21 @@ def is_kzt_payment_system(payment_system) -> bool:
     return "KZT" in name
 
 
-def merchant_fx_markup(payment_system) -> Decimal:
+def _merchant_username(merchant) -> str:
+    if merchant is None:
+        return ""
+    if isinstance(merchant, str):
+        return merchant.strip()
+    user = getattr(merchant, "user", None)
+    return (getattr(user, "username", None) or "").strip()
+
+
+def merchant_fx_markup(payment_system, merchant=None) -> Decimal:
+    name = getattr(payment_system, "name", None) if payment_system is not None else None
+    return xe_kzt_markup_for_merchant(_merchant_username(merchant), name)
+
+
+def _ps_stored_markup(payment_system) -> Decimal:
     name = getattr(payment_system, "name", None) if payment_system is not None else None
     return xe_kzt_markup_for_ps(name)
 
@@ -113,11 +127,24 @@ def _bitzone_p2p_rate(trader) -> Decimal | None:
     return get_binance_kzt_kaspi_rate()
 
 
-def quote_dual_fx(*, amount, payment_system, trader=None) -> DualFxQuote:
+def quote_dual_fx(*, amount, payment_system, trader=None, merchant=None) -> DualFxQuote:
     amount = _dec(amount)
-    merchant_rate = _dec(payment_system.get_rate())
+    stored_rate = _dec(payment_system.get_rate())
+    ps_markup = _ps_stored_markup(payment_system)
+    merchant_markup = merchant_fx_markup(payment_system, merchant=merchant)
+    # PS хранит курс уже с ps_markup (обычно xe+5). Per-merchant xe+N → пересчитать.
+    if (
+        stored_rate > 0
+        and ps_markup > 0
+        and merchant_markup > 0
+        and merchant_markup != ps_markup
+    ):
+        merchant_rate = (stored_rate * merchant_markup / ps_markup).quantize(
+            RATEPLACES, rounding=ROUND_HALF_UP
+        )
+    else:
+        merchant_rate = stored_rate
     merchant_usd = _usd(amount, merchant_rate)
-    merchant_markup = merchant_fx_markup(payment_system)
     if (
         not is_kzt_payment_system(payment_system)
         or trader is None
@@ -161,13 +188,15 @@ def quote_dual_fx(*, amount, payment_system, trader=None) -> DualFxQuote:
     )
 
 
-def apply_dual_fx_to_order(order, trader, *, amount=None, payment_system=None) -> DualFxQuote:
+def apply_dual_fx_to_order(order, trader, *, amount=None, payment_system=None, merchant=None) -> DualFxQuote:
     amount = order.amount if amount is None else amount
     ps = payment_system
+    solution = getattr(order, "solution", None)
     if ps is None:
-        solution = getattr(order, "solution", None)
         ps = getattr(solution, "payment_system", None) if solution is not None else None
-    quote = quote_dual_fx(amount=amount, payment_system=ps, trader=trader)
+    if merchant is None and solution is not None:
+        merchant = getattr(solution, "merchant", None)
+    quote = quote_dual_fx(amount=amount, payment_system=ps, trader=trader, merchant=merchant)
     order.merchant_rate = quote.merchant_rate
     order.psp_rate = quote.psp_rate
     order.psp_usd_amount = quote.psp_usd

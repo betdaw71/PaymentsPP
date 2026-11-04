@@ -74,7 +74,9 @@ class SberRouting:
             sort_groups_for_routing(
                 possible_options.select_related("trader", "trader__user", "trader__team", "payment_system", "trader__balance_usdt"),
                 amount,
-            )
+                merchant=merchant,
+            ),
+            merchant=merchant,
         )
 
         preferred = melbet_kzt_test_trader_username(merchant)

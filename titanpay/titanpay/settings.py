@@ -295,6 +295,12 @@ KZT_C2C_BANK_PS_NAMES = os.getenv(
 # Глобальная наценка XE USD/KZT (пусто = +5%). Пер-PS перекрывает: XE_KZT_MARKUP_BY_PS.
 XE_KZT_MARKUP = os.getenv('XE_KZT_MARKUP', '')
 XE_KZT_MARKUP_BY_PS = os.getenv('XE_KZT_MARKUP_BY_PS', '{"Vietcombank":"1.04"}')
+# JSON: username мерчанта → своя XE-наценка (не трогает глобальный курс PS).
+# Пример: pandapay xe+4 при общем C2CKZT xe+5 → {"pandapay":"1.04"}
+XE_KZT_MARKUP_BY_MERCHANT = os.getenv(
+    'XE_KZT_MARKUP_BY_MERCHANT',
+    '{"pandapay":"1.04"}',
+)
 # JSON: username PSP-трейдера → его XE-наценка (1.03 = xe+3). Нет ключа = как у мерчанта.
 # Сетка из тетради (мерч xe+5). Bitzone не здесь — Binance P2P Kaspi 2–4.
 # Мерчанту/провайдеру чужой курс не отдаём.
@@ -565,6 +571,12 @@ PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mo
 PSP_ROUTING_PRIORITY_MAP = os.getenv(
     'PSP_ROUTING_PRIORITY_MAP',
     '{"payplat1": 1, "gipay1": 2, "bitzone1": 3, "prochub1": 4}',
+)
+# JSON: per-merchant каскад (перебивает глобальный priority + отключает SHARE_MAP для этого мерча).
+# Пример pandapay: patriot → gipay → payplat → prochub → layerone → plutus
+PSP_ROUTING_PRIORITY_BY_MERCHANT = os.getenv(
+    'PSP_ROUTING_PRIORITY_BY_MERCHANT',
+    '{"pandapay":{"patriot1":1,"gipay1":2,"payplat1":3,"prochub1":4,"layerone1":5,"plutus1":6}}',
 )
 # JSON: доля трафика PSP в % за скользящее окно. Пустой {} = только каскад по приоритету.
 # Пример: {"payplat1": 70, "gipay1": 30}. Доли нормализуются среди провайдеров,

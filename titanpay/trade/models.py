@@ -126,7 +126,13 @@ class InOrder(models.Model):
                             merchant_order_id=merchant_order_id, agent_fee=Decimal(0))
             from payments.dual_fx import apply_dual_fx_to_order
 
-            apply_dual_fx_to_order(order_obj, None, amount=amount, payment_system=payment_system_obj)
+            apply_dual_fx_to_order(
+                order_obj,
+                None,
+                amount=amount,
+                payment_system=payment_system_obj,
+                merchant=solution.merchant,
+            )
             order_obj.save()
             return order_obj
 
@@ -139,6 +145,7 @@ class InOrder(models.Model):
             amount=amount,
             payment_system=payment_system_obj,
             trader=chosen_detail.group.trader,
+            merchant=solution.merchant,
         )
         usd_amount = quote.merchant_usd
 
