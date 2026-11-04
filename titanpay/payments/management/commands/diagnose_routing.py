@@ -79,6 +79,7 @@ class Command(BaseCommand):
             get_routing_share_map,
             get_share_window_hours,
             is_psp_trader,
+            merchant_psp_priority_map,
             psp_routing_priority_for_trader,
             share_metrics_for_groups,
             sort_groups_for_routing,
@@ -112,9 +113,18 @@ class Command(BaseCommand):
                         f"  не-PSP в выборке ({non_psp[:5]}): идут ПОСЛЕ всех PSP, приоритет payplat/gipay не сбрасывается"
                     )
                 )
+            merchant_map = merchant_psp_priority_map(merchant)
             share_map = get_routing_share_map()
-            share_rows = share_metrics_for_groups(sorted_groups) if share_map else {}
-            if share_map:
+            share_rows = {}
+            if merchant_map is not None:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"\nper-merchant каскад PSP_ROUTING_PRIORITY_BY_MERCHANT[{merchant.user.username}] "
+                        f"(SHARE_MAP для этого мерчанта отключён): {merchant_map}"
+                    )
+                )
+            elif share_map:
+                share_rows = share_metrics_for_groups(sorted_groups)
                 self.stdout.write(
                     self.style.HTTP_INFO(
                         f"\nдоли трафика PSP_ROUTING_SHARE_MAP (первый слот = взвешенный random, "
@@ -148,7 +158,7 @@ class Command(BaseCommand):
                 traffics = list(g.allowed_traffic.values_list("name", flat=True))
                 mdr = mdr_map.get((t.team_id, ps.id))
                 mdr_s = f" mdr_in={mdr}%" if mdr is not None else ""
-                prio = psp_routing_priority_for_trader(t)
+                prio = psp_routing_priority_for_trader(t, merchant=merchant)
                 share = share_rows.get((t.user.username or "").strip().lower()) if t.user else None
                 share_s = ""
                 if share:
