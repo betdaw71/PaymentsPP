@@ -307,7 +307,8 @@ XE_KZT_MARKUP_BY_MERCHANT = os.getenv(
 PSP_XE_MARKUP_BY_TRADER = os.getenv(
     'PSP_XE_MARKUP_BY_TRADER',
     '{"payplat1":"1.05","patriot1":"1.03","gipay1":"1.04","visionx1":"1.03",'
-    '"layerone1":"1.02","prochub1":"1.02","nexus1":"1.04","plutus1":"1.03"}',
+    '"layerone1":"1.02","prochub1":"1.02","nexus1":"1.04","plutus1":"1.03",'
+    '"astrum_kzt":"1.03"}',
 )
 
 PAYMENT_PAGE_URL = os.getenv('PAYMENT_PAGE_URL')
@@ -344,8 +345,20 @@ ADMIN_ALERT_PAYPLAT_COOLDOWN_SEC = os.getenv('ADMIN_ALERT_PAYPLAT_COOLDOWN_SEC',
 ADMIN_ALERT_CONV_WINDOW_MIN = os.getenv('ADMIN_ALERT_CONV_WINDOW_MIN', '15')
 ADMIN_ALERT_CONV_MIN_CREATED = os.getenv('ADMIN_ALERT_CONV_MIN_CREATED', '20')
 ADMIN_ALERT_CONV_ISSUED_PCT_MIN = os.getenv('ADMIN_ALERT_CONV_ISSUED_PCT_MIN', '15')
-ADMIN_ALERT_CONV_MERCHANTS = os.getenv('ADMIN_ALERT_CONV_MERCHANTS', 'melbet,mostbet')
+ADMIN_ALERT_CONV_MERCHANTS = os.getenv(
+    'ADMIN_ALERT_CONV_MERCHANTS', 'melbet,mostbet,pandapay,aggrepay'
+)
 ADMIN_ALERT_CONV_COOLDOWN_SEC = os.getenv('ADMIN_ALERT_CONV_COOLDOWN_SEC', '900')
+# Умные алерты: PSP vs средняя конверсия мерчанта + реквизит с низкой конверсией
+ADMIN_ALERT_PSP_CONV_WINDOW_MIN = os.getenv('ADMIN_ALERT_PSP_CONV_WINDOW_MIN', '60')
+ADMIN_ALERT_PSP_CONV_MIN_ISSUED = os.getenv('ADMIN_ALERT_PSP_CONV_MIN_ISSUED', '8')
+ADMIN_ALERT_PSP_CONV_ABS_PCT_MIN = os.getenv('ADMIN_ALERT_PSP_CONV_ABS_PCT_MIN', '10')
+ADMIN_ALERT_PSP_CONV_DROP_PP = os.getenv('ADMIN_ALERT_PSP_CONV_DROP_PP', '12')
+ADMIN_ALERT_PSP_CONV_COOLDOWN_SEC = os.getenv('ADMIN_ALERT_PSP_CONV_COOLDOWN_SEC', '1200')
+ADMIN_ALERT_REQ_CONV_WINDOW_H = os.getenv('ADMIN_ALERT_REQ_CONV_WINDOW_H', '24')
+ADMIN_ALERT_REQ_CONV_MIN_ISSUED = os.getenv('ADMIN_ALERT_REQ_CONV_MIN_ISSUED', '6')
+ADMIN_ALERT_REQ_CONV_ABS_PCT_MIN = os.getenv('ADMIN_ALERT_REQ_CONV_ABS_PCT_MIN', '8')
+ADMIN_ALERT_REQ_CONV_COOLDOWN_SEC = os.getenv('ADMIN_ALERT_REQ_CONV_COOLDOWN_SEC', '3600')
 # Ops: рост % апелляционного закрытия (Success через approved appeal)
 ADMIN_ALERT_APPEAL_WINDOW_MIN = os.getenv('ADMIN_ALERT_APPEAL_WINDOW_MIN', '60')
 ADMIN_ALERT_APPEAL_MIN_SUCCESS = os.getenv('ADMIN_ALERT_APPEAL_MIN_SUCCESS', '8')
@@ -568,15 +581,17 @@ RATE_API_TOKEN = os.getenv('RATE_API_TOKEN', '')
 PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mostbet,lunatrixpay')
 
 # JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
+# payplat отключён — низкий приоритет; plutus/astrum в хвосте (небольшой объём).
 PSP_ROUTING_PRIORITY_MAP = os.getenv(
     'PSP_ROUTING_PRIORITY_MAP',
-    '{"payplat1": 1, "gipay1": 2, "bitzone1": 3, "prochub1": 4}',
+    '{"patriot1":1,"gipay1":2,"prochub1":3,"visionx1":4,"bitzone1":5,'
+    '"plutus1":8,"astrum_kzt":9,"layerone1":10,"nexus1":11,"payplat1":99}',
 )
 # JSON: per-merchant каскад (перебивает глобальный priority + отключает SHARE_MAP для этого мерча).
-# Пример pandapay: patriot → gipay → payplat → prochub → layerone → plutus
 PSP_ROUTING_PRIORITY_BY_MERCHANT = os.getenv(
     'PSP_ROUTING_PRIORITY_BY_MERCHANT',
-    '{"pandapay":{"patriot1":1,"gipay1":2,"payplat1":3,"prochub1":4,"layerone1":5,"plutus1":6}}',
+    '{"pandapay":{"patriot1":1,"gipay1":2,"prochub1":3,"layerone1":4,'
+    '"plutus1":8,"astrum_kzt":9,"payplat1":99}}',
 )
 # JSON: доля трафика PSP в % за скользящее окно. Пустой {} = только каскад по приоритету.
 # Пример: {"payplat1": 70, "gipay1": 30}. Доли нормализуются среди провайдеров,

@@ -26,7 +26,8 @@ MDR_IN = {
     "layerone1": Decimal("6.00"),
     "prochub1": Decimal("7.00"),
     "nexus1": Decimal("6.50"),
-    "plutus1": Decimal("6.50"),
+    "plutus1": Decimal("6.00"),  # xe+3 в PSP_XE_MARKUP_BY_TRADER
+    "astrum_kzt": Decimal("6.00"),  # asterisk/Astrum трансгран KZT; xe+3
 }
 
 

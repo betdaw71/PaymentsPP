@@ -37,13 +37,16 @@ from payments.psp_payin import parse_routing_share_map
 from titanpay.settings import C2C_NAME
 
 APPLY = (os.environ.get("APPLY") or "").strip().lower() in {"1", "true", "yes"}
-SHARE_LINE = '{"payplat1": 45, "gipay1": 20, "visionx1": 20, "layerone1": 5, "plutus1": 10}'
+SHARE_LINE = (
+    '{"patriot1": 30, "gipay1": 25, "prochub1": 15, "visionx1": 10, '
+    '"plutus1": 10, "astrum_kzt": 10}'
+)
 GROUP_OWNER = "Plutus Virtual Drop"
 TRAFFIC_NAME = "Standard"
 PROD_PS = ("C2CKZT", C2C_NAME)
 MIN_USDT = Decimal("1000")
 PSP_FLOAT_USDT = Decimal("50000")
-DEFAULT_MDR_IN = Decimal("7")
+DEFAULT_MDR_IN = Decimal("6")
 
 
 def _api_key_ok() -> bool:

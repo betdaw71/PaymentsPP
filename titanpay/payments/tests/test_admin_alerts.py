@@ -10,6 +10,8 @@ from merchant.models import Merchant
 from payments.admin_alerts import (
     check_appeal_closure_alerts,
     check_merchant_balance_alerts,
+    check_psp_merchant_conversion_alerts,
+    check_requisite_conversion_alerts,
     note_payplat_issuance_failure,
     notify_threshold_once,
     notify_with_cooldown,
@@ -172,3 +174,82 @@ class AppealClosureAlertTest(SimpleTestCase):
         ]
         check_appeal_closure_alerts()
         self.assertEqual(send.call_count, 0)
+
+
+def _fake_pay(merchant, psp, status, card="4111111111111111"):
+    pay = MagicMock()
+    pay.merchant_id = 1
+    pay.merchant.user_id = 1
+    pay.merchant.user.username = merchant
+    pay.status_id = 1
+    pay.status.name = status
+    pay.order.payment_details_id = 1
+    pay.order.payment_details.group.trader.user.username = psp
+    pay.order.payment_details.card_number = card
+    pay.order.payment_details.deposit_number = ""
+    pay.order.payment_details.id = "pd-1"
+    return pay
+
+
+class PspMerchantConversionAlertTest(SimpleTestCase):
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(
+        ADMIN_ALERT_PSP_CONV_WINDOW_MIN=60,
+        ADMIN_ALERT_PSP_CONV_MIN_ISSUED=5,
+        ADMIN_ALERT_PSP_CONV_ABS_PCT_MIN=10,
+        ADMIN_ALERT_PSP_CONV_DROP_PP=12,
+        ADMIN_ALERT_CONV_MERCHANTS="mostbet",
+        ADMIN_ALERT_PSP_CONV_COOLDOWN_SEC=1200,
+        ADMIN_ALERT_BOT_TOKEN="t",
+        ADMIN_ALERT_CHAT_ID="1",
+    )
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    @patch("payments.models.PayIn.objects.filter")
+    def test_alerts_when_psp_below_merchant_avg(self, filt, send):
+        # merchant avg ~50% (10 ok / 20 iss); bad psp 10% (1/10)
+        rows = [_fake_pay("mostbet", "gipay1", "Success") for _ in range(9)]
+        rows += [_fake_pay("mostbet", "gipay1", "Failed") for _ in range(1)]
+        rows += [_fake_pay("mostbet", "patriot1", "Success") for _ in range(1)]
+        rows += [_fake_pay("mostbet", "patriot1", "Failed") for _ in range(9)]
+        qs = MagicMock()
+        qs.select_related.return_value = qs
+        qs.filter.return_value = qs
+        qs.iterator.return_value = iter(rows)
+        filt.return_value = qs
+        check_psp_merchant_conversion_alerts()
+        self.assertEqual(send.call_count, 1)
+        text = send.call_args.args[0]
+        self.assertIn("patriot1", text)
+        self.assertIn("mostbet", text)
+
+
+class RequisiteConversionAlertTest(SimpleTestCase):
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(
+        ADMIN_ALERT_REQ_CONV_WINDOW_H=24,
+        ADMIN_ALERT_REQ_CONV_MIN_ISSUED=5,
+        ADMIN_ALERT_REQ_CONV_ABS_PCT_MIN=8,
+        ADMIN_ALERT_CONV_MERCHANTS="mostbet",
+        ADMIN_ALERT_REQ_CONV_COOLDOWN_SEC=3600,
+        ADMIN_ALERT_BOT_TOKEN="t",
+        ADMIN_ALERT_CHAT_ID="1",
+    )
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    @patch("payments.models.PayIn.objects.filter")
+    def test_alerts_on_bad_requisite(self, filt, send):
+        bad_card = "5555444433331111"
+        rows = [_fake_pay("mostbet", "plutus1", "Failed", card=bad_card) for _ in range(6)]
+        qs = MagicMock()
+        qs.select_related.return_value = qs
+        qs.filter.return_value = qs
+        qs.iterator.return_value = iter(rows)
+        filt.return_value = qs
+        check_requisite_conversion_alerts()
+        self.assertEqual(send.call_count, 1)
+        text = send.call_args.args[0]
+        self.assertIn("plutus1", text)
+        self.assertIn("card:*1111", text)
