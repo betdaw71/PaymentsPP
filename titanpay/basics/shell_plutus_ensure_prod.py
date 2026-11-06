@@ -1,13 +1,15 @@
 """
 Plutus prod: осмотр plutus1 и включение групп C2CKZT/C2C (KZT).
 
-Доля 10% — только .env (скрипт его не пишет):
-  PSP_ROUTING_SHARE_MAP={"payplat1": 45, "gipay1": 20, "visionx1": 20, "layerone1": 5, "plutus1": 10}
+Сейчас Plutus выключен: не в SHARE_MAP, группы in_active=False.
 
 Осмотр:
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_plutus_ensure_prod.py
 
-Включить группы + float:
+Выключить группы (prod):
+  docker compose exec -T -e DISABLE=1 app python manage.py shell < titanpay/basics/shell_plutus_ensure_prod.py
+
+Включить группы + float (когда снова понадобится):
   docker compose exec -T -e APPLY=1 app python manage.py shell < titanpay/basics/shell_plutus_ensure_prod.py
 
 Трейдера нет:
@@ -37,9 +39,10 @@ from payments.psp_payin import parse_routing_share_map
 from titanpay.settings import C2C_NAME
 
 APPLY = (os.environ.get("APPLY") or "").strip().lower() in {"1", "true", "yes"}
+DISABLE = (os.environ.get("DISABLE") or "").strip().lower() in {"1", "true", "yes"}
 SHARE_LINE = (
-    '{"patriot1": 30, "gipay1": 25, "prochub1": 15, "visionx1": 10, '
-    '"plutus1": 10, "astrum_kzt": 10}'
+    '{"patriot1": 25, "gipay1": 20, "prochub1": 15, "visionx1": 10, '
+    '"astrum_kzt": 30}'
 )
 GROUP_OWNER = "Plutus Virtual Drop"
 TRAFFIC_NAME = "Standard"
@@ -122,11 +125,11 @@ def ensure_group(trader: Trader, kzt: Currency, ps: PaymentSystem, traffic: Traf
 def run() -> None:
     username = plutus_trader_username()
     share = parse_routing_share_map()
-    print(f"=== Plutus prod ({username}) APPLY={int(APPLY)} ===")
+    print(f"=== Plutus prod ({username}) APPLY={int(APPLY)} DISABLE={int(DISABLE)} ===")
     print(f"PLUTUS_API_BASE={getattr(settings, 'PLUTUS_API_BASE', '')}")
     print(f"PLUTUS_API_KEY set={int(_api_key_ok())}")
     print(f"PSP_ROUTING_SHARE_MAP now: { {k: str(v) for k, v in share.items()} or '{}' }")
-    print(f"нужно в .env: PSP_ROUTING_SHARE_MAP={SHARE_LINE}")
+    print(f"нужно в .env (без plutus): PSP_ROUTING_SHARE_MAP={SHARE_LINE}")
 
     user = User.objects.filter(username=username).first()
     if user is None:
@@ -147,6 +150,26 @@ def run() -> None:
         print("ERROR: currency KZT not found")
         return
     traffic, _ = TrafficType.objects.get_or_create(name=TRAFFIC_NAME, defaults={"risk_level": 0})
+
+    if DISABLE and APPLY:
+        print("ERROR: set only one of DISABLE=1 or APPLY=1")
+        return
+
+    if DISABLE:
+        n = 0
+        for g in PaymentDetailsGroup.objects.filter(trader=trader).select_related("payment_system"):
+            changed = []
+            if g.in_active:
+                g.in_active = False
+                changed.append("in_active=False")
+            if g.status == 1:
+                g.status = 0
+                changed.append("status=0")
+            if changed:
+                g.save()
+                n += 1
+                print(f"  - disable {g.payment_system.name if g.payment_system_id else '?'} {changed}")
+        print(f"DISABLE done, groups updated={n}")
 
     if APPLY:
         if trader.blocked:
@@ -184,11 +207,11 @@ def run() -> None:
 
     weight = share.get(username.lower())
     if weight is None:
-        print("WARN: plutus1 нет в SHARE — первый слот его не возьмёт")
+        print("OK: plutus1 нет в SHARE — первый слот его не возьмёт (выключен)")
     else:
         total = sum(share.values()) or Decimal("1")
         pct = (weight / total) * Decimal("100")
-        print(f"share weight={weight} ≈ {pct:.1f}% of lottery")
+        print(f"WARN: plutus всё ещё в SHARE weight={weight} ≈ {pct:.1f}% — убери из .env")
     if not _api_key_ok():
         print("WARN: PLUTUS_API_KEY empty — create pay-in у Plutus упадёт")
 

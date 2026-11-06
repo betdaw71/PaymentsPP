@@ -581,24 +581,28 @@ RATE_API_TOKEN = os.getenv('RATE_API_TOKEN', '')
 PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mostbet,lunatrixpay')
 
 # JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
-# payplat отключён — низкий приоритет; plutus/astrum в хвосте (небольшой объём).
+# payplat offline → 99; plutus выключен → 98; astrum_kzt (asterisk) поднят в каскад.
 PSP_ROUTING_PRIORITY_MAP = os.getenv(
     'PSP_ROUTING_PRIORITY_MAP',
     '{"patriot1":1,"gipay1":2,"prochub1":3,"visionx1":4,"bitzone1":5,'
-    '"plutus1":8,"astrum_kzt":9,"layerone1":10,"nexus1":11,"payplat1":99}',
+    '"astrum_kzt":6,"layerone1":10,"nexus1":11,"plutus1":98,"payplat1":99}',
 )
 # JSON: per-merchant каскад (перебивает глобальный priority + отключает SHARE_MAP для этого мерча).
 PSP_ROUTING_PRIORITY_BY_MERCHANT = os.getenv(
     'PSP_ROUTING_PRIORITY_BY_MERCHANT',
     '{"pandapay":{"patriot1":1,"gipay1":2,"prochub1":3,"layerone1":4,'
-    '"plutus1":8,"astrum_kzt":9,"payplat1":99}}',
+    '"astrum_kzt":5,"plutus1":98,"payplat1":99}}',
 )
 # JSON: доля трафика PSP в % за скользящее окно. Пустой {} = только каскад по приоритету.
 # Пример: {"payplat1": 70, "gipay1": 30}. Доли нормализуются среди провайдеров,
 # которые сейчас в каскаде (выключенный PSP не занимает %). 0 или отсутствие username —
 # этот PSP только как fallback после weighted. Не lifetime current_volume: иначе
 # провайдер с маленькой историей заберёт 100% надолго.
-PSP_ROUTING_SHARE_MAP = os.getenv('PSP_ROUTING_SHARE_MAP', '{}')
+# Default: astrum_kzt (asterisk) ≈30% объёма; plutus выключен (нет в карте).
+PSP_ROUTING_SHARE_MAP = os.getenv(
+    'PSP_ROUTING_SHARE_MAP',
+    '{"patriot1":25,"gipay1":20,"prochub1":15,"visionx1":10,"astrum_kzt":30}',
+)
 try:
     PSP_ROUTING_SHARE_WINDOW_HOURS = int(os.getenv('PSP_ROUTING_SHARE_WINDOW_HOURS', '24') or '24')
 except (TypeError, ValueError):

@@ -16,9 +16,11 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from payments.astrum_client import astrum_map_requisite, astrum_payin_webhook_outcome
 from payments.gipay_client import gipay_map_requisite, gipay_webhook_outcome
 from payments.layerone_client import layerone_map_requisite, layerone_webhook_outcome
 from payments.models import (
+    AstrumPayInSession,
     GipayPayInSession,
     LayeronePayInSession,
     PatriotpayPayInSession,
@@ -98,6 +100,7 @@ _summarize("PayPlat", PayplatPayInSession.objects, payplat_map_requisite, paypla
 _summarize("GiPay", GipayPayInSession.objects, gipay_map_requisite, gipay_webhook_outcome, Direction.GIPAY_WEBHOOK)
 _summarize("LayerOne", LayeronePayInSession.objects, layerone_map_requisite, layerone_webhook_outcome, Direction.LAYERONE_WEBHOOK)
 _summarize("Plutus", PlutusPayInSession.objects, plutus_map_requisite, plutus_webhook_outcome, Direction.PLUTUS_WEBHOOK)
+_summarize("Astrum", AstrumPayInSession.objects, astrum_map_requisite, astrum_payin_webhook_outcome, Direction.ASTRUM_WEBHOOK)
 _summarize("PatriotPay", PatriotpayPayInSession.objects, patriotpay_map_requisite, patriotpay_webhook_outcome, Direction.PATRIOTPAY_WEBHOOK)
 
 print("\nКак читать:")

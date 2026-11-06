@@ -408,6 +408,8 @@ _SHARE_USERNAME_ALIASES = {
     "patriot": "patriot1",
     "bitzone": "bitzone1",
     "plutus": "plutus1",
+    "astrum": "astrum_kzt",
+    "asterisk": "astrum_kzt",
     "protocol": "protocol1",
     "prochub": "prochub1",
     "nexus": "nexus1",
@@ -797,6 +799,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import concored_client as cc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
+    from payments import astrum_client as asc
     from payments import syndicate_client as syc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
@@ -814,6 +817,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         cc.concored_requisite_for_payin,
         bzc.bitzone_requisite_for_payin,
         pltc.plutus_requisite_for_payin,
+        asc.astrum_requisite_for_payin,
         syc.syndicate_requisite_for_payin,
         gpc.gipay_requisite_for_payin,
         vxc.visionx_requisite_for_payin,
@@ -837,6 +841,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import concored_client as cc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
+    from payments import astrum_client as asc
     from payments import syndicate_client as syc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
@@ -853,6 +858,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = cc.enrich_payin_payment_details(representation, pay_in)
     representation = bzc.enrich_payin_payment_details(representation, pay_in)
     representation = pltc.enrich_payin_payment_details(representation, pay_in)
+    representation = asc.enrich_payin_payment_details(representation, pay_in)
     representation = syc.enrich_payin_payment_details(representation, pay_in)
     return nxc.enrich_payin_payment_details(
         prhc.enrich_payin_payment_details(
@@ -942,6 +948,7 @@ def _psp_provider_for_trader(trader):
     from payments import concored_client as cc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
+    from payments import astrum_client as asc
     from payments import syndicate_client as syc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
@@ -973,6 +980,8 @@ def _psp_provider_for_trader(trader):
         return "bitzone", bzc.try_attach_bitzone_session
     if pltc.is_plutus_trader(trader):
         return "plutus", pltc.try_attach_plutus_session
+    if asc.is_astrum_trader(trader):
+        return "astrum", asc.try_attach_astrum_session
     if syc.is_syndicate_trader(trader):
         return "syndicate", syc.try_attach_syndicate_session
     if fc.is_fairpay_trader(trader):
@@ -1254,6 +1263,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import concored_client as cc
     from payments import bitzone_client as bzc
     from payments import plutus_client as pltc
+    from payments import astrum_client as asc
     from payments import syndicate_client as syc
     from payments import gipay_client as gpc
     from payments import visionx_client as vxc
@@ -1270,6 +1280,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     cc.concored_cancel_if_linked(pay_in)
     bzc.bitzone_cancel_if_linked(pay_in)
     pltc.plutus_cancel_if_linked(pay_in)
+    asc.astrum_cancel_if_linked(pay_in)
     syc.syndicate_cancel_if_linked(pay_in)
     gpc.gipay_cancel_if_linked(pay_in)
     vxc.visionx_cancel_if_linked(pay_in)
@@ -1587,6 +1598,7 @@ MERCHANT_DECLINE_MESSAGES = {
 def classify_payin_decline(pay_in: Any) -> str:
     """Внутренняя классификация отказа (без PII upstream)."""
     from payments.models import (
+        AstrumPayInSession,
         BitzonePayInSession,
         BotonpayPayInSession,
         ConcoredPayInSession,
@@ -1626,6 +1638,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         PaymapPayInSession,
         BitzonePayInSession,
         PlutusPayInSession,
+        AstrumPayInSession,
         SyndicatePayInSession,
         BotonpayPayInSession,
     ):
@@ -1655,6 +1668,7 @@ def classify_payin_decline(pay_in: Any) -> str:
 def psp_create_failure_reason_internal(pay_in: Any) -> str:
     """Подробности для логов и manage.py diagnose_payin (не API мерчанта)."""
     from payments.models import (
+        AstrumPayInSession,
         BitzonePayInSession,
         BotonpayPayInSession,
         ConcoredPayInSession,
@@ -1697,6 +1711,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (PaymapPayInSession, "paymap"),
         (BitzonePayInSession, "bitzone"),
         (PlutusPayInSession, "plutus"),
+        (AstrumPayInSession, "astrum"),
         (SyndicatePayInSession, "syndicate"),
         (BotonpayPayInSession, "botonpay"),
     ):
@@ -1754,6 +1769,7 @@ _PSP_SESSION_PROVIDER_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("payments.models.PaymapPayInSession", "paymap", "provider_invoice_id"),
     ("payments.models.BitzonePayInSession", "bitzone", "provider_transaction_id"),
     ("payments.models.PlutusPayInSession", "plutus", "provider_trade_uuid"),
+    ("payments.models.AstrumPayInSession", "astrum", "provider_deal_id"),
     ("payments.models.SyndicatePayInSession", "syndicate", "provider_order_id"),
     ("payments.models.BotonpayPayInSession", "botonpay", "provider_deal_uuid"),
 )

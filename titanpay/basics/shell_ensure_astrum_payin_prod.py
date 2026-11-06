@@ -1,13 +1,13 @@
 """Astrum (astrum_kzt / «asterisk»): KZT pay-in группы + MDR 6% + осмотр.
 
-Внимание: create pay-in к Astrum (try_attach) в коде ещё не подключён —
-есть только webhook. Этот скрипт готовит трейдера/группы/ставки.
-Полная выдача реквизитов потребует API /source/deal.
+Pay-in create: try_attach_astrum_session → POST /source/deal (Fernet).
+Нужны ASTRUM_API_KEY, ASTRUM_PRIVATE_KEY, ASTRUM_METHOD_TYPE_ID в .env.
 
   docker compose exec -T app python manage.py shell \\
     < titanpay/basics/shell_ensure_astrum_payin_prod.py
 
   APPLY=1 — in_active=True, status=1, mdr_in=6.00, float USDT
+  Доля ~30%: PSP_ROUTING_SHARE_MAP=…,"astrum_kzt":30 (без plutus1)
 """
 from __future__ import annotations
 
@@ -63,9 +63,15 @@ def run() -> None:
     print(f"=== Astrum pay-in ensure ({username}) APPLY={int(APPLY)} mdr→{TARGET_MDR} ===")
     print(f"FX: поставь в .env PSP_XE_MARKUP_BY_TRADER … \"astrum_kzt\":\"1.03\"")
     print(
-        "Каскад (низкий приоритет): в PSP_ROUTING_PRIORITY_MAP astrum_kzt=9 "
-        "(после основных, до хвоста)"
+        "Каскад/доля: PSP_ROUTING_PRIORITY_MAP astrum_kzt=6; "
+        'PSP_ROUTING_SHARE_MAP … "astrum_kzt":30 (plutus1 пока выключен)'
     )
+    api_ok = bool((getattr(settings, "ASTRUM_API_KEY", None) or "").strip())
+    key_ok = bool((getattr(settings, "ASTRUM_PRIVATE_KEY", None) or "").strip())
+    mt = (getattr(settings, "ASTRUM_METHOD_TYPE_ID", None) or "").strip()
+    print(f"ASTRUM_API_KEY set={int(api_ok)}  PRIVATE_KEY set={int(key_ok)}  METHOD_TYPE_ID={mt or '-'}")
+    if not api_ok or not key_ok or not mt:
+        print("WARN: без API key / private key / METHOD_TYPE_ID create pay-in упадёт")
 
     trader = (
         Trader.objects.filter(user__username__iexact=username)
@@ -157,11 +163,8 @@ def run() -> None:
 
     markup = getattr(settings, "PSP_XE_MARKUP_BY_TRADER", "")
     print(f"\nPSP_XE_MARKUP_BY_TRADER={markup}")
-    print(
-        "NOTE: try_attach_astrum_session для pay-in ещё нет — "
-        "после APPLY группы готовы, но каскад не получит реквизит от Astrum API "
-        "пока не подключим POST /source/deal."
-    )
+    print("после APPLY + .env share=30%: docker compose up -d app")
+    print("  python manage.py diagnose_routing mostbet --ps C2CKZT --amount 10000 --ftd false")
     print("DONE")
 
 

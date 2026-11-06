@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 def _collect_deal_ids(pay_in) -> dict:
     """Собрать все ID по сделке: PayIn, InOrder, merchant_order_id, PSP-сессии."""
     from payments.models import (
+        AstrumPayInSession,
         BotonpayPayInSession,
         BitzonePayInSession,
         FairpayPayInSession,
@@ -58,6 +59,7 @@ def _collect_deal_ids(pay_in) -> dict:
         ("expayone", ExpayonePayInSession, "external_id", "provider_order_id"),
         ("protocol", ProtocolPayInSession, "external_id", "provider_payment_id"),
         ("syndicate", SyndicatePayInSession, "external_id", "provider_order_id"),
+        ("astrum", AstrumPayInSession, "external_id", "provider_deal_id"),
     ]
 
     for psp_name, model, ext_field, prov_field in psp_sessions:
