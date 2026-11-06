@@ -1180,13 +1180,21 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
             return
 
         provider_name, attach = _psp_provider_for_trader(trader)
-        first_provider = provider_name
+        first_provider = provider_name or "no_handler"
         if attach is None:
             logger.error(
-                "PSP attach handler missing pay_in_id=%s trader=%s",
+                "PSP attach handler missing pay_in_id=%s trader=%s — fallback to other PSP",
                 pay_in.id,
                 trader.user.username if getattr(trader, "user", None) else trader.pk,
             )
+            trace_log(
+                pay_in=pay_in,
+                direction=Direction.ROUTING,
+                body={"provider": "no_handler", "success": False, "trader": getattr(getattr(trader, "user", None), "username", None)},
+                note="psp provider api",
+            )
+            if try_psp_provider_fallback(pay_in, failed_provider="no_handler"):
+                return
             mark_inorder_cannot_process_from_psp_api(pay_in, provider="no_handler")
             return
 
@@ -1218,7 +1226,7 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
             except Exception:  # noqa: BLE001
                 logger.exception("payplat issuance alert failed pay_in=%s", getattr(pay_in, "id", None))
 
-        if try_psp_provider_fallback(pay_in, failed_provider=provider_name):
+        if try_psp_provider_fallback(pay_in, failed_provider=provider_name or "unknown"):
             return
 
         mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider_name)
