@@ -1201,7 +1201,15 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
         import time
 
         started = time.monotonic()
-        result = attach(pay_in)
+        try:
+            result = attach(pay_in)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "PSP attach raised pay_in_id=%s provider=%s — fallback",
+                pay_in.id,
+                provider_name,
+            )
+            result = False
         elapsed_ms = int((time.monotonic() - started) * 1000)
         trace_log(
             pay_in=pay_in,
@@ -1226,6 +1234,7 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
             except Exception:  # noqa: BLE001
                 logger.exception("payplat issuance alert failed pay_in=%s", getattr(pay_in, "id", None))
 
+        # Astrum/любой PSP отказал (False) или упал исключением — спускаемся по каскаду.
         if try_psp_provider_fallback(pay_in, failed_provider=provider_name or "unknown"):
             return
 
