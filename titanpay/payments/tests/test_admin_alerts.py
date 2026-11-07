@@ -10,6 +10,7 @@ from merchant.models import Merchant
 from payments.admin_alerts import (
     check_appeal_closure_alerts,
     check_merchant_balance_alerts,
+    check_merchant_conversion_alerts,
     check_psp_merchant_conversion_alerts,
     check_requisite_conversion_alerts,
     note_payplat_issuance_failure,
@@ -176,19 +177,91 @@ class AppealClosureAlertTest(SimpleTestCase):
         self.assertEqual(send.call_count, 0)
 
 
-def _fake_pay(merchant, psp, status, card="4111111111111111"):
+def _fake_pay(merchant, psp, status, card="4111111111111111", client_id="c1", db_client_id=1):
     pay = MagicMock()
     pay.merchant_id = 1
     pay.merchant.user_id = 1
     pay.merchant.user.username = merchant
     pay.status_id = 1
     pay.status.name = status
+    pay.client_id = db_client_id
+    pay.client.client_id = client_id
     pay.order.payment_details_id = 1
     pay.order.payment_details.group.trader.user.username = psp
     pay.order.payment_details.card_number = card
     pay.order.payment_details.deposit_number = ""
     pay.order.payment_details.id = "pd-1"
     return pay
+
+
+class MerchantConversionSpamAlertTest(SimpleTestCase):
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(
+        ADMIN_ALERT_CONV_WINDOW_MIN=15,
+        ADMIN_ALERT_CONV_MIN_CREATED=10,
+        ADMIN_ALERT_CONV_ISSUED_PCT_MIN=50,
+        ADMIN_ALERT_CONV_MERCHANTS="mostbet",
+        ADMIN_ALERT_CONV_SPAM_MERCHANTS="mostbet",
+        ADMIN_ALERT_CONV_SPAM_MIN=3,
+        ADMIN_ALERT_CONV_SPAM_TOP=3,
+        ADMIN_ALERT_CONV_COOLDOWN_SEC=900,
+        ADMIN_ALERT_BOT_TOKEN="t",
+        ADMIN_ALERT_CHAT_ID="1",
+    )
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    @patch("payments.models.PayIn.objects.filter")
+    def test_alert_includes_clean_conversion_without_spam(self, filt, send):
+        # 6 spam Failed from one client + 4 Success from another → raw 40%, clean 100%
+        rows = [
+            _fake_pay("mostbet", "psp", "Failed", client_id="spam1", db_client_id=10)
+            for _ in range(6)
+        ]
+        rows += [
+            _fake_pay("mostbet", "psp", "Success", client_id="good1", db_client_id=11)
+            for _ in range(4)
+        ]
+        qs = MagicMock()
+        qs.select_related.return_value = qs
+        qs.filter.return_value = qs
+        qs.iterator.return_value = iter(rows)
+        filt.return_value = qs
+
+        check_merchant_conversion_alerts()
+        self.assertEqual(send.call_count, 1)
+        text = send.call_args.args[0]
+        self.assertIn("iss→ok=40.00%", text)
+        self.assertIn("iss→ok без спама=100.00%", text)
+        self.assertIn("spam1×6", text)
+        self.assertIn("clients=1", text)
+
+    @override_settings(
+        ADMIN_ALERT_CONV_WINDOW_MIN=15,
+        ADMIN_ALERT_CONV_MIN_CREATED=10,
+        ADMIN_ALERT_CONV_ISSUED_PCT_MIN=50,
+        ADMIN_ALERT_CONV_MERCHANTS="pandapay",
+        ADMIN_ALERT_CONV_SPAM_MERCHANTS="melbet,mostbet",
+        ADMIN_ALERT_CONV_COOLDOWN_SEC=900,
+        ADMIN_ALERT_BOT_TOKEN="t",
+        ADMIN_ALERT_CHAT_ID="1",
+    )
+    @patch("payments.admin_alerts.send_admin_alert", return_value=True)
+    @patch("payments.models.PayIn.objects.filter")
+    def test_non_spam_merchant_has_no_spam_block(self, filt, send):
+        rows = [_fake_pay("pandapay", "psp", "Failed", client_id="x") for _ in range(8)]
+        rows += [_fake_pay("pandapay", "psp", "Success", client_id="y") for _ in range(2)]
+        qs = MagicMock()
+        qs.select_related.return_value = qs
+        qs.filter.return_value = qs
+        qs.iterator.return_value = iter(rows)
+        filt.return_value = qs
+
+        check_merchant_conversion_alerts()
+        self.assertEqual(send.call_count, 1)
+        text = send.call_args.args[0]
+        self.assertNotIn("без спама", text)
+        self.assertIn("iss→ok=20.00%", text)
 
 
 class PspMerchantConversionAlertTest(SimpleTestCase):

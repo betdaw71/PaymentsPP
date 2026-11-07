@@ -252,56 +252,148 @@ def note_payplat_issuance_failure(pay_in, *, reason: str | None = None) -> None:
     notify_with_cooldown("payplat_issuance_burst", text, cooldown)
 
 
+def _payin_client_key(pay_in) -> str:
+    if getattr(pay_in, "client_id", None) is None:
+        return "(no_client)"
+    client = getattr(pay_in, "client", None)
+    cid = (getattr(client, "client_id", None) or "").strip() if client is not None else ""
+    return cid or f"(id={pay_in.client_id})"
+
+
+def _spam_conversion_stats(pays: list, *, spam_min: int = 3) -> dict:
+    """Спам = client с ≥spam_min create и 0 Success. Возвращает raw + clean iss→ok."""
+    from collections import defaultdict
+
+    by_client: dict[str, dict[str, int]] = defaultdict(lambda: {"n": 0, "ok": 0})
+    created = declined = success = 0
+    for pay in pays:
+        created += 1
+        st = pay.status.name if getattr(pay, "status_id", None) else ""
+        if st == "Declined":
+            declined += 1
+        elif st == "Success":
+            success += 1
+        ck = _payin_client_key(pay)
+        cell = by_client[ck]
+        cell["n"] += 1
+        if st == "Success":
+            cell["ok"] += 1
+
+    spam_clients = {k: v for k, v in by_client.items() if v["n"] >= spam_min and v["ok"] == 0}
+    spam_keys = set(spam_clients)
+    spam_creates = sum(v["n"] for v in spam_clients.values())
+    clean = [p for p in pays if _payin_client_key(p) not in spam_keys]
+    clean_n = len(clean)
+    clean_ok = sum(1 for p in clean if p.status_id and p.status.name == "Success")
+    clean_decl = sum(1 for p in clean if p.status_id and p.status.name == "Declined")
+    clean_iss = clean_n - clean_decl
+    issued = created - declined
+
+    def _pct(num: int, den: int) -> Decimal | None:
+        if den <= 0:
+            return None
+        return (Decimal(num) * Decimal("100") / Decimal(den)).quantize(Decimal("0.01"))
+
+    top_spam = sorted(spam_clients.items(), key=lambda x: (-x[1]["n"], x[0]))
+    return {
+        "created": created,
+        "declined": declined,
+        "success": success,
+        "issued": issued,
+        "raw_pct": _pct(success, issued),
+        "spam_clients": len(spam_clients),
+        "spam_creates": spam_creates,
+        "spam_share_pct": _pct(spam_creates, created),
+        "clean_created": clean_n,
+        "clean_issued": clean_iss,
+        "clean_success": clean_ok,
+        "clean_pct": _pct(clean_ok, clean_iss),
+        "top_spam": [(k, v["n"]) for k, v in top_spam],
+    }
+
+
 def check_merchant_conversion_alerts() -> None:
-    """Низкая issued→Success конверсия по мерчантам за скользящее окно."""
+    """Низкая issued→Success конверсия по мерчантам; для melbet/mostbet — ещё спам-срез."""
+    from collections import defaultdict
+
     from payments.models import PayIn
 
     window_min = _int(getattr(settings, "ADMIN_ALERT_CONV_WINDOW_MIN", 15), 15)
     min_created = _int(getattr(settings, "ADMIN_ALERT_CONV_MIN_CREATED", 20), 20)
     min_pct = _dec(getattr(settings, "ADMIN_ALERT_CONV_ISSUED_PCT_MIN", 15), Decimal("15"))
     cooldown = _int(getattr(settings, "ADMIN_ALERT_CONV_COOLDOWN_SEC", 900), 900)
+    spam_min = _int(getattr(settings, "ADMIN_ALERT_CONV_SPAM_MIN", 3), 3)
+    spam_top = _int(getattr(settings, "ADMIN_ALERT_CONV_SPAM_TOP", 5), 5)
     raw_merchants = str(getattr(settings, "ADMIN_ALERT_CONV_MERCHANTS", "melbet,mostbet") or "")
     merchants = [p.strip() for p in raw_merchants.split(",") if p.strip()]
+    raw_spam = str(
+        getattr(settings, "ADMIN_ALERT_CONV_SPAM_MERCHANTS", "melbet,mostbet") or ""
+    )
+    spam_merchants = {p.strip().lower() for p in raw_spam.split(",") if p.strip()}
     if window_min <= 0 or min_created <= 0:
         return
-
-    from collections import defaultdict
 
     since = timezone.now() - timedelta(minutes=window_min)
     qs = PayIn.objects.filter(created_at__gte=since)
     if merchants:
         qs = qs.filter(merchant__user__username__in=merchants)
 
-    stats: dict[str, dict[str, int]] = defaultdict(lambda: {"created": 0, "declined": 0, "success": 0})
-    for pay in qs.select_related("status", "merchant__user").iterator(chunk_size=500):
+    by_merchant: dict[str, list] = defaultdict(list)
+    for pay in qs.select_related("status", "merchant__user", "client").iterator(chunk_size=500):
         name = pay.merchant.user.username if pay.merchant_id and pay.merchant.user_id else ""
         if not name:
             continue
-        cell = stats[name]
-        cell["created"] += 1
-        st = pay.status.name if pay.status_id else ""
-        if st == "Declined":
-            cell["declined"] += 1
-        elif st == "Success":
-            cell["success"] += 1
+        by_merchant[name].append(pay)
 
-    for name, cell in stats.items():
-        created = cell["created"]
+    for name, pays in by_merchant.items():
+        created = len(pays)
         if created < min_created:
             continue
-        issued = created - cell["declined"]
-        if issued <= 0:
+        do_spam = name.lower() in spam_merchants
+        if do_spam:
+            stats = _spam_conversion_stats(pays, spam_min=max(2, spam_min))
+            issued = stats["issued"]
+            pct = stats["raw_pct"]
+            success = stats["success"]
+        else:
+            declined = sum(1 for p in pays if p.status_id and p.status.name == "Declined")
+            success = sum(1 for p in pays if p.status_id and p.status.name == "Success")
+            issued = created - declined
+            pct = (
+                (Decimal(success) * Decimal("100") / Decimal(issued)).quantize(Decimal("0.01"))
+                if issued > 0
+                else None
+            )
+            stats = None
+
+        if issued <= 0 or pct is None or pct >= min_pct:
             continue
-        pct = (Decimal(cell["success"]) * Decimal("100") / Decimal(issued)).quantize(Decimal("0.01"))
-        if pct >= min_pct:
-            continue
+
         text = (
             f"⚠ Низкая конверсия {name}\n"
             f"Окно: последние {window_min} мин\n"
-            f"create={created}  issued={issued}  success={cell['success']}\n"
+            f"create={created}  issued={issued}  success={success}\n"
             f"iss→ok={pct}%  (порог {min_pct}%)\n"
-            "Проверь выдачу PSP / каскад / дашборд."
         )
+        if do_spam and stats is not None:
+            clean_pct = stats["clean_pct"]
+            clean_line = (
+                f"iss→ok без спама={clean_pct}%"
+                if clean_pct is not None
+                else "iss→ok без спама=n/a (нет issued)"
+            )
+            spam_share = stats["spam_share_pct"]
+            text += (
+                f"Спам (≥{max(2, spam_min)} create, 0 Success): "
+                f"clients={stats['spam_clients']}  creates={stats['spam_creates']}  "
+                f"share={spam_share if spam_share is not None else 0}%\n"
+                f"Без спама: create={stats['clean_created']}  issued={stats['clean_issued']}  "
+                f"success={stats['clean_success']}  {clean_line}\n"
+            )
+            if stats["top_spam"]:
+                tops = ", ".join(f"{cid}×{n}" for cid, n in stats["top_spam"][: max(1, spam_top)])
+                text += f"Топ spam client_id: {tops}\n"
+        text += "Проверь выдачу PSP / каскад / спам клиентов / дашборд."
         notify_with_cooldown(f"conv_low:{name}", text, cooldown)
 
 
