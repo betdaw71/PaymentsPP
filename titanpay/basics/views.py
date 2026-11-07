@@ -251,8 +251,17 @@ def get_user_filter_support(request, *args, **kwargs):
 @api_view(['GET'])
 @permission_classes([TraderPermission | DebugPermission])
 def get_pdgroup_creation_data(request, *args, **kwargs):
+    from django.db.models import Q
+
+    from trade.routing.ps_names import kzt_c2c_bank_ps_names, kzt_c2c_merchant_ps_names
+
     currencies = Currency.objects.all()
-    payment_systems = PaymentSystem.objects.filter(sbp_compatible=True)
+    # SBP-совместимые + KZT трансгран банки (Elkard/Kompanion/…) и C2CKZT.
+    # Банки создаются с sbp_compatible=False, иначе попадут в SBP-роутинг.
+    bank_names = kzt_c2c_bank_ps_names() | kzt_c2c_merchant_ps_names()
+    payment_systems = PaymentSystem.objects.filter(
+        Q(sbp_compatible=True) | Q(name__in=bank_names)
+    ).distinct()
     traffic_types = TrafficType.objects.all()
 
     data = dict()
