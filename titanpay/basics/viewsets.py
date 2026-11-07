@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from basics.models import Language, Currency, PaymentSystem, Trader, Balance, PaymentDetails, \
     TraderTeam, TrafficType, PaymentDetailsGroup, TeamLead, TraderTeamRates
 from basics.paginators import StandardResultsSetPagination
-from titanpay.settings import SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME
+from titanpay.settings import C2CTRY_NAME
 from usermanagement.models import SupportMember
 from merchant.models import Merchant
 from trade.models import Transaction, TransactionType
@@ -21,7 +21,7 @@ from basics.serializers import LanguageSerializer, CurrencySerializer, PaymentSy
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from basics.permissions import ReadOnly, SupportPermission, TraderPermission, MerchantPermission, HeadSupportPermission, \
-    DebugPermission, TeamLeadPermission
+    DebugPermission, TeamLeadPermission, AgentPermission
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from decimal import Decimal
@@ -209,6 +209,38 @@ class TraderViewSet(viewsets.ModelViewSet):
         trader.save()
         return Response(status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['patch'], permission_classes=[HeadSupportPermission], url_path='credit')
+    def set_credit(self, request, id=None):
+        trader = self.get_object()
+        updates = []
+        if 'credit_limit' in request.data:
+            trader.credit_limit = Decimal(str(request.data.get('credit_limit') or 0))
+            if trader.credit_limit < 0:
+                return Response({'error': 'credit_limit cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
+            updates.append('credit_limit')
+        if 'working_deposit' in request.data:
+            trader.working_deposit = Decimal(str(request.data.get('working_deposit') or 0))
+            if trader.working_deposit < 0:
+                return Response({'error': 'working_deposit cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
+            updates.append('working_deposit')
+        if 'manual_mode' in request.data:
+            raw = request.data.get('manual_mode')
+            trader.manual_mode = str(raw).strip().lower() in {'1', 'true', 'yes', 'on'}
+            updates.append('manual_mode')
+        if not updates:
+            return Response(
+                {'error': 'credit_limit, working_deposit or manual_mode required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        trader.save(update_fields=updates)
+        return Response({
+            'id': str(trader.id),
+            'username': trader.user.username,
+            'credit_limit': str(trader.credit_limit),
+            'working_deposit': str(trader.working_deposit),
+            'manual_mode': trader.manual_mode,
+        })
+
 
 class BalanceViewset(viewsets.ModelViewSet):
     lookup_field = 'id'
@@ -231,14 +263,103 @@ class BalanceViewset(viewsets.ModelViewSet):
 
         merchants = Merchant.objects.all()
         for merchant in merchants:
-            data_merchants.append({
+            available = float(merchant.balance.amount) if merchant.balance else 0.0
+            rolling = float(merchant.rolling_reserve or 0)
+            row = {
                 "id": merchant.id,
                 "username": merchant.user.username,
-                "available_balance_amount": merchant.balance.amount if merchant.balance else 0.0,
+                "available_balance_amount": available,
                 "frozen_balance_amount": merchant.frozen_balance.amount if merchant.frozen_balance else 0.0,
-            })
+                "rolling_reserve": rolling,
+                "rolling_net": round(rolling - available, 2),
+            }
+            from merchant.kzt_settlement import ensure_kgs_balances, ensure_kzt_balances, is_melbet_merchant
+
+            if is_melbet_merchant(merchant):
+                ensure_kzt_balances(merchant)
+                ensure_kgs_balances(merchant)
+                merchant.refresh_from_db()
+                row["available_balance_kzt"] = float(merchant.balance_kzt.amount) if merchant.balance_kzt else 0.0
+                row["frozen_balance_kzt"] = float(merchant.frozen_balance_kzt.amount) if merchant.frozen_balance_kzt else 0.0
+                row["available_balance_kgs"] = float(merchant.balance_kgs.amount) if merchant.balance_kgs else 0.0
+                row["frozen_balance_kgs"] = float(merchant.frozen_balance_kgs.amount) if merchant.frozen_balance_kgs else 0.0
+            data_merchants.append(row)
 
         return Response(status=status.HTTP_200_OK, data=data_merchants)
+
+    @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="support-agent")
+    def support_agent(self, request):
+        from merchant.models import Agent
+
+        rows = []
+        for agent in Agent.objects.select_related("user", "balance").prefetch_related("merchants__user"):
+            rows.append({
+                "id": agent.id,
+                "username": agent.user.username,
+                "commission_percent": str(agent.commission_percent),
+                "debt": float(agent.balance.amount) if agent.balance else 0.0,
+                "merchants": [m.user.username for m in agent.merchants.all()],
+            })
+        return Response(status=status.HTTP_200_OK, data=rows)
+
+    @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="cash-register")
+    def cash_register(self, request):
+        from basics.cash_register import snapshot
+
+        return Response(status=status.HTTP_200_OK, data=snapshot())
+
+    @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="ops-dashboard")
+    def ops_dashboard(self, request):
+        from basics.ops_dashboard import snapshot as ops_snapshot
+
+        params = request.query_params
+        data = ops_snapshot(
+            preset=params.get("preset"),
+            date_from=params.get("date_from") or params.get("from"),
+            date_to=params.get("date_to") or params.get("to"),
+            merchant=params.get("merchant"),
+            psp=params.get("psp"),
+            ps=params.get("ps"),
+            direction=params.get("direction"),
+        )
+        return Response(status=status.HTTP_200_OK, data=data)
+
+    @action(detail=False, methods=['GET'], permission_classes=[HeadSupportPermission | DebugPermission], url_path="support-teamlead")
+    def support_teamlead(self, request):
+        rows = []
+        teamleads = TeamLead.objects.select_related("user", "balance", "frozen_balance").prefetch_related(
+            "traderteam_set",
+        )
+        for teamlead in teamleads:
+            teams = list(teamlead.traderteam_set.all())
+            percents = [t.teamlead_percentage for t in teams if t.teamlead_percentage is not None]
+            rows.append({
+                "id": teamlead.id,
+                "username": teamlead.user.username if teamlead.user_id else "",
+                "debt": float(teamlead.balance.amount) if teamlead.balance else 0.0,
+                "frozen": float(teamlead.frozen_balance.amount) if teamlead.frozen_balance else 0.0,
+                "commission_percent": str(percents[0]) if len(set(percents)) == 1 else None,
+                "teams": [
+                    {
+                        "name": team.name,
+                        "percentage": str(team.teamlead_percentage),
+                    }
+                    for team in teams
+                ],
+            })
+        return Response(status=status.HTTP_200_OK, data=rows)
+
+    @action(detail=False, methods=['GET'], permission_classes=[AgentPermission | DebugPermission])
+    def agent(self, request):
+        if not hasattr(request.user, 'agent'):
+            return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'You are not an agent!'})
+        agent = request.user.agent
+        return Response(status=status.HTTP_200_OK, data={
+            "amount": float(agent.balance.amount) if agent.balance else 0.0,
+            "frozen_amount": float(agent.frozen_balance.amount) if agent.frozen_balance else 0.0,
+            "commission_percent": str(agent.commission_percent),
+            "merchants": [m.user.username for m in agent.merchants.select_related("user")],
+        })
 
     @action(detail=False, methods=['GET'], permission_classes=[TraderPermission | DebugPermission])
     def trader(self, request):
@@ -246,15 +367,26 @@ class BalanceViewset(viewsets.ModelViewSet):
             return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'You are not a trader!'})
         trader: Trader = request.user.trader
 
+        def _deposit_address(t: Trader) -> str:
+            bal = None
+            if t.is_boss:
+                bal = t.balance_usdt
+            elif t.boss_id and t.boss is not None:
+                bal = t.boss.balance_usdt
+            if bal is None:
+                return ""
+            addr = bal.address.order_by("id").first()
+            return (addr.address_public or "") if addr is not None else ""
+
         my_balance = {
             "id": trader.id,
             "username": trader.user.username,
             "available_balance_amount": trader.balance_usdt.amount if trader.balance_usdt else 0.0,
-            "available_balance_id": trader.balance_usdt.id,
+            "available_balance_id": trader.balance_usdt.id if trader.balance_usdt_id else None,
             "frozen_balance_amount": trader.frozen_balance_usdt.amount if trader.frozen_balance_usdt else 0.0,
-            "frozen_balance_id": trader.frozen_balance_usdt.id,
-            "deposit_address": trader.balance_usdt.address.get().address_public if trader.is_boss else trader.boss.balance_usdt.address.get().address_public,
-            "insurance_deposit": trader.team.insurance_deposit
+            "frozen_balance_id": trader.frozen_balance_usdt.id if trader.frozen_balance_usdt_id else None,
+            "deposit_address": _deposit_address(trader),
+            "insurance_deposit": trader.team.insurance_deposit if trader.team_id else 0,
         }
 
         serializer = TraderBalanceSerializer(my_balance)
@@ -292,6 +424,18 @@ class BalanceViewset(viewsets.ModelViewSet):
                 "frozen_amount": merchant.frozen_balance.amount if merchant.frozen_balance else 0.0,
                 "deposit_address": merchant.balance.address.get().address_public
             }
+            from merchant.kzt_settlement import ensure_kgs_balances, ensure_kzt_balances, is_melbet_merchant
+
+            if is_melbet_merchant(merchant):
+                ensure_kzt_balances(merchant)
+                ensure_kgs_balances(merchant)
+                merchant.refresh_from_db()
+                data["amount_kzt"] = float(merchant.balance_kzt.amount) if merchant.balance_kzt else 0.0
+                data["frozen_amount_kzt"] = float(merchant.frozen_balance_kzt.amount) if merchant.frozen_balance_kzt else 0.0
+                data["currency_kzt"] = "KZT"
+                data["amount_kgs"] = float(merchant.balance_kgs.amount) if merchant.balance_kgs else 0.0
+                data["frozen_amount_kgs"] = float(merchant.frozen_balance_kgs.amount) if merchant.frozen_balance_kgs else 0.0
+                data["currency_kgs"] = "KGS"
             return Response(status=status.HTTP_200_OK, data=data)
         elif hasattr(request.user, 'submerchant'):
             merchant: Merchant = request.user.submerchant.merchant
@@ -511,9 +655,9 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
         data = request.data
         data['group'] = str(group.id)
 
-        if ps_name in (SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
-            serializer = PaymentDetailsSberAddSerializer(data=request.data)
-        elif ps_name == C2CTRY_NAME:
+        from trade.routing.ps_names import card_like_ps_names
+
+        if ps_name in card_like_ps_names() or ps_name == C2CTRY_NAME:
             serializer = PaymentDetailsSberAddSerializer(data=request.data)
         else:
             return Response(status=status.HTTP_400_BAD_REQUEST, data={'error': 'This payment system is not supported'})
@@ -655,6 +799,14 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
         group.min_amount_out = serializer_data['min_amount_out']
         group.max_amount_out = serializer_data['max_amount_out']
         group.limit_per_period = serializer_data['volume_in']
+        if 'min_amount_in' in serializer_data:
+            group.min_amount_in = serializer_data['min_amount_in']
+        if 'max_amount_in' in serializer_data:
+            group.max_amount_in = serializer_data['max_amount_in']
+        if 'amount_diff' in serializer_data:
+            group.amount_diff = serializer_data['amount_diff']
+        if 'deal_interval_sec' in serializer_data:
+            group.deal_interval_sec = serializer_data['deal_interval_sec']
         group.save()
 
         return Response(status=status.HTTP_200_OK)

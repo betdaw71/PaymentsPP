@@ -17,11 +17,35 @@ from payments.utils2 import (
 )
 from payments.utils import generate_link, translate_bank
 from trade.serializers import PaymentDetailsSberActionSerializer
-from titanpay.settings import SBER_NAME, SBERPAY_NAME, SBP_NAME, SBERDEP_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME
+from titanpay.settings import SBERPAY_NAME, SBP_NAME, SBERDEP_NAME, C2CTRY_NAME
+from trade.routing.ps_names import card_like_ps_names
+
+
+def _card_payin_ps_names():
+    return card_like_ps_names()
+
+
+def merchant_payin_payment_details(pay_in) -> dict:
+    """Реквизиты для мерчанта: PSP API, иначе живой трейдер. Виртуальные карты PSP не отдаём."""
+    from payments.psp_payin import payin_requires_psp_api_requisites, requisite_for_payin
+
+    req = requisite_for_payin(pay_in)
+    if req is not None:
+        return req
+    order = getattr(pay_in, "order", None)
+    if order is None or order.payment_details is None:
+        return {}
+    if payin_requires_psp_api_requisites(pay_in):
+        return {}
+    ps_name = pay_in.payment_system.name if pay_in.payment_system else None
+    serializer_cls = get_in_ps_serializer(ps_name) if ps_name else None
+    if serializer_cls is None:
+        return {}
+    return serializer_cls(order.payment_details).data
 
 
 def get_in_ps_serializer(payment_system_name):
-    if payment_system_name in (SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
+    if payment_system_name in _card_payin_ps_names():
         return PaymentDetailsCardSerializer
     elif payment_system_name in (SBERDEP_NAME, C2CTRY_NAME):
         return PaymentDetailsSberDepSerializer
@@ -73,13 +97,15 @@ def resolve_currency_and_payment_system_ids(data: dict) -> dict:
 
 class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
     ftd = serializers.BooleanField(required=True, write_only=True)
+    amount_in_usd = serializers.BooleanField(required=False, write_only=True, default=False)
     client = ClientSerializer()
     payment_details = serializers.SerializerMethodField()
 
     class Meta:
         model = PayIn
         fields = ['id', 'currency', 'amount', 'payment_system', 'status', 'merchant_order_id', 'success_url',
-                  'failed_url', 'callback_url', 'created_at', 'updated_at', 'payment_details', 'client', 'ftd']
+                  'failed_url', 'callback_url', 'created_at', 'updated_at', 'payment_details', 'client', 'ftd',
+                  'amount_in_usd']
         read_only_fields = ['created_at', 'updated_at', 'status']
 
     def to_representation(self, instance):
@@ -91,25 +117,17 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
         representation['recalculated'] = instance.order.recalculated
         representation['redirect_url'] = generate_link(instance.id, instance.payment_system.name)
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
+        from payments.merchant_deal_quote import apply_deal_quote
         from payments.psp_payin import enrich_payin_payment_details as enrich_psp
 
-        return enrich_psp(representation, instance)
+        return apply_deal_quote(enrich_psp(representation, instance), instance)
 
     def to_internal_value(self, data):
         data = resolve_currency_and_payment_system_ids(data)
         return super().to_internal_value(data)
 
     def get_payment_details(self, obj):
-        from payments.psp_payin import requisite_for_payin
-
-        req = requisite_for_payin(obj)
-        if req is not None:
-            return req
-        if obj.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(obj.payment_system.name)
-            if serializer_cls is not None:
-                return serializer_cls(obj.order.payment_details).data
-        return {}
+        return merchant_payin_payment_details(obj)
 
     def create(self, validated_data):
         merchant = self.context['request'].user.merchant
@@ -119,6 +137,10 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
 
         if ftd is None:
             raise serializers.ValidationError({"ftd": "This field is required"})
+
+        from payments.merchant_usd_amount import apply_usd_amount_flag
+
+        apply_usd_amount_flag(validated_data, merchant)
 
         solution = MerchantSolution.objects.filter(merchant=merchant, payment_system=validated_data['payment_system'], ftd=ftd, status=1)
 
@@ -166,9 +188,10 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
 
             decline_payin(pay_in, send_callback=False)
             return pay_in
-        from payments.psp_payin import try_attach_psp_sessions
+        from payments.psp_payin import ensure_psp_payin_requisites_or_decline, try_attach_psp_sessions
 
         try_attach_psp_sessions(pay_in)
+        ensure_psp_payin_requisites_or_decline(pay_in)
         pay_in.refresh_from_db()
         return pay_in
 
@@ -229,16 +252,7 @@ class PayInInvoiceRetrieveSerializer(serializers.ModelSerializer):
         fields = ['id', 'currency', 'amount', 'payment_system', 'status', 'payment_details', 'success_url', 'failed_url']
 
     def get_payment_details(self, obj):
-        from payments.psp_payin import requisite_for_payin
-
-        req = requisite_for_payin(obj)
-        if req is not None:
-            return req
-        if obj.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(obj.payment_system.name)
-            if serializer_cls is not None:
-                return serializer_cls(obj.order.payment_details).data
-        return {}
+        return merchant_payin_payment_details(obj)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -272,21 +286,12 @@ class PayInInvoiceNewSerializer(serializers.ModelSerializer):
         representation['status'] = instance.status.name
         representation['currency'] = instance.currency.symbol if instance.currency is not None else None
         representation['payment_system'] = instance.payment_system.name if instance.payment_system is not None else None
-        from payments.psp_payin import enrich_payin_payment_details as enrich_psp, requisite_for_payin
-
-        req = requisite_for_payin(instance)
-        if req:
-            representation['payment_details'] = req
-        elif instance.order and instance.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(instance.payment_system.name)
-            representation['payment_details'] = (
-                serializer_cls(instance.order.payment_details).data if serializer_cls else {}
-            )
-        else:
-            representation['payment_details'] = {}
+        representation['payment_details'] = merchant_payin_payment_details(instance)
         representation['expires_at'] = (instance.created_at + instance.payment_system.expired_time_in).timestamp()
         representation['recalculated'] = instance.order.recalculated
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
+        from payments.psp_payin import enrich_payin_payment_details as enrich_psp
+
         return enrich_psp(representation, instance)
 
 
@@ -304,7 +309,10 @@ class PayInInvoiceInProgressSerializer(serializers.ModelSerializer):
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
         representation['waiting_confirmation'] = True
         representation['order_status'] = instance.order.status.name if instance.order and instance.order.status else None
-        return representation
+        representation['payment_details'] = merchant_payin_payment_details(instance)
+        from payments.psp_payin import enrich_payin_payment_details as enrich_psp
+
+        return enrich_psp(representation, instance)
 
 
 class PayInInvoiceSuccessSerializer(serializers.ModelSerializer):
@@ -339,13 +347,15 @@ class PayInInvoiceFailSerializer(serializers.ModelSerializer):
 
 class PayInPaymentCreateSerializer(serializers.ModelSerializer):
     ftd = serializers.BooleanField(required=True, write_only=True)
+    amount_in_usd = serializers.BooleanField(required=False, write_only=True, default=False)
     client = ClientSerializer()
     payment_details = serializers.SerializerMethodField()
 
     class Meta:
         model = PayIn
         fields = ['id', 'currency', 'amount', 'payment_system', 'status', 'merchant_order_id', 'success_url',
-                  'failed_url', 'callback_url', 'created_at', 'updated_at', 'payment_details', 'client', 'ftd']
+                  'failed_url', 'callback_url', 'created_at', 'updated_at', 'payment_details', 'client', 'ftd',
+                  'amount_in_usd']
         read_only_fields = ['created_at', 'updated_at', 'status']
 
     def to_internal_value(self, data):
@@ -353,16 +363,7 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
 
     def get_payment_details(self, obj):
-        from payments.psp_payin import requisite_for_payin
-
-        req = requisite_for_payin(obj)
-        if req is not None:
-            return req
-        if obj.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(obj.payment_system.name)
-            if serializer_cls is not None:
-                return serializer_cls(obj.order.payment_details).data
-        return {}
+        return merchant_payin_payment_details(obj)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -372,9 +373,10 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
         representation['expires_at'] = int((instance.created_at + instance.payment_system.expired_time_in).timestamp())
         representation['recalculated'] = instance.order.recalculated
         representation['usd_amount'] = float(instance.order.usd_amount) if instance.order is not None else None
+        from payments.merchant_deal_quote import apply_deal_quote
         from payments.psp_payin import enrich_payin_payment_details as enrich_psp
 
-        return enrich_psp(representation, instance)
+        return apply_deal_quote(enrich_psp(representation, instance), instance)
 
     def create(self, validated_data):
         merchant = self.context['request'].user.merchant
@@ -384,6 +386,10 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
 
         if ftd is None:
             raise serializers.ValidationError({"ftd": "This field is required"})
+
+        from payments.merchant_usd_amount import apply_usd_amount_flag
+
+        apply_usd_amount_flag(validated_data, merchant)
 
         solution = MerchantSolution.objects.filter(merchant=merchant, payment_system=validated_data['payment_system'], ftd=ftd, status=1)
 
@@ -433,9 +439,10 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
 
             decline_payin(pay_in, send_callback=False)
             return pay_in
-        from payments.psp_payin import try_attach_psp_sessions
+        from payments.psp_payin import ensure_psp_payin_requisites_or_decline, try_attach_psp_sessions
 
         try_attach_psp_sessions(pay_in)
+        ensure_psp_payin_requisites_or_decline(pay_in)
         pay_in.refresh_from_db()
         return pay_in
 
@@ -449,16 +456,7 @@ class PayInPaymentRetrieveSerializer(serializers.ModelSerializer):
                   'updated_at', 'payment_details']
 
     def get_payment_details(self, obj):
-        from payments.psp_payin import requisite_for_payin
-
-        req = requisite_for_payin(obj)
-        if req is not None:
-            return req
-        if obj.order.payment_details is not None:
-            serializer_cls = get_in_ps_serializer(obj.payment_system.name)
-            if serializer_cls is not None:
-                return serializer_cls(obj.order.payment_details).data
-        return {}
+        return merchant_payin_payment_details(obj)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -529,6 +527,11 @@ class PayOutInvoiceCreateSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         data = resolve_currency_and_payment_system_ids(data)
+        request = self.context.get("request")
+        merchant = getattr(getattr(request, "user", None), "merchant", None) if request is not None else None
+        from payments.payout_remap import remap_payout_payment_system_id
+
+        data = remap_payout_payment_system_id(data, merchant)
         return super().to_internal_value(data)
 
     def create(self, validated_data):
@@ -660,6 +663,12 @@ class PayOutPaymentCreateSerializer(serializers.ModelSerializer):
         if data.get('details') is None:
             raise serializers.ValidationError({"details": "This field is required"})
 
+        request = self.context.get("request")
+        merchant = getattr(getattr(request, "user", None), "merchant", None) if request is not None else None
+        from payments.payout_remap import remap_payout_payment_system_id
+
+        data = remap_payout_payment_system_id(data, merchant)
+
         return super().to_internal_value(data)
 
     def to_representation(self, instance):
@@ -724,23 +733,37 @@ class PayOutPaymentCreateSerializer(serializers.ModelSerializer):
             pay_out.declined()
             return pay_out
 
+        from payments.astrum_client import try_create_astrum_payout
         from payments.playments_client import try_create_playments_payout
+        from payments.payplat_client import try_create_payplat_payout
         from trade.utils import get_client_ip
 
         request = self.context.get("request")
         client_ip = get_client_ip(request) if request is not None else None
-        playments_ok = try_create_playments_payout(pay_out, client_ip=client_ip)
-        if playments_ok is False:
+
+        def _fail_psp_create(reason: str):
             with transaction.atomic():
                 od = OutOrder.objects.select_for_update().get(pk=out_order.pk)
                 if od.status and od.status.name == "New":
-                    od.unfreeze("Playments withdrawal create failed")
+                    od.unfreeze(reason)
                     od.decrease_current_volume()
                     od.status = OutOrderStatus.objects.get(name="Cannot process")
                     od.updated_date = timezone.now()
                     od.save(update_fields=["status", "updated_date"])
             pay_out.declined()
             return pay_out
+
+        playments_ok = try_create_playments_payout(pay_out, client_ip=client_ip)
+        if playments_ok is False:
+            return _fail_psp_create("Playments withdrawal create failed")
+
+        payplat_ok = try_create_payplat_payout(pay_out, client_ip=client_ip)
+        if payplat_ok is False:
+            return _fail_psp_create("PayPlat payout create failed")
+
+        astrum_ok = try_create_astrum_payout(pay_out, client_ip=client_ip)
+        if astrum_ok is False:
+            return _fail_psp_create("Astrum payout create failed")
 
         pay_out.in_progress()
         return pay_out
