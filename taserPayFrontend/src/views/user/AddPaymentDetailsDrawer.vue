@@ -60,7 +60,6 @@ const baseData = ref ({
   deal_interval_hours: 0,
   deal_interval_minutes: 0,
   deal_interval_seconds: 0,
-  skip_auto_live: false,
   allowed_traffic: [],
   in_active: false,
   out_active: false,
@@ -489,12 +488,6 @@ const updateDetail = (index, data) => {
                   :label="$t('seconds')"
                   type="number"
                   min="0"
-                />
-              </VCol>
-              <VCol cols="12">
-                <VSwitch
-                  v-model="itemData.skip_auto_live"
-                  :label="$t('skip_auto_live')"
                 />
               </VCol>
               <VCol

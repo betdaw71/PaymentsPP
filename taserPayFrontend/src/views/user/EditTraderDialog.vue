@@ -1,6 +1,7 @@
 <script setup>
 import { useTradeStore } from "@/stores/useTradeStore"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { useBaseStore } from "@/stores/useBaseStore"
 import { requiredValidator } from "@validators"
 
 const props = defineProps ({
@@ -14,6 +15,7 @@ const props = defineProps ({
         telegram: "",
         phone: "",
         email: "",
+        manual_mode: false,
       }
     },
   },
@@ -41,40 +43,54 @@ const snackbar = ref ({
 
 const tradeStore = useTradeStore ()
 const authStore = useAuthStore ()
+const baseStore = useBaseStore ()
 const userData = ref (structuredClone (toRaw (props.userData)))
 
 watch (props, () => {
   userData.value = structuredClone (toRaw (props.userData))
 })
 
-const updateUser = () => {
-  authStore.updateUser ({
-    username: userData.value.username,
-    phone: userData.value.phone,
-    telegram: userData.value.telegram,
-    email: userData.value.email,
-  }, userData.value.id).then (
-    response => {
-      if (response.error) {
-        throw response.error
-      }
-      snackbar.value = {
-        enabled: true,
-        type: 'success',
-        message: t ('user.user_update.success_message'),
-      }
+const updateUser = async () => {
+  try {
+    const profile = await authStore.updateUser ({
+      username: userData.value.username,
+      phone: userData.value.phone,
+      telegram: userData.value.telegram,
+      email: userData.value.email,
+    }, userData.value.id)
 
-      setTimeout (() => {
-        emit ('update:modelValue', false)
-        emit ('update:isDialogVisible', false)
-      }, 2000)
-    }).catch (error => {
+    if (profile.error) {
+      throw profile.error
+    }
+
+    if (authStore.is_head_of_support && authStore.is_head_of_support()) {
+      const mode = await baseStore.setTraderManualModeById ({
+        manual_mode: Boolean(userData.value.manual_mode),
+      }, userData.value.id)
+
+      if (mode.error) {
+        throw mode.error
+      }
+    }
+
+    snackbar.value = {
+      enabled: true,
+      type: 'success',
+      message: t ('user.user_update.success_message'),
+    }
+
+    setTimeout (() => {
+      emit ('submit')
+      emit ('update:modelValue', false)
+      emit ('update:isDialogVisible', false)
+    }, 2000)
+  } catch (error) {
     snackbar.value = {
       enabled: true,
       type: 'error',
       message: error,
     }
-  })
+  }
 }
 
 const onFormSubmit = async () => {
@@ -173,6 +189,18 @@ const dialogModelValueUpdate = val => {
                   requiredValidator,
                 ]"
               />
+            </VCol>
+            <VCol
+              v-if="authStore.is_head_of_support && authStore.is_head_of_support()"
+              cols="12"
+            >
+              <VSwitch
+                v-model="userData.manual_mode"
+                :label="t('manual_mode')"
+              />
+              <div class="text-caption text-medium-emphasis mt-1">
+                {{ t('manual_mode_hint') }}
+              </div>
             </VCol>
             <VCol
               cols="12"

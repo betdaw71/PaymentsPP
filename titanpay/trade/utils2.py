@@ -70,9 +70,9 @@ def update_pd():
             if (
                 is_psp_trader(p.trader)
                 or uname in _liveness_exempt_trader_usernames()
-                or getattr(p, "skip_auto_live", False)
+                or (p.trader_id and getattr(p.trader, "manual_mode", False))
             ):
-                # PSP / exempt / ручной режим: liveness не гасит группу.
+                # PSP / exempt / ручной трейдер: liveness не гасит группу.
                 fields = []
                 if p.status == 5:
                     p.status = 1
@@ -89,7 +89,7 @@ def update_pd():
     active_pd = (
         pd.filter(status=1)
         .exclude(trader__user__username__in=_liveness_exempt_trader_usernames())
-        .exclude(skip_auto_live=True)
+        .exclude(trader__manual_mode=True)
     )
     for p in active_pd:
         try:
@@ -100,7 +100,7 @@ def update_pd():
     setup_pd = (
         pd.filter(status=7)
         .exclude(trader__user__username__in=_liveness_exempt_trader_usernames())
-        .exclude(skip_auto_live=True)
+        .exclude(trader__manual_mode=True)
     )
     for p in setup_pd:
         try:

@@ -87,7 +87,6 @@ const getItemById = async id => {
         deal_interval_minutes: minutes,
         deal_interval_seconds: seconds,
         amount_diff: data.amount_diff ?? 0,
-        skip_auto_live: Boolean(data.skip_auto_live),
       }
     }).catch (error => {
       console.log (error)
@@ -465,7 +464,6 @@ const updateLimits = () => {
     volume_in: itemData.value.volume_in,
     amount_diff: itemData.value.amount_diff ?? 0,
     deal_interval_sec: Math.max(0, h * 3600 + m * 60 + s),
-    skip_auto_live: Boolean(itemData.value.skip_auto_live),
   }, itemData.value.id).then (response => {
     if (response.error) {
       throw response.error
@@ -806,13 +804,6 @@ const switchSelection = (values, name, key) => {
                     :label="$t('seconds')"
                     type="number"
                     min="0"
-                    :disabled="!authStore.is_support() && !authStore.is_trader()"
-                  />
-                </VCol>
-                <VCol cols="12">
-                  <VSwitch
-                    v-model="itemData.skip_auto_live"
-                    :label="$t('skip_auto_live')"
                     :disabled="!authStore.is_support() && !authStore.is_trader()"
                   />
                 </VCol>

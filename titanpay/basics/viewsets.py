@@ -223,14 +223,22 @@ class TraderViewSet(viewsets.ModelViewSet):
             if trader.working_deposit < 0:
                 return Response({'error': 'working_deposit cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
             updates.append('working_deposit')
+        if 'manual_mode' in request.data:
+            raw = request.data.get('manual_mode')
+            trader.manual_mode = str(raw).strip().lower() in {'1', 'true', 'yes', 'on'}
+            updates.append('manual_mode')
         if not updates:
-            return Response({'error': 'credit_limit or working_deposit required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'credit_limit, working_deposit or manual_mode required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         trader.save(update_fields=updates)
         return Response({
             'id': str(trader.id),
             'username': trader.user.username,
             'credit_limit': str(trader.credit_limit),
             'working_deposit': str(trader.working_deposit),
+            'manual_mode': trader.manual_mode,
         })
 
 
@@ -788,8 +796,6 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
             group.amount_diff = serializer_data['amount_diff']
         if 'deal_interval_sec' in serializer_data:
             group.deal_interval_sec = serializer_data['deal_interval_sec']
-        if 'skip_auto_live' in serializer_data:
-            group.skip_auto_live = serializer_data['skip_auto_live']
         group.save()
 
         return Response(status=status.HTTP_200_OK)

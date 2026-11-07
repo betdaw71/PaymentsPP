@@ -878,6 +878,20 @@ export const useBaseStore = defineStore ({
         error: response.data,
       }
     },
+    async setTraderManualModeById (params, id) {
+      const response = await instance.patch (`/base/trader/${id}/credit/`, params)
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
     async getTransferTargets (params) {
       const response = await instance.get (`/base/transfer-targets/`, { params })
       if (response.status === 200) {

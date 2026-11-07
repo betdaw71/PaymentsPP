@@ -125,6 +125,9 @@ class Trader(models.Model):
         default=0,
         help_text='Prepaid float from the provider (PayPlat 12000). Informational; does not stop inflow.',
     )
+    # Ручной режим (без SMS/автоматики): группы трейдера не гасятся по auto_live.
+    # Включает только headsupport. Также включает алерты защиты от пролива.
+    manual_mode = models.BooleanField(default=False)
 
 
 class TrafficType(models.Model):
@@ -182,8 +185,6 @@ class PaymentDetailsGroup(models.Model):
     current_out_volume = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
 
     auto_live = models.DateTimeField(default=five_minutes_ago, editable=True)
-    # Ручной режим: не гасим группу по auto_live (команда без SMS/автоматики).
-    skip_auto_live = models.BooleanField(default=False)
 
     work_type = models.CharField(max_length=24, default='by_card', choices=WORK_TYPE_CHOICES, null=True, blank=True)
 
@@ -197,7 +198,8 @@ class PaymentDetailsGroup(models.Model):
         self.save()
 
     def check_liveness(self):
-        if self.skip_auto_live:
+        trader = self.trader
+        if trader is not None and getattr(trader, "manual_mode", False):
             return
         if int(timezone.now().timestamp()) - int(self.auto_live.timestamp()) > 120 and self.status == 1:
             self.status = 5

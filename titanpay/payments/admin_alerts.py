@@ -685,6 +685,242 @@ def check_requisite_conversion_alerts() -> None:
         notify_with_cooldown(f"req_conv_low:{psp}:{fp}", text, cooldown)
 
 
+def _manual_traders_qs():
+    from basics.models import Trader
+
+    return Trader.objects.filter(manual_mode=True).select_related(
+        "user", "balance_usdt", "team"
+    )
+
+
+def _manual_trader_deposit(trader) -> Decimal:
+    default_dep = _dec(
+        getattr(settings, "ADMIN_ALERT_MANUAL_DEFAULT_DEPOSIT", 500), Decimal("500")
+    )
+    wd = _dec(getattr(trader, "working_deposit", 0) or 0, Decimal("0"))
+    if wd > 0:
+        return wd
+    team = getattr(trader, "team", None)
+    if team is not None:
+        ins = _dec(getattr(team, "insurance_deposit", 0) or 0, Decimal("0"))
+        if ins > 0:
+            return ins
+    return default_dep
+
+
+def check_manual_trader_balance_alerts() -> None:
+    """Баланс ручного трейдера подходит к нулю (доля от депозита / абсолютный пол)."""
+    bal_min = _dec(getattr(settings, "ADMIN_ALERT_MANUAL_BAL_MIN", 50), Decimal("50"))
+    bal_pct = _dec(getattr(settings, "ADMIN_ALERT_MANUAL_BAL_PCT", 10), Decimal("10"))
+
+    for trader in _manual_traders_qs():
+        uname = trader.user.username if trader.user_id else ""
+        if not uname or trader.balance_usdt_id is None:
+            continue
+        bal = _dec(trader.balance_usdt.amount, Decimal("0"))
+        deposit = _manual_trader_deposit(trader)
+        threshold = max(bal_min, (deposit * bal_pct / Decimal("100")).quantize(Decimal("0.01")))
+        notify_threshold_once(
+            f"manual_trader_bal_low:{uname}",
+            bal <= threshold,
+            (
+                f"⚠ Ручной трейдер {uname}: баланс {bal:.2f} USDT ≤ {threshold:.2f}\n"
+                f"Депозит/float≈{deposit:.0f} USDT (порог {bal_pct}% или min {bal_min})\n"
+                "Проверь пролив / останови выдачу / попроси пополнить."
+            ),
+        )
+
+
+def _manual_trader_conv_stats(since, until) -> dict[str, dict[str, int]]:
+    from collections import defaultdict
+
+    from payments.models import PayIn
+
+    qs = (
+        PayIn.objects.filter(
+            created_at__gte=since,
+            created_at__lt=until,
+            order__payment_details__group__trader__manual_mode=True,
+        )
+        .select_related("status", "order__payment_details__group__trader__user")
+    )
+    stats: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"created": 0, "declined": 0, "success": 0}
+    )
+    for pay in qs.iterator(chunk_size=500):
+        name = _provider_of(pay)
+        if name in {"(no_req)", "(no_trader)"}:
+            continue
+        cell = stats[name]
+        cell["created"] += 1
+        st = pay.status.name if pay.status_id else ""
+        if st == "Declined":
+            cell["declined"] += 1
+        elif st == "Success":
+            cell["success"] += 1
+    return stats
+
+
+def check_manual_trader_conversion_alerts() -> None:
+    """
+    Падение iss→ok у ручного трейдера относительно EWMA-базы.
+    Срабатывает только при достаточном issued (всплеск на объёме).
+    """
+    window_min = _int(getattr(settings, "ADMIN_ALERT_MANUAL_CONV_WINDOW_MIN", 60), 60)
+    min_issued = _int(getattr(settings, "ADMIN_ALERT_MANUAL_CONV_MIN_ISSUED", 8), 8)
+    drop_pp = _dec(getattr(settings, "ADMIN_ALERT_MANUAL_CONV_DROP_PP", 15), Decimal("15"))
+    abs_min = _dec(
+        getattr(settings, "ADMIN_ALERT_MANUAL_CONV_ABS_PCT_MIN", 12), Decimal("12")
+    )
+    alpha = _dec(getattr(settings, "ADMIN_ALERT_MANUAL_CONV_EWMA_ALPHA", "0.25"), Decimal("0.25"))
+    cooldown = _int(getattr(settings, "ADMIN_ALERT_MANUAL_CONV_COOLDOWN_SEC", 1200), 1200)
+    if window_min <= 0 or min_issued <= 0:
+        return
+
+    now = timezone.now()
+    since = now - timedelta(minutes=window_min)
+    current = _manual_trader_conv_stats(since, now)
+    alpha = min(Decimal("1"), max(Decimal("0.05"), alpha))
+
+    for name, cell in current.items():
+        created = cell["created"]
+        issued = created - cell["declined"]
+        if issued < min_issued:
+            continue
+        pct = (Decimal(cell["success"]) * Decimal("100") / Decimal(issued)).quantize(
+            Decimal("0.01")
+        )
+        ewma_key = f"{CACHE_PREFIX}manual_conv_ewma:{name}"
+        raw_base = cache.get(ewma_key)
+        if raw_base is None:
+            baseline = pct
+        else:
+            baseline = _dec(raw_base, pct)
+            baseline = (alpha * pct + (Decimal("1") - alpha) * baseline).quantize(
+                Decimal("0.01")
+            )
+        cache.set(ewma_key, str(baseline), timeout=60 * 60 * 24 * 14)
+
+        drop = baseline - pct
+        # Alert if below abs floor OR sharp drop vs learned baseline
+        if not (pct < abs_min or drop >= drop_pp):
+            continue
+
+        text = (
+            f"⚠ Ручной трейдер {name}: падение конверсии\n"
+            f"Окно: {window_min} мин  issued={issued}  success={cell['success']}\n"
+            f"iss→ok={pct}%  baseline(EWMA)={baseline}%  Δ={drop:.2f}pp\n"
+            f"Пороги: abs<{abs_min}% или drop≥{drop_pp}pp при issued≥{min_issued}\n"
+            "Возможен пролив / плохие реквизиты / спам."
+        )
+        notify_with_cooldown(f"manual_trader_conv:{name}", text, cooldown)
+
+
+def _manual_trader_appeal_stats(since, until) -> dict[str, dict[str, int]]:
+    from collections import defaultdict
+
+    from appeals.models import PayInAppeal, PayInAppealStatus
+    from payments.models import PayIn
+
+    qs = PayIn.objects.filter(
+        status__name="Success",
+        updated_at__gte=since,
+        updated_at__lt=until,
+        order__payment_details__group__trader__manual_mode=True,
+    ).select_related("order__payment_details__group__trader__user")
+
+    rows = []
+    for pay in qs.iterator(chunk_size=500):
+        name = _provider_of(pay)
+        if name in {"(no_req)", "(no_trader)"}:
+            continue
+        rows.append((pay.id, name))
+
+    pay_ids = [pid for pid, _ in rows]
+    approved_ids = set(
+        PayInAppeal.objects.filter(
+            pay_in_id__in=pay_ids,
+            status=PayInAppealStatus.APPROVED,
+        )
+        .values_list("pay_in_id", flat=True)
+        .distinct()
+    ) if pay_ids else set()
+
+    stats: dict[str, dict[str, int]] = defaultdict(lambda: {"success": 0, "appeal_ok": 0})
+    for pid, name in rows:
+        cell = stats[name]
+        cell["success"] += 1
+        if pid in approved_ids:
+            cell["appeal_ok"] += 1
+    return stats
+
+
+def check_manual_trader_appeal_alerts() -> None:
+    """Рост апелляционного закрытия у ручного трейдера (только на объёме)."""
+    window_min = _int(getattr(settings, "ADMIN_ALERT_MANUAL_APPEAL_WINDOW_MIN", 60), 60)
+    min_success = _int(getattr(settings, "ADMIN_ALERT_MANUAL_APPEAL_MIN_SUCCESS", 6), 6)
+    min_appeal = _int(getattr(settings, "ADMIN_ALERT_MANUAL_APPEAL_MIN_APPROVED", 2), 2)
+    max_pct = _dec(getattr(settings, "ADMIN_ALERT_MANUAL_APPEAL_PCT_MAX", 25), Decimal("25"))
+    growth_pp = _dec(
+        getattr(settings, "ADMIN_ALERT_MANUAL_APPEAL_GROWTH_PP", 12), Decimal("12")
+    )
+    cooldown = _int(getattr(settings, "ADMIN_ALERT_MANUAL_APPEAL_COOLDOWN_SEC", 1800), 1800)
+    if window_min <= 0 or min_success <= 0:
+        return
+
+    now = timezone.now()
+    cur_since = now - timedelta(minutes=window_min)
+    prev_since = cur_since - timedelta(minutes=window_min)
+    current = _manual_trader_appeal_stats(cur_since, now)
+    previous = _manual_trader_appeal_stats(prev_since, cur_since)
+
+    for name, cell in current.items():
+        success = cell["success"]
+        appeal_ok = cell["appeal_ok"]
+        if success < min_success or appeal_ok < min_appeal:
+            continue
+        pct = (Decimal(appeal_ok) * Decimal("100") / Decimal(success)).quantize(Decimal("0.01"))
+        prev = previous.get(name) or {"success": 0, "appeal_ok": 0}
+        prev_pct = None
+        if prev["success"] >= min_success:
+            prev_pct = (
+                Decimal(prev["appeal_ok"]) * Decimal("100") / Decimal(prev["success"])
+            ).quantize(Decimal("0.01"))
+        growth = None if prev_pct is None else (pct - prev_pct)
+        hot = pct >= max_pct or (growth is not None and growth >= growth_pp)
+        if not hot:
+            continue
+        prev_line = (
+            f"prev={prev_pct}%  Δ={growth:.2f}pp"
+            if prev_pct is not None
+            else "prev=n/a"
+        )
+        text = (
+            f"⚠ Ручной трейдер {name}: рост апелляций\n"
+            f"Окно: {window_min} мин  success={success}  appeal_ok={appeal_ok}\n"
+            f"appeal%={pct}%  {prev_line}\n"
+            f"Пороги: ≥{max_pct}% или рост ≥{growth_pp}pp\n"
+            "Проверь реквизиты / споры / возможный пролив."
+        )
+        notify_with_cooldown(f"manual_trader_appeal:{name}", text, cooldown)
+
+
+def check_manual_trader_protection_alerts() -> None:
+    """Баланс / конверсия / апелляции для трейдеров в manual_mode."""
+    try:
+        check_manual_trader_balance_alerts()
+    except Exception as exc:
+        logger.error("manual trader balance alerts failed: %s", exc)
+    try:
+        check_manual_trader_conversion_alerts()
+    except Exception as exc:
+        logger.error("manual trader conversion alerts failed: %s", exc)
+    try:
+        check_manual_trader_appeal_alerts()
+    except Exception as exc:
+        logger.error("manual trader appeal alerts failed: %s", exc)
+
+
 def check_ops_health_alerts() -> None:
     """Периодические ops-алерты (конверсия, PSP×мерч, реквизиты, апелляции)."""
     try:
@@ -703,3 +939,7 @@ def check_ops_health_alerts() -> None:
         check_appeal_closure_alerts()
     except Exception as exc:
         logger.error("appeal closure alerts failed: %s", exc)
+    try:
+        check_manual_trader_protection_alerts()
+    except Exception as exc:
+        logger.error("manual trader protection alerts failed: %s", exc)

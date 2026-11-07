@@ -90,7 +90,7 @@ class TraderShortSupportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Trader
-        fields = ('id', 'email', 'username', 'blocked', 'telegram', 'phone')
+        fields = ('id', 'email', 'username', 'blocked', 'telegram', 'phone', 'manual_mode')
 
     def get_email(self, obj):
         return obj.user.email
@@ -320,7 +320,7 @@ class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
         fields = (
             'owner', 'currency', 'payment_system',
             'min_amount_out', 'max_amount_out', 'min_amount_in', 'max_amount_in',
-            'amount_diff', 'deal_interval_sec', 'skip_auto_live',
+            'amount_diff', 'deal_interval_sec',
             'in_active', 'out_active', 'allowed_traffic', 'details',
             'deposit_number_on', 'bic', 'work_type',
         )
@@ -477,7 +477,6 @@ class MinMaxAmountOutSerializer(serializers.Serializer):
     max_amount_in = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
     amount_diff = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
     deal_interval_sec = serializers.IntegerField(required=False, min_value=0)
-    skip_auto_live = serializers.BooleanField(required=False)
 
 
 class TeamLeadSerializer(serializers.ModelSerializer):
