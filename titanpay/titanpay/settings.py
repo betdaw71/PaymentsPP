@@ -349,6 +349,12 @@ ADMIN_ALERT_CONV_MERCHANTS = os.getenv(
     'ADMIN_ALERT_CONV_MERCHANTS', 'melbet,mostbet,pandapay,aggrepay'
 )
 ADMIN_ALERT_CONV_COOLDOWN_SEC = os.getenv('ADMIN_ALERT_CONV_COOLDOWN_SEC', '900')
+# Спам-срез в алертах конверсии (melbet/mostbet): ≥N create у client и 0 Success
+ADMIN_ALERT_CONV_SPAM_MIN = os.getenv('ADMIN_ALERT_CONV_SPAM_MIN', '3')
+ADMIN_ALERT_CONV_SPAM_TOP = os.getenv('ADMIN_ALERT_CONV_SPAM_TOP', '5')
+ADMIN_ALERT_CONV_SPAM_MERCHANTS = os.getenv(
+    'ADMIN_ALERT_CONV_SPAM_MERCHANTS', 'melbet,mostbet'
+)
 # Умные алерты: PSP vs средняя конверсия мерчанта + реквизит с низкой конверсией
 ADMIN_ALERT_PSP_CONV_WINDOW_MIN = os.getenv('ADMIN_ALERT_PSP_CONV_WINDOW_MIN', '60')
 ADMIN_ALERT_PSP_CONV_MIN_ISSUED = os.getenv('ADMIN_ALERT_PSP_CONV_MIN_ISSUED', '8')
