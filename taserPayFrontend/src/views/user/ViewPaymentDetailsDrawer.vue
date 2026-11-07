@@ -75,7 +75,20 @@ const getItemById = async id => {
       if (response.error) {
         throw response.error
       }
-      itemData.value = response.data
+      const data = response.data || {}
+      const totalSec = Number(data.deal_interval_sec) || 0
+      const hours = Math.floor(totalSec / 3600)
+      const minutes = Math.floor((totalSec % 3600) / 60)
+      const seconds = totalSec % 60
+
+      itemData.value = {
+        ...data,
+        deal_interval_hours: hours,
+        deal_interval_minutes: minutes,
+        deal_interval_seconds: seconds,
+        amount_diff: data.amount_diff ?? 0,
+        skip_auto_live: Boolean(data.skip_auto_live),
+      }
     }).catch (error => {
       console.log (error)
       snackbar.value = {
@@ -440,12 +453,19 @@ const saveDetail = (index, data) => {
 }
 
 const updateLimits = () => {
+  const h = Number(itemData.value.deal_interval_hours) || 0
+  const m = Number(itemData.value.deal_interval_minutes) || 0
+  const s = Number(itemData.value.deal_interval_seconds) || 0
+
   baseStore.updatePaymentDetailLimitsById({
     min_amount_out: itemData.value.min_amount_out,
     max_amount_out: itemData.value.max_amount_out,
     min_amount_in: itemData.value.min_amount_in,
     max_amount_in: itemData.value.max_amount_in,
     volume_in: itemData.value.volume_in,
+    amount_diff: itemData.value.amount_diff ?? 0,
+    deal_interval_sec: Math.max(0, h * 3600 + m * 60 + s),
+    skip_auto_live: Boolean(itemData.value.skip_auto_live),
   }, itemData.value.id).then (response => {
     if (response.error) {
       throw response.error
@@ -746,6 +766,54 @@ const switchSelection = (values, name, key) => {
                       requiredValidator
                     ]"
                     :disabled="!authStore.is_support()"
+                  />
+                </VCol>
+                <VCol cols="12">
+                  <VTextField
+                    v-model="itemData.amount_diff"
+                    :label="$t('amount_diff')"
+                    type="number"
+                    min="0"
+                    :disabled="!authStore.is_support() && !authStore.is_trader()"
+                  />
+                </VCol>
+                <VCol cols="12">
+                  <div class="text-body-2 mb-2">
+                    {{ $t('deal_interval') }}
+                  </div>
+                </VCol>
+                <VCol cols="4">
+                  <VTextField
+                    v-model="itemData.deal_interval_hours"
+                    :label="$t('hours')"
+                    type="number"
+                    min="0"
+                    :disabled="!authStore.is_support() && !authStore.is_trader()"
+                  />
+                </VCol>
+                <VCol cols="4">
+                  <VTextField
+                    v-model="itemData.deal_interval_minutes"
+                    :label="$t('minutes')"
+                    type="number"
+                    min="0"
+                    :disabled="!authStore.is_support() && !authStore.is_trader()"
+                  />
+                </VCol>
+                <VCol cols="4">
+                  <VTextField
+                    v-model="itemData.deal_interval_seconds"
+                    :label="$t('seconds')"
+                    type="number"
+                    min="0"
+                    :disabled="!authStore.is_support() && !authStore.is_trader()"
+                  />
+                </VCol>
+                <VCol cols="12">
+                  <VSwitch
+                    v-model="itemData.skip_auto_live"
+                    :label="$t('skip_auto_live')"
+                    :disabled="!authStore.is_support() && !authStore.is_trader()"
                   />
                 </VCol>
                 <VCol

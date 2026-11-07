@@ -56,6 +56,11 @@ const baseData = ref ({
   max_amount_out: 10000,
   min_amount_in: 0,
   max_amount_in: 999999999,
+  amount_diff: 0,
+  deal_interval_hours: 0,
+  deal_interval_minutes: 0,
+  deal_interval_seconds: 0,
+  skip_auto_live: false,
   allowed_traffic: [],
   in_active: false,
   out_active: false,
@@ -183,8 +188,19 @@ const saveItem = async () => {
     return
   }
   console.log ("validation success")
+  const h = Number(itemData.value.deal_interval_hours) || 0
+  const m = Number(itemData.value.deal_interval_minutes) || 0
+  const s = Number(itemData.value.deal_interval_seconds) || 0
+  const {
+    deal_interval_hours,
+    deal_interval_minutes,
+    deal_interval_seconds,
+    ...payload
+  } = itemData.value
+
   baseStore.createPaymentDetails ({
-    ...itemData.value,
+    ...payload,
+    deal_interval_sec: Math.max(0, h * 3600 + m * 60 + s),
   }).then (
     response => {
       if (response.error) {
@@ -436,6 +452,49 @@ const updateDetail = (index, data) => {
                   :rules="[
                     requiredValidator
                   ]"
+                />
+              </VCol>
+              <VCol cols="12">
+                <VTextField
+                  v-model="itemData.amount_diff"
+                  :label="$t('amount_diff')"
+                  type="number"
+                  min="0"
+                />
+              </VCol>
+              <VCol cols="12">
+                <div class="text-body-2 mb-2">
+                  {{ $t('deal_interval') }}
+                </div>
+              </VCol>
+              <VCol cols="4">
+                <VTextField
+                  v-model="itemData.deal_interval_hours"
+                  :label="$t('hours')"
+                  type="number"
+                  min="0"
+                />
+              </VCol>
+              <VCol cols="4">
+                <VTextField
+                  v-model="itemData.deal_interval_minutes"
+                  :label="$t('minutes')"
+                  type="number"
+                  min="0"
+                />
+              </VCol>
+              <VCol cols="4">
+                <VTextField
+                  v-model="itemData.deal_interval_seconds"
+                  :label="$t('seconds')"
+                  type="number"
+                  min="0"
+                />
+              </VCol>
+              <VCol cols="12">
+                <VSwitch
+                  v-model="itemData.skip_auto_live"
+                  :label="$t('skip_auto_live')"
                 />
               </VCol>
               <VCol

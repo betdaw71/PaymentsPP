@@ -317,7 +317,13 @@ class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PaymentDetailsGroup
-        fields = ('owner', 'currency', 'payment_system', 'min_amount_out', 'max_amount_out', 'min_amount_in', 'max_amount_in', 'in_active', 'out_active', 'allowed_traffic', 'details', 'deposit_number_on', 'bic', 'work_type')
+        fields = (
+            'owner', 'currency', 'payment_system',
+            'min_amount_out', 'max_amount_out', 'min_amount_in', 'max_amount_in',
+            'amount_diff', 'deal_interval_sec', 'skip_auto_live',
+            'in_active', 'out_active', 'allowed_traffic', 'details',
+            'deposit_number_on', 'bic', 'work_type',
+        )
 
     def create(self, validated_data):
         traffic_types = validated_data.pop('allowed_traffic')
@@ -469,6 +475,9 @@ class MinMaxAmountOutSerializer(serializers.Serializer):
     volume_in = serializers.DecimalField(max_digits=32, decimal_places=2)
     min_amount_in = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
     max_amount_in = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
+    amount_diff = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
+    deal_interval_sec = serializers.IntegerField(required=False, min_value=0)
+    skip_auto_live = serializers.BooleanField(required=False)
 
 
 class TeamLeadSerializer(serializers.ModelSerializer):

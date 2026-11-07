@@ -784,6 +784,12 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
             group.min_amount_in = serializer_data['min_amount_in']
         if 'max_amount_in' in serializer_data:
             group.max_amount_in = serializer_data['max_amount_in']
+        if 'amount_diff' in serializer_data:
+            group.amount_diff = serializer_data['amount_diff']
+        if 'deal_interval_sec' in serializer_data:
+            group.deal_interval_sec = serializer_data['deal_interval_sec']
+        if 'skip_auto_live' in serializer_data:
+            group.skip_auto_live = serializer_data['skip_auto_live']
         group.save()
 
         return Response(status=status.HTTP_200_OK)

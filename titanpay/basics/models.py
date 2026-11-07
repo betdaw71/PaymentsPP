@@ -158,6 +158,10 @@ class PaymentDetailsGroup(models.Model):
     # Лимит суммы одного pay-in по группе. Дефолт широкий — существующие группы и PSP не режем.
     min_amount_in = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
     max_amount_in = models.DecimalField(default=Decimal("999999999"), validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    # Мин. разница сумм между активными заявками на группе (0 = выкл.). Только живые трейдеры.
+    amount_diff = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
+    # Мин. секунд между выдачами на группу (0 = выкл.). Отсчёт от creation_date последней выдачи.
+    deal_interval_sec = models.IntegerField(default=0, validators=[MinValueValidator(0)])
     amount = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)  # balance
     bic = models.CharField(max_length=9, blank=True, null=True, validators=[bic_validator])
     deposit_number_on = models.BooleanField(default=False)
@@ -178,6 +182,8 @@ class PaymentDetailsGroup(models.Model):
     current_out_volume = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
 
     auto_live = models.DateTimeField(default=five_minutes_ago, editable=True)
+    # Ручной режим: не гасим группу по auto_live (команда без SMS/автоматики).
+    skip_auto_live = models.BooleanField(default=False)
 
     work_type = models.CharField(max_length=24, default='by_card', choices=WORK_TYPE_CHOICES, null=True, blank=True)
 
@@ -191,6 +197,8 @@ class PaymentDetailsGroup(models.Model):
         self.save()
 
     def check_liveness(self):
+        if self.skip_auto_live:
+            return
         if int(timezone.now().timestamp()) - int(self.auto_live.timestamp()) > 120 and self.status == 1:
             self.status = 5
             self.save()

@@ -88,7 +88,20 @@ class SberRouting:
         active_details = PaymentDetails.objects.filter(inorders__in=active_orders)
         skipped = []
 
+        from trade.routing.deal_spacing import group_skip_reason_for_deal_spacing
+
         for group in chosen_group:
+            uname = group.trader.user.username if group.trader and group.trader.user else "?"
+            is_human = not is_psp_trader(group.trader) and not is_preferred_payin_psp(group.trader)
+            if is_human:
+                spacing_skip = group_skip_reason_for_deal_spacing(group, amount)
+                if spacing_skip:
+                    skipped.append({
+                        "trader": uname,
+                        "group_id": str(group.id),
+                        "skip": spacing_skip,
+                    })
+                    continue
             available_details = PaymentDetails.objects.filter(
                 group=group,
                 status=1,
@@ -97,9 +110,8 @@ class SberRouting:
                 card_number__isnull=False,
             )
             # PSP / payplat / gipay: виртуальная карта не блокируется активной заявкой на ту же сумму.
-            if not is_psp_trader(group.trader) and not is_preferred_payin_psp(group.trader):
+            if is_human:
                 available_details = available_details.exclude(id__in=active_details)
-            uname = group.trader.user.username if group.trader and group.trader.user else "?"
             if not available_details.exists():
                 skipped.append({"trader": uname, "group_id": str(group.id), "skip": "no_free_card"})
                 continue

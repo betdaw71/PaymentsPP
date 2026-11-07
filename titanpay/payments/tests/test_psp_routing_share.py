@@ -170,6 +170,19 @@ class ApplyPreferredPspOrderTest(SimpleTestCase):
             ["payplat1", "gipay1", "bitzone1"],
         )
 
+    @override_settings(PSP_ROUTING_SHARE_MAP={})
+    def test_humans_stay_before_preferred_psp(self):
+        groups = [
+            _group("live_trader", 9, volume="10"),
+            _group("gipay1", 2),
+            _group("payplat1", 1),
+        ]
+        ordered = apply_preferred_psp_order(groups)
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            ["live_trader", "payplat1", "gipay1"],
+        )
+
     @override_settings(PSP_ROUTING_SHARE_MAP={"payplat1": 70, "gipay1": 30})
     def test_with_shares_does_not_reorder(self):
         groups = [_group("gipay1", 2), _group("payplat1", 1), _group("bitzone1", 3)]
@@ -240,4 +253,17 @@ class MerchantCascadeOverrideTest(SimpleTestCase):
         self.assertEqual(
             [g.trader.user.username for g in ordered],
             ["gipay1", "payplat1"],
+        )
+
+    def test_live_traders_before_psp(self, _mdr):
+        groups = [
+            _group("payplat1", 1, volume="0"),
+            _group("live_b", 20, volume="50"),
+            _group("gipay1", 2, volume="0"),
+            _group("live_a", 21, volume="10"),
+        ]
+        ordered = sort_groups_for_routing(groups, rng=_ScriptedRng([0.0, 0.0]))
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            ["live_a", "live_b", "payplat1", "gipay1"],
         )

@@ -590,16 +590,13 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     """
     Порядок выбора группы.
 
-    PSP всегда первыми. Если задан PSP_ROUTING_SHARE_MAP — среди провайдеров
-    с долей > 0 порядок взвешенно-случайный (70/30 значит ~70% заявок
-    первым слотом payplat). Не используем объём за окно для выбора:
-    догон истории отдаёт весь поток отстающему.
+    Живые трейдеры всегда первыми (по current_volume), затем PSP.
+    Если задан PSP_ROUTING_SHARE_MAP — среди провайдеров с долей > 0
+    порядок взвешенно-случайный (70/30 значит ~70% заявок первым слотом
+    среди PSP). Не используем объём за окно для выбора.
 
-    Если у мерчанта есть PSP_ROUTING_PRIORITY_BY_MERCHANT — только его каскад,
-    SHARE_MAP для него не применяется.
-
-    Провайдеры без доли (0 / не указаны) — после weighted, по приоритету.
-    Обычные трейдеры — после всех PSP, по current_volume.
+    Если у мерчанта есть PSP_ROUTING_PRIORITY_BY_MERCHANT — только его каскад
+    среди PSP, SHARE_MAP для него не применяется. Живые всё равно раньше PSP.
 
     share_volumes оставлен для совместимости (диагностика), на порядок не влияет.
     rng — random.Random для тестов.
@@ -611,6 +608,7 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     rest = [g for g in groups if g not in psp]
     mdr_map = _team_mdr_in_map(psp) if psp else {}
     custom_map = merchant_psp_priority_map(merchant)
+    rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))
 
     def cascade_key(group):
         trader = group.trader
@@ -622,19 +620,19 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
             _group_username(group),
         )
 
-    # Per-merchant каскад: строго по priority, без глобальных долей.
+    # Per-merchant каскад: строго по priority среди PSP, без глобальных долей.
     if custom_map is not None:
         psp_sorted = sorted(psp, key=cascade_key)
-        rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))
         try:
             logger.info(
-                "PSP_MERCHANT_CASCADE merchant=%s order=%s",
+                "PSP_MERCHANT_CASCADE merchant=%s humans_first order=%s psp=%s",
                 _merchant_routing_username(merchant),
+                [_group_username(g) for g in rest_sorted[:8]],
                 [_group_username(g) for g in psp_sorted[:8]],
             )
         except Exception:
             pass
-        return psp_sorted + rest_sorted
+        return rest_sorted + psp_sorted
 
     shares = get_routing_share_map()
     weighted = [
@@ -657,8 +655,7 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
         psp_sorted = picked + sorted(unweighted, key=cascade_key)
     else:
         psp_sorted = sorted(psp, key=cascade_key)
-    rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))
-    return psp_sorted + rest_sorted
+    return rest_sorted + psp_sorted
 
 
 def psp_routing_amount_ok(trader, amount) -> bool:
@@ -690,7 +687,8 @@ def is_preferred_payin_psp(trader) -> bool:
 
 def apply_preferred_psp_order(groups, merchant=None):
     """
-    payplat затем gipay всегда раньше остальных preferred.
+    Среди PSP: payplat затем gipay раньше остальных preferred.
+    Живых трейдеров не двигаем — они остаются впереди каскада.
 
     Если включён PSP_ROUTING_SHARE_MAP — не переставляем: иначе доли
     из sort_groups_for_routing сбросятся в payplat-first.
@@ -699,17 +697,22 @@ def apply_preferred_psp_order(groups, merchant=None):
     groups = list(groups)
     if not groups or psp_routing_share_enabled() or merchant_psp_priority_map(merchant) is not None:
         return groups
+    humans = [
+        g for g in groups
+        if not (is_psp_trader(g.trader) or is_preferred_payin_psp(g.trader))
+    ]
+    psp = [g for g in groups if g not in humans]
     pref_order = {n.lower(): i for i, n in enumerate(preferred_payin_psp_usernames())}
     preferred = []
     other = []
-    for group in groups:
+    for group in psp:
         uname = _group_username(group).lower()
         if uname in pref_order:
             preferred.append(group)
         else:
             other.append(group)
     preferred.sort(key=lambda g: pref_order.get(_group_username(g).lower(), 99))
-    return preferred + other
+    return humans + preferred + other
 
 
 def psp_trader_usernames() -> frozenset[str]:
