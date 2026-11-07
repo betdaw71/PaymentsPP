@@ -367,15 +367,26 @@ class BalanceViewset(viewsets.ModelViewSet):
             return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'You are not a trader!'})
         trader: Trader = request.user.trader
 
+        def _deposit_address(t: Trader) -> str:
+            bal = None
+            if t.is_boss:
+                bal = t.balance_usdt
+            elif t.boss_id and t.boss is not None:
+                bal = t.boss.balance_usdt
+            if bal is None:
+                return ""
+            addr = bal.address.order_by("id").first()
+            return (addr.address_public or "") if addr is not None else ""
+
         my_balance = {
             "id": trader.id,
             "username": trader.user.username,
             "available_balance_amount": trader.balance_usdt.amount if trader.balance_usdt else 0.0,
-            "available_balance_id": trader.balance_usdt.id,
+            "available_balance_id": trader.balance_usdt.id if trader.balance_usdt_id else None,
             "frozen_balance_amount": trader.frozen_balance_usdt.amount if trader.frozen_balance_usdt else 0.0,
-            "frozen_balance_id": trader.frozen_balance_usdt.id,
-            "deposit_address": trader.balance_usdt.address.get().address_public if trader.is_boss else trader.boss.balance_usdt.address.get().address_public,
-            "insurance_deposit": trader.team.insurance_deposit
+            "frozen_balance_id": trader.frozen_balance_usdt.id if trader.frozen_balance_usdt_id else None,
+            "deposit_address": _deposit_address(trader),
+            "insurance_deposit": trader.team.insurance_deposit if trader.team_id else 0,
         }
 
         serializer = TraderBalanceSerializer(my_balance)
