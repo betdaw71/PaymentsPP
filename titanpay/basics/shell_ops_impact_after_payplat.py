@@ -9,8 +9,9 @@
 
 Опционально:
   DAYS=14                 # сколько дней назад смотреть
-  CUTOFF=2026-11-05       # дата отключения PayPlat (MSK, YYYY-MM-DD); иначе авто
-  MERCHANTS=mostbet,melbet,pandapay
+  CUTOFF=2026-11-07       # дата отключения PayPlat (MSK); иначе авто
+  MERCHANTS=all           # all = все мерчи с трафиком; или csv
+  MIN_CREATE=30           # мелких мерчей — одной строкой
 """
 from __future__ import annotations
 
@@ -27,11 +28,8 @@ from payments.models import PayIn
 MSK = ZoneInfo("Europe/Moscow")
 DAYS = int(os.environ.get("DAYS") or "14")
 CUTOFF_RAW = (os.environ.get("CUTOFF") or "").strip()
-MERCHANTS = [
-    p.strip()
-    for p in (os.environ.get("MERCHANTS") or "mostbet,melbet,pandapay").split(",")
-    if p.strip()
-]
+MERCHANTS_RAW = (os.environ.get("MERCHANTS") or "all").strip()
+MIN_CREATE = int(os.environ.get("MIN_CREATE") or "30")
 Q2 = Decimal("0.01")
 SPAM_MIN = int(os.environ.get("SPAM_MIN") or "3")
 
@@ -86,10 +84,21 @@ qs = (
     )
     .order_by("created_at")
 )
-if MERCHANTS:
-    qs = qs.filter(merchant__user__username__in=MERCHANTS)
+want_all = MERCHANTS_RAW.lower() in {"", "all", "*"}
+MERCHANTS_FILTER = []
+if not want_all:
+    MERCHANTS_FILTER = [p.strip() for p in MERCHANTS_RAW.split(",") if p.strip()]
+    qs = qs.filter(merchant__user__username__in=MERCHANTS_FILTER)
 
 pays = list(qs.iterator(chunk_size=1000))
+# Discover merchants present in window (sorted by create volume desc).
+_vol: dict[str, int] = defaultdict(int)
+for p in pays:
+    if p.merchant_id and p.merchant.user_id:
+        _vol[p.merchant.user.username] += 1
+MERCHANTS = [n for n, _ in sorted(_vol.items(), key=lambda x: -x[1])]
+if MERCHANTS_FILTER:
+    MERCHANTS = [n for n in MERCHANTS if n in set(MERCHANTS_FILTER)]
 
 # --- auto-detect PayPlat cutoff: last day when payplat share of issued >= 20% ---
 by_day_psp_iss: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -121,11 +130,15 @@ else:
 
 print("=" * 78)
 print(f"OPS IMPACT  window={since.date()} → {now.date()} MSK  DAYS={DAYS}")
-print(f"merchants={','.join(MERCHANTS)}")
+print(f"merchants={'ALL → ' if want_all else ''}{','.join(MERCHANTS) or '(none)'}")
 print(f"CUTOFF (after PayPlat collapse) = {cutoff.date()} MSK")
 if not CUTOFF_RAW:
     print("  (auto; override: CUTOFF=YYYY-MM-DD)")
+print(f"MIN_CREATE detail threshold = {MIN_CREATE}")
 print("=" * 78)
+
+# Platform-wide BEFORE/AFTER (all merchants in list)
+print(f"\n{'=' * 78}\nPLATFORM TOTAL (selected merchants)\n{'=' * 78}")
 
 
 def bucket(pay) -> str:
@@ -200,18 +213,42 @@ def analyze(label: str, subset: list) -> dict:
     }
 
 
+# Platform-wide first
+_plat_before = [p for p in pays if bucket(p) == "BEFORE"]
+_plat_after = [p for p in pays if bucket(p) == "AFTER"]
+analyze(f"PLATFORM BEFORE {cutoff.date()}", _plat_before)
+analyze(f"PLATFORM AFTER  {cutoff.date()}", _plat_after)
+
 # Per merchant BEFORE/AFTER
 advice_bits: list[str] = []
+summary_rows: list[tuple] = []
 for merchant in MERCHANTS:
     m_pays = [p for p in pays if p.merchant_id and p.merchant.user.username == merchant]
     if not m_pays:
         print(f"\n=== {merchant}: no data ===")
         continue
-    print(f"\n{'=' * 78}\nMERCHANT {merchant}\n{'=' * 78}")
     before = [p for p in m_pays if bucket(p) == "BEFORE"]
     after = [p for p in m_pays if bucket(p) == "AFTER"]
+    if len(m_pays) < MIN_CREATE:
+        # compact one-liner for tiny merchants
+        b_ok = sum(1 for p in before if p.status_id and p.status.name == "Success")
+        b_iss = len(before) - sum(1 for p in before if p.status_id and p.status.name == "Declined")
+        a_ok = sum(1 for p in after if p.status_id and p.status.name == "Success")
+        a_iss = len(after) - sum(1 for p in after if p.status_id and p.status.name == "Declined")
+        print(
+            f"\n=== {merchant} (small n={len(m_pays)}): "
+            f"before iss→ok={pct_s(b_ok, b_iss)} after iss→ok={pct_s(a_ok, a_iss)} ==="
+        )
+        summary_rows.append(
+            (merchant, len(before), len(after), pct(b_ok, b_iss), pct(a_ok, a_iss))
+        )
+        continue
+    print(f"\n{'=' * 78}\nMERCHANT {merchant}\n{'=' * 78}")
     b = analyze(f"{merchant} BEFORE {cutoff.date()}", before)
     a = analyze(f"{merchant} AFTER  {cutoff.date()}", after)
+    summary_rows.append(
+        (merchant, b["created"], a["created"], b["iss_ok"], a["iss_ok"])
+    )
 
     # day series
     by_day = defaultdict(lambda: {"c": 0, "d": 0, "ok": 0})
@@ -265,6 +302,20 @@ for merchant in MERCHANTS:
             f"after={pct_s(a_iss.get(n, 0), a_total):>7}"
         )
 
+
+print("\n" + "=" * 78)
+print("SUMMARY iss→ok by merchant (BEFORE → AFTER)")
+print("=" * 78)
+print(f"  {'merchant':16} {'c_bef':>7} {'c_aft':>7} {'iss→ok bef':>12} {'iss→ok aft':>12} {'Δpp':>8}")
+for name, cb, ca, pb, pa in summary_rows:
+    dpp = ""
+    if pb is not None and pa is not None:
+        dpp = f"{(pa - pb):+.2f}"
+    print(
+        f"  {name:16} {cb:7} {ca:7} "
+        f"{(str(pb) + '%') if pb is not None else 'n/a':>12} "
+        f"{(str(pa) + '%') if pa is not None else 'n/a':>12} {dpp:>8}"
+    )
 
 print("\n" + "=" * 78)
 print("СОВЕТЫ (по данным выше + типовой ops)")
