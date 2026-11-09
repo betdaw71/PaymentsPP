@@ -308,7 +308,7 @@ PSP_XE_MARKUP_BY_TRADER = os.getenv(
     'PSP_XE_MARKUP_BY_TRADER',
     '{"payplat1":"1.05","patriot1":"1.03","gipay1":"1.04","visionx1":"1.03",'
     '"layerone1":"1.02","prochub1":"1.02","nexus1":"1.04","plutus1":"1.03",'
-    '"astrum_kzt":"1.03"}',
+    '"astrum_kzt":"1.03","resdfe":"1.04"}',
 )
 
 PAYMENT_PAGE_URL = os.getenv('PAYMENT_PAGE_URL')

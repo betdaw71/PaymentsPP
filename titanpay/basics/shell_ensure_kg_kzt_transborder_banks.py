@@ -40,7 +40,7 @@ BANK_PS_NAMES = (
     "Bai-Tushum",
 )
 TRADER_USERNAME = (os.environ.get("TRADER_USERNAME") or "resdfe").strip()
-TRADER_MDR_IN = Decimal((os.environ.get("TRADER_MDR_IN") or "4.5").strip())
+TRADER_MDR_IN = Decimal((os.environ.get("TRADER_MDR_IN") or "4").strip())
 
 
 def _ensure_ps(kzt: Currency, name: str, template: PaymentSystem | None) -> PaymentSystem:

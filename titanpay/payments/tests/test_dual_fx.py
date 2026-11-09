@@ -31,7 +31,8 @@ def _trader(username):
     XE_KZT_MARKUP_BY_PS="{}",
     PSP_XE_MARKUP_BY_TRADER=(
         '{"payplat1":"1.05","patriot1":"1.03","gipay1":"1.04","visionx1":"1.03",'
-        '"layerone1":"1.02","prochub1":"1.02","nexus1":"1.04","plutus1":"1.03"}'
+        '"layerone1":"1.02","prochub1":"1.02","nexus1":"1.04","plutus1":"1.03",'
+        '"resdfe":"1.04"}'
     ),
 )
 class DualFxQuoteTest(SimpleTestCase):
@@ -43,6 +44,13 @@ class DualFxQuoteTest(SimpleTestCase):
         self.assertGreater(quote.merchant_rate, quote.psp_rate)
         self.assertGreater(quote.psp_usd, quote.merchant_usd)
         self.assertEqual(quote.merchant_usd, Decimal("10.00"))
+
+    def test_resdfe_live_trader_is_xe_plus_4(self):
+        ps = _PS("525")
+        quote = quote_dual_fx(amount=Decimal("5250"), payment_system=ps, trader=_trader("resdfe"))
+        self.assertEqual(quote.psp_markup, Decimal("1.04"))
+        self.assertGreater(quote.merchant_rate, quote.psp_rate)
+        self.assertGreater(quote.psp_usd, quote.merchant_usd)
 
     @override_settings(XE_KZT_MARKUP_BY_MERCHANT={"pandapay": "1.04"})
     def test_pandapay_merchant_xe_plus_4_rescales_from_stored_ps_rate(self):
