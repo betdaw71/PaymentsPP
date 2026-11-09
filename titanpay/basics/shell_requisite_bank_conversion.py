@@ -1,7 +1,8 @@
 """
-Конверсия по банкам/PS реквизита (группа) и по PSP — после cutoff.
+Конверсия по банкам выданных реквизитов и по PSP — после cutoff.
 
-Банк = PaymentDetailsGroup.payment_system.name (Elkard/Kompanion/… или C2CKZT у виртуальных).
+Банк = то же поле bank, что уходит мерчу (requisite_for_payin),
+не PS группы (у PSP группа часто C2CKZT/C2C).
 
   docker compose exec -T -e DAYS=14 -e CUTOFF=2026-11-07 -e MIN_AMOUNT=5000 \\
     app python manage.py shell < titanpay/basics/shell_requisite_bank_conversion.py
@@ -21,6 +22,8 @@ from zoneinfo import ZoneInfo
 from django.utils import timezone
 
 from payments.models import PayIn
+from payments.psp_payin import requisite_for_payin
+from payments.utils import translate_bank
 
 MSK = ZoneInfo("Europe/Moscow")
 DAYS = int(os.environ.get("DAYS") or "14")
@@ -58,25 +61,23 @@ def provider_of(pay) -> str:
 
 
 def bank_of(pay) -> str:
+    """Имя банка из выдачи мерчу (PSP create_response), иначе PS группы."""
+    try:
+        req = requisite_for_payin(pay) or {}
+        bank = str(req.get("bank") or req.get("bankName") or "").strip()
+        if bank:
+            return bank
+    except Exception:  # noqa: BLE001
+        pass
     order = getattr(pay, "order", None)
     if order is None or not getattr(order, "payment_details_id", None):
-        return "(no_req)"
+        return "(no_bank)"
     try:
         ps = order.payment_details.group.payment_system
-        return (ps.name if ps else "") or "(no_ps)"
+        name = (ps.name if ps else "") or ""
+        return (translate_bank(name) or name or "(no_bank)").strip()
     except Exception:  # noqa: BLE001
-        return "(no_ps)"
-
-
-def card_tail(pay) -> str:
-    try:
-        card = (order := pay.order) and order.payment_details and (order.payment_details.card_number or "")
-        digits = "".join(c for c in str(card) if c.isdigit())
-        if len(digits) >= 6:
-            return f"bin:{digits[:6]}"
-        return "(no_bin)"
-    except Exception:  # noqa: BLE001
-        return "(no_bin)"
+        return "(no_bank)"
 
 
 qs = (
@@ -101,7 +102,7 @@ def side_of(pay) -> str:
 
 def report(label: str, subset: list):
     subset = [p for p in subset if Decimal(str(p.amount or 0)) >= MIN_AMOUNT]
-    by_bank = defaultdict(lambda: {"c": 0, "d": 0, "ok": 0, "psp": defaultdict(lambda: {"c": 0, "d": 0, "ok": 0})})
+    by_bank = defaultdict(lambda: {"c": 0, "d": 0, "ok": 0})
     by_psp = defaultdict(lambda: {"c": 0, "d": 0, "ok": 0})
     by_bank_psp = defaultdict(lambda: {"c": 0, "d": 0, "ok": 0})
 
@@ -115,12 +116,6 @@ def report(label: str, subset: list):
                 cell["d"] += 1
             elif st == "Success":
                 cell["ok"] += 1
-        bpsp = by_bank[bank]["psp"][psp]
-        bpsp["c"] += 1
-        if st == "Declined":
-            bpsp["d"] += 1
-        elif st == "Success":
-            bpsp["ok"] += 1
 
     print(f"\n{'=' * 78}\n{label}  n={len(subset)}  min_amount≥{MIN_AMOUNT}  min_issued={MIN_ISSUED}\n{'=' * 78}")
 
@@ -135,10 +130,10 @@ def report(label: str, subset: list):
         return out
 
     bank_rows = rows_from(by_bank)
-    print("\nBANKS / group PS  (best → worst by iss→ok)")
-    print(f"  {'bank/ps':22} {'create':>7} {'iss':>6} {'ok':>5} {'iss→ok':>8}")
-    for name, c, iss, ok, p in bank_rows:
-        print(f"  {name:22} {c:7} {iss:6} {ok:5} {pct_s(ok, iss):>8}")
+    print("\nBANKS issued to merchant  (best → worst by iss→ok)")
+    print(f"  {'bank':28} {'create':>7} {'iss':>6} {'ok':>5} {'iss→ok':>8}")
+    for name, c, iss, ok, _p in bank_rows:
+        print(f"  {name:28} {c:7} {iss:6} {ok:5} {pct_s(ok, iss):>8}")
     if bank_rows:
         best = bank_rows[0]
         worst = bank_rows[-1]
@@ -147,10 +142,10 @@ def report(label: str, subset: list):
 
     print("\nPSP traders")
     print(f"  {'psp':16} {'create':>7} {'iss':>6} {'ok':>5} {'iss→ok':>8}")
-    for name, c, iss, ok, p in rows_from(by_psp):
+    for name, c, iss, ok, _p in rows_from(by_psp):
         print(f"  {name:16} {c:7} {iss:6} {ok:5} {pct_s(ok, iss):>8}")
 
-    print("\nBANK × PSP (weak cells — кандидаты на письмо провайдеру)")
+    print("\nBANK × PSP (weak cells — кандидаты на письмо провайдеру, iss→ok<25%)")
     weak = []
     for (bank, psp), c in by_bank_psp.items():
         iss = c["c"] - c["d"]
@@ -162,8 +157,8 @@ def report(label: str, subset: list):
     weak.sort(key=lambda x: (x[4], -x[2]))
     if not weak:
         print("  (нет ячеек iss≥MIN и iss→ok<25%)")
-    for bank, psp, iss, ok, rate in weak[:25]:
-        print(f"  {bank:18} × {psp:12}  iss={iss:4} ok={ok:3} iss→ok={rate}%")
+    for bank, psp, iss, ok, rate in weak[:30]:
+        print(f"  {bank:22} × {psp:12}  iss={iss:4} ok={ok:3} iss→ok={rate}%")
 
 
 sides = []
@@ -174,7 +169,6 @@ if SIDE in {"after", "both"}:
 
 print(f"Requisite/bank conversion  DAYS={DAYS} CUTOFF={cutoff.date()} MERCHANTS={MERCHANTS_RAW} SIDE={SIDE}")
 for label, subset in sides:
-    # per merchant + total
     by_m = defaultdict(list)
     for p in subset:
         if p.merchant_id and p.merchant.user_id:
