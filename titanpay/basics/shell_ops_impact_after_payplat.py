@@ -12,6 +12,10 @@
   CUTOFF=2026-11-07       # дата отключения PayPlat (MSK); иначе авто
   MERCHANTS=all           # all = все мерчи с трафиком; или csv
   MIN_CREATE=30           # мелких мерчей — одной строкой
+
+Чеки (fiat amount): <3k | 3–5k | 5–10k | 10k+
+  После снижения мин. чека с 5к→3к сравнивай like-for-like по 5–10k и 10k+,
+  а 3–5k смотри отдельно (новый сегмент).
 """
 from __future__ import annotations
 
@@ -32,6 +36,14 @@ MERCHANTS_RAW = (os.environ.get("MERCHANTS") or "all").strip()
 MIN_CREATE = int(os.environ.get("MIN_CREATE") or "30")
 Q2 = Decimal("0.01")
 SPAM_MIN = int(os.environ.get("SPAM_MIN") or "3")
+
+# fiat amount buckets (KZT/RUB чеки)
+AMOUNT_BUCKETS = (
+    (Decimal("0"), Decimal("3000"), "<3k"),
+    (Decimal("3000"), Decimal("5000"), "3–5k"),
+    (Decimal("5000"), Decimal("10000"), "5–10k"),
+    (Decimal("10000"), None, "10k+"),
+)
 
 
 def money(x) -> Decimal:
@@ -69,6 +81,57 @@ def client_key(pay) -> str:
 
 def day_key(dt) -> str:
     return dt.astimezone(MSK).strftime("%Y-%m-%d")
+
+
+def amount_bucket(pay) -> str:
+    amt = Decimal(str(getattr(pay, "amount", 0) or 0))
+    for lo, hi, name in AMOUNT_BUCKETS:
+        if hi is None:
+            if amt >= lo:
+                return name
+        elif lo <= amt < hi:
+            return name
+    return "other"
+
+
+def print_amount_buckets(subset: list, *, indent: str = "  ") -> dict[str, dict]:
+    """iss→ok / share по чекам; возвращает stats по bucket."""
+    by_b: dict[str, dict] = {
+        name: {"c": 0, "d": 0, "ok": 0} for _, _, name in AMOUNT_BUCKETS
+    }
+    by_b["other"] = {"c": 0, "d": 0, "ok": 0}
+    for p in subset:
+        b = amount_bucket(p)
+        st = p.status.name if p.status_id else ""
+        cell = by_b.setdefault(b, {"c": 0, "d": 0, "ok": 0})
+        cell["c"] += 1
+        if st == "Declined":
+            cell["d"] += 1
+        elif st == "Success":
+            cell["ok"] += 1
+    total_c = sum(v["c"] for v in by_b.values()) or 1
+    print(f"{indent}По чекам (fiat): create / share / issued / ok / iss→ok")
+    order = [name for _, _, name in AMOUNT_BUCKETS] + ["other"]
+    for name in order:
+        cell = by_b.get(name) or {"c": 0, "d": 0, "ok": 0}
+        if cell["c"] == 0:
+            continue
+        iss = cell["c"] - cell["d"]
+        print(
+            f"{indent}  {name:6}  c={cell['c']:5}  share={pct_s(cell['c'], total_c):>7}  "
+            f"iss={iss:5}  ok={cell['ok']:5}  iss→ok={pct_s(cell['ok'], iss)}"
+        )
+    # like-for-like: только ≥5k (как до снижения мин. чека)
+    ge5 = [p for p in subset if Decimal(str(p.amount or 0)) >= Decimal("5000")]
+    if ge5:
+        g_ok = sum(1 for p in ge5 if p.status_id and p.status.name == "Success")
+        g_dec = sum(1 for p in ge5 if p.status_id and p.status.name == "Declined")
+        g_iss = len(ge5) - g_dec
+        print(
+            f"{indent}  ≥5k LFL  c={len(ge5):5}  share={pct_s(len(ge5), total_c):>7}  "
+            f"iss={g_iss:5}  ok={g_ok:5}  iss→ok={pct_s(g_ok, g_iss)}  ← сравнивай до/после"
+        )
+    return by_b
 
 
 now = timezone.now().astimezone(MSK)
@@ -186,11 +249,35 @@ def analyze(label: str, subset: list) -> dict:
         f"share={pct_s(spam_creates, created)}  "
         f"iss→ok без спама={pct_s(clean_ok, clean_iss)}"
     )
+    buckets = print_amount_buckets(subset)
+    # PSP × чек ≥5k (like-for-like) — чтобы не смешивать новый 3–5k сегмент
+    ge5 = [p for p in subset if Decimal(str(p.amount or 0)) >= Decimal("5000")]
+    by_psp_ge5: dict[str, dict] = defaultdict(lambda: {"c": 0, "d": 0, "ok": 0})
+    for p in ge5:
+        st = p.status.name if p.status_id else ""
+        psp = provider_of(p)
+        by_psp_ge5[psp]["c"] += 1
+        if st == "Declined":
+            by_psp_ge5[psp]["d"] += 1
+        elif st == "Success":
+            by_psp_ge5[psp]["ok"] += 1
+    ge5_iss = len(ge5) - sum(1 for p in ge5 if p.status_id and p.status.name == "Declined")
+    if ge5:
+        print("  PSP на чеках ≥5k (LFL):")
+        ranked_ge5 = sorted(by_psp_ge5.items(), key=lambda x: -(x[1]["c"] - x[1]["d"]))
+        for psp, c in ranked_ge5[:10]:
+            iss = c["c"] - c["d"]
+            if iss <= 0 and c["c"] < 5:
+                continue
+            print(
+                f"    {psp:16} create={c['c']:5} iss={iss:5} ok={c['ok']:5} "
+                f"iss_share={pct_s(iss, ge5_iss):>7}  iss→ok={pct_s(c['ok'], iss)}"
+            )
     ranked = sorted(
         by_psp.items(),
         key=lambda x: -(x[1]["c"] - x[1]["d"]),
     )
-    print("  PSP (issued share / iss→ok):")
+    print("  PSP all amounts (issued share / iss→ok):")
     for psp, c in ranked[:12]:
         iss = c["c"] - c["d"]
         if iss <= 0 and c["c"] < 5:
@@ -199,6 +286,7 @@ def analyze(label: str, subset: list) -> dict:
             f"    {psp:16} create={c['c']:5} iss={iss:5} ok={c['ok']:5} "
             f"iss_share={pct_s(iss, issued):>7}  iss→ok={pct_s(c['ok'], iss)}"
         )
+    ge5_ok = sum(1 for p in ge5 if p.status_id and p.status.name == "Success")
     return {
         "created": created,
         "issued": issued,
@@ -210,6 +298,9 @@ def analyze(label: str, subset: list) -> dict:
         "spam_share": pct(spam_creates, created),
         "clean_iss_ok": pct(clean_ok, clean_iss),
         "by_psp": by_psp,
+        "buckets": buckets,
+        "ge5_iss_ok": pct(ge5_ok, ge5_iss) if ge5 else None,
+        "ge5_created": len(ge5),
     }
 
 
@@ -240,14 +331,22 @@ for merchant in MERCHANTS:
             f"before iss→ok={pct_s(b_ok, b_iss)} after iss→ok={pct_s(a_ok, a_iss)} ==="
         )
         summary_rows.append(
-            (merchant, len(before), len(after), pct(b_ok, b_iss), pct(a_ok, a_iss))
+            (merchant, len(before), len(after), pct(b_ok, b_iss), pct(a_ok, a_iss), None, None)
         )
         continue
     print(f"\n{'=' * 78}\nMERCHANT {merchant}\n{'=' * 78}")
     b = analyze(f"{merchant} BEFORE {cutoff.date()}", before)
     a = analyze(f"{merchant} AFTER  {cutoff.date()}", after)
     summary_rows.append(
-        (merchant, b["created"], a["created"], b["iss_ok"], a["iss_ok"])
+        (
+            merchant,
+            b["created"],
+            a["created"],
+            b["iss_ok"],
+            a["iss_ok"],
+            b.get("ge5_iss_ok"),
+            a.get("ge5_iss_ok"),
+        )
     )
 
     # day series
@@ -306,16 +405,23 @@ for merchant in MERCHANTS:
 print("\n" + "=" * 78)
 print("SUMMARY iss→ok by merchant (BEFORE → AFTER)")
 print("=" * 78)
-print(f"  {'merchant':16} {'c_bef':>7} {'c_aft':>7} {'iss→ok bef':>12} {'iss→ok aft':>12} {'Δpp':>8}")
-for name, cb, ca, pb, pa in summary_rows:
-    dpp = ""
-    if pb is not None and pa is not None:
-        dpp = f"{(pa - pb):+.2f}"
+print(
+    f"  {'merchant':16} {'c_bef':>7} {'c_aft':>7} "
+    f"{'all bef':>10} {'all aft':>10} {'Δall':>7} "
+    f"{'≥5k bef':>10} {'≥5k aft':>10} {'Δ≥5k':>7}"
+)
+for row in summary_rows:
+    name, cb, ca, pb, pa, gb, ga = row
+    dpp = f"{(pa - pb):+.2f}" if pb is not None and pa is not None else ""
+    dge = f"{(ga - gb):+.2f}" if gb is not None and ga is not None else ""
     print(
         f"  {name:16} {cb:7} {ca:7} "
-        f"{(str(pb) + '%') if pb is not None else 'n/a':>12} "
-        f"{(str(pa) + '%') if pa is not None else 'n/a':>12} {dpp:>8}"
+        f"{(str(pb) + '%') if pb is not None else 'n/a':>10} "
+        f"{(str(pa) + '%') if pa is not None else 'n/a':>10} {dpp:>7} "
+        f"{(str(gb) + '%') if gb is not None else 'n/a':>10} "
+        f"{(str(ga) + '%') if ga is not None else 'n/a':>10} {dge:>7}"
     )
+print("  (Δ≥5k = like-for-like после снижения мин. чека 5к→3к; 3–5k смотри в блоках «По чекам»)")
 
 print("\n" + "=" * 78)
 print("СОВЕТЫ (по данным выше + типовой ops)")
@@ -328,16 +434,11 @@ for i, line in enumerate(advice_bits, 1):
 print(
     """
   Практический план:
-  1) Каскад: подними в SHARE/PRIORITY тех, у кого AFTER iss→ok выше (часто patriot/gipay/visionx),
-     PayPlat оставь на 99 / убери из SHARE пока не заживёт.
-  2) Mostbet: если clean iss→ok ок, а raw плохой — это спам/нагрузка, не «мёртвые» PSP.
-     Если clean тоже упал — меняй доли PSP и лимиты сумм.
-  3) Issue_rate↓: смотри diagnose_routing + empty cascade (балансы PSP / credit_limit / status групп).
-  4) Живые трейдеры (resdfe): manual_mode + amount_diff/interval; они должны быть ПЕРЕД PSP.
-  5) Не включай Mostbet обратно, пока day iss→ok AFTER не стабильно ≥ порога алертов
-     (сейчас ADMIN_ALERT_CONV_ISSUED_PCT_MIN) на объёме ≥20 create / 15 мин.
-  6) Сравни USD_success BEFORE vs AFTER — если оборот упал сильнее конверсии,
-     проблема в выдаче/доле трафика, не только в «качестве» платежей.
+  1) Сравнивай Δ≥5k (LFL), не сырой all — иначе просадка от новых чеков 3–5к смешивается с PSP.
+  2) Если 3–5k AFTER сильно хуже 5–10k — либо подними мин. чек обратно, либо отдельный каскад/PSP на low.
+  3) Каскад: режь VisionX, поднимай gipay+patriot по iss→ok на ≥5k; PayPlat вне SHARE.
+  4) Mostbet: смотри clean + ≥5k; не включай, пока day iss→ok выше порога алертов.
+  5) Issue_rate↓: diagnose_routing + балансы/credit; живые трейдеры перед PSP.
 
   Дополнительно:
     docker compose exec -T -e DAYS=3 app python manage.py shell \\
