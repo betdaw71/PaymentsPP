@@ -60,7 +60,8 @@ class SberRouting:
             logging.getLogger("payin.trace").exception("routing queryset snapshot failed")
         return filtered_options
     
-    def get_details(self, possible_options, active_orders, amount, merchant=None):
+    def get_details(self, possible_options, active_orders, amount, merchant=None, payment_system=None):
+        from payments.deal_margin import margin_ok_for_group
         from payments.payin_trace import record_in_sort_and_pick
         from payments.psp_payin import (
             apply_preferred_psp_order,
@@ -72,7 +73,14 @@ class SberRouting:
 
         chosen_group = apply_preferred_psp_order(
             sort_groups_for_routing(
-                possible_options.select_related("trader", "trader__user", "trader__team", "payment_system", "trader__balance_usdt"),
+                possible_options.select_related(
+                    "trader",
+                    "trader__user",
+                    "trader__team",
+                    "trader__team__teamlead",
+                    "payment_system",
+                    "trader__balance_usdt",
+                ),
                 amount,
                 merchant=merchant,
             ),
@@ -87,6 +95,7 @@ class SberRouting:
 
         active_details = PaymentDetails.objects.filter(inorders__in=active_orders)
         skipped = []
+        margin_ps = payment_system
 
         from trade.routing.deal_spacing import group_skip_reason_for_deal_spacing
 
@@ -100,6 +109,20 @@ class SberRouting:
                         "trader": uname,
                         "group_id": str(group.id),
                         "skip": spacing_skip,
+                    })
+                    continue
+            if margin_ps is not None:
+                margin_ok, margin_skip = margin_ok_for_group(
+                    group,
+                    amount=amount,
+                    payment_system=margin_ps,
+                    merchant=merchant,
+                )
+                if not margin_ok:
+                    skipped.append({
+                        "trader": uname,
+                        "group_id": str(group.id),
+                        "skip": margin_skip or "margin_low",
                     })
                     continue
             available_details = PaymentDetails.objects.filter(
@@ -146,7 +169,9 @@ class SberRouting:
     def check_cluster(self, risk_cluster, payment_system, amount, active_orders, traffic_type, usd_amount):
         options = self.get_possible_options_in(risk_cluster, payment_system, amount, traffic_type, usd_amount)
 
-        chosen_detail = self.get_details(options, active_orders, amount)
+        chosen_detail = self.get_details(
+            options, active_orders, amount, payment_system=payment_system
+        )
 
         if chosen_detail is not None:
             return chosen_detail
@@ -158,7 +183,13 @@ class SberRouting:
 
         possible_options = self.get_possible_options_in(None, payment_system, amount, traffic_type, usd_amount)
 
-        chosen_detail = self.get_details(possible_options, active_orders, amount, merchant=merchant)
+        chosen_detail = self.get_details(
+            possible_options,
+            active_orders,
+            amount,
+            merchant=merchant,
+            payment_system=payment_system,
+        )
 
         if chosen_detail is not None:
             return chosen_detail
