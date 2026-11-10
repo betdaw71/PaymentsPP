@@ -229,13 +229,14 @@ def expire():
             solution__payment_system=ps,
         )
         # «Деньги отправлены» + трейдер не подтвердил за expired_time_in → Expired + unfreeze.
-        # Отсчёт от перехода в Money sent by user (как таймер expires_at в ЛК).
+        # Отсчёт от ПЕРВОГО перехода в Money sent by user (как expires_at в serializers:
+        # money_sent_status_change.first() → oldest by pk/created_at).
         money_sent_at = (
             InOrderStatusChange.objects.filter(
                 order_id=OuterRef("pk"),
                 status__name="Money sent by user",
             )
-            .order_by("-created_at")
+            .order_by("created_at")
             .values("created_at")[:1]
         )
         money_sent_base = InOrder.objects.filter(
