@@ -418,6 +418,11 @@ CASH_REGISTER_ROLLING_MERCHANTS = os.getenv(
     'CASH_REGISTER_ROLLING_MERCHANTS',
     'mostbet',
 )
+# Живые трейдеры: их balance_usdt (+frozen) и insurance_deposit команды = наш долг им (пассив).
+CASH_REGISTER_OWED_TO_TRADERS = os.getenv(
+    'CASH_REGISTER_OWED_TO_TRADERS',
+    'resdfe',
+)
 USDT_TRC20_CONTRACT = os.getenv('USDT_TRC20_CONTRACT', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t')
 TRONGRID_API_KEY = os.getenv('TRONGRID_API_KEY', os.getenv('TRONGRID_KEY', ''))
 
