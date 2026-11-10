@@ -1060,6 +1060,8 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
     if order is not None:
         solution = getattr(order, "solution", None)
         merchant = getattr(solution, "merchant", None) if solution is not None else None
+    from payments.deal_margin import margin_ok_for_group
+
     for group in sort_groups_for_routing(groups, amount, merchant=merchant):
         if exclude_trader_id is not None and group.trader_id == exclude_trader_id:
             continue
@@ -1067,6 +1069,12 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
             continue
         if not is_psp_trader(group.trader) and not is_preferred_payin_psp(group.trader):
             continue
+        if ps is not None:
+            margin_ok, _skip = margin_ok_for_group(
+                group, amount=amount, payment_system=ps, merchant=merchant
+            )
+            if not margin_ok:
+                continue
         detail = PaymentDetails.objects.filter(
             group=group,
             status=1,

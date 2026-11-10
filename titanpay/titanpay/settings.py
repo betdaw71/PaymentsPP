@@ -299,8 +299,11 @@ XE_KZT_MARKUP_BY_PS = os.getenv('XE_KZT_MARKUP_BY_PS', '{"Vietcombank":"1.04"}')
 # Пример: pandapay xe+4 при общем C2CKZT xe+5 → {"pandapay":"1.04"}
 XE_KZT_MARKUP_BY_MERCHANT = os.getenv(
     'XE_KZT_MARKUP_BY_MERCHANT',
-    '{"pandapay":"1.04"}',
+    '{"pandapay":"1.04","aggrepay":"1.04"}',
 )
+# Фильтр выдачи: не слать pay-in на трейдера/PSP, если маржа площадки < DEAL_MARGIN_MIN_PCT % merchant USD.
+DEAL_MARGIN_FILTER_ENABLED = os.getenv('DEAL_MARGIN_FILTER_ENABLED', '1')
+DEAL_MARGIN_MIN_PCT = os.getenv('DEAL_MARGIN_MIN_PCT', '0.2')
 # JSON: username PSP-трейдера → его XE-наценка (1.03 = xe+3). Нет ключа = как у мерчанта.
 # Сетка из тетради (мерч xe+5). Bitzone не здесь — Binance P2P Kaspi 2–4.
 # Мерчанту/провайдеру чужой курс не отдаём.
