@@ -18,13 +18,15 @@ from basics.models import (
     TrafficType,
 )
 from merchant.models import Merchant, MerchantSolution
-from trade.models import InOrder, InOrderStatus, InOrderStatusChange
+from trade.models import InOrder, InOrderStatus, InOrderStatusChange, TransactionType
 from trade.utils2 import expire
 
 
 class MoneySentExpireTest(TestCase):
     def setUp(self):
         Language.objects.create(name="Russian")
+        TransactionType.objects.get_or_create(name="Deposit")
+        TransactionType.objects.get_or_create(name="Freeze")
         self.kzt = Currency.objects.create(name="Tenge MSE", symbol="KZT_MSE")
         self.ps = PaymentSystem.objects.create(
             name="C2CKZT_MSE",
