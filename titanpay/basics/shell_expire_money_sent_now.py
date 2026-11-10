@@ -34,11 +34,39 @@ now = timezone.now()
 print(f"now={now.isoformat()} APPLY={APPLY} FULL_EXPIRE={FULL}")
 
 stuck = InOrder.objects.filter(status__name="Money sent by user").select_related(
-    "solution__payment_system", "status"
+    "solution__payment_system",
+    "status",
+    "payment_details__group__trader__user",
 )
 print(f"Money sent by user total: {stuck.count()}")
 
 due_ids = []
+print("\n--- detail (every Money-sent order) ---")
+for o in stuck.order_by("updated_date"):
+    ps = o.solution.payment_system if o.solution_id else None
+    ttl = (ps.expired_time_in if ps else None) or timedelta(minutes=15)
+    sc = (
+        InOrderStatusChange.objects.filter(order=o, status__name="Money sent by user")
+        .order_by("-created_at")
+        .first()
+    )
+    sent_at = sc.created_at if sc else o.updated_date
+    deadline = sent_at + ttl
+    overdue = now >= deadline
+    left = deadline - now
+    trader = "?"
+    try:
+        trader = o.payment_details.group.trader.user.username
+    except Exception:
+        pass
+    print(
+        f"  id={o.id} trader={trader} PS={ps.name if ps else '-'} "
+        f"amount={o.amount} sent_at={sent_at} ttl={ttl} "
+        f"deadline={deadline} left={left} OVERDUE={overdue}"
+    )
+    if overdue:
+        due_ids.append(o.id)
+
 for ps in PaymentSystem.objects.all():
     ttl = ps.expired_time_in or timedelta(minutes=15)
     cutoff = now - ttl
@@ -61,7 +89,6 @@ for ps in PaymentSystem.objects.all():
     n = qs.count()
     if n:
         print(f"  PS={ps.name} ttl={ttl} due={n}")
-        due_ids.extend(qs.values_list("id", flat=True)[:50])
 
 # без InOrderStatusChange — fallback по updated_date
 no_change = (
