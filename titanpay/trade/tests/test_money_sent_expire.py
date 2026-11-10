@@ -109,3 +109,17 @@ class MoneySentExpireTest(TestCase):
         expire()
         order.refresh_from_db()
         self.assertEqual(order.status.name, "Money sent by user")
+
+    def test_ttl_uses_first_money_sent_like_ui(self):
+        """ЛК: expires_at = first().created_at + ttl; повторная запись не сбрасывает таймер."""
+        order = self._order(money_sent_ago=timedelta(minutes=20))
+        # «свежая» повторная Money-sent — expire всё равно должен закрыть по первой
+        recent = InOrderStatusChange.objects.create(
+            order=order, status=self.status_sent, timedelta=0
+        )
+        InOrderStatusChange.objects.filter(pk=recent.pk).update(
+            created_at=timezone.now() - timedelta(minutes=2)
+        )
+        expire()
+        order.refresh_from_db()
+        self.assertEqual(order.status.name, "Expired")
