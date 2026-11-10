@@ -238,13 +238,15 @@ def expire():
             .order_by("-created_at")
             .values("created_at")[:1]
         )
-        money_sent_expired = (
-            InOrder.objects.filter(
-                status__name="Money sent by user",
-                solution__payment_system=ps,
-            )
-            .annotate(_money_sent_at=Subquery(money_sent_at))
-            .filter(_money_sent_at__lte=time_in)
+        money_sent_base = InOrder.objects.filter(
+            status__name="Money sent by user",
+            solution__payment_system=ps,
+        ).annotate(_money_sent_at=Subquery(money_sent_at))
+        money_sent_expired = money_sent_base.filter(_money_sent_at__lte=time_in)
+        # Нет строки status_change — считаем от updated_date (момент перехода в Money sent).
+        money_sent_fallback = money_sent_base.filter(
+            _money_sent_at__isnull=True,
+            updated_date__lte=time_in,
         )
         expired_out_orders = OutOrder.objects.filter(status__name="New", creation_date__lte=time_out, solution__payment_system=ps, sms_sent=False)
         arbitrage_orders_in = InOrder.objects.filter(status__name="Arbitrage", amount__lte=ps.auto_close_amount, solution__payment_system=ps, updated_date__lte=arb_time_out)
@@ -258,7 +260,11 @@ def expire():
             except Exception:
                 logging.exception("expire: failed to expire InOrder %s", order.pk)
 
-        for order in money_sent_expired:
+        seen_money_sent = set()
+        for order in list(money_sent_expired) + list(money_sent_fallback):
+            if order.pk in seen_money_sent:
+                continue
+            seen_money_sent.add(order.pk)
             try:
                 with transaction.atomic():
                     locked = InOrder.objects.select_for_update().get(pk=order.pk)
