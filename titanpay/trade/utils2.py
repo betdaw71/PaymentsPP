@@ -215,6 +215,8 @@ def expire_pay_outs():
 
 
 def expire():
+    from django.db.models import OuterRef, Subquery
+
     payment_systems = PaymentSystem.objects.all()
 
     for ps in payment_systems:
@@ -225,6 +227,24 @@ def expire():
             status__name="New",
             creation_date__lte=time_in,
             solution__payment_system=ps,
+        )
+        # «Деньги отправлены» + трейдер не подтвердил за expired_time_in → Expired + unfreeze.
+        # Отсчёт от перехода в Money sent by user (как таймер expires_at в ЛК).
+        money_sent_at = (
+            InOrderStatusChange.objects.filter(
+                order_id=OuterRef("pk"),
+                status__name="Money sent by user",
+            )
+            .order_by("-created_at")
+            .values("created_at")[:1]
+        )
+        money_sent_expired = (
+            InOrder.objects.filter(
+                status__name="Money sent by user",
+                solution__payment_system=ps,
+            )
+            .annotate(_money_sent_at=Subquery(money_sent_at))
+            .filter(_money_sent_at__lte=time_in)
         )
         expired_out_orders = OutOrder.objects.filter(status__name="New", creation_date__lte=time_out, solution__payment_system=ps, sms_sent=False)
         arbitrage_orders_in = InOrder.objects.filter(status__name="Arbitrage", amount__lte=ps.auto_close_amount, solution__payment_system=ps, updated_date__lte=arb_time_out)
@@ -237,6 +257,15 @@ def expire():
                         locked.deal_time_expired()
             except Exception:
                 logging.exception("expire: failed to expire InOrder %s", order.pk)
+
+        for order in money_sent_expired:
+            try:
+                with transaction.atomic():
+                    locked = InOrder.objects.select_for_update().get(pk=order.pk)
+                    if locked.status and locked.status.name == "Money sent by user":
+                        locked.deal_time_expired()
+            except Exception:
+                logging.exception("expire: failed to expire Money-sent InOrder %s", order.pk)
 
         for order in expired_out_orders:
             try:
