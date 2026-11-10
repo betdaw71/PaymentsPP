@@ -87,6 +87,17 @@ def rolling_merchant_names() -> frozenset[str]:
     return _name_set("CASH_REGISTER_ROLLING_MERCHANTS", "mostbet")
 
 
+def owed_to_trader_names() -> frozenset[str]:
+    """Живые трейдеры: баланс + страховой депозит команды = пассив (долг им)."""
+    return _name_set("CASH_REGISTER_OWED_TO_TRADERS", "resdfe")
+
+
+def trader_balance_owed(available, frozen=0) -> Decimal:
+    """Сколько должны трейдеру по ЛК (только плюс; минус не наш долг)."""
+    net = money(money(available) + money(frozen))
+    return net if net > 0 else ZERO
+
+
 def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
     """USDT TRC-20 на кошельке площадки через TronGrid. Сбой сети → 0, кассу не роняем."""
     from django.conf import settings
@@ -300,25 +311,32 @@ def snapshot(now=None) -> dict:
     deposit_psp = deposit_from_psp_names()
     merchant_names = liability_merchant_names()
     rolling_names = rolling_merchant_names()
+    owed_traders = owed_to_trader_names()
 
     psp_rows = []
-    trader_rows = []
+    owed_trader_rows = []
     psp_deposit_rows = []
     psp_total = ZERO
-    trader_total = ZERO
+    owed_trader_total = ZERO
     deposit_total = ZERO
+    insurance_total = ZERO
     psp_deposit_owed_total = ZERO
-    traders = Trader.objects.select_related("user", "balance_usdt", "frozen_balance_usdt")
+    seen_insurance_teams: set = set()
+    traders = Trader.objects.select_related(
+        "user", "balance_usdt", "frozen_balance_usdt", "team"
+    )
     for trader in traders:
         available = _bal(trader, "balance_usdt")
         frozen = _bal(trader, "frozen_balance_usdt")
         username = trader.user.username if trader.user_id else ""
+        insurance = money(getattr(trader.team, "insurance_deposit", 0) or 0) if trader.team_id else ZERO
         row = {
             "username": username,
             "available": money_str(available),
             "frozen": money_str(frozen),
             "credit_limit": money_str(trader.credit_limit),
             "working_deposit": money_str(trader.working_deposit),
+            "insurance_deposit": money_str(insurance),
         }
         deposit_total += money(trader.working_deposit)
         if username in prepaid_psp:
@@ -342,6 +360,22 @@ def snapshot(now=None) -> dict:
                     "rolling_reserve": "0.00",
                     "note": "deposit_from_psp",
                 })
+        elif username in owed_traders:
+            bal_owed = trader_balance_owed(available, frozen)
+            team_id = trader.team_id
+            ins_owed = ZERO
+            if team_id and team_id not in seen_insurance_teams:
+                seen_insurance_teams.add(team_id)
+                ins_owed = insurance
+                insurance_total += ins_owed
+            net = money(bal_owed + ins_owed)
+            row["balance_owed"] = money_str(bal_owed)
+            row["insurance_owed"] = money_str(ins_owed)
+            row["net"] = money_str(net)
+            row["note"] = "owed_to_trader"
+            if net > 0:
+                owed_trader_total += net
+                owed_trader_rows.append(row)
         # остальные трейдеры/PSP в кассу не входят
 
     from merchant.kzt_settlement import is_melbet_merchant
@@ -448,8 +482,11 @@ def snapshot(now=None) -> dict:
             "kind": "trc20_usdt",
         })
 
-    assets_total = money(psp_total + trader_total + receivable_total + wallet_usdt)
-    liabilities_total = money(merchant_total + agent_total + teamlead_total + psp_deposit_owed_total)
+    # trader_total — пассив (долг живым трейдерам), не актив
+    assets_total = money(psp_total + receivable_total + wallet_usdt)
+    liabilities_total = money(
+        merchant_total + agent_total + teamlead_total + psp_deposit_owed_total + owed_trader_total
+    )
     cash = money(assets_total - liabilities_total)
     end = current
     return {
@@ -460,11 +497,11 @@ def snapshot(now=None) -> dict:
         "assets": {
             "total": money_str(assets_total),
             "psp_total": money_str(psp_total),
-            "traders_total": money_str(trader_total),
+            "traders_total": "0.00",
             "receivables_total": money_str(receivable_total),
             "wallet_total": money_str(wallet_usdt),
             "psp": sorted(psp_rows, key=lambda row: row["username"]),
-            "traders": sorted(trader_rows, key=lambda row: row["username"]),
+            "traders": [],
             "receivables": sorted(receivable_rows, key=lambda row: row["username"]),
             "wallets": wallet_rows,
         },
@@ -474,10 +511,13 @@ def snapshot(now=None) -> dict:
             "agents_total": money_str(agent_total),
             "teamleads_total": money_str(teamlead_total),
             "psp_deposits_total": money_str(psp_deposit_owed_total),
+            "traders_owed_total": money_str(owed_trader_total),
+            "insurance_deposits_total": money_str(insurance_total),
             "merchants": sorted(merchant_rows, key=lambda row: row["username"]),
             "agents": sorted(agent_rows, key=lambda row: row["username"]),
             "teamleads": sorted(teamlead_rows, key=lambda row: row["username"]),
             "psp_deposits": sorted(psp_deposit_rows, key=lambda row: row["username"]),
+            "traders_owed": sorted(owed_trader_rows, key=lambda row: row["username"]),
         },
         "memo": {
             "rolling_reserve": money_str(rolling_total),
@@ -502,6 +542,7 @@ def format_telegram(data: dict | None = None) -> str:
         f"Melbet {data['assets'].get('receivables_total', '0.00')}\n"
         f"мерчи {data['liabilities']['merchants_total']} · "
         f"депозит PSP {data['liabilities'].get('psp_deposits_total', '0.00')} · "
+        f"трейдеры {data['liabilities'].get('traders_owed_total', '0.00')} · "
         f"агенты {data['liabilities']['agents_total']} · "
         f"тимлиды {data['liabilities']['teamleads_total']}\n"
         f"день {day['net']} (MDR {day['payin_mdr']}+{day['payout_mdr']} · FX {day['payin_fx']} · "
