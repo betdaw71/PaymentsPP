@@ -9,6 +9,15 @@ def update_all():
         update_balances()
     except Exception as e:
         logging.error(f"update_balances failed: {e}")
+
+    logging.debug('watched team crypto deposits')
+    try:
+        from trade.crypto_deposit_watch import poll_watched_crypto_deposits
+
+        poll_watched_crypto_deposits()
+    except Exception as e:
+        logging.error(f"watched crypto deposits failed: {e}")
+
     logging.debug('Updating PDs')
     try:
         update_pd()

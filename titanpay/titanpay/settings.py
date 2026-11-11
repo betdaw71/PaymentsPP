@@ -425,6 +425,13 @@ CASH_REGISTER_OWED_TO_TRADERS = os.getenv(
 )
 USDT_TRC20_CONTRACT = os.getenv('USDT_TRC20_CONTRACT', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t')
 TRONGRID_API_KEY = os.getenv('TRONGRID_API_KEY', os.getenv('TRONGRID_KEY', ''))
+# Внешние USDT TRC-20 кошельки команд: address:trader_username[,…]
+# TronGrid watcher зачисляет входящие на balance_usdt трейдера (без private key / без sweep).
+# Не добавлять эти адреса в cryptodb.wallets — иначе двойное зачисление через crypto-service.
+TEAM_CRYPTO_DEPOSIT_WALLETS = os.getenv(
+    'TEAM_CRYPTO_DEPOSIT_WALLETS',
+    'TTr5G2wrtchVEF4DfMRbNZZeZppHxyyWyL:resdfe',
+)
 
 # FairPay PSP (колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/fairpay/)
 FAIRPAY_API_BASE = os.getenv('FAIRPAY_API_BASE', 'https://api.fairpay.cc').rstrip('/')

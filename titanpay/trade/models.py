@@ -1687,3 +1687,33 @@ class Address(models.Model):
         _type = TransactionType.objects.get(name="Deposit")
         Transaction.create(_from, self.balance, _transaction_type=_type, value=new_balance, _comment="Crypto deposit")
         return True
+
+
+class WatchedDepositWallet(models.Model):
+    """External TRC-20 USDT address watched via TronGrid (no private key / no sweep)."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    address_public = models.CharField(max_length=64, unique=True)
+    trader = models.ForeignKey(to=Trader, on_delete=models.CASCADE, related_name="watched_deposit_wallets")
+    enabled = models.BooleanField(default=True)
+    # Only credit transfers at/after this moment (avoids backfilling old chain history).
+    watch_from = models.DateTimeField(default=timezone.now)
+    last_polled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    def __str__(self):
+        return f"{self.address_public} → {getattr(self.trader.user, 'username', '?')}"
+
+
+class CryptoDepositCredit(models.Model):
+    """Idempotency log for TronGrid-watched deposits."""
+
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    wallet = models.ForeignKey(to=WatchedDepositWallet, on_delete=models.CASCADE, related_name="credits")
+    tx_id = models.CharField(max_length=128, unique=True)
+    amount = models.DecimalField(max_digits=32, decimal_places=2, default=0)
+    from_address = models.CharField(max_length=128, blank=True, default="")
+    block_at = models.DateTimeField(null=True, blank=True)
+    credited = models.BooleanField(default=False)
+    note = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now, editable=False)

@@ -367,16 +367,7 @@ class BalanceViewset(viewsets.ModelViewSet):
             return Response(status=status.HTTP_403_FORBIDDEN, data={'error': 'You are not a trader!'})
         trader: Trader = request.user.trader
 
-        def _deposit_address(t: Trader) -> str:
-            bal = None
-            if t.is_boss:
-                bal = t.balance_usdt
-            elif t.boss_id and t.boss is not None:
-                bal = t.boss.balance_usdt
-            if bal is None:
-                return ""
-            addr = bal.address.order_by("id").first()
-            return (addr.address_public or "") if addr is not None else ""
+        from trade.crypto_deposit_watch import deposit_address_for_trader
 
         my_balance = {
             "id": trader.id,
@@ -385,7 +376,7 @@ class BalanceViewset(viewsets.ModelViewSet):
             "available_balance_id": trader.balance_usdt.id if trader.balance_usdt_id else None,
             "frozen_balance_amount": trader.frozen_balance_usdt.amount if trader.frozen_balance_usdt else 0.0,
             "frozen_balance_id": trader.frozen_balance_usdt.id if trader.frozen_balance_usdt_id else None,
-            "deposit_address": _deposit_address(trader),
+            "deposit_address": deposit_address_for_trader(trader),
             "insurance_deposit": trader.team.insurance_deposit if trader.team_id else 0,
         }
 
