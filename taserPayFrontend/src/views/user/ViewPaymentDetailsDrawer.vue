@@ -763,7 +763,7 @@ const switchSelection = (values, name, key) => {
                     :rules="[
                       requiredValidator
                     ]"
-                    :disabled="!authStore.is_support()"
+                    :disabled="!authStore.is_support() && !authStore.is_trader()"
                   />
                 </VCol>
                 <VCol cols="12">
