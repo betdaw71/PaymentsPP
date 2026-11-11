@@ -38,7 +38,7 @@ watchEffect(
   <VerticalNavLayout :nav-items="navItemsFiltered">
     <!-- 👉 navbar -->
     <template #navbar="{ toggleVerticalOverlayNavActive }">
-      <div class="d-flex h-100 align-center">
+      <div class="d-flex h-100 align-center navbar-tools">
         <IconBtn
           v-if="isLessThanOverlayNavBreakpoint(windowWidth)"
           id="vertical-nav-toggle-btn"
@@ -96,3 +96,11 @@ watchEffect(
 
   </VerticalNavLayout>
 </template>
+
+<style scoped>
+.navbar-tools {
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
+}
+</style>
