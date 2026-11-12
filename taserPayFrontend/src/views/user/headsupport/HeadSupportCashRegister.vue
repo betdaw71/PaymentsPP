@@ -20,12 +20,15 @@ const empty = () => ({
     agents_total: '0.00',
     teamleads_total: '0.00',
     psp_deposits_total: '0.00',
+    traders_owed_total: '0.00',
+    insurance_deposits_total: '0.00',
     merchants: [],
     agents: [],
     teamleads: [],
     psp_deposits: [],
+    traders_owed: [],
   },
-  memo: { rolling_reserve: '0.00', working_deposit: '0.00' },
+  memo: { rolling_reserve: '0.00', working_deposit: '0.00', platform_aggregator: '0.00' },
   pnl: {
     day: { net: '0.00', payin_mdr: '0.00', payin_fx: '0.00', payout_mdr: '0.00', trader_fee: '0.00', agent_fee: '0.00', expenses: '0.00', orders_in: 0, orders_out: 0 },
     month: { net: '0.00', payin_mdr: '0.00', payin_fx: '0.00', payout_mdr: '0.00', trader_fee: '0.00', agent_fee: '0.00', expenses: '0.00', orders_in: 0, orders_out: 0 },
@@ -199,19 +202,31 @@ onMounted(() => {
                 </tr>
                 <tr
                   v-for="row in data.assets.receivables"
-                  :key="`recv-${row.username}`"
+                  :key="`recv-${row.username}-${row.kind || 'x'}`"
                 >
-                  <td>{{ row.username }} ({{ t('cash_register.receivable') }})</td>
+                  <td>
+                    {{ row.username }} ({{ t('cash_register.receivable') }}
+                    <span
+                      v-if="row.kind === 'mostbet_rolling'"
+                      class="text-caption"
+                    > · rolling</span>)
+                  </td>
                   <td
                     class="text-end"
-                    :class="moneyClass(row.available)"
+                    :class="moneyClass(row.available || row.net)"
                   >
-                    {{ row.available }}
+                    {{ row.available || row.net }}
                     <span
                       v-if="row.kzt"
                       class="text-caption text-medium-emphasis"
                     >
                       · {{ row.kzt }} KZT / {{ data.kzt_usdt_rate }}
+                    </span>
+                    <span
+                      v-if="row.kind === 'mostbet_rolling'"
+                      class="text-caption text-medium-emphasis d-block"
+                    >
+                      ЛК {{ row.merchant_available || row.available }} · RR {{ row.rolling_reserve }}
                     </span>
                   </td>
                   <td class="text-end">
@@ -358,6 +373,48 @@ onMounted(() => {
                     —
                   </td>
                 </tr>
+                <tr
+                  v-for="row in (data.liabilities.traders_owed || [])"
+                  :key="`owed-${row.username}`"
+                >
+                  <td>
+                    {{ row.username }}
+                    <span class="text-caption text-medium-emphasis">
+                      ({{ t('cash_register.topup_team') }}{{ row.team ? ` · ${row.team}` : '' }})
+                    </span>
+                  </td>
+                  <td class="text-end">
+                    {{ row.available }}
+                    <span
+                      v-if="row.topups_day && row.topups_day !== '0.00'"
+                      class="text-caption text-medium-emphasis d-block"
+                    >
+                      {{ t('cash_register.topups_day') }} {{ row.topups_day }}
+                    </span>
+                  </td>
+                  <td class="text-end">
+                    {{ row.frozen }}
+                  </td>
+                  <td class="text-end">
+                    <span class="text-caption">{{ t('cash_register.insurance') }}</span>
+                    {{ row.insurance_owed || '0.00' }}
+                    <span
+                      v-if="row.deposit_wallet"
+                      class="text-caption text-medium-emphasis d-block"
+                    >
+                      {{ row.deposit_wallet }}
+                    </span>
+                  </td>
+                  <td class="text-end font-weight-medium">
+                    {{ row.net }}
+                    <span
+                      v-if="row.topups_month && row.topups_month !== '0.00'"
+                      class="text-caption text-medium-emphasis d-block"
+                    >
+                      {{ t('cash_register.topups_month') }} {{ row.topups_month }}
+                    </span>
+                  </td>
+                </tr>
               </tbody>
             </VTable>
           </VCol>
@@ -457,7 +514,8 @@ onMounted(() => {
             <div class="text-caption text-medium-emphasis mt-3">
               {{ t('cash_register.memo') }}:
               {{ t('rolling_reserve') }} {{ data.memo.rolling_reserve }},
-              {{ t('working_deposit') }} {{ data.memo.working_deposit }}
+              {{ t('working_deposit') }} {{ data.memo.working_deposit }},
+              {{ t('cash_register.platform_aggregator') }} {{ data.memo.platform_aggregator || '0.00' }}
             </div>
           </VCol>
         </VRow>

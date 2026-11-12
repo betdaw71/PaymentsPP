@@ -62,7 +62,7 @@ class DealMarginQuoteTest(SimpleTestCase):
         self.assertEqual(q.merchant_fee, Decimal("6.00"))
         self.assertEqual(q.trader_fee, Decimal("6.56"))
         self.assertEqual(q.agent_fee, Decimal("0.20"))
-        self.assertEqual(q.teamlead_share, Decimal("0.03"))  # 0.5% * 6.56
+        self.assertEqual(q.teamlead_share, Decimal("0.50"))  # 0.5% of merchant_usd 100
         self.assertEqual(q.fx_spread, Decimal("0.96"))
         self.assertEqual(q.platform_pnl, Decimal("0.20"))
         self.assertTrue(q.ok)

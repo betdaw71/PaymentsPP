@@ -1,6 +1,9 @@
 """Проставить teamlead_percentage на всех командах тимлида.
 
-  # dry-run (neuyz → 0.5%)
+PCT = % от оборота сделки (usd_amount), не от trader_fee.
+Пример: 0.5 → тимлид получает 0.5% оборота resdfe.
+
+  # dry-run (neuyz → 0.5% от оборота)
   docker compose exec -T -e TEAMLEAD=neuyz -e PCT=0.5 app python manage.py shell \\
     < titanpay/basics/shell_set_teamlead_pct.py
 

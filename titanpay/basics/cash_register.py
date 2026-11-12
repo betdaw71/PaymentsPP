@@ -1,4 +1,9 @@
-"""Касса = активы − пассивы. День = MDR + FX-спред − комиссия PSP − агент − расходы бота."""
+"""Касса = активы − пассивы. День = MDR + FX-спред − комиссия PSP − агент − расходы бота.
+
+Mostbet: available+frozen−rolling > 0 → пассив; < 0 → актив (держит наш rolling после сетла).
+Команды-пополнения (CASH_REGISTER_OWED_TO_TRADERS): пассив + topups day/month + wallet.
+Маржа сделок на Balance type=2 — memo.platform_aggregator, не в A−L.
+"""
 from __future__ import annotations
 
 import logging
@@ -363,15 +368,42 @@ def snapshot(now=None) -> dict:
         elif username in owed_traders:
             bal_owed = trader_balance_owed(available, frozen)
             team_id = trader.team_id
+            team_name = trader.team.name if trader.team_id else ""
             ins_owed = ZERO
             if team_id and team_id not in seen_insurance_teams:
                 seen_insurance_teams.add(team_id)
                 ins_owed = insurance
                 insurance_total += ins_owed
             net = money(bal_owed + ins_owed)
+            deposit_wallet = ""
+            try:
+                from trade.crypto_deposit_watch import deposit_address_for_trader
+
+                deposit_wallet = deposit_address_for_trader(trader) or ""
+            except Exception:
+                deposit_wallet = ""
+            topups_day = ZERO
+            topups_month = ZERO
+            try:
+                from trade.models import CryptoDepositCredit, WatchedDepositWallet
+
+                wqs = WatchedDepositWallet.objects.filter(trader_id=trader.id, enabled=True)
+                credits = CryptoDepositCredit.objects.filter(wallet__in=wqs, credited=True)
+                topups_day = money(
+                    credits.filter(created_at__gte=day_start).aggregate(s=Sum("amount"))["s"] or 0
+                )
+                topups_month = money(
+                    credits.filter(created_at__gte=month_start).aggregate(s=Sum("amount"))["s"] or 0
+                )
+            except Exception:
+                pass
+            row["team"] = team_name
             row["balance_owed"] = money_str(bal_owed)
             row["insurance_owed"] = money_str(ins_owed)
             row["net"] = money_str(net)
+            row["deposit_wallet"] = deposit_wallet
+            row["topups_day"] = money_str(topups_day)
+            row["topups_month"] = money_str(topups_month)
             row["note"] = "owed_to_trader"
             if net > 0:
                 owed_trader_total += net
@@ -422,17 +454,32 @@ def snapshot(now=None) -> dict:
                 })
             continue
         if username in rolling_names:
+            # net = available+frozen − rolling
+            # >0 → мы должны мерчу (пассив); <0 → мерч держит наш rolling (актив)
             net = merchant_usdt_net(available, frozen, rolling)
-            if net <= 0:
-                continue
-            merchant_total += net
-            merchant_rows.append({
-                "username": username,
-                "available": money_str(available),
-                "frozen": money_str(frozen),
-                "rolling_reserve": money_str(rolling),
-                "net": money_str(net),
-            })
+            if net > 0:
+                merchant_total += net
+                merchant_rows.append({
+                    "username": username,
+                    "available": money_str(available),
+                    "frozen": money_str(frozen),
+                    "rolling_reserve": money_str(rolling),
+                    "net": money_str(net),
+                    "note": "mostbet_we_owe",
+                })
+            elif net < 0:
+                held = money(-net)
+                receivable_total += held
+                receivable_rows.append({
+                    "username": username,
+                    "kind": "mostbet_rolling",
+                    "available": money_str(held),
+                    "frozen": money_str(frozen),
+                    "rolling_reserve": money_str(rolling),
+                    "merchant_available": money_str(available),
+                    "net": money_str(held),
+                    "note": "mostbet_holds_our_rolling",
+                })
             continue
         if username not in merchant_names:
             continue
@@ -482,6 +529,14 @@ def snapshot(now=None) -> dict:
             "kind": "trc20_usdt",
         })
 
+    # Маржа сделок физически оседает на Balance type=2 (агрегатор) — в A−L не входит,
+    # иначе двойной счёт с пассивами. Показываем в memo для сверки с дневным NET.
+    from basics.models import Balance as BalanceModel
+
+    aggregator_total = money(
+        BalanceModel.objects.filter(type=2).aggregate(s=Sum("amount"))["s"] or 0
+    )
+
     # trader_total — пассив (долг живым трейдерам), не актив
     assets_total = money(psp_total + receivable_total + wallet_usdt)
     liabilities_total = money(
@@ -522,6 +577,11 @@ def snapshot(now=None) -> dict:
         "memo": {
             "rolling_reserve": money_str(rolling_total),
             "working_deposit": money_str(deposit_total),
+            "platform_aggregator": money_str(aggregator_total),
+            "note": (
+                "platform_aggregator = Balance type=2 (маржа сделок); "
+                "не входит в кассу A−L. Mostbet rolling: если available < rolling → актив «нам должны»."
+            ),
         },
         "pnl": {
             "day": _period_pnl(day_start, end),
@@ -547,5 +607,7 @@ def format_telegram(data: dict | None = None) -> str:
         f"тимлиды {data['liabilities']['teamleads_total']}\n"
         f"день {day['net']} (MDR {day['payin_mdr']}+{day['payout_mdr']} · FX {day['payin_fx']} · "
         f"PSP {day['trader_fee']} · агент {day['agent_fee']} · расход {day['expenses']})\n"
-        f"месяц {month['net']}"
+        f"месяц {month['net']}\n"
+        f"агрегатор(type2) {data['memo'].get('platform_aggregator', '0.00')} · "
+        f"трейдеры-команды {data['liabilities'].get('traders_owed_total', '0.00')}"
     )

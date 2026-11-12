@@ -2,7 +2,7 @@
 
 PnL (USDT) = merchant_fee + FX_spread − trader_fee − agent_fee
   FX_spread = psp_usd − merchant_usd
-  teamlead_share = trader_fee × TL% / 100  (из комиссии трейдера, не доп. расход площадки;
+  teamlead_share = merchant_usd × TL% / 100  (% от оборота; режется с трейдера, не доп. расход площадки;
                   в разборе показываем отдельно)
 
 Минимум: DEAL_MARGIN_MIN_PCT % от merchant_usd (дефолт 0.2).
@@ -161,7 +161,7 @@ def quote_deal_margin(
     agent_pct = _agent_pct(merchant)
     agent_fee = _money(merchant_usd * agent_pct / Decimal("100"))
     tl_pct = _teamlead_pct(trader)
-    teamlead_share = _money(trader_fee * tl_pct / Decimal("100"))
+    teamlead_share = _money(merchant_usd * tl_pct / Decimal("100"))
     fx_spread = _money(psp_usd - merchant_usd)
     # Площадка платит trader_fee целиком (TL режется уже с трейдера) + agent_fee.
     platform_pnl = _money(merchant_fee + fx_spread - trader_fee - agent_fee)

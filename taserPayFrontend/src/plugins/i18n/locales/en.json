@@ -224,7 +224,7 @@
   "teamlead_balance": "Team lead balance",
   "no_agents": "No agents",
   "cash_register": {
-    "hint": "Assets: wallet + prepaid PSP + Melbet still to deposit. Liabilities: Alemkredit, PandaPay, AggrePay, Mostbet (balance − rolling) + leftover PayPlat/Prochub + agents and team leads.",
+    "hint": "Assets: wallet + prepaid PSP + Melbet/Mostbet rolling owed to us. Liabilities: merchants + PayPlat/Prochub + agents/TLs + top-up teams (resdfe). Day NET ≠ cash: margin sits on aggregator (memo).",
     "cash": "Cash",
     "day": "Today",
     "month": "This month",
@@ -241,7 +241,12 @@
     "memo": "Not in cash",
     "receivable": "owes us",
     "wallet": "Wallet",
-    "psp_deposit": "prepaid deposit"
+    "psp_deposit": "prepaid deposit",
+    "topup_team": "top-up team",
+    "topups_day": "top-ups day",
+    "topups_month": "top-ups month",
+    "insurance": "insurance",
+    "platform_aggregator": "aggregator (margin)"
   },
   "ops_dashboard": {
     "hint": "Turnover, NET, conversion and merchant/PSP breakdown for the period (Europe/Moscow). Melbet MDR in USDT.",

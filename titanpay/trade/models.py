@@ -323,8 +323,19 @@ class InOrder(models.Model):
                                                        _comment="Commission")
 
         if trader.team.teamlead is not None:
-            teamlead_share = self.trader_fee * trader.team.teamlead_percentage / Decimal(100)
-            from_trader_to_teamlead = Transaction.create(_from=trader.balance_usdt, _to=trader.team.teamlead.balance, value=teamlead_share, _transaction_type=transaction_type_1, _linked_in_order=self, _comment="Teamlead commission")
+            # teamlead_percentage = % от оборота (usd_amount), не от trader_fee
+            teamlead_share = (
+                self.usd_amount * trader.team.teamlead_percentage / Decimal(100)
+            ).quantize(Decimal("0.01"))
+            if teamlead_share > 0:
+                Transaction.create(
+                    _from=trader.balance_usdt,
+                    _to=trader.team.teamlead.balance,
+                    value=teamlead_share,
+                    _transaction_type=transaction_type_1,
+                    _linked_in_order=self,
+                    _comment="Teamlead commission",
+                )
 
         from merchant.agent_fee import accrue_agent_commission
 
@@ -1133,10 +1144,18 @@ class OutOrder(models.Model):
         self.save()
 
         if trader.team.teamlead is not None:
-            teamlead_share = self.trader_fee * trader.team.teamlead_percentage / Decimal(100)
-            from_trader_to_teamlead = Transaction.create(_from=trader.balance_usdt, _to=trader.team.teamlead.balance,
-                                                         value=teamlead_share, _transaction_type=transaction_type_1,
-                                                         _linked_out_order=self, _comment="Teamlead commission")
+            teamlead_share = (
+                self.usd_amount * trader.team.teamlead_percentage / Decimal(100)
+            ).quantize(Decimal("0.01"))
+            if teamlead_share > 0:
+                Transaction.create(
+                    _from=trader.balance_usdt,
+                    _to=trader.team.teamlead.balance,
+                    value=teamlead_share,
+                    _transaction_type=transaction_type_1,
+                    _linked_out_order=self,
+                    _comment="Teamlead commission",
+                )
 
         OutOrderStatusChange.create(order=self, status=status)
 
@@ -1317,7 +1336,9 @@ class OutOrder(models.Model):
             trader = self.payment_details.group.trader
 
             if trader.team.teamlead is not None:
-                teamlead_share = self.trader_fee * trader.team.teamlead_percentage / Decimal(100)
+                teamlead_share = (
+                    self.usd_amount * trader.team.teamlead_percentage / Decimal(100)
+                ).quantize(Decimal("0.01"))
                 from_teamlead_to_trader = Transaction.create(_from=trader.team.teamlead.balance,
                                                              _to=trader.balance_usdt,
                                                              value=teamlead_share, _transaction_type=transaction_type_1,
