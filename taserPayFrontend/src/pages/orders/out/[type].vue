@@ -309,6 +309,10 @@ watch(
       filters.value.selectedStatus = resolvedStatuses
       filters.value.apply_filters = currentType.value !== 'all'
     }
+    // Sticky dateRange from localStorage hid live active out-orders.
+    if (['active', 'manual', 'recalculation'].includes(currentType.value)) {
+      filters.value.dateRange = ''
+    }
     getOrders ()
   },
   { immediate: true },

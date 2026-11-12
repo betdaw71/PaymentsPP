@@ -259,6 +259,7 @@ export const resolveOrderInStatus = type => {
     return [
       "New",
       "Money sent by user",
+      "Arbitrage",
     ]
   }
   if (type === "success") {
@@ -297,6 +298,7 @@ export const resolveOrderOutStatus = type => {
     return [
       "New",
       "Money sent by trader",
+      "Arbitrage",
     ]
   }
   if (type === "success") {

@@ -313,6 +313,11 @@ watch(
       filters.value.selectedStatus = resolvedStatuses
       filters.value.apply_filters = currentType.value !== 'all'
     }
+    // Sticky dateRange from localStorage hid live New/Money-sent on «Активные».
+    // Open tabs are current work — don't keep an old creation_date window.
+    if (['active', 'arbitrage', 'recalculation'].includes(currentType.value)) {
+      filters.value.dateRange = ''
+    }
     getOrders ()
   },
   { immediate: true },
