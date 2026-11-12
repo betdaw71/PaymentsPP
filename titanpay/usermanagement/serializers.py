@@ -74,6 +74,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                 token['role'] = 5
         elif hasattr(user, 'submerchant'):
             token['role'] = 6
+        elif hasattr(user, 'agent'):
+            token['role'] = 8
         elif hasattr(user, 'teamlead'):
             token['role'] = 7
         return token

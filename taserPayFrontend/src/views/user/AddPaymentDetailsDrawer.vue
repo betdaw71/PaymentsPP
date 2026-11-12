@@ -54,6 +54,12 @@ const baseData = ref ({
   owner: "",
   min_amount_out: 0,
   max_amount_out: 10000,
+  min_amount_in: 0,
+  max_amount_in: 999999999,
+  amount_diff: 0,
+  deal_interval_hours: 0,
+  deal_interval_minutes: 0,
+  deal_interval_seconds: 0,
   allowed_traffic: [],
   in_active: false,
   out_active: false,
@@ -181,8 +187,19 @@ const saveItem = async () => {
     return
   }
   console.log ("validation success")
+  const h = Number(itemData.value.deal_interval_hours) || 0
+  const m = Number(itemData.value.deal_interval_minutes) || 0
+  const s = Number(itemData.value.deal_interval_seconds) || 0
+  const {
+    deal_interval_hours,
+    deal_interval_minutes,
+    deal_interval_seconds,
+    ...payload
+  } = itemData.value
+
   baseStore.createPaymentDetails ({
-    ...itemData.value,
+    ...payload,
+    deal_interval_sec: Math.max(0, h * 3600 + m * 60 + s),
   }).then (
     response => {
       if (response.error) {
@@ -220,12 +237,11 @@ watch (
   () => itemData.value.payment_system,
   () => {
     if (itemData.value.payment_system) {
-      console.log ({ itemData: itemData.value })
-      currentFields.value = structuredClone (toRaw (payment_system_options.value[itemData.value.payment_system]))
-      console.log ({ currentFields: currentFields.value })
+      const schema = payment_system_options.value[itemData.value.payment_system]
+      currentFields.value = structuredClone (toRaw (schema || {
+        card_number: { type: "number", unique: false, cash: false },
+      }))
       itemData.value.details = []
-
-      // itemData.value.details = Object.fromEntries (currentFields.value.map (field => [field, ""]))
     }
   },
   { deep: true },
@@ -246,6 +262,18 @@ const switchSelection = (values, name, key) => {
 }
 
 const addDetails = () => {
+  if (!itemData.value.payment_system) {
+    snackbar.value = {
+      enabled: true,
+      type: "error",
+      message: `${t('payment_system')}: ${t('required')}`,
+    }
+
+    return
+  }
+  if (!Array.isArray (itemData.value.details)) {
+    itemData.value.details = []
+  }
   const tmpId = Math.random ().toString (36).substring (2, 15) + Math.random ().toString (36).substring (2, 15)
 
   itemData.value.details.push ({
@@ -391,6 +419,24 @@ const updateDetail = (index, data) => {
               </VCol>
               <VCol cols="6">
                 <VTextField
+                  v-model="itemData.min_amount_in"
+                  :label="$t('min_amount_in')"
+                  :rules="[
+                    requiredValidator
+                  ]"
+                />
+              </VCol>
+              <VCol cols="6">
+                <VTextField
+                  v-model="itemData.max_amount_in"
+                  :label="$t('max_amount_in')"
+                  :rules="[
+                    requiredValidator
+                  ]"
+                />
+              </VCol>
+              <VCol cols="6">
+                <VTextField
                   v-model="itemData.min_amount_out"
                   :label="$t('min_amount_out')"
                   :rules="[
@@ -407,11 +453,50 @@ const updateDetail = (index, data) => {
                   ]"
                 />
               </VCol>
-              <VCardText v-if="itemData.payment_system">
+              <VCol cols="12">
+                <VTextField
+                  v-model="itemData.amount_diff"
+                  :label="$t('amount_diff')"
+                  type="number"
+                  min="0"
+                />
+              </VCol>
+              <VCol cols="12">
+                <div class="text-body-2 mb-2">
+                  {{ $t('deal_interval') }}
+                </div>
+              </VCol>
+              <VCol cols="4">
+                <VTextField
+                  v-model="itemData.deal_interval_hours"
+                  :label="$t('hours')"
+                  type="number"
+                  min="0"
+                />
+              </VCol>
+              <VCol cols="4">
+                <VTextField
+                  v-model="itemData.deal_interval_minutes"
+                  :label="$t('minutes')"
+                  type="number"
+                  min="0"
+                />
+              </VCol>
+              <VCol cols="4">
+                <VTextField
+                  v-model="itemData.deal_interval_seconds"
+                  :label="$t('seconds')"
+                  type="number"
+                  min="0"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+              >
                 <div
-                  v-for="(detail, index) in itemData.details"
+                  v-for="(detail, index) in itemData.details || []"
                   :key="detail.tmpId"
-                  class="my-4 ma-sm-4"
+                  class="my-4"
                 >
                   <PaymentDetails
                     :id="index"
@@ -424,11 +509,6 @@ const updateDetail = (index, data) => {
                     @update="updateDetail"
                   />
                 </div>
-              </VCardText>
-              <VCol
-                v-if="itemData.payment_system"
-                cols="12"
-              >
                 <VBtn
                   class="w-100"
                   variant="outlined"
