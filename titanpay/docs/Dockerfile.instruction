@@ -1,0 +1,5 @@
+FROM nginx:1.27-alpine
+COPY instruction.nginx.conf /etc/nginx/conf.d/default.conf
+COPY trader-knowledge.html /usr/share/nginx/html/index.html
+COPY help-shots /usr/share/nginx/html/help-shots
+EXPOSE 80

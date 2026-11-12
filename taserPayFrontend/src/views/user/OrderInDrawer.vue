@@ -844,6 +844,16 @@ const callback = () => {
                   v-if="['Cancelled', 'Expired','Cancelled by trader','Cancelled by support'].indexOf(order_data.status) !== -1"
                   cols="12"
                 >
+                  <!-- Backend: POST .../complete/ → complete_after_expired() (re-freeze + Completed) -->
+                  <VBtn
+                    v-if="authStore.is_trader() && order_data.status === 'Expired'"
+                    class="w-100 mt-1"
+                    color="success"
+                    append-icon="tabler-rosette-discount-check"
+                    @click="isCompleteAgain ? complete() : (() => {isCompleteAgain = true})()"
+                  >
+                    {{ $t ('complete') }} {{ isCompleteAgain ? $t('click_again') : $t('double_click') }}
+                  </VBtn>
                   <VCard
                     v-if="authStore.is_support()"
                     class="mt-3"

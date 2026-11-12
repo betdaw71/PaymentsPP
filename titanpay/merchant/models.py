@@ -13,10 +13,73 @@ class Merchant(models.Model):
     user = models.OneToOneField(to=User, on_delete=models.CASCADE)
     balance = models.ForeignKey(to=Balance, on_delete=models.DO_NOTHING, null=True, related_name='available_merchant')
     frozen_balance = models.ForeignKey(to=Balance, on_delete=models.DO_NOTHING, null=True, related_name='frozen_merchant')
+    balance_kzt = models.ForeignKey(
+        to=Balance,
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name='available_merchant_kzt',
+    )
+    frozen_balance_kzt = models.ForeignKey(
+        to=Balance,
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name='frozen_merchant_kzt',
+    )
+    balance_kgs = models.ForeignKey(
+        to=Balance,
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name='available_merchant_kgs',
+    )
+    frozen_balance_kgs = models.ForeignKey(
+        to=Balance,
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name='frozen_merchant_kgs',
+    )
     payment_systems = models.ManyToManyField(to=PaymentSystem)
     language = models.ForeignKey(to=Language, on_delete=models.SET_NULL, null=True)
     telegram = models.CharField(max_length=64, default=None, null=True)
     phone = models.CharField(max_length=64, default=None, null=True)
+    rolling_reserve = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=0,
+        help_text='USDT sent to merchant as rolling reserve. Informational; not part of available balance. '
+                  'Net position = rolling_reserve - available_balance.',
+    )
+    agent = models.ForeignKey(
+        'Agent',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='merchants',
+    )
+
+
+class Agent(models.Model):
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    user = models.OneToOneField(to=User, on_delete=models.CASCADE)
+    balance = models.ForeignKey(
+        to=Balance,
+        on_delete=models.DO_NOTHING,
+        null=True,
+        related_name='available_agent',
+    )
+    frozen_balance = models.ForeignKey(
+        to=Balance,
+        on_delete=models.DO_NOTHING,
+        null=True,
+        blank=True,
+        related_name='frozen_agent',
+    )
+    commission_percent = models.DecimalField(default=Decimal('0.20'), max_digits=8, decimal_places=4)
+    telegram = models.CharField(max_length=64, default=None, null=True, blank=True)
+    language = models.ForeignKey(to=Language, on_delete=models.SET_NULL, null=True)
 
 
 class MerchantSolution(models.Model):
