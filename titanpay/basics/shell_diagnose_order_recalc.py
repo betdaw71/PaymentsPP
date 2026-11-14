@@ -1,7 +1,7 @@
-"""Диагностика одной заявки: статус, LayerOne session, webhook traces, gap по сумме.
+"""Диагностика одной заявки: статус, PSP session, webhook traces, gap по сумме.
 
-  MERCHANT_ORDER_ID=23948169155 \\
-    docker compose exec -T -e MERCHANT_ORDER_ID=23948169155 app \\
+  MERCHANT_ORDER_ID=23976426041 \\
+    docker compose exec -T -e MERCHANT_ORDER_ID=23976426041 app \\
     python manage.py shell < titanpay/basics/shell_diagnose_order_recalc.py
 
 Опционально EXPECTED_AMOUNT=10004.50
@@ -17,7 +17,12 @@ from zoneinfo import ZoneInfo
 
 from django.db import transaction
 
-from payments.models import LayeronePayInSession, PayIn, PayInTraceLog
+from payments.models import (
+    LayeronePayInSession,
+    PatriotpayPayInSession,
+    PayIn,
+    PayInTraceLog,
+)
 from payments.psp_payin import (
     handle_psp_success_webhook,
     parse_psp_webhook_paid_amount,
@@ -26,9 +31,14 @@ from payments.psp_payin import (
 
 MSK = ZoneInfo("Europe/Moscow")
 Q2 = Decimal("0.01")
-ORDER_HINT = (os.environ.get("MERCHANT_ORDER_ID") or os.environ.get("ORDER") or "23948169155").strip()
+ORDER_HINT = (os.environ.get("MERCHANT_ORDER_ID") or os.environ.get("ORDER") or "").strip()
 EXPECTED_RAW = (os.environ.get("EXPECTED_AMOUNT") or "").strip()
 APPLY = (os.environ.get("APPLY") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+SESSION_SPECS = (
+    ("PatriotPay", PatriotpayPayInSession, "patriotpay_webhook"),
+    ("LayerOne", LayeronePayInSession, "layerone_webhook"),
+)
 
 
 def money(v):
@@ -53,7 +63,19 @@ def payload_dict(raw):
     return {}
 
 
+def _find_session(pay_in):
+    for label, model, webhook_dir in SESSION_SPECS:
+        sess = model.objects.filter(pay_in=pay_in).order_by("-updated_at").first()
+        if sess is not None:
+            return label, sess, webhook_dir
+    return None, None, None
+
+
 def run() -> None:
+    if not ORDER_HINT:
+        print("Set MERCHANT_ORDER_ID=...")
+        return
+
     print("=" * 72)
     print(f"ORDER RECALC DIAGNOSE  hint={ORDER_HINT}  APPLY={int(APPLY)}")
     print("=" * 72)
@@ -104,14 +126,21 @@ def run() -> None:
         cur = money(order.amount)
         print(f"expected:          {expected}  gap={money(expected - cur) if cur is not None else '-'}")
 
-    sess = LayeronePayInSession.objects.filter(pay_in=pay_in).order_by("-updated_at").first()
+    label, sess, webhook_dir = _find_session(pay_in)
     if sess is None:
-        print("\nLayerOne session: НЕТ")
+        print("\nPSP session: НЕТ (ни PatriotPay, ни LayerOne)")
     else:
-        print("\nLayerOne session:")
-        print(f"  external_id:     {sess.external_id}")
-        print(f"  provider_payment:{sess.provider_payment_id}")
-        print(f"  last_state:      {sess.last_notified_state}")
+        print(f"\n{label} session:")
+        print(f"  id:              {sess.id}")
+        for attr in (
+            "external_id",
+            "provider_payment_id",
+            "provider_invoice_id",
+            "provider_deal_id",
+            "last_notified_state",
+        ):
+            if hasattr(sess, attr):
+                print(f"  {attr}: {getattr(sess, attr)}")
         print(f"  updated:         {when(sess.updated_at)}")
         last = payload_dict(sess.last_webhook_payload)
         paid = money(parse_psp_webhook_paid_amount(last)) if last else None
@@ -120,48 +149,64 @@ def run() -> None:
         if last:
             keys = ",".join(list(last.keys())[:16])
             print(f"  last_cb_keys:    {keys}")
+            inv = last.get("invoice") if isinstance(last.get("invoice"), dict) else {}
+            if inv:
+                print(
+                    f"  invoice.status:  {inv.get('status')}  "
+                    f"amount={inv.get('amount')} paidAmount={inv.get('paidAmount')}"
+                )
 
     traces = PayInTraceLog.objects.filter(pay_in=pay_in).order_by("created_at")
     print(f"\nPayInTraceLog: n={traces.count()}")
+    webhook_n = 0
     for t in traces:
         body = payload_dict(t.body)
         paid = money(parse_psp_webhook_paid_amount(body)) if body else None
         note = (t.note or "")[:120]
         print(
-            f"  {when(t.created_at)}  {t.direction:22}  parsed_amount={paid}  note={note}"
+            f"  {when(t.created_at)}  {t.direction:22}  http={t.http_status}  "
+            f"parsed_amount={paid}  note={note}"
         )
-        if t.direction and t.direction.endswith("_webhook") and body:
+        if t.direction and "webhook" in t.direction and body:
+            webhook_n += 1
             allow = psp_success_webhook_allows_completed_recalc(body)
             print(f"    allow_completed_recalc={int(allow)}  keys={','.join(list(body.keys())[:12])}")
 
-    # Choose best body for reapply: last session webhook, else latest success webhook trace
     body = payload_dict(getattr(sess, "last_webhook_payload", None) if sess else None)
     if not body:
         for t in reversed(list(traces)):
-            if t.direction == "layerone_webhook":
+            if webhook_dir and t.direction == webhook_dir:
                 body = payload_dict(t.body)
                 if body:
                     break
+            if t.direction and "webhook" in (t.direction or "") and "out" not in (t.direction or ""):
+                body = payload_dict(t.body)
+                if body:
+                    break
+
     paid = money(parse_psp_webhook_paid_amount(body)) if body else None
     cur = money(order.amount)
     print("\nVERDICT:")
+    if webhook_n == 0 and not body:
+        print("  колбека от провайдера в PayInTraceLog НЕТ — до нас не дошёл / не записан")
+        print("  (URL/token/404 session not found / сеть у PatriotPay / не тот internalId)")
+        return
     if not body:
-        print("  нет сохранённого LayerOne webhook body — провайдер либо не слал, либо мы не записали")
+        print("  webhook traces есть, но body для reapply не собрали")
         return
     if paid is None:
-        print("  webhook есть, сумму распарсить не смогли")
+        print("  webhook есть, сумму распарсить не смогли — смотри payload keys выше")
         return
     if paid == cur:
-        print(f"  сумма уже {cur} (= last CB). Если Melbet ждёт другое — уточни EXPECTED_AMOUNT у мерчанта")
+        print(f"  сумма уже {cur} (= last CB). Если мерчант ждёт другое — EXPECTED_AMOUNT=...")
         return
     allow = psp_success_webhook_allows_completed_recalc(body)
     print(f"  GAP: current={cur}  last_cb={paid}  delta={money(paid - cur)}  allow={int(allow)}")
-    print("  Причина исторически: LayerOne view early-return на Completed (колбек глотался).")
     if not APPLY:
         print("  DRY: APPLY=1 применит last CB через handle_psp_success_webhook (+ колбек мерчанту)")
         return
     if order.status.name != "Completed":
-        print(f"  SKIP APPLY: статус {order.status.name}")
+        print(f"  SKIP APPLY: статус {order.status.name} (нужен Completed для recalc)")
         return
     with transaction.atomic():
         locked = type(order).objects.select_for_update().get(pk=order.pk)
