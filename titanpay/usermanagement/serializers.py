@@ -233,6 +233,7 @@ class RegisterTraderSerializer(serializers.ModelSerializer):
         team = validated_data.pop('team')
         language = Language.objects.get(name="Russian")
         boss = validated_data.pop('boss', None)
+        deposit_address = validated_data.pop('address', None)
 
         user = User.objects.create(
             first_name=validated_data['first_name'],
@@ -260,7 +261,10 @@ class RegisterTraderSerializer(serializers.ModelSerializer):
             trader = Trader.objects.create(user=user, language=boss.language, currency=boss.currency, team=boss.team, boss=boss, is_boss=is_boss, balance_usdt=balance, frozen_balance_usdt=frozen_balance)
         else:
             trader = Trader.objects.create(user=user, language=language, currency=currency, team=team, boss=boss, is_boss=is_boss, balance_usdt=balance, frozen_balance_usdt=frozen_balance)
-            Address.objects.create(balance=trader.balance_usdt, address_public=generate_address())
+            Address.objects.create(
+                balance=trader.balance_usdt,
+                address_public=deposit_address or generate_address(),
+            )
 
         TraderDevice.objects.create(user=sms_user, trader=trader)
         Token.objects.create(user=sms_user)
