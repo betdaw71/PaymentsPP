@@ -99,6 +99,44 @@ class PatriotpayPayinHelpersTest(SimpleTestCase):
         self.assertEqual(patriotpay_webhook_paid_amount(body), Decimal("6100.50"))
         self.assertEqual(parse_psp_webhook_paid_amount(body), Decimal("6100.50"))
 
+    def test_paid_amount_prefers_received_sum_from_taker_over_invoice_sum(self):
+        """Prod PatriotPay: invoice.sum остаётся запрошенной, факт в receivedSumFromTaker."""
+        body = {
+            "invoice": {
+                "id": "dbab01e5-bfc6-4788-b4d4-7a181f6c33dc",
+                "internalId": "80b212af-9308-422b-a313-b478b31bf981",
+                "status": "paid",
+                "sum": {"amount": "6000.00", "subunit": 2, "currency": "KZT"},
+                "receivedSumFromTaker": {
+                    "amount": "8001.24",
+                    "subunit": 2,
+                    "currency": "KZT",
+                },
+                "receivedSumFromMaker": {
+                    "amount": "17.12007872",
+                    "subunit": 8,
+                    "currency": "USDT",
+                },
+                "deal": {
+                    "id": "dbab01e5-bfc6-4788-b4d4-7a181f6c33dc",
+                    "status": "completed",
+                    "disputeResult": "AMOUNT_CHANGED",
+                    "disputeReasonData": {"amount": "8001.24"},
+                    "payment": {
+                        "takerSum": {
+                            "amount": "8001.24",
+                            "subunit": 2,
+                            "currency": "KZT",
+                        }
+                    },
+                },
+            },
+            "notificationType": "invoice",
+        }
+        self.assertEqual(patriotpay_webhook_paid_amount(body), Decimal("8001.24"))
+        self.assertEqual(parse_psp_webhook_paid_amount(body), Decimal("8001.24"))
+        self.assertTrue(psp_success_webhook_allows_completed_recalc(body))
+
     def test_view_does_not_skip_completed_success(self):
         src = inspect.getsource(PatriotpayWebhookView._handle_success)
         self.assertIn("handle_psp_success_webhook", src)

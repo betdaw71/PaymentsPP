@@ -420,8 +420,64 @@ def _crypto_currency(raw) -> bool:
     return str(raw or "").strip().upper() in {"USDT", "USDC", "TETHER"}
 
 
-def _fact_amount_from_source(source: dict) -> Decimal | None:
-    """Только фактическая оплата (не invoice.amount = запрошенная)."""
+def _kzt_sum_amount(nested) -> Decimal | None:
+    if not isinstance(nested, dict):
+        return None
+    if _crypto_currency(nested.get("currency")):
+        return None
+    return _positive_decimal(nested.get("amount"))
+
+
+def _patriotpay_fact_paid_kzt(invoice: dict, deal: dict) -> Decimal | None:
+    """Фактическая KZT-оплата после dispute/AMOUNT_CHANGED.
+
+    У PatriotPay:
+      invoice.sum              — запрошенная (остаётся 6000)
+      invoice.receivedSumFromTaker — факт от плательщика (8001.24)
+      deal.payment.takerSum    — то же после complete
+      deal.disputeReasonData.amount — сумма из спора
+    """
+    payment = deal.get("payment") if isinstance(deal.get("payment"), dict) else {}
+    for nested in (
+        payment.get("takerSum"),
+        invoice.get("receivedSumFromTaker"),
+        deal.get("receivedSumFromTaker"),
+    ):
+        paid = _kzt_sum_amount(nested)
+        if paid is not None:
+            return paid
+
+    reason_data = deal.get("disputeReasonData")
+    if isinstance(reason_data, dict):
+        paid = _positive_decimal(reason_data.get("amount"))
+        if paid is not None:
+            return paid
+
+    for source in (invoice, deal):
+        if not isinstance(source, dict):
+            continue
+        for key in (
+            "paidAmount",
+            "paid_amount",
+            "factAmount",
+            "fact_amount",
+            "receivedAmount",
+            "fiatAmount",
+            "localAmount",
+            "transferredAmount",
+        ):
+            paid = _positive_decimal(source.get(key))
+            if paid is not None:
+                return paid
+        for nested_key in ("paidSum", "factSum", "receivedSum"):
+            paid = _kzt_sum_amount(source.get(nested_key))
+            if paid is not None:
+                return paid
+    return None
+
+
+def _amount_from_source(source: dict) -> Decimal | None:
+    """Legacy helper: fact fields, then sum, then amount."""
     if not isinstance(source, dict):
         return None
     if _crypto_currency(source.get("currency")):
@@ -432,62 +488,36 @@ def _fact_amount_from_source(source: dict) -> Decimal | None:
         "factAmount",
         "fact_amount",
         "receivedAmount",
-        "fiatAmount",
-        "localAmount",
-        "transferredAmount",
     ):
         paid = _positive_decimal(source.get(key))
         if paid is not None:
             return paid
-    for nested_key in (
-        "sum",
-        "receivedSumFromTaker",
-        "receivedSumFromMaker",
-        "paidSum",
-        "factSum",
-        "receivedSum",
-    ):
-        nested = source.get(nested_key)
-        if isinstance(nested, dict):
-            if _crypto_currency(nested.get("currency")):
-                continue
-            paid = _positive_decimal(nested.get("amount"))
-            if paid is not None:
-                return paid
-    return None
-
-
-def _amount_from_source(source: dict) -> Decimal | None:
-    if not isinstance(source, dict):
-        return None
-    fact = _fact_amount_from_source(source)
-    if fact is not None:
-        return fact
-    if _crypto_currency(source.get("currency")):
-        return None
-    # invoice.amount — запрошенная сумма; только если факта нет.
+    for nested_key in ("receivedSumFromTaker", "sum", "receivedSumFromMaker"):
+        paid = _kzt_sum_amount(source.get(nested_key))
+        if paid is not None:
+            return paid
     return _positive_decimal(source.get("amount"))
 
 
 def patriotpay_webhook_paid_amount(body: dict | None) -> Decimal | None:
-    """Фактическая сумма из IPN PatriotPay: sum/paidAmount/deal, иначе invoice.amount.
-
-    Важно: сначала ищем факт по invoice+deal+body, и только потом fallback на
-    запрошенный amount — иначе invoice.amount=6000 перекрывает deal.sum с перерасчётом.
-    """
+    """Фактическая KZT из IPN PatriotPay (recalc), иначе запрошенный invoice.sum."""
     if not patriotpay_is_webhook_body(body):
         return None
     assert isinstance(body, dict)
     invoice = _invoice_from_webhook(body)
     deal = invoice.get("deal") if isinstance(invoice.get("deal"), dict) else {}
-    sources = (invoice, deal, body)
-    for source in sources:
-        paid = _fact_amount_from_source(source)
+
+    fact = _patriotpay_fact_paid_kzt(invoice, deal)
+    if fact is not None:
+        return fact
+
+    # Fallback: запрошенная сумма (invoice.sum / amount) — только если факта нет.
+    for source in (invoice, deal, body):
+        if not isinstance(source, dict) or _crypto_currency(source.get("currency")):
+            continue
+        paid = _kzt_sum_amount(source.get("sum"))
         if paid is not None:
             return paid
-    for source in sources:
-        if _crypto_currency(source.get("currency")):
-            continue
         paid = _positive_decimal(source.get("amount"))
         if paid is not None:
             return paid
