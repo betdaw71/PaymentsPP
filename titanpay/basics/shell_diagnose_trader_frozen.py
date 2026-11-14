@@ -16,7 +16,7 @@ import os
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum as models_Sum
 from django.utils import timezone
 
 from appeals.models import PayInAppeal, PayInAppealStatus
@@ -116,7 +116,7 @@ def main() -> None:
     open_appeals = list(
         PayInAppeal.objects.filter(
             Q(in_order__payment_details__group__trader=trader)
-            | Q(pay_in__in_order__payment_details__group__trader=trader)
+            | Q(pay_in__order__payment_details__group__trader=trader)
         )
         .exclude(
             status__in=(
@@ -138,26 +138,44 @@ def main() -> None:
             f"in_order={a.in_order_id}  pay_in={a.pay_in_id}"
         )
 
-    # Unreversed Freeze on this trader's frozen balance
+    # Ledger on frozen balance (explains the live amount)
+    fid = trader.frozen_balance_usdt_id
+    into = (
+        Transaction.objects.filter(to_balance_id=fid).aggregate(s=models_Sum("value"))["s"]
+        or Decimal("0")
+    )
+    outof = (
+        Transaction.objects.filter(from_balance_id=fid).aggregate(s=models_Sum("value"))["s"]
+        or Decimal("0")
+    )
+    print(f"\n--- Frozen ledger Σ ---")
+    print(f"  credit (into frozen):  {_dec(into)}")
+    print(f"  debit  (from frozen):  {_dec(outof)}")
+    print(f"  net (should≈frozen):   {_dec(into - outof)}  actual={frozen}")
+
+    # Unreversed Freeze on this trader's frozen balance (full scan)
     freezes = (
         Transaction.objects.filter(
             transaction_type__name="Freeze",
-            to_balance_id=trader.frozen_balance_usdt_id,
+            to_balance_id=fid,
         )
         .select_related("linked_in_order", "linked_in_order__status")
-        .order_by("-creation_date")[:500]
+        .order_by("-creation_date")
     )
     orphan_release = []
     orphan_completed_bookkeeping = []
     orphan_open = []
     orphan_other = []
     orphan_wd = []
-    for fz in freezes:
+    release_sum = Decimal("0")
+    other_sum = Decimal("0")
+    wd_sum = Decimal("0")
+    for fz in freezes.iterator(chunk_size=200):
         if freeze_tx_is_reversed(fz):
             continue
         if fz.linked_in_order_id is None:
-            # withdrawal freeze (no linked_in_order)
             orphan_wd.append(fz)
+            wd_sum += _dec(fz.value)
             continue
         order = fz.linked_in_order
         st = order.status.name if order and order.status else "?"
@@ -168,15 +186,17 @@ def main() -> None:
             orphan_open.append((fz, st))
         elif st in RELEASE_STATUSES:
             orphan_release.append((fz, st, order))
+            release_sum += _dec(fz.value)
         else:
             orphan_other.append((fz, st, order))
+            other_sum += _dec(fz.value)
 
-    print(f"\n--- Unreversed Freeze on trader frozen balance (sample ≤500) ---")
+    print(f"\n--- Unreversed Freeze on trader frozen balance ---")
     print(f"  open (expected):              {len(orphan_open)}")
-    print(f"  terminal cancel/expired:      {len(orphan_release)}  ← can APPLY unfreeze")
+    print(f"  terminal cancel/expired:      {len(orphan_release)}  sum≈{_dec(release_sum)}  ← can APPLY unfreeze")
     print(f"  completed+charged (ledger):   {len(orphan_completed_bookkeeping)}  ← do NOT unfreeze")
-    print(f"  other statuses:               {len(orphan_other)}")
-    print(f"  no linked_in_order (WD/etc):  {len(orphan_wd)}")
+    print(f"  other statuses:               {len(orphan_other)}  sum≈{_dec(other_sum)}")
+    print(f"  no linked_in_order (WD/etc):  {len(orphan_wd)}  sum≈{_dec(wd_sum)}")
 
     if orphan_release:
         print(f"\n--- Stuck freezes on terminal cancel/expired (max {LIMIT}) ---")
@@ -185,6 +205,8 @@ def main() -> None:
                 f"  {_msk(fz.creation_date)}  status={st:22}  "
                 f"freeze={_dec(fz.value):>10}  in_order={order.id}"
             )
+        if len(orphan_release) > LIMIT:
+            print(f"  ... +{len(orphan_release) - LIMIT} more")
 
     if orphan_other:
         print(f"\n--- Freezes on other statuses (max {LIMIT}) ---")
@@ -195,14 +217,25 @@ def main() -> None:
                 f"freeze={_dec(fz.value):>10}  in_order={oid}"
             )
 
-    release_sum = sum((_dec(fz.value) for fz, _, _ in orphan_release), Decimal("0"))
+    if orphan_wd:
+        print(f"\n--- Unreversed Freeze without InOrder (WD / manual) (max {LIMIT}) ---")
+        for fz in orphan_wd[:LIMIT]:
+            print(
+                f"  {_msk(fz.creation_date)}  freeze={_dec(fz.value):>10}  "
+                f"comment={fz.comment!r}  tx={fz.id}"
+            )
+
     print(f"\nVERDICT:")
     print(f"  frozen={frozen} expected={expected} stuck={stuck}")
-    print(f"  releasable_cancel_freeze_sum≈{release_sum}")
-    if stuck > Decimal("0.01") and not orphan_release and not open_orders and not pending_wd:
-        print("  → frozen > 0 without open orders/appeals/WD — manual ledger check needed")
+    print(f"  releasable_cancel_freeze_sum≈{_dec(release_sum)}")
+    if orphan_release and _dec(release_sum) >= stuck - Decimal("0.05"):
+        print("  → stuck объясняется cancel/expired Freeze; APPLY=1 вернёт на available")
     elif orphan_release:
-        print("  → есть зависшие Freeze на cancel/expired; APPLY=1 разморозит их")
+        print("  → есть cancel/expired Freeze; APPLY=1 разморозит их (часть stuck может остаться)")
+    elif orphan_wd and wd_sum > Decimal("0.01"):
+        print("  → unreversed WD/manual Freeze без заявки — смотри комментарии выше (не авто-APPLY)")
+    elif stuck > Decimal("0.01") and not open_orders and not pending_wd:
+        print("  → frozen > 0 без open/WD; ledger net выше — нужна ручная проверка Charge/Deposit")
     elif stuck <= Decimal("0.01"):
         print("  → frozen объясняется открытыми заявками / WD")
     else:
@@ -213,7 +246,11 @@ def main() -> None:
         return
 
     fixed = 0
+    seen = set()
     for fz, st, order in orphan_release:
+        if order.id in seen:
+            continue
+        seen.add(order.id)
         with transaction.atomic():
             locked = InOrder.objects.select_for_update().get(pk=order.pk)
             if locked.status.name not in RELEASE_STATUSES:

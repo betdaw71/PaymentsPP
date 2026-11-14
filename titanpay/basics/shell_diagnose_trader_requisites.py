@@ -45,7 +45,7 @@ def main() -> None:
     groups = list(
         PaymentDetailsGroup.objects.filter(trader=trader)
         .select_related("payment_system")
-        .order_by("status", "-in_active", "name")
+        .order_by("status", "-in_active", "owner")
     )
     print(f"groups: {len(groups)}")
 
