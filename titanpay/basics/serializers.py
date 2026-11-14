@@ -6,7 +6,7 @@ from basics.models import Language, Currency, Balance, Trader, TrafficType, Paym
     TraderTeam, PaymentDetailsGroup, TeamLead, TraderTeamRates
 from basics.utils import generate_address, check_pd_data
 from usermanagement.models import SupportMember
-from titanpay.settings import SBER_NAME, SBP_NAME, SBERPAY_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME
+from titanpay.settings import C2CTRY_NAME
 from trade.models import Address
 from merchant.models import Merchant
 from django.contrib.auth.models import User
@@ -90,7 +90,7 @@ class TraderShortSupportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Trader
-        fields = ('id', 'email', 'username', 'blocked', 'telegram', 'phone')
+        fields = ('id', 'email', 'username', 'blocked', 'telegram', 'phone', 'manual_mode')
 
     def get_email(self, obj):
         return obj.user.email
@@ -186,10 +186,10 @@ class TraderCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         balance = Balance.objects.create(type=0)
         frozen_balance = Balance.objects.create(type=1)
-        address = generate_address()
+        deposit_address = validated_data.pop('address', None) or generate_address()
         trader = Trader.objects.create(
             user=validated_data['user'],
-            boss=validated_data['boss'],
+            boss=validated_data.get('boss'),
             is_boss=validated_data['is_boss'],
             team=validated_data['team'],
             currency=validated_data['currency'],
@@ -197,8 +197,8 @@ class TraderCreateSerializer(serializers.ModelSerializer):
             frozen_balance_usdt=frozen_balance
         )
 
-        if trader.is_boss and address:
-            Address.objects.create(address_public=address, balance=balance)
+        if trader.is_boss and deposit_address:
+            Address.objects.create(address_public=deposit_address, balance=balance)
         return trader
 
 
@@ -290,7 +290,9 @@ class PaymentDetailsGroupFullSerializer(serializers.ModelSerializer):
         representation['payment_system'] = instance.payment_system.id
         representation['volume_in'] = instance.limit_per_period
 
-        if ps_name in (SBER_NAME, C2C_NAME, PROTOCOL_C2C_NAME):
+        from trade.routing.ps_names import card_like_ps_names
+
+        if ps_name in card_like_ps_names():
             representation['details'] = PaymentDetailsSberSerializer(details, many=True).data
         elif ps_name == C2CTRY_NAME:
             representation['details'] = PaymentDetailsSerializer(details, many=True).data
@@ -300,9 +302,14 @@ class PaymentDetailsGroupFullSerializer(serializers.ModelSerializer):
 
 
 class PaymentDetailsSerializer(serializers.ModelSerializer):
+    deposit_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = PaymentDetails
         fields = ['sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number']
+        extra_kwargs = {
+            'deposit_number': {'required': False, 'allow_blank': True, 'allow_null': True},
+        }
 
 
 class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
@@ -310,7 +317,13 @@ class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PaymentDetailsGroup
-        fields = ('owner', 'currency', 'payment_system', 'min_amount_out', 'max_amount_out', 'in_active', 'out_active', 'allowed_traffic', 'details', 'deposit_number_on', 'bic', 'work_type')
+        fields = (
+            'owner', 'currency', 'payment_system',
+            'min_amount_out', 'max_amount_out', 'min_amount_in', 'max_amount_in',
+            'amount_diff', 'deal_interval_sec',
+            'in_active', 'out_active', 'allowed_traffic', 'details',
+            'deposit_number_on', 'bic', 'work_type',
+        )
 
     def create(self, validated_data):
         traffic_types = validated_data.pop('allowed_traffic')
@@ -319,7 +332,10 @@ class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
             payment_details_group = PaymentDetailsGroup.objects.create(**validated_data)
             for detail_data in details_data:
                 try:
-                    data = check_pd_data(detail_data)
+                    data = check_pd_data(
+                        detail_data,
+                        require_deposit=validated_data.get('work_type') == 'by_deposit_number',
+                    )
                     details = PaymentDetails.objects.create(group=payment_details_group, **data)
                 except IntegrityError as e:
                     raise ValidationError(detail=e.args[0])
@@ -396,12 +412,17 @@ class PaymentDetailsSberActionSerializer(serializers.ModelSerializer):
 
 
 class PaymentDetailsSberAddSerializer(serializers.ModelSerializer):
+    deposit_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = PaymentDetails
         fields = ('sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number', 'group')
+        extra_kwargs = {
+            'deposit_number': {'required': False, 'allow_blank': True, 'allow_null': True},
+        }
 
     def to_internal_value(self, data):
+        data = data.copy()
         if data.get('phone') == '':
             data['phone'] = None
         if data.get('card_number') == '':
@@ -411,8 +432,17 @@ class PaymentDetailsSberAddSerializer(serializers.ModelSerializer):
         if data.get('sbp_enabled') == '':
             data['sbp_enabled'] = False
 
-        if data['phone'] is None and (data['sbp_enabled'] or data['sberpay_enabled']):
+        if data.get('phone') is None and (data.get('sbp_enabled') or data.get('sberpay_enabled')):
             raise ValidationError({'details': 'Phone cannot be empty if SBP or SberPay is enabled'})
+
+        from basics.utils import check_pd_data
+
+        group = data.get('group')
+        work_type = None
+        if group:
+            g = PaymentDetailsGroup.objects.filter(pk=group).only('work_type').first()
+            work_type = g.work_type if g else None
+        data = check_pd_data(data, require_deposit=work_type == 'by_deposit_number')
         return super().to_internal_value(data)
 
 
@@ -443,6 +473,10 @@ class MinMaxAmountOutSerializer(serializers.Serializer):
     min_amount_out = serializers.DecimalField(max_digits=32, decimal_places=2)
     max_amount_out = serializers.DecimalField(max_digits=32, decimal_places=2)
     volume_in = serializers.DecimalField(max_digits=32, decimal_places=2)
+    min_amount_in = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
+    max_amount_in = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
+    amount_diff = serializers.DecimalField(max_digits=32, decimal_places=2, required=False)
+    deal_interval_sec = serializers.IntegerField(required=False, min_value=0)
 
 
 class TeamLeadSerializer(serializers.ModelSerializer):

@@ -8,8 +8,16 @@ from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_exempt
 
+from merchant.kzt_settlement import is_melbet_merchant
 from payments.models import PayIn
 from payments.payment_page_enrich import resolve_locale
+
+
+def uses_melbet_hosted_page(merchant) -> bool:
+    """Клон Melbet только для этого мерчанта; выключается MELBET_PAYMENT_PAGE=0."""
+    if not getattr(settings, "MELBET_PAYMENT_PAGE_ENABLED", True):
+        return False
+    return is_melbet_merchant(merchant)
 
 
 def _page_config() -> dict:
@@ -24,7 +32,7 @@ def _page_config() -> dict:
 def payment_page(request, pay_in_id):
     """https://pay.{domain}/{pay_in_id} — страница оплаты для invoice-интеграции."""
     try:
-        pay_in = PayIn.objects.select_related("currency", "payment_system").get(id=pay_in_id)
+        pay_in = PayIn.objects.select_related("currency", "payment_system", "merchant__user").get(id=pay_in_id)
     except PayIn.DoesNotExist as exc:
         raise Http404("Payment not found") from exc
     ctx = {
@@ -32,7 +40,8 @@ def payment_page(request, pay_in_id):
         "default_locale": resolve_locale(pay_in, request.GET.get("lang")),
         **_page_config(),
     }
-    return render(request, "payment_page/pay.html", ctx)
+    template = "payment_page/pay_melbet.html" if uses_melbet_hosted_page(pay_in.merchant) else "payment_page/pay.html"
+    return render(request, template, ctx)
 
 
 @xframe_options_exempt

@@ -3,7 +3,22 @@ from trade.routing.sberpay import SberPayRouting
 from trade.routing.sbp import SBPRouting
 from trade.routing.sberdep import SberDepRouting
 from rest_framework.exceptions import ValidationError
-from titanpay.settings import SBER_NAME, SBERPAY_NAME, SBP_NAME, SBERDEP_NAME, UPI_INTENT_NAME, C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME
+from titanpay.settings import (
+    C2C_NAME,
+    C2CKZT_NAME,
+    C2CMMK_NAME,
+    C2CTRY_NAME,
+    CONCORDED_KBZPAY_PS_NAME,
+    CONCORDED_WAVEPAY_PS_NAME,
+    PROTOCOL_C2C_NAME,
+    PLUTUS_TEST_PS_NAME,
+    SBERDEP_NAME,
+    SBERPAY_NAME,
+    SBER_NAME,
+    SBP_NAME,
+    UPI_INTENT_NAME,
+)
+from trade.routing.ps_names import kzt_c2c_bank_ps_names
 
 sber = SberRouting()
 sberpay = SberPayRouting()
@@ -23,7 +38,24 @@ def route(payment_system):
     elif payment_system.name == UPI_INTENT_NAME:
         # FairPay: локальная группа трейдера (fairpay_agg) с «картой» — тот же отбор, что SberRouting
         return sber
-    elif payment_system.name in (C2C_NAME, PROTOCOL_C2C_NAME, C2CTRY_NAME):
-        # KZT C2C / C2CKZT / TRY C2CTRY: pay-in по карте (card_number), PSP-трейдеры
+    elif payment_system.name in _c2c_style_ps_names():
+        # C2C / PSP H2H (в т.ч. MMK KBZPay, WavePay через Concored)
         return sber
     raise ValidationError("There is no routing for this payment system")
+
+
+def _c2c_style_ps_names():
+    names = {
+        C2C_NAME,
+        C2CKZT_NAME,
+        PROTOCOL_C2C_NAME,
+        C2CTRY_NAME,
+        CONCORDED_KBZPAY_PS_NAME,
+        CONCORDED_WAVEPAY_PS_NAME,
+        C2CMMK_NAME,
+        *kzt_c2c_bank_ps_names(),
+    }
+    test_ps = (PLUTUS_TEST_PS_NAME or "").strip()
+    if test_ps:
+        names.add(test_ps)
+    return names
