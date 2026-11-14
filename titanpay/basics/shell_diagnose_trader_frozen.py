@@ -5,10 +5,10 @@
   docker compose exec -T -e TRADER=resdfe app \\
     python manage.py shell < titanpay/basics/shell_diagnose_trader_frozen.py
 
-Разморозить только терминальные cancel/expired с неоткатанным Freeze
-(НЕ трогает Completed / New / Money sent / Arbitrage):
-  docker compose exec -T -e TRADER=resdfe -e APPLY=1 app \\
-    python manage.py shell < titanpay/basics/shell_diagnose_trader_frozen.py
+APPLY=1:
+  - unfreeze cancel/expired с неоткатанным Freeze
+  - release residual на Completed/cancel где Freeze > Charge+Deposit
+    (типичный double-freeze после arbitrage/complete_after_*)
 """
 from __future__ import annotations
 
@@ -39,6 +39,7 @@ RELEASE_STATUSES = frozenset(
         "Cancelled by user",
     }
 )
+TERMINAL_FOR_RESIDUAL = RELEASE_STATUSES | {"Completed"}
 
 
 def _msk(dt):
@@ -138,7 +139,6 @@ def main() -> None:
             f"in_order={a.in_order_id}  pay_in={a.pay_in_id}"
         )
 
-    # Ledger on frozen balance (explains the live amount)
     fid = trader.frozen_balance_usdt_id
     into = (
         Transaction.objects.filter(to_balance_id=fid).aggregate(s=models_Sum("value"))["s"]
@@ -153,7 +153,6 @@ def main() -> None:
     print(f"  debit  (from frozen):  {_dec(outof)}")
     print(f"  net (should≈frozen):   {_dec(into - outof)}  actual={frozen}")
 
-    # Unreversed Freeze on this trader's frozen balance (full scan)
     freezes = (
         Transaction.objects.filter(
             transaction_type__name="Freeze",
@@ -170,6 +169,7 @@ def main() -> None:
     release_sum = Decimal("0")
     other_sum = Decimal("0")
     wd_sum = Decimal("0")
+    order_ids_seen = set()
     for fz in freezes.iterator(chunk_size=200):
         if freeze_tx_is_reversed(fz):
             continue
@@ -179,6 +179,7 @@ def main() -> None:
             continue
         order = fz.linked_in_order
         st = order.status.name if order and order.status else "?"
+        order_ids_seen.add(order.id)
         if _freeze_consumed_by_charge(fz):
             orphan_completed_bookkeeping.append((fz, st))
             continue
@@ -193,10 +194,44 @@ def main() -> None:
 
     print(f"\n--- Unreversed Freeze on trader frozen balance ---")
     print(f"  open (expected):              {len(orphan_open)}")
-    print(f"  terminal cancel/expired:      {len(orphan_release)}  sum≈{_dec(release_sum)}  ← can APPLY unfreeze")
-    print(f"  completed+charged (ledger):   {len(orphan_completed_bookkeeping)}  ← do NOT unfreeze")
+    print(f"  terminal cancel/expired:      {len(orphan_release)}  sum≈{_dec(release_sum)}  ← APPLY unfreeze")
+    print(f"  completed+charged (ledger):   {len(orphan_completed_bookkeeping)}  ← check residual below")
     print(f"  other statuses:               {len(orphan_other)}  sum≈{_dec(other_sum)}")
     print(f"  no linked_in_order (WD/etc):  {len(orphan_wd)}  sum≈{_dec(wd_sum)}")
+
+    # Residual: Freeze − Deposit − Charge > 0 on terminal orders (double-freeze leftover)
+    residual_rows = []
+    residual_sum = Decimal("0")
+    # Also include orders that only appear via charged freezes
+    all_order_ids = set(order_ids_seen)
+    for fz, _st in orphan_completed_bookkeeping:
+        if fz.linked_in_order_id:
+            all_order_ids.add(fz.linked_in_order_id)
+    for order in (
+        InOrder.objects.filter(id__in=all_order_ids)
+        .select_related("status", "payment_details__group")
+        .iterator(chunk_size=100)
+    ):
+        st = order.status.name if order.status else "?"
+        if st in OPEN_STATUSES:
+            continue
+        if st not in TERMINAL_FOR_RESIDUAL:
+            continue
+        res = _dec(order.freeze_residual_usdt())
+        if res <= Decimal("0.00"):
+            continue
+        residual_rows.append((order, st, res))
+        residual_sum += res
+
+    residual_rows.sort(key=lambda r: r[2], reverse=True)
+    print(f"\n--- Residual after Charge (double-freeze leftover): n={len(residual_rows)} sum≈{_dec(residual_sum)} ---")
+    for order, st, res in residual_rows[:LIMIT]:
+        print(
+            f"  {_msk(order.completion_date or order.updated_date)}  status={st:22}  "
+            f"residual={res:>10}  usd={_dec(order.usd_amount):>10}  id={order.id}"
+        )
+    if len(residual_rows) > LIMIT:
+        print(f"  ... +{len(residual_rows) - LIMIT} more")
 
     if orphan_release:
         print(f"\n--- Stuck freezes on terminal cancel/expired (max {LIMIT}) ---")
@@ -204,17 +239,6 @@ def main() -> None:
             print(
                 f"  {_msk(fz.creation_date)}  status={st:22}  "
                 f"freeze={_dec(fz.value):>10}  in_order={order.id}"
-            )
-        if len(orphan_release) > LIMIT:
-            print(f"  ... +{len(orphan_release) - LIMIT} more")
-
-    if orphan_other:
-        print(f"\n--- Freezes on other statuses (max {LIMIT}) ---")
-        for fz, st, order in orphan_other[:LIMIT]:
-            oid = order.id if order else None
-            print(
-                f"  {_msk(fz.creation_date)}  status={st:22}  "
-                f"freeze={_dec(fz.value):>10}  in_order={oid}"
             )
 
     if orphan_wd:
@@ -228,24 +252,24 @@ def main() -> None:
     print(f"\nVERDICT:")
     print(f"  frozen={frozen} expected={expected} stuck={stuck}")
     print(f"  releasable_cancel_freeze_sum≈{_dec(release_sum)}")
-    if orphan_release and _dec(release_sum) >= stuck - Decimal("0.05"):
-        print("  → stuck объясняется cancel/expired Freeze; APPLY=1 вернёт на available")
+    print(f"  releasable_residual_sum≈{_dec(residual_sum)}")
+    covered = _dec(release_sum + residual_sum)
+    if stuck > Decimal("0.01") and covered >= stuck - Decimal("0.05"):
+        print("  → stuck объясняется cancel Freeze + residual; APPLY=1 вернёт на available")
+    elif residual_sum > Decimal("0.01"):
+        print("  → есть residual после Charge (часто double-freeze); APPLY=1 отпустит residual")
     elif orphan_release:
-        print("  → есть cancel/expired Freeze; APPLY=1 разморозит их (часть stuck может остаться)")
-    elif orphan_wd and wd_sum > Decimal("0.01"):
-        print("  → unreversed WD/manual Freeze без заявки — смотри комментарии выше (не авто-APPLY)")
-    elif stuck > Decimal("0.01") and not open_orders and not pending_wd:
-        print("  → frozen > 0 без open/WD; ledger net выше — нужна ручная проверка Charge/Deposit")
+        print("  → есть cancel/expired Freeze; APPLY=1 разморозит")
     elif stuck <= Decimal("0.01"):
         print("  → frozen объясняется открытыми заявками / WD")
     else:
-        print("  → часть stuck может быть Completed-ledger или WD без linked_in_order")
+        print("  → stuck не полностью объяснён — смотри ledger / WD")
 
     if not APPLY:
-        print("\nDry-run. Set APPLY=1 to unfreeze terminal cancel/expired only.")
+        print("\nDry-run. Set APPLY=1 to release cancel freezes + residual leftovers.")
         return
 
-    fixed = 0
+    fixed_cancel = 0
     seen = set()
     for fz, st, order in orphan_release:
         if order.id in seen:
@@ -256,10 +280,23 @@ def main() -> None:
             if locked.status.name not in RELEASE_STATUSES:
                 continue
             locked.unfreeze("Trader frozen reconcile (cancel/expired)")
-            fixed += 1
+            fixed_cancel += 1
+
+    fixed_residual = 0
+    released_amt = Decimal("0")
+    for order, st, res in residual_rows:
+        with transaction.atomic():
+            locked = InOrder.objects.select_for_update().get(pk=order.pk)
+            if locked.status.name in OPEN_STATUSES:
+                continue
+            got = locked.release_freeze_residual("Trader frozen reconcile (residual after charge)")
+            if got > 0:
+                fixed_residual += 1
+                released_amt += _dec(got)
+
     trader.frozen_balance_usdt.refresh_from_db()
     trader.balance_usdt.refresh_from_db()
-    print(f"\nAPPLY done: unfroze {fixed} order(s)")
+    print(f"\nAPPLY done: cancel_unfreeze={fixed_cancel} residual_orders={fixed_residual} residual_usdt={_dec(released_amt)}")
     print(
         f"balances now: available={_dec(trader.balance_usdt.amount)} "
         f"frozen={_dec(trader.frozen_balance_usdt.amount)}"

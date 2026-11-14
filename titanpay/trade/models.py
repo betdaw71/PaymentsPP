@@ -7,6 +7,7 @@ from sms.models import SMS
 from merchant.models import Merchant, MerchantSolution
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models import Sum
 from rest_framework.exceptions import ValidationError
 from trade.utils import choose_trader_in, choose_trader_out, check_details, calculate_fees
 from django.utils import timezone
@@ -255,6 +256,62 @@ class InOrder(models.Model):
             )
         logger.warning("InOrder %s unfreeze: max passes reached (%s)", self.id, comment)
 
+    def freeze_residual_usdt(self) -> Decimal:
+        """Сколько USDT этой заявки всё ещё лежит на frozen (Freeze − Deposit − Charge)."""
+        trader = self.payment_details.group.trader if self.payment_details_id else None
+        if trader is None or not trader.frozen_balance_usdt_id:
+            return Decimal("0")
+        fid = trader.frozen_balance_usdt_id
+        frozen_in = (
+            Transaction.objects.filter(
+                linked_in_order=self,
+                transaction_type__name="Freeze",
+                to_balance_id=fid,
+            ).aggregate(s=Sum("value"))["s"]
+            or Decimal("0")
+        )
+        released = (
+            Transaction.objects.filter(
+                linked_in_order=self,
+                transaction_type__name="Deposit",
+                from_balance_id=fid,
+            ).aggregate(s=Sum("value"))["s"]
+            or Decimal("0")
+        )
+        charged = (
+            Transaction.objects.filter(
+                linked_in_order=self,
+                transaction_type__name="Charge",
+                from_balance_id=fid,
+            ).aggregate(s=Sum("value"))["s"]
+            or Decimal("0")
+        )
+        residual = Decimal(str(frozen_in)) - Decimal(str(released)) - Decimal(str(charged))
+        return residual if residual > 0 else Decimal("0")
+
+    def release_freeze_residual(self, comment="Release leftover freeze"):
+        """Вернуть на available остаток Freeze после Charge (double-freeze и т.п.)."""
+        trader = self.payment_details.group.trader if self.payment_details_id else None
+        if trader is None:
+            return Decimal("0")
+        residual = self.freeze_residual_usdt()
+        if residual <= 0:
+            return Decimal("0")
+        frozen_bal = Balance.objects.select_for_update().get(pk=trader.frozen_balance_usdt_id)
+        value = residual if frozen_bal.amount >= residual else frozen_bal.amount
+        if value <= 0:
+            return Decimal("0")
+        transaction_type = TransactionType.objects.get(name="Deposit")
+        Transaction.create(
+            _from=trader.frozen_balance_usdt,
+            _to=trader.balance_usdt,
+            value=value,
+            _transaction_type=transaction_type,
+            _linked_in_order=self,
+            _comment=comment,
+        )
+        return value
+
     def decrease_current_volume(self):
         group = PaymentDetailsGroup.objects.select_for_update().get(id=self.payment_details.group.id)
         if self.creation_date.timestamp() // SYSTEM_INTERVAL_VALUE == int(timezone.now().timestamp()) // SYSTEM_INTERVAL_VALUE:
@@ -300,6 +357,9 @@ class InOrder(models.Model):
         to_aggregator = Transaction.create(_from=trader.frozen_balance_usdt, _to=aggregator_balance,
                                            value=charge_usd, _transaction_type=transaction_type_1,
                                            _linked_in_order=self, _comment="In-order completed")
+        # Если заявка фризилась дважды (arbitrage / complete_after_*), Charge снимает
+        # только usd_amount — остаток иначе навсегда зависает на frozen.
+        self.release_freeze_residual("Release leftover freeze after complete")
 
         if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             # KZT merchant leg: не списываем USDT-агрегатор на сумму в тенге (только USDT от трейдера выше).

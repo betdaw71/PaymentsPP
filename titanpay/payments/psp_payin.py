@@ -608,7 +608,37 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     rest = [g for g in groups if g not in psp]
     mdr_map = _team_mdr_in_map(psp) if psp else {}
     custom_map = merchant_psp_priority_map(merchant)
-    rest_sorted = sorted(rest, key=lambda g: g.current_volume or Decimal(0))
+
+    # Живые: current_volume, затем меньше выдач за 24ч — ровнее между реквизитами одного трейдера.
+    recent_by_group: dict = {}
+    if rest:
+        from datetime import timedelta
+
+        from django.db.models import Count
+        from django.utils import timezone
+
+        from trade.models import InOrder
+
+        since = timezone.now() - timedelta(hours=24)
+        gids = [g.id for g in rest]
+        recent_by_group = {
+            row["payment_details__group_id"]: row["n"]
+            for row in (
+                InOrder.objects.filter(
+                    payment_details__group_id__in=gids,
+                    creation_date__gte=since,
+                )
+                .values("payment_details__group_id")
+                .annotate(n=Count("id"))
+            )
+        }
+    rest_sorted = sorted(
+        rest,
+        key=lambda g: (
+            g.current_volume or Decimal(0),
+            recent_by_group.get(g.id, 0),
+        ),
+    )
 
     def cascade_key(group):
         trader = group.trader
