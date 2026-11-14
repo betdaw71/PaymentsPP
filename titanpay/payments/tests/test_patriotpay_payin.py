@@ -81,18 +81,19 @@ class PatriotpayPayinHelpersTest(SimpleTestCase):
         self.assertEqual(parse_psp_webhook_paid_amount(body), Decimal("5004.50"))
         self.assertTrue(psp_success_webhook_allows_completed_recalc(body))
 
-    def test_paid_amount_uses_deal_sum_even_if_invoice_amount_set(self):
-        """Регресс: invoice.amount не должен перекрывать факт в deal.sum."""
+    def test_paid_amount_uses_deal_payment_taker_sum_over_invoice_sum(self):
+        """Регресс: invoice.sum (запрос) не должен перекрывать deal.payment.takerSum."""
         body = {
             "invoice": {
                 "id": "inv-1",
                 "internalId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
                 "status": "paid",
-                "amount": "6000.00",
-                "currency": "KZT",
+                "sum": {"amount": "6000.00", "currency": "KZT"},
                 "deal": {
                     "id": "deal-1",
-                    "sum": {"amount": "6100.50", "currency": "KZT"},
+                    "payment": {
+                        "takerSum": {"amount": "6100.50", "currency": "KZT"},
+                    },
                 },
             }
         }
