@@ -147,7 +147,9 @@ class SberRouting:
                 if not trader_covers_inflow(group.trader, usd_needed):
                     skipped.append({"trader": uname, "group_id": str(group.id), "skip": "usd_for_group_ps"})
                     continue
-            chosen_detail = available_details.order_by('?').first()
+            from trade.routing.fair_pick import pick_least_loaded_detail
+
+            chosen_detail = pick_least_loaded_detail(available_details)
             try:
                 record_in_sort_and_pick(
                     sorted_groups=chosen_group,

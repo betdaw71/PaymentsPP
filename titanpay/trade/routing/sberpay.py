@@ -80,9 +80,9 @@ class SberPayRouting:
         for group in chosen_group:
             available_details = PaymentDetails.objects.filter(group=group, sberpay_enabled=True, status=1, phone__isnull=False).exclude(id__in=active_details)
             if available_details.exists():
-                chosen_detail = available_details.order_by('?').first()
+                from trade.routing.fair_pick import pick_least_loaded_detail
 
-                return chosen_detail
+                return pick_least_loaded_detail(available_details)
 
         return None
 
