@@ -186,10 +186,10 @@ class TraderCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         balance = Balance.objects.create(type=0)
         frozen_balance = Balance.objects.create(type=1)
-        address = generate_address()
+        deposit_address = validated_data.pop('address', None) or generate_address()
         trader = Trader.objects.create(
             user=validated_data['user'],
-            boss=validated_data['boss'],
+            boss=validated_data.get('boss'),
             is_boss=validated_data['is_boss'],
             team=validated_data['team'],
             currency=validated_data['currency'],
@@ -197,8 +197,8 @@ class TraderCreateSerializer(serializers.ModelSerializer):
             frozen_balance_usdt=frozen_balance
         )
 
-        if trader.is_boss and address:
-            Address.objects.create(address_public=address, balance=balance)
+        if trader.is_boss and deposit_address:
+            Address.objects.create(address_public=deposit_address, balance=balance)
         return trader
 
 
