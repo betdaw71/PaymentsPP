@@ -420,7 +420,8 @@ def _crypto_currency(raw) -> bool:
     return str(raw or "").strip().upper() in {"USDT", "USDC", "TETHER"}
 
 
-def _amount_from_source(source: dict) -> Decimal | None:
+def _fact_amount_from_source(source: dict) -> Decimal | None:
+    """Только фактическая оплата (не invoice.amount = запрошенная)."""
     if not isinstance(source, dict):
         return None
     if _crypto_currency(source.get("currency")):
@@ -431,11 +432,21 @@ def _amount_from_source(source: dict) -> Decimal | None:
         "factAmount",
         "fact_amount",
         "receivedAmount",
+        "fiatAmount",
+        "localAmount",
+        "transferredAmount",
     ):
         paid = _positive_decimal(source.get(key))
         if paid is not None:
             return paid
-    for nested_key in ("sum", "receivedSumFromTaker", "receivedSumFromMaker"):
+    for nested_key in (
+        "sum",
+        "receivedSumFromTaker",
+        "receivedSumFromMaker",
+        "paidSum",
+        "factSum",
+        "receivedSum",
+    ):
         nested = source.get(nested_key)
         if isinstance(nested, dict):
             if _crypto_currency(nested.get("currency")):
@@ -443,19 +454,41 @@ def _amount_from_source(source: dict) -> Decimal | None:
             paid = _positive_decimal(nested.get("amount"))
             if paid is not None:
                 return paid
-    # invoice.amount — запрошенная сумма; после sum.*, иначе перерасчёт не увидит факт.
+    return None
+
+
+def _amount_from_source(source: dict) -> Decimal | None:
+    if not isinstance(source, dict):
+        return None
+    fact = _fact_amount_from_source(source)
+    if fact is not None:
+        return fact
+    if _crypto_currency(source.get("currency")):
+        return None
+    # invoice.amount — запрошенная сумма; только если факта нет.
     return _positive_decimal(source.get("amount"))
 
 
 def patriotpay_webhook_paid_amount(body: dict | None) -> Decimal | None:
-    """Фактическая сумма из IPN PatriotPay: invoice.sum.amount / amount."""
+    """Фактическая сумма из IPN PatriotPay: sum/paidAmount/deal, иначе invoice.amount.
+
+    Важно: сначала ищем факт по invoice+deal+body, и только потом fallback на
+    запрошенный amount — иначе invoice.amount=6000 перекрывает deal.sum с перерасчётом.
+    """
     if not patriotpay_is_webhook_body(body):
         return None
     assert isinstance(body, dict)
     invoice = _invoice_from_webhook(body)
     deal = invoice.get("deal") if isinstance(invoice.get("deal"), dict) else {}
-    for source in (invoice, deal, body):
-        paid = _amount_from_source(source)
+    sources = (invoice, deal, body)
+    for source in sources:
+        paid = _fact_amount_from_source(source)
+        if paid is not None:
+            return paid
+    for source in sources:
+        if _crypto_currency(source.get("currency")):
+            continue
+        paid = _positive_decimal(source.get("amount"))
         if paid is not None:
             return paid
     return None

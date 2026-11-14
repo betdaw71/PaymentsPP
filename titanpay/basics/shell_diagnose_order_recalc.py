@@ -164,13 +164,32 @@ def run() -> None:
         paid = money(parse_psp_webhook_paid_amount(body)) if body else None
         note = (t.note or "")[:120]
         print(
-            f"  {when(t.created_at)}  {t.direction:22}  http={t.http_status}  "
+            f"  {when(t.created_at)}  {t.direction:22}  http={getattr(t, 'http_status', None)}  "
             f"parsed_amount={paid}  note={note}"
         )
         if t.direction and "webhook" in t.direction and body:
             webhook_n += 1
             allow = psp_success_webhook_allows_completed_recalc(body)
+            inv = body.get("invoice") if isinstance(body.get("invoice"), dict) else {}
+            deal = inv.get("deal") if isinstance(inv.get("deal"), dict) else {}
             print(f"    allow_completed_recalc={int(allow)}  keys={','.join(list(body.keys())[:12])}")
+            if inv or deal:
+                print(
+                    "    raw amounts: "
+                    f"inv.status={inv.get('status')!r} "
+                    f"inv.amount={inv.get('amount')!r} "
+                    f"inv.paidAmount={inv.get('paidAmount')!r} "
+                    f"inv.factAmount={inv.get('factAmount')!r} "
+                    f"inv.sum={inv.get('sum')!r} "
+                    f"deal.amount={deal.get('amount')!r} "
+                    f"deal.sum={deal.get('sum')!r} "
+                    f"deal.receivedSumFromTaker={deal.get('receivedSumFromTaker')!r} "
+                    f"deal.receivedSumFromMaker={deal.get('receivedSumFromMaker')!r}"
+                )
+            dump = (os.environ.get("DUMP") or "").strip().lower() in {"1", "true", "yes"}
+            if dump and t.direction == "patriotpay_webhook":
+                print("    RAW BODY:")
+                print(json.dumps(body, ensure_ascii=False, default=str, indent=2)[:4000])
 
     body = payload_dict(getattr(sess, "last_webhook_payload", None) if sess else None)
     if not body:
