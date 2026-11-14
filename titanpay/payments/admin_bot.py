@@ -24,8 +24,13 @@ HELP = (
     "пополни мерча mostbet 100 комментарий\n"
     "списать провайдера payplat1 50 комментарий\n"
     "списать мерча mostbet 50 комментарий\n"
+    "вывел с сайта gipay1 1000\n"
+    "вывел с сайта gipay1 1000 комиссия 5.2\n"
+    "вывел с сайта payplat1 5000\n"
     "расход 40 хостинг\n"
-    "/help"
+    "/help\n"
+    "Вывод с сайта: сумма = нетто на кошелёк; ЛК − (нетто+комиссия); "
+    "комиссия в расход (у PayPlat/Prochub по умолчанию 0)."
 )
 
 
@@ -50,6 +55,20 @@ def parse_command(text: str) -> dict | None:
     if m:
         kind = "trader" if m.group(1).lower().startswith("провайд") else "merchant"
         return {"op": "set", "kind": kind, "username": m.group(2), "amount": _amount(m.group(3))}
+    m = re.match(
+        r"^(?:вывел|вывод)\s+с\s+сайта\s+(\S+)\s+([-\d.,]+)(?:\s+комиссия\s+([-\d.,]+))?\s*$",
+        raw,
+        re.I,
+    )
+    if m:
+        fee_raw = m.group(3)
+        return {
+            "op": "site_withdraw",
+            "kind": "trader",
+            "username": m.group(1),
+            "net": _amount(m.group(2)),
+            "fee": _amount(fee_raw) if fee_raw is not None else None,
+        }
     m = re.match(
         r"^(пополни|списать)\s+(провайдера|мерча|мерчанта)\s+(\S+)\s+([-\d.,]+)(?:\s+(.+))?$",
         raw,
@@ -115,6 +134,44 @@ def _move(balance, delta: Decimal, comment: str):
         )
 
 
+def _handle_site_withdraw(cmd: dict) -> str:
+    from basics.cash_register import psp_site_withdrawal_fee
+    from basics.models import PlatformExpense
+
+    net = cmd["net"]
+    if net <= 0:
+        raise ValueError("сумма вывода (нетто на кошелёк) должна быть > 0")
+    fee = cmd["fee"]
+    if fee is None:
+        fee = psp_site_withdrawal_fee(cmd["username"])
+    if fee < 0:
+        raise ValueError("комиссия не может быть отрицательной")
+
+    obj, bal = _trader_usdt(cmd["username"])
+    username = obj.user.username
+    gross = net + fee
+    before = Decimal(str(bal.amount))
+    comment = f"admin вывод с сайта {username} net={net} fee={fee}"
+    with transaction.atomic():
+        _move(bal, -gross, comment[:256])
+        if fee > 0:
+            PlatformExpense.objects.create(
+                amount=fee,
+                comment=f"комиссия вывода с сайта {username} (нетто {net})"[:256],
+                source="telegram",
+            )
+        bal.refresh_from_db()
+    parts = [
+        f"провайдер {username}: {before} → {bal.amount} USDT",
+        f"с сайта −{gross} (нетто {net} + комиссия {fee})",
+    ]
+    if fee > 0:
+        parts.append(f"расход {fee} USDT записан")
+    else:
+        parts.append("комиссия 0 (бесплатный вывод)")
+    return "\n".join(parts)
+
+
 def handle_command(cmd: dict) -> str:
     if cmd["op"] == "help":
         return HELP
@@ -129,6 +186,8 @@ def handle_command(cmd: dict) -> str:
             return "сумма расхода должна быть > 0"
         PlatformExpense.objects.create(amount=cmd["amount"], comment=cmd["comment"][:256], source="telegram")
         return f"расход {cmd['amount']} USDT записан: {cmd['comment'][:80]}"
+    if cmd["op"] == "site_withdraw":
+        return _handle_site_withdraw(cmd)
     if cmd["kind"] == "merchant":
         obj, bal = _merchant_usdt(cmd["username"])
         label = f"мерч {obj.user.username}"
