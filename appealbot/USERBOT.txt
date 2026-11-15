@@ -6,14 +6,18 @@
   не видит и не может нажать ✅ Подтвердить / ❌ Отклонить.
   Нужен отдельный Telegram-АККАУНТ (не бот), который сидит в этой группе.
   Telethon логинится этим аккаунтом и:
-    1) забирает тикет (текст + PDF) и шлёт в наш process_message/
-    2) опционально жмёт кнопку Mel Transaction Bot, когда провайдер
-       подтвердил/отклонил (USERBOT_CLICK_INLINE=1)
+    1) фаза 1 (USERBOT_LISTEN_ONLY=1): только видит/логирует сообщения Mel-бота
+    2) фаза 2: забирает тикет (текст + PDF) и шлёт в наш process_message/
+    3) опционально жмёт кнопку Mel Transaction Bot (USERBOT_CLICK_INLINE=1)
+
+========================================================================
+Фаза 1 — Melbet: просто увидеть сообщения бота
+========================================================================
 
 Аккаунт
   1. Отдельная SIM / отдельный Telegram. Не личный, не аккаунт из чатов
      провайдеров.
-  2. Имя любое нейтральное. В группу мерчанта добавить как участника
+  2. Имя любое нейтральное. В группу Melbet Support добавить как участника
      (админ не обязателен).
   3. Не добавлять этот аккаунт в чаты провайдеров.
   4. Включить 2FA после первого входа (пароль — в TELEGRAM_2FA_PASSWORD
@@ -28,32 +32,55 @@ API id / hash (один раз)
 Сессия (один раз, интерактивно — нужен код из Telegram)
   На машине, где вы можете ввести код:
 
-    TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=hex \\
-      docker compose --profile userbot run --rm -it --no-deps \\
+    TELEGRAM_API_ID=12345 TELEGRAM_API_HASH=hex \
+      docker compose --profile userbot run --rm -it --no-deps \
       appeal-userbot python userbot_login.py
 
   Скрипт напечатает TELEGRAM_SESSION_STRING=...
   Вставить в server .env. Строку никому не слать: это полный вход в аккаунт.
 
-.env на сервере
-  TELEGRAM_API_ID=...
-  TELEGRAM_API_HASH=...
-  TELEGRAM_SESSION_STRING=...
-  USERBOT_WATCH_CHAT_IDS=-100xxxxxxxxxx   # id группы Support 1 (необязательно, но лучше)
-  USERBOT_SOURCE_USERNAMES=               # пусто = любой бот в этих чатах;
-                                          # иначе username Mel Transaction Bot без @
-  USERBOT_CLICK_INLINE=0                  # 1 — жать Подтвердить/Отклонить после резолва
+Найти chat id Melbet Support
 
-  Узнать chat id: в группе уже есть /init; либо переслать любое сообщение
-  боту @userinfobot / смотреть логи appealbot.
+    docker compose --profile userbot run --rm --no-deps \
+      appeal-userbot python userbot_chats.py
 
-Запуск
-  docker compose --profile userbot up -d --build appeal-userbot
-  docker compose logs -f appeal-userbot
+  Строки с Melbet / Support помечены <-- candidate.
+  Скопировать id группы в USERBOT_WATCH_CHAT_IDS.
 
-  Сначала оставьте CLICK_INLINE=0 и проверьте, что по новому тикету Mel
-  Transaction Bot в группе появляется реакция 👀 и апелляция уходит провайдеру
-  (в чат провайдера — только id, без имени мерчанта).
+.env на сервере (фаза 1)
+
+    TELEGRAM_API_ID=...
+    TELEGRAM_API_HASH=...
+    TELEGRAM_SESSION_STRING=...
+    USERBOT_LISTEN_ONLY=1
+    USERBOT_LISTEN_ALL=1
+    USERBOT_LISTEN_REACT=0
+    USERBOT_CLICK_INLINE=0
+    USERBOT_WATCH_CHAT_IDS=-100xxxxxxxxxx
+    # пусто = любой бот в этих чатах; иначе username Mel Transaction Bot без @
+    USERBOT_SOURCE_USERNAMES=
+
+Запуск фазы 1
+
+    docker compose --profile userbot up -d --build appeal-userbot
+    docker compose logs -f appeal-userbot
+
+Ожидание в логах при новом тикете Mel Transaction Bot:
+
+    LISTEN chat=-100… msg=… from=@… bot_ticket=1 media=1 … text='🎟 Тикет #…'
+
+Пока USERBOT_LISTEN_ONLY=1 — в backend ничего не уходит, кнопки не жмутся.
+
+========================================================================
+Фаза 2 — ingest апелляций (после того как LISTEN стабилен)
+========================================================================
+
+  USERBOT_LISTEN_ONLY=0
+  USERBOT_CLICK_INLINE=0   # сначала без кликов
+  docker compose --profile userbot up -d --force-recreate appeal-userbot
+
+  Проверьте: по новому тикету Mel появляется реакция 👀 и апелляция уходит
+  провайдеру (в чат провайдера — только id, без имени мерчанта).
 
 Кнопки Mel Transaction Bot
   USERBOT_CLICK_INLINE=1 после того как ingest стабилен. Юзербот поллит

@@ -42,6 +42,15 @@ TELEGRAM_SESSION_STRING = (os.getenv("TELEGRAM_SESSION_STRING") or "").strip()
 WATCH_CHAT_IDS = parse_int_ids(os.getenv("USERBOT_WATCH_CHAT_IDS") or "")
 SOURCE_USERNAMES = parse_usernames(os.getenv("USERBOT_SOURCE_USERNAMES") or "")
 CLICK_INLINE = env_flag(os.getenv("USERBOT_CLICK_INLINE"))
+# Phase 1 Melbet: only see/log Mel Transaction Bot messages, no backend / no clicks.
+LISTEN_ONLY = env_flag(os.getenv("USERBOT_LISTEN_ONLY"))
+# In listen-only, default = log every watched-bot message; set USERBOT_LISTEN_ALL=0 for tickets only.
+_raw_listen_all = os.getenv("USERBOT_LISTEN_ALL")
+if _raw_listen_all is None or not str(_raw_listen_all).strip():
+    LISTEN_ALL_BOT_MESSAGES = LISTEN_ONLY
+else:
+    LISTEN_ALL_BOT_MESSAGES = env_flag(_raw_listen_all)
+LISTEN_REACT = env_flag(os.getenv("USERBOT_LISTEN_REACT"))
 CLICK_POLL_SEC = max(5, int((os.getenv("USERBOT_CLICK_POLL_SEC") or "8").strip() or "8"))
 PENDING_TICKET_TTL_SEC = 15 * 60
 MEDIA_GROUP_FLUSH_SEC = float(os.getenv("APPEAL_MEDIA_GROUP_FLUSH_SEC", "1.8"))
@@ -148,6 +157,9 @@ def backend_mark_inline_clicked(appeal_id: str) -> None:
 def _skip_chat(chat_id: int) -> bool:
     if WATCH_CHAT_IDS and chat_id not in WATCH_CHAT_IDS:
         return True
+    # Listen-only must work before /init and without backend chat roles.
+    if LISTEN_ONLY:
+        return False
     role = backend_chat_role(chat_id)
     if role == "provider":
         logger.info("ignore provider chat_id=%s", chat_id)
@@ -371,6 +383,37 @@ def _configured() -> bool:
     return True
 
 
+async def _listen_only(event: events.NewMessage.Event, message, chat_id: int, username: str) -> None:
+    """Phase 1: prove the user account sees Mel Transaction Bot (no backend)."""
+    text = (message.raw_text or "").strip()
+    mime, name = _document_meta(message)
+    has_media = bool(message.media)
+    ticketish = looks_like_ticket(text) or looks_like_ticket_document(mime, name, text)
+    if not LISTEN_ALL_BOT_MESSAGES and not ticketish and not has_media:
+        return
+    buttons: list[str] = []
+    markup = getattr(message, "reply_markup", None)
+    for row in getattr(markup, "rows", None) or []:
+        for button in getattr(row, "buttons", None) or []:
+            label = (getattr(button, "text", "") or "").strip()
+            if label:
+                buttons.append(label)
+    logger.info(
+        "LISTEN chat=%s msg=%s from=@%s bot_ticket=%s media=%s mime=%r file=%r buttons=%s text=%r",
+        chat_id,
+        message.id,
+        username or "?",
+        int(ticketish),
+        int(has_media),
+        mime,
+        name,
+        buttons,
+        text[:300],
+    )
+    if LISTEN_REACT and ticketish:
+        await _react(message, "👀")
+
+
 async def _on_new_message(event: events.NewMessage.Event, client: TelegramClient) -> None:
     message = event.message
     if message is None:
@@ -388,6 +431,10 @@ async def _on_new_message(event: events.NewMessage.Event, client: TelegramClient
         username=username,
         allowed_usernames=SOURCE_USERNAMES,
     ):
+        return
+
+    if LISTEN_ONLY:
+        await _listen_only(event, message, int(chat_id), username)
         return
 
     text = (message.raw_text or "").strip()
@@ -461,7 +508,12 @@ async def run() -> None:
             "Appeal userbot is not configured. Set TELEGRAM_API_ID, TELEGRAM_API_HASH, "
             "TELEGRAM_SESSION_STRING (see appealbot/USERBOT.txt)"
         )
-    if not TGBOT_TOKEN:
+    if LISTEN_ONLY:
+        logger.info(
+            "USERBOT_LISTEN_ONLY=1 — Melbet phase 1: log Mel bot messages only "
+            "(no process_message, no inline clicks)"
+        )
+    elif not TGBOT_TOKEN:
         logger.warning("TGBOT_TOKEN is empty — API calls will fail")
 
     client = TelegramClient(
@@ -480,19 +532,25 @@ async def run() -> None:
     await client.start()
     me = await client.get_me()
     logger.info(
-        "Appeal userbot started as id=%s username=%s backend=%s watch_chats=%s sources=%s click_inline=%s",
+        "Appeal userbot started as id=%s username=%s listen_only=%s backend=%s "
+        "watch_chats=%s sources=%s click_inline=%s listen_all=%s",
         me.id,
         getattr(me, "username", None) or "",
-        BACKEND_URL,
-        sorted(WATCH_CHAT_IDS) or "any-non-provider",
+        int(LISTEN_ONLY),
+        BACKEND_URL if not LISTEN_ONLY else "-",
+        sorted(WATCH_CHAT_IDS) or ("any" if LISTEN_ONLY else "any-non-provider"),
         sorted(SOURCE_USERNAMES) or "any-bot",
-        CLICK_INLINE,
+        0 if LISTEN_ONLY else int(CLICK_INLINE),
+        int(LISTEN_ALL_BOT_MESSAGES),
     )
-    click_task = asyncio.create_task(_click_loop(client))
+    click_task = None
+    if not LISTEN_ONLY and CLICK_INLINE:
+        click_task = asyncio.create_task(_click_loop(client))
     try:
         await client.run_until_disconnected()
     finally:
-        click_task.cancel()
+        if click_task is not None:
+            click_task.cancel()
 
 
 if __name__ == "__main__":
