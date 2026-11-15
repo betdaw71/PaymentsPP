@@ -373,6 +373,21 @@ def merchant_psp_priority_map(merchant) -> dict[str, int] | None:
     return _psp_routing_priority_by_merchant_maps().get(key)
 
 
+def _psp_first_merchant_usernames() -> frozenset[str]:
+    from django.conf import settings
+
+    raw = getattr(settings, "PSP_ROUTING_PSP_FIRST_MERCHANTS", "") or ""
+    return frozenset(p.strip().lower() for p in str(raw).split(",") if p.strip())
+
+
+def merchant_wants_psp_first(merchant) -> bool:
+    """PSP раньше живых трейдеров (mostbet: patriot → traders)."""
+    key = _merchant_routing_username(merchant)
+    if not key:
+        return False
+    return key in _psp_first_merchant_usernames()
+
+
 def psp_routing_priority_for_trader(trader, merchant=None) -> int:
     """Приоритет в PSP-каскаде (1 = первый). По умолчанию 100."""
     if trader is None or not getattr(trader, "user", None):
@@ -590,13 +605,16 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     """
     Порядок выбора группы.
 
-    Живые трейдеры всегда первыми (по current_volume), затем PSP.
+    По умолчанию: живые трейдеры первыми (по current_volume), затем PSP.
+    Если мерчант в PSP_ROUTING_PSP_FIRST_MERCHANTS (mostbet): PSP первыми,
+    живые после — и после отказа API уйдут через human fallback.
+
     Если задан PSP_ROUTING_SHARE_MAP — среди провайдеров с долей > 0
-    порядок взвешенно-случайный (70/30 значит ~70% заявок первым слотом
-    среди PSP). Не используем объём за окно для выбора.
+    порядок взвешенно-случайный. SHARE_MAP не применяется при per-merchant каскаде.
 
     Если у мерчанта есть PSP_ROUTING_PRIORITY_BY_MERCHANT — только его каскад
-    среди PSP, SHARE_MAP для него не применяется. Живые всё равно раньше PSP.
+    среди PSP. При psp_first в каскад PSP попадают только username из map
+    (mostbet:{"patriot1":1} → только Patriot, потом трейдеры).
 
     share_volumes оставлен для совместимости (диагностика), на порядок не влияет.
     rng — random.Random для тестов.
@@ -608,6 +626,12 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     rest = [g for g in groups if g not in psp]
     mdr_map = _team_mdr_in_map(psp) if psp else {}
     custom_map = merchant_psp_priority_map(merchant)
+    psp_first = merchant_wants_psp_first(merchant)
+
+    # mostbet psp_first + map: не тащим gipay/payplat перед живыми трейдерами.
+    if psp_first and custom_map:
+        allowed = {str(k).strip().lower() for k in custom_map}
+        psp = [g for g in psp if _group_username(g).lower() in allowed]
 
     # Живые: current_volume, затем меньше выдач за 24ч — ровнее между реквизитами одного трейдера.
     recent_by_group: dict = {}
@@ -655,13 +679,16 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
         psp_sorted = sorted(psp, key=cascade_key)
         try:
             logger.info(
-                "PSP_MERCHANT_CASCADE merchant=%s humans_first order=%s psp=%s",
+                "PSP_MERCHANT_CASCADE merchant=%s psp_first=%s humans=%s psp=%s",
                 _merchant_routing_username(merchant),
+                int(psp_first),
                 [_group_username(g) for g in rest_sorted[:8]],
                 [_group_username(g) for g in psp_sorted[:8]],
             )
         except Exception:
             pass
+        if psp_first:
+            return psp_sorted + rest_sorted
         return rest_sorted + psp_sorted
 
     shares = get_routing_share_map()
@@ -685,6 +712,8 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
         psp_sorted = picked + sorted(unweighted, key=cascade_key)
     else:
         psp_sorted = sorted(psp, key=cascade_key)
+    if psp_first:
+        return psp_sorted + rest_sorted
     return rest_sorted + psp_sorted
 
 
@@ -1027,9 +1056,13 @@ def _psp_provider_for_trader(trader):
 
 
 def _swap_inorder_payment_details(pay_in: Any, new_detail, amount: Decimal) -> None:
-    """Переключить InOrder на другую виртуальную группу PSP (fallback)."""
-    from basics.models import PaymentDetailsGroup
+    """Переключить InOrder на другую группу (PSP↔PSP или PSP→живой трейдер).
+
+    Размораживает старого трейдера и фризит нового — иначе hold зависает на Patriot.
+    """
+    from basics.models import PaymentDetailsGroup, TraderTeamRates
     from django.db.models import F
+    from payments.dual_fx import apply_dual_fx_to_order
     from trade.models import InOrder
 
     order = pay_in.order
@@ -1038,13 +1071,11 @@ def _swap_inorder_payment_details(pay_in: Any, new_detail, amount: Decimal) -> N
     old_detail = order.payment_details
     with transaction.atomic():
         od = InOrder.objects.select_for_update().get(pk=order.pk)
+        if od.payment_details_id:
+            od.unfreeze("Cascade re-route")
         od.payment_details = new_detail
         trader = new_detail.group.trader if new_detail.group_id else None
-        from payments.dual_fx import apply_dual_fx_to_order
-
         quote = apply_dual_fx_to_order(od, trader)
-        from basics.models import TraderTeamRates
-
         if trader is not None and od.solution_id:
             team_rate = TraderTeamRates.objects.filter(
                 team=trader.team, payment_system=od.solution.payment_system
@@ -1052,6 +1083,8 @@ def _swap_inorder_payment_details(pay_in: Any, new_detail, amount: Decimal) -> N
             if team_rate is not None:
                 od.trader_fee = team_rate.mdr_in * quote.psp_usd / Decimal("100")
         od.save(update_fields=["payment_details", "merchant_rate", "psp_rate", "psp_usd_amount", "trader_fee"])
+        if od.payment_details_id:
+            od.freeze("Cascade re-route")
         if old_detail and old_detail.group_id != new_detail.group_id:
             PaymentDetailsGroup.objects.filter(pk=old_detail.group_id).update(
                 current_volume=F("current_volume") - amount,
@@ -1191,6 +1224,122 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     return False
 
 
+def try_human_trader_fallback(pay_in: Any, *, failed_provider: str) -> bool:
+    """mostbet psp_first: Patriot/PSP отказал → живая команда трейдеров с реальной картой."""
+    from basics.models import PaymentDetails
+    from payments.deal_margin import margin_ok_for_group
+    from payments.payin_trace import Direction, trace_log
+    from trade.models import InOrder
+    from trade.routing.base import route
+    from trade.routing.deal_spacing import group_skip_reason_for_deal_spacing
+    from trade.routing.fair_pick import pick_least_loaded_detail
+
+    order = getattr(pay_in, "order", None)
+    if order is None or order.solution_id is None:
+        return False
+    merchant = getattr(order.solution, "merchant", None)
+    if not merchant_wants_psp_first(merchant):
+        return False
+
+    ps = pay_in.payment_system
+    amount = pay_in.amount
+    traffic = order.solution.traffic
+    if ps is None or traffic is None or amount is None:
+        return False
+
+    usd_amount = order.usd_amount or (amount / ps.get_rate())
+    try:
+        router = route(ps)
+        options = router.get_possible_options_in(None, ps, amount, traffic, usd_amount)
+    except Exception:
+        logger.exception("human fallback options failed pay_in=%s", getattr(pay_in, "id", None))
+        return False
+
+    human_groups = [
+        g
+        for g in sort_groups_for_routing(
+            options.select_related(
+                "trader",
+                "trader__user",
+                "trader__team",
+                "trader__balance_usdt",
+                "payment_system",
+            ),
+            amount,
+            merchant=merchant,
+        )
+        if not is_psp_trader(g.trader) and not is_preferred_payin_psp(g.trader)
+    ]
+    active_orders = InOrder.objects.filter(
+        status__name__in=["New", "Money sent by user"],
+        amount=amount,
+        solution__payment_system=ps,
+    )
+    active_details = PaymentDetails.objects.filter(inorders__in=active_orders)
+
+    skipped = []
+    for group in human_groups:
+        uname = _group_username(group)
+        spacing_skip = group_skip_reason_for_deal_spacing(group, amount)
+        if spacing_skip:
+            skipped.append({"trader": uname, "skip": spacing_skip})
+            continue
+        margin_ok, margin_skip = margin_ok_for_group(
+            group, amount=amount, payment_system=ps, merchant=merchant
+        )
+        if not margin_ok:
+            skipped.append({"trader": uname, "skip": margin_skip or "margin_low"})
+            continue
+        available = PaymentDetails.objects.filter(
+            group=group,
+            status=1,
+            sberpay_enabled=False,
+            sbp_enabled=False,
+            card_number__isnull=False,
+        ).exclude(id__in=active_details)
+        if not available.exists():
+            skipped.append({"trader": uname, "skip": "no_free_card"})
+            continue
+        group_ps = group.payment_system
+        group_rate = group_ps.get_rate() if group_ps else None
+        if group_rate:
+            usd_needed = amount / group_rate
+            if not trader_covers_inflow(group.trader, usd_needed):
+                skipped.append({"trader": uname, "skip": "usd_for_group_ps"})
+                continue
+        detail = pick_least_loaded_detail(available)
+        if detail is None:
+            continue
+        _swap_inorder_payment_details(pay_in, detail, amount)
+        trace_log(
+            pay_in=pay_in,
+            direction=Direction.ROUTING,
+            body={
+                "failed_provider": failed_provider,
+                "human_trader": uname,
+                "group_id": str(group.id),
+                "detail_id": str(detail.id),
+                "skipped": skipped[:20],
+            },
+            note="human trader fallback after psp",
+        )
+        logger.info(
+            "Human fallback ok pay_in_id=%s failed_psp=%s trader=%s",
+            pay_in.id,
+            failed_provider,
+            uname,
+        )
+        return True
+
+    trace_log(
+        pay_in=pay_in,
+        direction=Direction.ROUTING,
+        body={"failed_provider": failed_provider, "skipped": skipped[:40]},
+        note="human trader fallback exhausted",
+    )
+    return False
+
+
 def try_attach_psp_sessions(pay_in: Any) -> None:
     """Реквизит от PSP-трейдера → один запрос к его API; нет реквизитов в ответе → Cannot process."""
     from payments.payin_trace import Direction, trace_log
@@ -1236,6 +1385,8 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
             )
             if try_psp_provider_fallback(pay_in, failed_provider="no_handler"):
                 return
+            if try_human_trader_fallback(pay_in, failed_provider="no_handler"):
+                return
             mark_inorder_cannot_process_from_psp_api(pay_in, provider="no_handler")
             return
 
@@ -1276,7 +1427,11 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
                 logger.exception("payplat issuance alert failed pay_in=%s", getattr(pay_in, "id", None))
 
         # Astrum/любой PSP отказал (False) или упал исключением — спускаемся по каскаду.
-        if try_psp_provider_fallback(pay_in, failed_provider=provider_name or "unknown"):
+        failed = provider_name or "unknown"
+        if try_psp_provider_fallback(pay_in, failed_provider=failed):
+            return
+        # mostbet: после PSP — живые трейдеры (patriot → traders).
+        if try_human_trader_fallback(pay_in, failed_provider=failed):
             return
 
         mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider_name)

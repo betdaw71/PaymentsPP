@@ -7,6 +7,7 @@ from django.test import SimpleTestCase, override_settings
 from payments.psp_payin import (
     apply_preferred_psp_order,
     get_share_window_hours,
+    merchant_wants_psp_first,
     parse_routing_share_map,
     sort_groups_for_routing,
 )
@@ -266,4 +267,49 @@ class MerchantCascadeOverrideTest(SimpleTestCase):
         self.assertEqual(
             [g.trader.user.username for g in ordered],
             ["live_a", "live_b", "payplat1", "gipay1"],
+        )
+
+
+@override_settings(
+    PSP_ROUTING_PRIORITY_MAP={"patriot1": 1, "gipay1": 2},
+    PSP_ROUTING_SHARE_MAP={"patriot1": 70, "gipay1": 30},
+    PSP_ROUTING_PRIORITY_BY_MERCHANT={"mostbet": {"patriot1": 1}},
+    PSP_ROUTING_PSP_FIRST_MERCHANTS="mostbet",
+)
+@patch("payments.psp_payin._team_mdr_in_map", return_value={})
+class MostbetPatriotThenTradersTest(SimpleTestCase):
+    def test_mostbet_wants_psp_first(self, _mdr):
+        merchant = SimpleNamespace(user=SimpleNamespace(username="mostbet"))
+        self.assertTrue(merchant_wants_psp_first(merchant))
+        self.assertFalse(
+            merchant_wants_psp_first(SimpleNamespace(user=SimpleNamespace(username="pandapay")))
+        )
+
+    def test_mostbet_patriot_then_live_only_mapped_psp(self, _mdr):
+        groups = [
+            _group("live_b", 20, volume="50"),
+            _group("gipay1", 2, volume="0"),
+            _group("patriot1", 1, volume="0"),
+            _group("live_a", 21, volume="10"),
+            _group("payplat1", 3, volume="0"),
+        ]
+        merchant = SimpleNamespace(user=SimpleNamespace(username="mostbet"))
+        ordered = sort_groups_for_routing(groups, merchant=merchant)
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            ["patriot1", "live_a", "live_b"],
+        )
+
+    def test_other_merchant_still_humans_first(self, _mdr):
+        groups = [
+            _group("patriot1", 1, volume="0"),
+            _group("live_a", 21, volume="10"),
+        ]
+        merchant = SimpleNamespace(user=SimpleNamespace(username="aggrepay"))
+        ordered = sort_groups_for_routing(
+            groups, merchant=merchant, rng=_ScriptedRng([0.0])
+        )
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            ["live_a", "patriot1"],
         )

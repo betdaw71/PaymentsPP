@@ -630,6 +630,12 @@ PSP_ROUTING_PRIORITY_BY_MERCHANT = os.getenv(
     '{"pandapay":{"patriot1":1,"gipay1":2,"prochub1":3,"layerone1":4,'
     '"plutus1":98,"astrum_kzt":97,"payplat1":99}}',
 )
+# Мерчанты, у которых PSP идут раньше живых трейдеров (mostbet: patriot → traders).
+# После отказа PSP (нет реквизита) — fallback на команды трейдеров.
+PSP_ROUTING_PSP_FIRST_MERCHANTS = os.getenv(
+    'PSP_ROUTING_PSP_FIRST_MERCHANTS',
+    'mostbet',
+)
 # JSON: доля трафика PSP в % за скользящее окно. Пустой {} = только каскад по приоритету.
 # Пример: {"payplat1": 70, "gipay1": 30}. Доли нормализуются среди провайдеров,
 # которые сейчас в каскаде (выключенный PSP не занимает %). 0 или отсутствие username —
