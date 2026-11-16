@@ -98,13 +98,15 @@ from decimal import Decimal
 import uuid
 
 
-def check_pd_data(data, *, require_deposit=False, require_qr_or_phone=False):
+def check_pd_data(data, *, require_deposit=False, require_qr_or_phone=False, require_bank=False):
     if data.get('phone') == '':
         data['phone'] = None
     if data.get('card_number') == '':
         data['card_number'] = None
     if data.get('qr_payload') == '':
         data['qr_payload'] = None
+    if data.get('bank_name') == '':
+        data['bank_name'] = None
     if data.get('sberpay_enabled') == '':
         data['sberpay_enabled'] = False
     if data.get('sbp_enabled') == '':
@@ -118,6 +120,11 @@ def check_pd_data(data, *, require_deposit=False, require_qr_or_phone=False):
         has_phone = bool(data.get('phone'))
         if not has_qr and not has_phone:
             raise ValidationError({'qr_payload': ['Загрузите фото QR-кода или укажите телефон.']})
+
+    if require_bank:
+        bank = (data.get('bank_name') or '').strip() if isinstance(data.get('bank_name'), str) else data.get('bank_name')
+        if not bank:
+            raise ValidationError({'bank_name': ['Укажите банк получателя.']})
 
     deposit = data.get('deposit_number')
     if deposit in (None, ''):

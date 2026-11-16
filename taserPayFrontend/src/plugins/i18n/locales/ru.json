@@ -171,6 +171,7 @@
   "field": "Поле",
   "fields": {
     "bank": "Банк",
+    "bank_name": "Банк получателя",
     "bic": "БИК",
     "card_number": "Номер карты",
     "deposit_number": "Номер счета",

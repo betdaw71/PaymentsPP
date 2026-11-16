@@ -293,22 +293,47 @@ _SBER_LIKE_PD_FIELDS = {
 _CARD_PD_FIELDS = {
     "card_number": {"type": "number", "unique": False, "cash": False},
 }
+_KGS_BANK_OPTIONS = [
+    "MBank",
+    "Optima Bank",
+    "Bakai Bank",
+    "O!Bank",
+    "Demir Bank",
+    "KICB",
+    "Companion",
+    "DoscredoBank",
+    "Keremet Bank",
+    "Other",
+]
+_KGS_BANK_FIELD = {
+    "type": "select",
+    "unique": False,
+    "cash": False,
+    "options": list(_KGS_BANK_OPTIONS),
+}
 
 
 def _pd_fields_for_payment_system(ps: PaymentSystem) -> dict:
     if ps.name in (SBER_NAME, TBANK_NAME):
         return dict(_SBER_LIKE_PD_FIELDS)
     name = (ps.name or "").upper()
-    # Melbet local KGS: карта / телефон / ELQR (телефон получателя для живых трейдеров).
+    # Melbet local KGS: карта / телефон / ELQR.
     if name == "C2CKGS":
-        return {"card_number": dict(_CARD_PD_FIELDS["card_number"])}
+        return {
+            "card_number": dict(_CARD_PD_FIELDS["card_number"]),
+            "bank_name": dict(_KGS_BANK_FIELD),
+        }
     if name == "PHONEKGS":
-        return {"phone": {"type": "text", "unique": True, "cash": False}}
+        return {
+            "phone": {"type": "text", "unique": True, "cash": False},
+            "bank_name": dict(_KGS_BANK_FIELD),
+        }
     if name == "QRKGS":
-        # ELQR: фото QR (+ опционально телефон).
+        # ELQR: фото QR (+ опционально телефон / банк).
         return {
             "qr_payload": {"type": "image", "unique": False, "cash": False},
             "phone": {"type": "text", "unique": True, "cash": False},
+            "bank_name": dict(_KGS_BANK_FIELD),
         }
     req = ps.required_fields if isinstance(ps.required_fields, dict) else {}
     fields = {}
@@ -318,6 +343,8 @@ def _pd_fields_for_payment_system(ps: PaymentSystem) -> dict:
         fields["phone"] = {"type": "text", "unique": True, "cash": False}
     if "qr_payload" in req:
         fields["qr_payload"] = {"type": "image", "unique": False, "cash": False}
+    if "bank_name" in req:
+        fields["bank_name"] = dict(_KGS_BANK_FIELD)
     if "deposit_number" in req:
         fields["deposit_number"] = {"type": "number", "unique": False, "cash": True}
     return fields or dict(_CARD_PD_FIELDS)

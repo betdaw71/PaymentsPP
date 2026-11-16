@@ -75,11 +75,17 @@ PS_SPECS = (
     ),
     (
         C2C_KGS_PS_NAME,
-        {"card_number": {"regex": r"^\d{16}$", "pattern": "Card number"}},
+        {
+            "card_number": {"regex": r"^\d{16}$", "pattern": "Card number"},
+            "bank_name": {"regex": r".+", "pattern": "Bank name"},
+        },
     ),
     (
         PHONE_KGS_PS_NAME,
-        {"phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"}},
+        {
+            "phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"},
+            "bank_name": {"regex": r".+", "pattern": "Bank name"},
+        },
     ),
 )
 

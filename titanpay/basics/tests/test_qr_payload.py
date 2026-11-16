@@ -18,6 +18,13 @@ class QrPayloadTest(SimpleTestCase):
             {"qr_image_url": url},
         )
 
+    def test_media_pd_qr_url_passthrough(self):
+        url = "https://api.example/media/pd_qr/abc/deadbeef.jpg"
+        self.assertEqual(
+            payment_page_fields_from_qr_payload(url),
+            {"qr_image_url": url},
+        )
+
     def test_emv_string_becomes_qr_image(self):
         fields = payment_page_fields_from_qr_payload("00020101021238570010A0000007270139")
         self.assertTrue(fields["qr_image_url"].startswith("data:image/png;base64,"))

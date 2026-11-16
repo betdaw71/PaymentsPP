@@ -204,6 +204,13 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
         return pay_in
 
 
+def _pd_bank_for_client(instance) -> str | None:
+    custom = (getattr(instance, "bank_name", None) or "").strip()
+    if custom:
+        return custom
+    return translate_bank(instance.group.payment_system.name)
+
+
 class PaymentDetailsCardSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentDetails
@@ -211,7 +218,9 @@ class PaymentDetailsCardSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['bank'] = translate_bank(instance.group.payment_system.name)
+        bank = _pd_bank_for_client(instance)
+        if bank:
+            representation['bank'] = bank
         representation['owner'] = instance.group.owner
         return representation
 
@@ -223,13 +232,15 @@ class PaymentDetailsSberPaySerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['bank'] = translate_bank(instance.group.payment_system.name)
+        bank = _pd_bank_for_client(instance)
+        if bank:
+            representation['bank'] = bank
         representation['owner'] = instance.group.owner
         return representation
 
 
 class PaymentDetailsQrKgsSerializer(serializers.ModelSerializer):
-    """Живой ELQR: qr_payload → qr_image_url (+ опционально phone)."""
+    """Живой ELQR: фото/qr_payload → qr_image_url (+ опционально phone/bank)."""
 
     class Meta:
         model = PaymentDetails
@@ -239,7 +250,9 @@ class PaymentDetailsQrKgsSerializer(serializers.ModelSerializer):
         from basics.qr_payload import payment_page_fields_from_qr_payload
 
         representation = super().to_representation(instance)
-        representation['bank'] = translate_bank(instance.group.payment_system.name)
+        bank = _pd_bank_for_client(instance)
+        if bank:
+            representation['bank'] = bank
         representation['owner'] = instance.group.owner
         representation.update(payment_page_fields_from_qr_payload(getattr(instance, "qr_payload", None)))
         if not representation.get("phone"):

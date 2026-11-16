@@ -172,6 +172,7 @@
   "field": "Field",
   "fields": {
     "bank": "Bank",
+    "bank_name": "Recipient bank",
     "bic": "BIC",
     "card_number": "Card Number",
     "deposit_number": "Deposit Number",

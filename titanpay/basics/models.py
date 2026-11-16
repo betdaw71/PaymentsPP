@@ -224,8 +224,10 @@ class PaymentDetails(models.Model):
     sbp_enabled = models.BooleanField(default=False)
     card_number = models.CharField(max_length=16, validators=[card_validator], blank=True, null=True)
     phone = models.CharField(max_length=16, validators=[ru_phone_validator], blank=True, null=True)
-    # ELQR / QRKGS: строка EMV, ссылка или data:image — рисуется на платёжной странице.
+    # ELQR / QRKGS: URL фото QR (media/S3) или строка — на платёжной странице.
     qr_payload = models.TextField(blank=True, null=True, default=None)
+    # Банк получателя для local KGS phone/card (и опционально QR).
+    bank_name = models.CharField(max_length=128, blank=True, null=True, default=None)
     deposit_number = models.CharField(max_length=20, validators=[sber_deposit_number_validator])
 
     class Meta:

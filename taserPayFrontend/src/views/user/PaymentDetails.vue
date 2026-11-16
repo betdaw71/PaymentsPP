@@ -214,6 +214,14 @@ const copyToClipboard = (valueToCopy, alertMessage, alertType = "error") => {
                 {{ $t(`fields.${field}`) }}: jpg / png
               </VAlert>
             </div>
+            <AppSelect
+              v-else-if="field_type?.type === 'select'"
+              v-model="localDetail[field]"
+              :items="field_type.options || []"
+              :label="$t(`fields.${field}`)"
+              :disabled="!!localDetail.id"
+              clearable
+            />
             <VTextarea
               v-else-if="field_type?.type === 'textarea'"
               v-model="localDetail[field]"

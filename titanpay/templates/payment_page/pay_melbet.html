@@ -651,21 +651,27 @@
     function renderKgsPhoneDetails(pd, amountLine, amountCopy) {
       const phone = pd && pd.phone;
       const owner = pd && pd.owner;
+      const bank = pd && pd.bank;
       let html = "";
       html += step(1, t("kgsPhoneTitle"), chip(icoCard(), t("phoneLabel"), phone || "", phone ? String(phone).replace(/\s/g, "") : ""));
       html += step(2, t("kgsStepApp"));
-      if (owner) html += step(3, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || ""));
-      html += step(owner ? 4 : 3, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      let n = 3;
+      if (bank) { html += step(n++, t("bank"), chip(icoCard(), t("bank"), bank || "", bank || "")); }
+      if (owner) { html += step(n++, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || "")); }
+      html += step(n, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
       return html;
     }
     function renderKgsCardDetails(pd, amountLine, amountCopy) {
       const card = pd && pd.card_number;
       const owner = pd && pd.owner;
+      const bank = pd && pd.bank;
       let html = "";
       html += step(1, t("kgsCardTitle"), chip(icoCard(), t("card"), card ? spaceCard(card) : "", card ? String(card).replace(/\s/g, "") : ""));
       html += step(2, t("kgsStepApp"));
-      if (owner) html += step(3, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || ""));
-      html += step(owner ? 4 : 3, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      let n = 3;
+      if (bank) { html += step(n++, t("bank"), chip(icoCard(), t("bank"), bank || "", bank || "")); }
+      if (owner) { html += step(n++, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || "")); }
+      html += step(n, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
       return html;
     }
     function renderH2hDetails(pd, amountLine, amountCopy) {

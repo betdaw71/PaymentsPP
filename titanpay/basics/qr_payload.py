@@ -16,14 +16,17 @@ def _make_qr_data_uri(content: str) -> str:
 
 def _looks_like_image_url(url: str) -> bool:
     lower = url.lower().split("?", 1)[0]
-    return lower.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"))
+    if lower.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg")):
+        return True
+    # Фото из ЛК: /media/pd_qr/<trader>/<uuid>.jpg
+    return "/media/pd_qr/" in lower or "/pd_qr/" in lower
 
 
 def payment_page_fields_from_qr_payload(payload: str | None) -> dict:
     """
     Из строки трейдера:
       - data:image/... → qr_image_url как есть
-      - http(s) картинка → qr_image_url
+      - http(s) фото QR (в т.ч. media/pd_qr) → qr_image_url
       - http(s) иное / ELQR 000201… / любой текст → рисуем QR (data URI)
     """
     raw = (payload or "").strip()
