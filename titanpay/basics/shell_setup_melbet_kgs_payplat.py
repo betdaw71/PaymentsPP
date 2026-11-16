@@ -18,7 +18,9 @@ MerchantSolution (melbet / melbet_test) и ключи method_map:
   MERCHANT_USERNAMES=melbet,melbet_test
   MIN_LIMIT_IN=100 MAX_LIMIT_IN=500000
   USDT_RATE=87
+  MERCHANT_MDR_IN=8   # должно быть ≥ PayPlat mdr_in + DEAL_MARGIN_MIN_PCT (7+0.2)
   OVERWRITE_LIMITS=0
+  OVERWRITE_MDR=0     # 1 — обновить mdr_in у существующих solutions
   UPDATE_RATE=0
 """
 from __future__ import annotations
@@ -51,10 +53,14 @@ CURRENCY_SYMBOL = "KGS"
 TRAFFIC_NAME = "Standard"
 GROUP_OWNER = "PayPlat Virtual Drop"
 DEFAULT_MDR_IN = Decimal("7")
+# Без KZT dual-FX маржа = merchant_mdr − trader_mdr; 2.5% vs PayPlat 7% → margin_low.
+DEFAULT_MERCHANT_MDR_IN = Decimal(os.environ.get("MERCHANT_MDR_IN", "8") or "8")
+DEFAULT_MERCHANT_MDR_OUT = Decimal(os.environ.get("MERCHANT_MDR_OUT", "3") or "3")
 DEFAULT_RATE = Decimal(os.environ.get("USDT_RATE", "87") or "87")
 MIN_IN = Decimal(os.environ.get("MIN_LIMIT_IN", "100") or "100")
 MAX_IN = Decimal(os.environ.get("MAX_LIMIT_IN", "500000") or "500000")
 OVERWRITE_LIMITS = os.environ.get("OVERWRITE_LIMITS", "0").strip().lower() in ("1", "true", "yes")
+OVERWRITE_MDR = os.environ.get("OVERWRITE_MDR", "0").strip().lower() in ("1", "true", "yes")
 UPDATE_RATE = os.environ.get("UPDATE_RATE", "0").strip().lower() in ("1", "true", "yes")
 
 KGS_METHOD_MAP = {
@@ -222,7 +228,10 @@ def run() -> None:
             ps,
             traffic,
             overwrite_limits=OVERWRITE_LIMITS,
+            overwrite_mdr=OVERWRITE_MDR,
             limits=limits,
+            mdr_in=DEFAULT_MERCHANT_MDR_IN,
+            mdr_out=DEFAULT_MERCHANT_MDR_OUT,
         )
         cfg = MelbetIntegrationConfig.objects.filter(merchant=merchant).first()
         if cfg is None:
