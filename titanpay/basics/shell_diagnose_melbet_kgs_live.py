@@ -101,18 +101,31 @@ def main() -> None:
                     print("      ! status!=1 (нужен Active=1)")
                 if not g.in_active:
                     print("      ! in_active=False — pay-in не возьмёт")
-                details = PaymentDetails.objects.filter(group=g).order_by("status", "-creation_date")
+                details = list(
+                    PaymentDetails.objects.filter(group=g).order_by("status", "-creation_date")
+                )
                 ready = 0
+                if not details:
+                    print("      details=0 — в ЛК группа есть, но реквизиты НЕ добавлены")
                 for d in details:
                     ok, note = _ok_detail(ps_name, d)
                     ready += int(ok)
-                    print(f"      detail {d.id} status={d.status} {'OK' if ok else 'BAD'} {note}")
+                    print(
+                        f"      detail {d.id} status={d.status} {'OK' if ok else 'BAD'} {note} "
+                        f"phone={(d.phone or '-')!r} card={(d.card_number or '-')[-4:] if d.card_number else '-'} "
+                        f"qr={'yes' if (d.qr_payload or '').strip() else 'no'} bank={(d.bank_name or '-')!r}"
+                    )
                 open_in = InOrder.objects.filter(
                     payment_details__group=g, status__name__in=OPEN_IN
                 ).count()
-                print(f"      ready_details={ready} open_in_orders={open_in}")
+                print(f"      ready_details={ready}/{len(details)} open_in_orders={open_in}")
                 if ready == 0:
-                    print("      ! нет валидного реквизита для выдачи")
+                    print(
+                        "      ! нет валидного реквизита для выдачи "
+                        "(PHONE/C2C: phone|card + bank_name; QRKGS: qr_payload фото)"
+                    )
+                    if not g.out_active:
+                        print("      note: out_active=False — для pay-in это ок, нужен in_active")
 
     print("\n=== Melbet merchant solutions KGS ===")
     sols = (
