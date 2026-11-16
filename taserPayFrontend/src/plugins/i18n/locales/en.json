@@ -179,6 +179,7 @@
     "id": "ID",
     "owner": "Owner",
     "phone": "Phone",
+    "qr_payload": "QR code (ELQR string / URL)",
     "sberpay_enabled": "SberPay Enabled",
     "sbp_enabled": "SBP Enabled"
   },

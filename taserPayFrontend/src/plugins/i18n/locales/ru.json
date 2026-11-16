@@ -178,6 +178,7 @@
     "id": "ID",
     "owner": "ФИО",
     "phone": "Телефон",
+    "qr_payload": "QR-код (строка ELQR / ссылка)",
     "sberpay_enabled": "SberPay Включен",
     "sbp_enabled": "SBP Включен"
   },

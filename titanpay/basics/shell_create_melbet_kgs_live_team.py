@@ -89,7 +89,18 @@ def run() -> None:
         if ps is None:
             print(f"ERROR: PaymentSystem {name} missing — run shell_setup_melbet_kgs_payplat.py")
             return
-        if name in (KGS_PS_NAME, PHONE_KGS_PS_NAME):
+        if name == KGS_PS_NAME:
+            want = {
+                "qr_payload": {"regex": r".+", "pattern": "ELQR string / QR URL / data:image"},
+                "phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"},
+            }
+            if ps.required_fields != want:
+                ps.required_fields = want
+                ps.save(update_fields=["required_fields"])
+                print(f"  ~ PS {name} required_fields=qr_payload+phone")
+            else:
+                print(f"  ~ PS {name}")
+        elif name == PHONE_KGS_PS_NAME:
             want = {"phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"}}
             if ps.required_fields != want:
                 ps.required_fields = want
@@ -212,7 +223,7 @@ def run() -> None:
                 print(f"    ~ group {ps.name} {group.id}")
 
     print("\nДальше в ЛК трейдера:")
-    print("  QRKGS (ELQR)  → телефон +996…")
+    print("  QRKGS (ELQR)  → поле QR-код (строка ELQR / ссылка) + опционально +996…")
     print("  PHONEKGS      → телефон +996…")
     print("  C2CKGS        → карта 16 цифр")
     if CREATE_USERS:

@@ -98,11 +98,13 @@ from decimal import Decimal
 import uuid
 
 
-def check_pd_data(data, *, require_deposit=False):
+def check_pd_data(data, *, require_deposit=False, require_qr_or_phone=False):
     if data.get('phone') == '':
         data['phone'] = None
     if data.get('card_number') == '':
         data['card_number'] = None
+    if data.get('qr_payload') == '':
+        data['qr_payload'] = None
     if data.get('sberpay_enabled') == '':
         data['sberpay_enabled'] = False
     if data.get('sbp_enabled') == '':
@@ -110,6 +112,12 @@ def check_pd_data(data, *, require_deposit=False):
 
     if data.get('phone') is None and (data.get('sbp_enabled') or data.get('sberpay_enabled')):
         raise ValidationError({'details': 'Phone cannot be empty if SBP or SberPay is enabled'})
+
+    if require_qr_or_phone:
+        has_qr = bool((data.get('qr_payload') or '').strip() if isinstance(data.get('qr_payload'), str) else data.get('qr_payload'))
+        has_phone = bool(data.get('phone'))
+        if not has_qr and not has_phone:
+            raise ValidationError({'qr_payload': ['Укажите QR-код (строку ELQR) или телефон.']})
 
     deposit = data.get('deposit_number')
     if deposit in (None, ''):

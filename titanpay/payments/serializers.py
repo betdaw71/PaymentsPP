@@ -46,8 +46,10 @@ def merchant_payin_payment_details(pay_in) -> dict:
 
 def get_in_ps_serializer(payment_system_name):
     name = (payment_system_name or "").strip().upper()
-    # Melbet local KGS: живые реквизиты phone (PHONE/QR ELQR) или карта (C2CKGS).
-    if name in {"PHONEKGS", "QRKGS"}:
+    # Melbet local KGS: QR (ELQR payload), phone, card.
+    if name == "QRKGS":
+        return PaymentDetailsQrKgsSerializer
+    if name == "PHONEKGS":
         return PaymentDetailsSberPaySerializer
     if name == "C2CKGS":
         return PaymentDetailsCardSerializer
@@ -223,6 +225,25 @@ class PaymentDetailsSberPaySerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         representation['bank'] = translate_bank(instance.group.payment_system.name)
         representation['owner'] = instance.group.owner
+        return representation
+
+
+class PaymentDetailsQrKgsSerializer(serializers.ModelSerializer):
+    """Живой ELQR: qr_payload → qr_image_url (+ опционально phone)."""
+
+    class Meta:
+        model = PaymentDetails
+        fields = ['phone']
+
+    def to_representation(self, instance):
+        from basics.qr_payload import payment_page_fields_from_qr_payload
+
+        representation = super().to_representation(instance)
+        representation['bank'] = translate_bank(instance.group.payment_system.name)
+        representation['owner'] = instance.group.owner
+        representation.update(payment_page_fields_from_qr_payload(getattr(instance, "qr_payload", None)))
+        if not representation.get("phone"):
+            representation.pop("phone", None)
         return representation
 
 

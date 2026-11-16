@@ -127,8 +127,16 @@ const copyToClipboard = (valueToCopy, alertMessage, alertType = "error") => {
           <template
             v-if="((field_type?.unique && props.id === 0 && props.workType === 'by_card') || !field_type?.unique) && ((props?.workType === 'by_cash' && field_type?.cash) || props?.workType !== 'by_cash')"
           >
+            <VTextarea
+              v-if="field_type?.type === 'textarea'"
+              v-model="localDetail[field]"
+              :readonly="localDetail.id"
+              :label="$t(`fields.${field}`)"
+              rows="4"
+              auto-grow
+            />
             <VTextField
-              v-if="field_type?.type !== 'bool'"
+              v-else-if="field_type?.type !== 'bool'"
               v-model="localDetail[field]"
               :type="field_type?.type"
               :readonly="localDetail.id"

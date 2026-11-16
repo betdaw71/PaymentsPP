@@ -299,14 +299,22 @@ def _pd_fields_for_payment_system(ps: PaymentSystem) -> dict:
     # Melbet local KGS: карта / телефон / ELQR (телефон получателя для живых трейдеров).
     if name == "C2CKGS":
         return {"card_number": dict(_CARD_PD_FIELDS["card_number"])}
-    if name in {"PHONEKGS", "QRKGS"}:
+    if name == "PHONEKGS":
         return {"phone": {"type": "text", "unique": True, "cash": False}}
+    if name == "QRKGS":
+        # ELQR: QR-строка/ссылка обязательна для показа кода; телефон — опционально.
+        return {
+            "qr_payload": {"type": "textarea", "unique": False, "cash": False},
+            "phone": {"type": "text", "unique": True, "cash": False},
+        }
     req = ps.required_fields if isinstance(ps.required_fields, dict) else {}
     fields = {}
     if "card_number" in req:
         fields["card_number"] = dict(_CARD_PD_FIELDS["card_number"])
     if "phone" in req:
         fields["phone"] = {"type": "text", "unique": True, "cash": False}
+    if "qr_payload" in req:
+        fields["qr_payload"] = {"type": "textarea", "unique": False, "cash": False}
     if "deposit_number" in req:
         fields["deposit_number"] = {"type": "number", "unique": False, "cash": True}
     return fields or dict(_CARD_PD_FIELDS)

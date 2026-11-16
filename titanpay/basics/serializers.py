@@ -247,7 +247,10 @@ class SupportMemberCreateSerializer(serializers.ModelSerializer):
 class PaymentDetailsSberSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentDetails
-        fields = ('id', 'status',  'amount', 'sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number')
+        fields = (
+            'id', 'status', 'amount', 'sberpay_enabled', 'sbp_enabled',
+            'card_number', 'phone', 'qr_payload', 'deposit_number',
+        )
 
 
 class PaymentDetailsGroupShortTraderSerializer(serializers.ModelSerializer):
@@ -303,12 +306,14 @@ class PaymentDetailsGroupFullSerializer(serializers.ModelSerializer):
 
 class PaymentDetailsSerializer(serializers.ModelSerializer):
     deposit_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    qr_payload = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = PaymentDetails
-        fields = ['sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number']
+        fields = ['sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'qr_payload', 'deposit_number']
         extra_kwargs = {
             'deposit_number': {'required': False, 'allow_blank': True, 'allow_null': True},
+            'qr_payload': {'required': False, 'allow_blank': True, 'allow_null': True},
         }
 
 
@@ -330,11 +335,14 @@ class PaymentDetailsGroupCreateSerializer(serializers.ModelSerializer):
         if 'details' in validated_data.keys():
             details_data = validated_data.pop('details')
             payment_details_group = PaymentDetailsGroup.objects.create(**validated_data)
+            ps = validated_data.get('payment_system')
+            ps_name = (ps.name if ps is not None else '') or ''
             for detail_data in details_data:
                 try:
                     data = check_pd_data(
                         detail_data,
                         require_deposit=validated_data.get('work_type') == 'by_deposit_number',
+                        require_qr_or_phone=ps_name.upper() == 'QRKGS',
                     )
                     details = PaymentDetails.objects.create(group=payment_details_group, **data)
                 except IntegrityError as e:
@@ -413,12 +421,17 @@ class PaymentDetailsSberActionSerializer(serializers.ModelSerializer):
 
 class PaymentDetailsSberAddSerializer(serializers.ModelSerializer):
     deposit_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    qr_payload = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = PaymentDetails
-        fields = ('sberpay_enabled', 'sbp_enabled', 'card_number', 'phone', 'deposit_number', 'group')
+        fields = (
+            'sberpay_enabled', 'sbp_enabled', 'card_number', 'phone',
+            'qr_payload', 'deposit_number', 'group',
+        )
         extra_kwargs = {
             'deposit_number': {'required': False, 'allow_blank': True, 'allow_null': True},
+            'qr_payload': {'required': False, 'allow_blank': True, 'allow_null': True},
         }
 
     def to_internal_value(self, data):
@@ -427,6 +440,8 @@ class PaymentDetailsSberAddSerializer(serializers.ModelSerializer):
             data['phone'] = None
         if data.get('card_number') == '':
             data['card_number'] = None
+        if data.get('qr_payload') == '':
+            data['qr_payload'] = None
         if data.get('sberpay_enabled') == '':
             data['sberpay_enabled'] = False
         if data.get('sbp_enabled') == '':
@@ -439,10 +454,18 @@ class PaymentDetailsSberAddSerializer(serializers.ModelSerializer):
 
         group = data.get('group')
         work_type = None
+        ps_name = None
         if group:
-            g = PaymentDetailsGroup.objects.filter(pk=group).only('work_type').first()
+            g = PaymentDetailsGroup.objects.filter(pk=group).select_related('payment_system').only(
+                'work_type', 'payment_system__name'
+            ).first()
             work_type = g.work_type if g else None
-        data = check_pd_data(data, require_deposit=work_type == 'by_deposit_number')
+            ps_name = g.payment_system.name if g and g.payment_system_id else None
+        data = check_pd_data(
+            data,
+            require_deposit=work_type == 'by_deposit_number',
+            require_qr_or_phone=(ps_name or '').upper() == 'QRKGS',
+        )
         return super().to_internal_value(data)
 
 

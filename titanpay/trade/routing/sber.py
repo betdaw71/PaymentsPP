@@ -139,9 +139,10 @@ class SberRouting:
             if ps_name == "PHONEKGS":
                 available_details = details_base.exclude(phone__isnull=True).exclude(phone="")
             elif ps_name == "QRKGS":
-                # Живые ELQR: телефон; PSP-виртуальные группы — карта-заглушка.
+                # Живые ELQR: qr_payload и/или телефон; PSP — карта-заглушка.
                 available_details = details_base.filter(
-                    Q(phone__isnull=False) & ~Q(phone="")
+                    Q(qr_payload__isnull=False) & ~Q(qr_payload="")
+                    | Q(phone__isnull=False) & ~Q(phone="")
                     | Q(card_number__isnull=False) & ~Q(card_number="")
                 )
             else:

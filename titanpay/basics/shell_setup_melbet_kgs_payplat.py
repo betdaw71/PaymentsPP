@@ -65,10 +65,13 @@ OVERWRITE_MDR = os.environ.get("OVERWRITE_MDR", "0").strip().lower() in ("1", "t
 UPDATE_RATE = os.environ.get("UPDATE_RATE", "0").strip().lower() in ("1", "true", "yes")
 
 PS_SPECS = (
-    # ELQR: живые трейдеры вводят телефон получателя; PayPlat отдаёт QR через API.
+    # ELQR: живые — qr_payload (+ опц. phone); PayPlat отдаёт QR через API.
     (
         KGS_PS_NAME,
-        {"phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"}},
+        {
+            "qr_payload": {"regex": r".+", "pattern": "ELQR string / QR URL / data:image"},
+            "phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"},
+        },
     ),
     (
         C2C_KGS_PS_NAME,
