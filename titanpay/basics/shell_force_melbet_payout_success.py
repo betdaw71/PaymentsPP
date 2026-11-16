@@ -293,13 +293,12 @@ def apply(po: PayOut, trader: Trader) -> None:
     ensure_kzt_balances(po.merchant)
 
     with transaction.atomic():
-        od = OutOrder.objects.select_for_update().select_related(
-            "status",
-            "solution",
-            "solution__merchant",
-            "solution__payment_system",
-            "payment_details",
-        ).get(pk=po.order_id)
+        # of=("self",): иначе PG падает на nullable OUTER JOIN (payment_details).
+        od = (
+            OutOrder.objects.select_for_update(of=("self",))
+            .select_related("status", "solution", "solution__merchant", "solution__payment_system")
+            .get(pk=po.order_id)
+        )
         st = od.status.name if od.status_id else None
         if st == "Completed":
             print("Already Completed")
@@ -323,11 +322,14 @@ def apply(po: PayOut, trader: Trader) -> None:
                 merchant_fee = for_merchant - usd_amount
                 trader_fee = for_trader - usd_amount
 
-            need_attach = (
-                st == "Cannot process"
-                or od.payment_details_id is None
-                or od.payment_details.group.trader_id != trader.id
-            )
+            need_attach = st == "Cannot process" or od.payment_details_id is None
+            if not need_attach and od.payment_details_id:
+                cur = PaymentDetails.objects.filter(pk=od.payment_details_id).select_related(
+                    "group"
+                ).first()
+                if cur is None or cur.group.trader_id != trader.id:
+                    need_attach = True
+
             if need_attach or st == "Cannot process":
                 new_st = OutOrderStatus.objects.get(name="New")
                 od.status = new_st
@@ -353,19 +355,18 @@ def apply(po: PayOut, trader: Trader) -> None:
                 if not _has_out_freeze(od):
                     od.freeze("Shell: Melbet payout test freeze")
                     print("  + merchant freeze")
-                # без OutOrderStatusChange(New): иначе сразу merchant callback In Progress
                 print(f"  attached detail={detail.id} status=New")
 
+            od.refresh_from_db()
             if od.status.name == "New":
                 od.money_sent()
+            od.refresh_from_db()
             if od.status.name in {"Money sent by trader", "New", "Arbitrage"}:
                 od.complete_after_money_sent()
             print("  -> OutOrder Completed")
 
-        locked_po = PayOut.objects.select_for_update().get(pk=po.pk)
-        if not locked_po.status or locked_po.status.name != "Success":
-            # complete() → OutOrderStatusChange → success() уже шлёт callback;
-            # если обошли — дожимаем.
+        locked_po = PayOut.objects.select_for_update(of=("self",)).get(pk=po.pk)
+        if not locked_po.status_id or locked_po.status.name != "Success":
             locked_po.success()
             print("  -> PayOut Success")
 
