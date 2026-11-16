@@ -200,10 +200,11 @@ if trader is None:
     raise SystemExit(f"trader {TRADER!r} not found")
 
 bal = trader.balance_usdt
+frozen_bal = getattr(trader, "frozen_balance_usdt", None)
+frozen_amt = getattr(frozen_bal, "amount", frozen_bal)
 print(
     f"\n--- Trader {trader.user.username} ---\n"
-    f"  balance_usdt={bal.amount if bal else None}  "
-    f"frozen={getattr(trader, 'frozen_balance_usdt', None)}\n"
+    f"  balance_usdt={bal.amount if bal else None}  frozen={frozen_amt}\n"
     f"  deposit_address_for_trader={deposit_address_for_trader(trader)}"
 )
 
@@ -249,12 +250,12 @@ tx_prefix = tx_norm[:16]
 ledger = list(
     Transaction.objects.filter(comment__icontains=tx_prefix)
     .select_related("transaction_type")
-    .order_by("-created_at")[:10]
+    .order_by("-creation_date")[:10]
 )
 print(f"\n--- Ledger Transaction comment~{tx_prefix!r}: n={len(ledger)} ---")
 for t in ledger:
     print(
-        f"  {_msk(t.created_at)}  type={getattr(t.transaction_type, 'name', '?')}  "
+        f"  {_msk(t.creation_date)}  type={getattr(t.transaction_type, 'name', '?')}  "
         f"value={t.value}  {t.comment!r}"
     )
 
