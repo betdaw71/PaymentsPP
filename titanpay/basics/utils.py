@@ -117,7 +117,7 @@ def check_pd_data(data, *, require_deposit=False, require_qr_or_phone=False):
         has_qr = bool((data.get('qr_payload') or '').strip() if isinstance(data.get('qr_payload'), str) else data.get('qr_payload'))
         has_phone = bool(data.get('phone'))
         if not has_qr and not has_phone:
-            raise ValidationError({'qr_payload': ['Укажите QR-код (строку ELQR) или телефон.']})
+            raise ValidationError({'qr_payload': ['Загрузите фото QR-кода или укажите телефон.']})
 
     deposit = data.get('deposit_number')
     if deposit in (None, ''):

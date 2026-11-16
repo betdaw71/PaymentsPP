@@ -91,7 +91,7 @@ def run() -> None:
             return
         if name == KGS_PS_NAME:
             want = {
-                "qr_payload": {"regex": r".+", "pattern": "ELQR string / QR URL / data:image"},
+                "qr_payload": {"regex": r".+", "pattern": "QR photo URL"},
                 "phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"},
             }
             if ps.required_fields != want:
@@ -223,7 +223,7 @@ def run() -> None:
                 print(f"    ~ group {ps.name} {group.id}")
 
     print("\nДальше в ЛК трейдера:")
-    print("  QRKGS (ELQR)  → поле QR-код (строка ELQR / ссылка) + опционально +996…")
+    print("  QRKGS (ELQR)  → фото QR-кода + опционально +996…")
     print("  PHONEKGS      → телефон +996…")
     print("  C2CKGS        → карта 16 цифр")
     if CREATE_USERS:

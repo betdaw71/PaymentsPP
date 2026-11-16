@@ -69,7 +69,7 @@ PS_SPECS = (
     (
         KGS_PS_NAME,
         {
-            "qr_payload": {"regex": r".+", "pattern": "ELQR string / QR URL / data:image"},
+            "qr_payload": {"regex": r".+", "pattern": "QR photo URL"},
             "phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"},
         },
     ),

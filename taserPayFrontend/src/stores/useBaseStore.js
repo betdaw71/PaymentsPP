@@ -1005,6 +1005,33 @@ export const useBaseStore = defineStore ({
         error: response.data,
       }
     },
+    async uploadPaymentDetailsQrImage (file) {
+      const form = new FormData ()
+      form.append ('file', file)
+      try {
+        const response = await instance.post (`/base/upload-pd-qr/`, form, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        })
+        if (response.status === 201 || response.status === 200) {
+          return {
+            data: response.data,
+            error: null,
+          }
+        }
+
+        return {
+          data: null,
+          error: response.data,
+        }
+      } catch (error) {
+        return {
+          data: null,
+          error: error?.response?.data || error?.message || 'Upload failed',
+        }
+      }
+    },
     async getPaymentDetailsGroupCreationData (params) {
       const response = await instance.get (`/base/pdgroup-creation-data/`, { params })
       if (response.status === 200) {

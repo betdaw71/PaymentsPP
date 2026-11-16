@@ -1,22 +1,25 @@
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes
+import uuid
+from decimal import Decimal
+
+from django.db import transaction
+from django.db.models import Min, Max, Sum
+from rest_framework import status
+from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.response import Response
+
+from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates, TeamLead
+from basics.models import PaymentDetails
+from basics.permissions import TraderPermission, DebugPermission, SupportPermission, HeadSupportPermission
 from basics.serializers import TraderShortSupportSerializer, TraderToTransferSerializer, \
     TraderFromTransferSerializer, PaymentSystemSerializer, CurrencySerializer, TrafficTypeSerializer, \
     TraderTeamRatesSerializer
-from rest_framework import status
-from rest_framework.response import Response
-from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates, TeamLead
-from basics.permissions import TraderPermission, DebugPermission, SupportPermission, HeadSupportPermission
 from basics.serializers import TraderShortSerializer
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
-from basics.models import PaymentDetails
+from basics.utils import get_balances, get_range
 from merchant.models import Merchant
 from titanpay.settings import SBER_NAME, TBANK_NAME
 from trade.models import Address
-from basics.utils import get_balances, get_range
-from django.db.models import Min, Max, Sum
-from decimal import Decimal
-from django.db import transaction
 
 
 @api_view(['POST'])
@@ -302,9 +305,9 @@ def _pd_fields_for_payment_system(ps: PaymentSystem) -> dict:
     if name == "PHONEKGS":
         return {"phone": {"type": "text", "unique": True, "cash": False}}
     if name == "QRKGS":
-        # ELQR: QR-строка/ссылка обязательна для показа кода; телефон — опционально.
+        # ELQR: фото QR (+ опционально телефон).
         return {
-            "qr_payload": {"type": "textarea", "unique": False, "cash": False},
+            "qr_payload": {"type": "image", "unique": False, "cash": False},
             "phone": {"type": "text", "unique": True, "cash": False},
         }
     req = ps.required_fields if isinstance(ps.required_fields, dict) else {}
@@ -314,7 +317,7 @@ def _pd_fields_for_payment_system(ps: PaymentSystem) -> dict:
     if "phone" in req:
         fields["phone"] = {"type": "text", "unique": True, "cash": False}
     if "qr_payload" in req:
-        fields["qr_payload"] = {"type": "textarea", "unique": False, "cash": False}
+        fields["qr_payload"] = {"type": "image", "unique": False, "cash": False}
     if "deposit_number" in req:
         fields["deposit_number"] = {"type": "number", "unique": False, "cash": True}
     return fields or dict(_CARD_PD_FIELDS)
@@ -326,6 +329,62 @@ def get_pd_creation_data(request, *args, **kwargs):
     """Схема полей карты/телефона по id PaymentSystem — кабинет трейдера Add Payment Detail."""
     data = {str(ps.id): _pd_fields_for_payment_system(ps) for ps in PaymentSystem.objects.all()}
     return Response(status=status.HTTP_200_OK, data=data)
+
+
+_QR_IMAGE_TYPES = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+_QR_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+
+
+@api_view(["POST"])
+@permission_classes([TraderPermission])
+@parser_classes([MultiPartParser, FormParser])
+def upload_pd_qr_image(request, *args, **kwargs):
+    """Загрузка фото QR для QRKGS: файл → URL в media/S3, кладётся в qr_payload."""
+    trader = getattr(request.user, "trader", None)
+    if trader is None:
+        return Response({"detail": "Not a trader"}, status=status.HTTP_403_FORBIDDEN)
+
+    uploaded = request.FILES.get("file")
+    if uploaded is None:
+        return Response({"file": ["No file uploaded"]}, status=status.HTTP_400_BAD_REQUEST)
+
+    content_type = (uploaded.content_type or "").lower().strip()
+    ext = _QR_IMAGE_TYPES.get(content_type)
+    if ext is None:
+        name = (uploaded.name or "").lower()
+        if name.endswith(".jpg") or name.endswith(".jpeg"):
+            ext = "jpg"
+        elif name.endswith(".png"):
+            ext = "png"
+        elif name.endswith(".webp"):
+            ext = "webp"
+        elif name.endswith(".gif"):
+            ext = "gif"
+        else:
+            return Response(
+                {"file": ["Only image files are allowed (jpg/png/webp/gif)"]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    size = getattr(uploaded, "size", None)
+    if size is not None and size > _QR_IMAGE_MAX_BYTES:
+        return Response({"file": ["Image too large (max 8MB)"]}, status=status.HTTP_400_BAD_REQUEST)
+
+    from payments.utils import upload_receipt_storage
+
+    object_name = f"pd_qr/{trader.id}/{uuid.uuid4().hex}.{ext}"
+    try:
+        url = upload_receipt_storage(uploaded, object_name)
+    except Exception:
+        return Response({"file": ["Upload failed"]}, status=status.HTTP_502_BAD_GATEWAY)
+
+    return Response({"url": url, "qr_payload": url}, status=status.HTTP_201_CREATED)
 
 
 @api_view(['GET'])
