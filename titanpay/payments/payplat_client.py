@@ -840,6 +840,8 @@ def _payplat_extract_qr_widget(create_body: dict) -> dict:
         return {}
     out: dict[str, str] = {}
     if widget:
+        # Для Melbet-hosted page ссылку на qrnspk не открываем — только QR на нашей странице.
+        # URL оставляем в payload на случай диагностики / внешних интеграций.
         out["payment_form_url"] = widget
     if qr_img:
         out["qr_image_url"] = qr_img
@@ -849,6 +851,19 @@ def _payplat_extract_qr_widget(create_body: dict) -> dict:
         out["owner"] = str(owner)
     if bank:
         out["bank"] = str(bank)
+    # LKQ: в card_number часто лежит телефон получателя (+996…), не карта.
+    raw_phone = (
+        str(payment_data.get("phone_number") or payment_data.get("phone") or "").strip()
+        or str(requisite.get("phone_number") or "").strip()
+    )
+    raw_card = str(payment_data.get("card_number") or requisite.get("card_number") or "").strip()
+    if not raw_phone and raw_card.startswith("+"):
+        raw_phone = raw_card
+    if not raw_phone and raw_card.isdigit() and len(raw_card) >= 10 and len(raw_card) <= 15:
+        raw_phone = f"+{raw_card}"
+    if raw_phone:
+        digits = "".join(c for c in raw_phone if c.isdigit())
+        out["phone"] = raw_phone if raw_phone.startswith("+") else (f"+{digits}" if digits else raw_phone)
     return out
 
 

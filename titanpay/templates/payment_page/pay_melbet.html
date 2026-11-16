@@ -180,6 +180,42 @@
     }
     .overlay.show { display: flex; }
     .ov-panel { width: min(430px, 100%); background: #fff; border-radius: 20px 20px 0 0; padding: 16px 14px 18px; }
+    /* ELQR / PayPlat-like local KGS QR */
+    .elqr-card {
+      background: var(--card); border-radius: 20px; padding: 18px 16px 16px; margin-bottom: 12px;
+      box-shadow: var(--shadow); text-align: center;
+    }
+    .elqr-timer {
+      display: inline-flex; align-items: center; gap: 6px; color: #9aa3b0; font-size: 13px; font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .elqr-qr {
+      width: min(260px, 72vw); height: auto; border-radius: 16px; background: #fff;
+      padding: 10px; margin: 4px auto 12px; box-shadow: 0 8px 24px rgba(28,36,52,.08);
+      display: block;
+    }
+    .elqr-hint { font-size: 14px; line-height: 1.4; color: #5a6474; margin: 0 8px 14px; }
+    .elqr-phone-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: #f4f7fb; border-radius: 14px; padding: 12px 12px 12px 14px; text-align: left; margin-bottom: 12px;
+    }
+    .elqr-phone-lab { font-size: 12px; color: #8a97ab; margin-bottom: 2px; }
+    .elqr-phone-val { font-size: 17px; font-weight: 700; letter-spacing: .2px; }
+    .elqr-transfer {
+      text-align: left; background: #fff8e8; border-radius: 14px; padding: 12px 14px; margin-bottom: 12px;
+      color: #7a5a16; font-size: 13.5px; line-height: 1.4;
+    }
+    .elqr-transfer b { display: block; margin-bottom: 4px; color: #6a4c10; }
+    .elqr-amount {
+      text-align: left; background: #f4f7fb; border-radius: 14px; padding: 12px 14px; margin-bottom: 12px;
+    }
+    .elqr-amount-lab { font-size: 12px; color: #8a97ab; margin-bottom: 2px; }
+    .elqr-amount-val { font-size: 22px; font-weight: 800; letter-spacing: -.4px; }
+    .elqr-how { text-align: left; margin-top: 4px; }
+    .elqr-how h3 { margin: 0 0 10px; font-size: 15px; font-weight: 700; color: #2a3140; }
+    .elqr-how ol { margin: 0; padding-left: 18px; color: #2a3140; font-size: 14px; line-height: 1.45; }
+    .elqr-how li { margin-bottom: 8px; }
+    .elqr-foot { margin-top: 14px; font-size: 12px; color: #8a97ab; }
   </style>
 </head>
 <body>
@@ -329,11 +365,19 @@
         s5: "Алушының атын латын әріптерімен енгізіңіз",
         s6: "Нақты соманы енгізіңіз",
         s7: "“Аудару” түймесін басыңыз",
-        qrTitle: "QR арқылы төлеңіз",
-        qrHint: "Банк қосымшасымен QR кодты сканерлеңіз немесе төлем сілтемесін ашыңыз",
-        qrMissing: "QR код әзірге қолжетімсіз. Төлем сілтемесін ашыңыз немесе кейінірек қайталаңыз.",
+        qrTitle: "ELQR арқылы төлеңіз",
+        qrHint: "Банк қосымшасында QR кодты сканерлеңіз немесе QR үстінен ұстап тұрыңыз",
+        qrMissing: "QR код әзірге қолжетімсіз. Кейінірек қайталаңыз.",
         openPay: "Төлемді ашу",
-        phoneLabel: "Телефон нөмірі",
+        phoneLabel: "Алушы телефоны",
+        elqrHow: "Қалай төлеу керек",
+        elqrStep1: "Банк қосымшасын ашыңыз (MBank, Optima, Bakai, O!Деньги және т.б.)",
+        elqrStep2: "Жоғарыдағы QR кодты сканерлеңіз",
+        elqrStep3: "Дәл көрсетілген сомаға төлемді растаңыз",
+        elqrAltTitle: "QR емес, аударыммен төлейсіз бе?",
+        elqrAltBody: "Бір төлеммен дәл {amt} аударыңыз — алушы дәл осы соманы алуы керек. Басқа сома автоматты есептелмейді; QR арқылы төлегенде сома өзі қойылады.",
+        elqrAmountLab: "Төлем сомасы",
+        elqrFoot: "ELQR арқылы төлем — Қырғызстанның бірыңғай QR",
         kgsCardTitle: "Карта нөмірін көшіріп, банк қосымшасында аударым жасаңыз",
         kgsPhoneTitle: "Телефон нөмірін көшіріп, банк қосымшасында аударым жасаңыз",
         kgsStepApp: "Кез келген банк қосымшасын ашыңыз (Kyrgyzstan)",
@@ -370,11 +414,19 @@
         s5: "Введите имя получателя на латинице",
         s6: "Введите точную сумму",
         s7: "Нажмите кнопку “Перевести”",
-        qrTitle: "Оплатите по QR",
-        qrHint: "Отсканируйте QR-код в банковском приложении Кыргызстана или откройте ссылку оплаты",
-        qrMissing: "QR-код пока недоступен. Откройте ссылку оплаты или повторите попытку позже.",
+        qrTitle: "Оплата по ELQR",
+        qrHint: "Отсканируйте QR-код в приложении вашего банка, либо зажмите палец на QR-коде",
+        qrMissing: "QR-код пока недоступен. Повторите попытку позже.",
         openPay: "Открыть оплату",
-        phoneLabel: "Номер телефона",
+        phoneLabel: "Телефон получателя",
+        elqrHow: "Как оплатить",
+        elqrStep1: "Откройте приложение вашего банка (MBank, Optima, Bakai, O!Деньги и др.)",
+        elqrStep2: "Отсканируйте QR-код выше",
+        elqrStep3: "Подтвердите платёж на точную сумму",
+        elqrAltTitle: "Платите переводом, а не по QR?",
+        elqrAltBody: "Переведите ровно {amt} одним платежом — получатель должен получить именно эту сумму. Другая сумма не зачислится автоматически, при оплате по QR сумма подставится сама.",
+        elqrAmountLab: "Сумма к оплате",
+        elqrFoot: "Оплата по ELQR — единый QR Кыргызстана",
         kgsCardTitle: "Скопируйте номер карты и переведите в банковском приложении",
         kgsPhoneTitle: "Скопируйте номер телефона и переведите в банковском приложении",
         kgsStepApp: "Откройте приложение любого банка Кыргызстана",
@@ -535,21 +587,46 @@
     function isQrImageSrc(v) {
       return typeof v === "string" && (/^https?:\/\//i.test(v) || /^data:image\//i.test(v));
     }
+    function formatKgPhone(raw) {
+      const s = String(raw || "").replace(/\s/g, "");
+      const d = s.replace(/\D/g, "");
+      // +996XXXXXXXXX → +996 (XXX) XXX-XXX
+      if (d.length === 12 && d.startsWith("996")) {
+        return `+996 (${d.slice(3, 6)}) ${d.slice(6, 9)}-${d.slice(9)}`;
+      }
+      if (d.length === 9) {
+        return `+996 (${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+      }
+      return s || "";
+    }
     function renderQrDetails(pd, amountLine, amountCopy) {
+      // UX как у PayPlat ELQR (qrnspk): QR на нашей странице, без перехода на их сайт.
       const hasQr = pd && isQrImageSrc(pd.qr_image_url);
-      const hasLink = pd && isHttpUrl(pd.payment_form_url);
-      let html = "";
-      html += `<div class="step"><div class="num">1</div><div class="step-body"><b>${esc(t("qrTitle"))}</b><div class="chip-label" style="margin-top:6px">${esc(t("qrHint"))}</div></div></div>`;
+      const phone = pd && pd.phone ? formatKgPhone(pd.phone) : "";
+      const phoneCopy = pd && pd.phone ? String(pd.phone).replace(/\s/g, "") : "";
+      let html = `<div class="elqr-card">`;
       if (hasQr) {
-        html += `<div style="text-align:center;margin:14px 0 8px"><img alt="QR" src="${esc(pd.qr_image_url)}" style="max-width:260px;width:100%;height:auto;border-radius:16px;background:#fff;padding:12px;box-shadow:0 8px 24px rgba(28,36,52,.08)"></div>`;
+        html += `<img class="elqr-qr" alt="ELQR" src="${esc(pd.qr_image_url)}">`;
+      } else {
+        html += `<p class="elqr-hint" style="color:#ef4d55">${esc(t("qrMissing"))}</p>`;
       }
-      if (hasLink) {
-        html += `<p style="margin:12px 0"><a class="kaspi" href="${esc(pd.payment_form_url)}" rel="noopener noreferrer">${esc(t("openPay"))}</a></p>`;
+      html += `<p class="elqr-hint">${esc(t("qrHint"))}</p>`;
+      if (phone) {
+        html += `<div class="elqr-phone-row"><div><div class="elqr-phone-lab">${esc(t("phoneLabel"))}</div>
+          <div class="elqr-phone-val">${esc(phone)}</div></div>${copyBtn(phoneCopy)}</div>`;
       }
-      if (!hasQr && !hasLink) {
-        html += `<p class="chip-label" style="margin:10px 0 4px;color:#ef4d55">${esc(t("qrMissing"))}</p>`;
-      }
-      html += step(2, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      html += `<div class="elqr-transfer"><b>${esc(t("elqrAltTitle"))}</b>${esc(t("elqrAltBody").replace("{amt}", amountLine || ""))}</div>`;
+      html += `<div class="elqr-amount"><div class="elqr-amount-lab">${esc(t("elqrAmountLab"))}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div class="elqr-amount-val">${esc(amountLine || "")}</div>${copyBtn(amountCopy || "")}
+        </div></div>`;
+      html += `<div class="elqr-how"><h3>${esc(t("elqrHow"))}</h3><ol>
+        <li>${esc(t("elqrStep1"))}</li>
+        <li>${esc(t("elqrStep2"))}</li>
+        <li>${esc(t("elqrStep3"))}</li>
+      </ol></div>`;
+      html += `<div class="elqr-foot">${esc(t("elqrFoot"))}</div>`;
+      html += `</div>`;
       return html;
     }
     function renderKgsPhoneDetails(pd, amountLine, amountCopy) {
@@ -647,17 +724,19 @@
       clearInterval(countdownTimer);
       const box = document.getElementById("timer-box");
       const el = document.getElementById("timer");
-      box.classList.remove("expired");
+      if (box) box.classList.remove("expired");
       function tick() {
         const left = ts - Math.floor(Date.now() / 1000);
+        const text = left <= 0
+          ? "00:00"
+          : `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
+        if (el) el.textContent = text;
+        const elqr = document.getElementById("timer-elqr");
+        if (elqr) elqr.textContent = text;
         if (left <= 0) {
-          el.textContent = "00:00";
-          box.classList.add("expired");
+          if (box) box.classList.add("expired");
           clearInterval(countdownTimer);
-          return;
         }
-        const m = Math.floor(left / 60), s = left % 60;
-        el.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
       }
       tick();
       countdownTimer = setInterval(tick, 1000);
@@ -726,10 +805,16 @@
       const xfer = pageTransfer(data);
       const amt = fmtAmount(xfer.amount, xfer.currency);
       lastAmountCopy = copyAmountText(xfer.amount);
+      const mode = data.page_mode || "h2h";
+      const isElqr = mode === "qr";
       document.getElementById("amount-value").textContent = amt;
       const amountLineEl = document.getElementById("amount-line");
       if (amountLineEl) amountLineEl.textContent = amt;
       document.getElementById("txt-banner").innerHTML = t("banner").replace("{amt}", amt);
+      const bannerEl = document.querySelector(".banner");
+      if (bannerEl) bannerEl.classList.toggle("hidden", isElqr);
+      const payCard = document.querySelector(".pay-card");
+      if (payCard) payCard.classList.toggle("hidden", isElqr);
       const psLine = document.getElementById("ps-line");
       if (psLine) psLine.textContent = data.payment_system || "";
       const curChip = document.getElementById("cur-chip");
@@ -737,12 +822,26 @@
       const pid = document.getElementById("pid");
       if (pid) pid.textContent = (PAY_IN_ID || "").slice(0, 6) + "…" + (PAY_IN_ID || "").slice(-4);
       const fxBox = document.getElementById("fx-note-box");
-      if (fxBox) fxBox.classList.toggle("hidden", data.show_fx_note === false || (data.page_mode && data.page_mode !== "h2h"));
+      if (fxBox) fxBox.classList.toggle("hidden", data.show_fx_note === false || mode !== "h2h");
+      // Для ELQR таймер остаётся в общем header — перенесём визуально в details через clone? keep top timer in pay-card hidden, show in elqr via CSS; ensure countdown still runs.
+      if (isElqr) {
+        // Показать таймер над QR-блоком: временно включаем pay-head только timer row через details prepend handled in render.
+      }
       document.getElementById("details").innerHTML = renderDetails(
-        data.payment_details, amt, lastAmountCopy, data.page_mode || "h2h"
+        data.payment_details, amt, lastAmountCopy, mode
       );
-      if ((data.bank_actions || []).length) renderBankActions(data);
+      if (!isElqr && (data.bank_actions || []).length) renderBankActions(data);
       else document.getElementById("bank-actions").innerHTML = "";
+      // ELQR: таймер в шапке details — синхронизируем видимый #timer в скрытой карточке; добавим дубль в elqr.
+      if (isElqr && data.expires_at) {
+        const elqrCard = document.querySelector(".elqr-card");
+        if (elqrCard && !elqrCard.querySelector(".elqr-timer")) {
+          const trow = document.createElement("div");
+          trow.className = "elqr-timer";
+          trow.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="timer-value" id="timer-elqr">—</span>`;
+          elqrCard.insertBefore(trow, elqrCard.firstChild);
+        }
+      }
       setupReceiptUi(data);
       wireCopyButtons();
       document.getElementById("copy-amount").onclick = () => {

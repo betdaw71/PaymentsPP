@@ -124,6 +124,7 @@ class PayplatLkqTest(SimpleTestCase):
         self.assertEqual(qr["qr_image_url"], "data:image/png;base64,aaa")
         self.assertEqual(qr["owner"], "SHERMUKHAMMAD TURSUNMUKHA")
         self.assertEqual(qr["bank"], "MBank")
+        self.assertEqual(qr["phone"], "+996506505435")
         self.assertNotIn("card_number", qr)
         self.assertTrue(payplat_requisite_matches_requested_type(qr, "lkq"))
 
