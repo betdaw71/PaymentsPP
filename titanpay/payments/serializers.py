@@ -45,6 +45,12 @@ def merchant_payin_payment_details(pay_in) -> dict:
 
 
 def get_in_ps_serializer(payment_system_name):
+    name = (payment_system_name or "").strip().upper()
+    # Melbet local KGS: живые реквизиты phone (PHONE/QR ELQR) или карта (C2CKGS).
+    if name in {"PHONEKGS", "QRKGS"}:
+        return PaymentDetailsSberPaySerializer
+    if name == "C2CKGS":
+        return PaymentDetailsCardSerializer
     if payment_system_name in _card_payin_ps_names():
         return PaymentDetailsCardSerializer
     elif payment_system_name in (SBERDEP_NAME, C2CTRY_NAME):

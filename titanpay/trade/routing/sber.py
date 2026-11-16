@@ -125,13 +125,29 @@ class SberRouting:
                         "skip": margin_skip or "margin_low",
                     })
                     continue
-            available_details = PaymentDetails.objects.filter(
+            ps_name = (
+                (group.payment_system.name if group.payment_system_id else "")
+                or (margin_ps.name if margin_ps is not None else "")
+                or ""
+            ).upper()
+            details_base = PaymentDetails.objects.filter(
                 group=group,
                 status=1,
                 sberpay_enabled=False,
                 sbp_enabled=False,
-                card_number__isnull=False,
             )
+            if ps_name == "PHONEKGS":
+                available_details = details_base.exclude(phone__isnull=True).exclude(phone="")
+            elif ps_name == "QRKGS":
+                # Живые ELQR: телефон; PSP-виртуальные группы — карта-заглушка.
+                available_details = details_base.filter(
+                    Q(phone__isnull=False) & ~Q(phone="")
+                    | Q(card_number__isnull=False) & ~Q(card_number="")
+                )
+            else:
+                available_details = details_base.exclude(
+                    card_number__isnull=True
+                ).exclude(card_number="")
             # PSP / payplat / gipay: виртуальная карта не блокируется активной заявкой на ту же сумму.
             if is_human:
                 available_details = available_details.exclude(id__in=active_details)

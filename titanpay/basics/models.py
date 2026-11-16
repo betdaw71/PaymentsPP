@@ -223,7 +223,7 @@ class PaymentDetails(models.Model):
     sberpay_enabled = models.BooleanField(default=False)
     sbp_enabled = models.BooleanField(default=False)
     card_number = models.CharField(max_length=16, validators=[card_validator], blank=True, null=True)
-    phone = models.CharField(max_length=12, validators=[ru_phone_validator], blank=True, null=True)
+    phone = models.CharField(max_length=16, validators=[ru_phone_validator], blank=True, null=True)
     deposit_number = models.CharField(max_length=20, validators=[sber_deposit_number_validator])
 
     class Meta:

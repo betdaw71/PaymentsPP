@@ -253,12 +253,20 @@ def get_user_filter_support(request, *args, **kwargs):
 def get_pdgroup_creation_data(request, *args, **kwargs):
     from django.db.models import Q
 
-    from trade.routing.ps_names import kzt_c2c_bank_ps_names, kzt_c2c_merchant_ps_names
+    from trade.routing.ps_names import (
+        kzt_c2c_bank_ps_names,
+        kzt_c2c_merchant_ps_names,
+        melbet_kgs_ps_names,
+    )
 
     currencies = Currency.objects.all()
-    # SBP-совместимые + KZT трансгран банки (Elkard/Kompanion/…) и C2CKZT.
-    # Банки создаются с sbp_compatible=False, иначе попадут в SBP-роутинг.
-    bank_names = kzt_c2c_bank_ps_names() | kzt_c2c_merchant_ps_names()
+    # SBP-совместимые + KZT трансгран банки + Melbet local KGS (QR/card/phone).
+    # Банки/KGS создаются с sbp_compatible=False, иначе попадут в SBP-роутинг.
+    bank_names = (
+        kzt_c2c_bank_ps_names()
+        | kzt_c2c_merchant_ps_names()
+        | melbet_kgs_ps_names()
+    )
     payment_systems = PaymentSystem.objects.filter(
         Q(sbp_compatible=True) | Q(name__in=bank_names)
     ).distinct()
@@ -287,6 +295,12 @@ _CARD_PD_FIELDS = {
 def _pd_fields_for_payment_system(ps: PaymentSystem) -> dict:
     if ps.name in (SBER_NAME, TBANK_NAME):
         return dict(_SBER_LIKE_PD_FIELDS)
+    name = (ps.name or "").upper()
+    # Melbet local KGS: карта / телефон / ELQR (телефон получателя для живых трейдеров).
+    if name == "C2CKGS":
+        return {"card_number": dict(_CARD_PD_FIELDS["card_number"])}
+    if name in {"PHONEKGS", "QRKGS"}:
+        return {"phone": {"type": "text", "unique": True, "cash": False}}
     req = ps.required_fields if isinstance(ps.required_fields, dict) else {}
     fields = {}
     if "card_number" in req:

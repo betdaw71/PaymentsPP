@@ -368,12 +368,16 @@
         qrTitle: "ELQR арқылы төлеңіз",
         qrHint: "Банк қосымшасында QR кодты сканерлеңіз немесе QR үстінен ұстап тұрыңыз",
         qrMissing: "QR код әзірге қолжетімсіз. Кейінірек қайталаңыз.",
+        elqrPhoneOnlyHint: "Телефон нөмірі бойынша аударым жасаңыз (ELQR)",
         openPay: "Төлемді ашу",
         phoneLabel: "Алушы телефоны",
         elqrHow: "Қалай төлеу керек",
         elqrStep1: "Банк қосымшасын ашыңыз (MBank, Optima, Bakai, O!Деньги және т.б.)",
         elqrStep2: "Жоғарыдағы QR кодты сканерлеңіз",
         elqrStep3: "Дәл көрсетілген сомаға төлемді растаңыз",
+        elqrPhoneStep1: "Банк қосымшасын ашыңыз (MBank, Optima, Bakai, O!Деньги және т.б.)",
+        elqrPhoneStep2: "Алушының телефон нөмірін енгізіңіз",
+        elqrPhoneStep3: "Дәл көрсетілген сомаға аударым жасаңыз",
         elqrAltTitle: "QR емес, аударыммен төлейсіз бе?",
         elqrAltBody: "Бір төлеммен дәл {amt} аударыңыз — алушы дәл осы соманы алуы керек. Басқа сома автоматты есептелмейді; QR арқылы төлегенде сома өзі қойылады.",
         elqrAmountLab: "Төлем сомасы",
@@ -417,12 +421,16 @@
         qrTitle: "Оплата по ELQR",
         qrHint: "Отсканируйте QR-код в приложении вашего банка, либо зажмите палец на QR-коде",
         qrMissing: "QR-код пока недоступен. Повторите попытку позже.",
+        elqrPhoneOnlyHint: "Оплатите переводом на номер телефона (ELQR)",
         openPay: "Открыть оплату",
         phoneLabel: "Телефон получателя",
         elqrHow: "Как оплатить",
         elqrStep1: "Откройте приложение вашего банка (MBank, Optima, Bakai, O!Деньги и др.)",
         elqrStep2: "Отсканируйте QR-код выше",
         elqrStep3: "Подтвердите платёж на точную сумму",
+        elqrPhoneStep1: "Откройте приложение вашего банка (MBank, Optima, Bakai, O!Деньги и др.)",
+        elqrPhoneStep2: "Вставьте номер телефона получателя",
+        elqrPhoneStep3: "Переведите точную указанную сумму",
         elqrAltTitle: "Платите переводом, а не по QR?",
         elqrAltBody: "Переведите ровно {amt} одним платежом — получатель должен получить именно эту сумму. Другая сумма не зачислится автоматически, при оплате по QR сумма подставится сама.",
         elqrAmountLab: "Сумма к оплате",
@@ -601,16 +609,19 @@
     }
     function renderQrDetails(pd, amountLine, amountCopy) {
       // UX как у PayPlat ELQR (qrnspk): QR на нашей странице, без перехода на их сайт.
+      // Живые трейдеры: только телефон — показываем перевод по номеру, без красной ошибки QR.
       const hasQr = pd && isQrImageSrc(pd.qr_image_url);
       const phone = pd && pd.phone ? formatKgPhone(pd.phone) : "";
       const phoneCopy = pd && pd.phone ? String(pd.phone).replace(/\s/g, "") : "";
       let html = `<div class="elqr-card">`;
       if (hasQr) {
         html += `<img class="elqr-qr" alt="ELQR" src="${esc(pd.qr_image_url)}">`;
+        html += `<p class="elqr-hint">${esc(t("qrHint"))}</p>`;
+      } else if (phone) {
+        html += `<p class="elqr-hint">${esc(t("elqrPhoneOnlyHint"))}</p>`;
       } else {
         html += `<p class="elqr-hint" style="color:#ef4d55">${esc(t("qrMissing"))}</p>`;
       }
-      html += `<p class="elqr-hint">${esc(t("qrHint"))}</p>`;
       if (phone) {
         html += `<div class="elqr-phone-row"><div><div class="elqr-phone-lab">${esc(t("phoneLabel"))}</div>
           <div class="elqr-phone-val">${esc(phone)}</div></div>${copyBtn(phoneCopy)}</div>`;
@@ -620,11 +631,19 @@
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div class="elqr-amount-val">${esc(amountLine || "")}</div>${copyBtn(amountCopy || "")}
         </div></div>`;
-      html += `<div class="elqr-how"><h3>${esc(t("elqrHow"))}</h3><ol>
-        <li>${esc(t("elqrStep1"))}</li>
-        <li>${esc(t("elqrStep2"))}</li>
-        <li>${esc(t("elqrStep3"))}</li>
-      </ol></div>`;
+      if (hasQr) {
+        html += `<div class="elqr-how"><h3>${esc(t("elqrHow"))}</h3><ol>
+          <li>${esc(t("elqrStep1"))}</li>
+          <li>${esc(t("elqrStep2"))}</li>
+          <li>${esc(t("elqrStep3"))}</li>
+        </ol></div>`;
+      } else if (phone) {
+        html += `<div class="elqr-how"><h3>${esc(t("elqrHow"))}</h3><ol>
+          <li>${esc(t("elqrPhoneStep1"))}</li>
+          <li>${esc(t("elqrPhoneStep2"))}</li>
+          <li>${esc(t("elqrPhoneStep3"))}</li>
+        </ol></div>`;
+      }
       html += `<div class="elqr-foot">${esc(t("elqrFoot"))}</div>`;
       html += `</div>`;
       return html;
