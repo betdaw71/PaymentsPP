@@ -300,6 +300,7 @@ _KGS_BANK_OPTIONS = [
     "O!Bank",
     "Demir Bank",
     "KICB",
+    "Kompanion",
     "Companion",
     "DoscredoBank",
     "Keremet Bank",

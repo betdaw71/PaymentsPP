@@ -242,6 +242,14 @@ watch (
         card_number: { type: "number", unique: false, cash: false },
       }))
       itemData.value.details = []
+      // C2CKGS / PHONEKGS / QRKGS: сразу показать карту/телефон/банк/фото QR
+      // (иначе селект банка только после кнопки «Add payment detail» внизу).
+      const psName = (options.value.payment_systems || []).find(
+        ps => ps.id === itemData.value.payment_system,
+      )?.name
+      if (psName && ["C2CKGS", "PHONEKGS", "QRKGS"].includes(String(psName).toUpperCase())) {
+        nextTick(() => addDetails())
+      }
     }
   },
   { deep: true },
