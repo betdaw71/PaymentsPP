@@ -68,6 +68,24 @@ def _format_transfer_amount(amount: Decimal, currency: str) -> str:
     return text or "0"
 
 
+def _is_qr_or_widget_only(pd: dict) -> bool:
+    """LKQ/QR: виджет или картинка QR без карты/телефона — не показывать Kaspi-трансгран."""
+    if not isinstance(pd, dict):
+        return False
+    has_h2h = bool(pd.get("card_number") or pd.get("phone") or pd.get("deposit_number"))
+    if has_h2h:
+        return False
+    return bool(pd.get("qr_image_url") or pd.get("payment_form_url") or pd.get("deeplink"))
+
+
+def _is_kgs_payment(pay_in: PayIn, currency: str) -> bool:
+    if (currency or "").upper() in {"KGS", "KGZ"}:
+        return True
+    ps = getattr(pay_in, "payment_system", None)
+    name = (getattr(ps, "name", None) or "").upper()
+    return name in {"QRKGS", "C2CKGS", "PHONEKGS"}
+
+
 def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = None) -> dict:
     locale = locale or resolve_locale(pay_in)
     currency = data.get("currency") or (pay_in.currency.symbol if pay_in.currency else "")
@@ -87,12 +105,18 @@ def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = N
     data["requisites_available"] = _requisites_available(data, pay_in)
     data["transfer_amount"] = xfer_amt_text
     data["transfer_currency"] = xfer_cur
+    data["page_mode"] = "qr" if _is_qr_or_widget_only(pd) else "h2h"
     if not data.get("expires_at") and pay_in.created_at and getattr(pay_in, "payment_system", None):
         ttl = getattr(pay_in.payment_system, "expired_time_in", None)
         if ttl is not None:
             data["expires_at"] = int((pay_in.created_at + ttl).timestamp())
 
-    if pd and data.get("status") not in ("Success", "Failed", "Declined"):
+    # KGS QR/widget и phone без карты — без Kaspi/Halyk deeplink гайдов (это KZT-трансгран UI).
+    skip_bank_ui = _is_qr_or_widget_only(pd) or (
+        _is_kgs_payment(pay_in, currency) and not (pd.get("card_number"))
+    )
+
+    if pd and data.get("status") not in ("Success", "Failed", "Declined") and not skip_bank_ui:
         data["bank_actions"] = build_bank_actions(
             amount=xfer_amt_text,
             currency=xfer_cur,
@@ -112,8 +136,8 @@ def enrich_for_payment_page(data: dict, pay_in: PayIn, *, locale: str | None = N
             bank_actions=data.get("bank_actions"),
         )
     else:
-        data.setdefault("bank_actions", [])
-        data.setdefault("clipboard_text", "")
-        data.setdefault("bank_guides", [])
+        data["bank_actions"] = []
+        data["clipboard_text"] = ""
+        data["bank_guides"] = []
 
     return data

@@ -329,6 +329,10 @@
         s5: "Алушының атын латын әріптерімен енгізіңіз",
         s6: "Нақты соманы енгізіңіз",
         s7: "“Аудару” түймесін басыңыз",
+        qrTitle: "QR арқылы төлеңіз",
+        qrHint: "Банк қосымшасымен QR кодты сканерлеңіз немесе төлем сілтемесін ашыңыз",
+        openPay: "Төлемді ашу",
+        phoneLabel: "Телефон нөмірі",
         fxNote: "Құрметті пайдаланушы, банк валютаны айырбастауына байланысты депозитке түсетін сомада шамалы айырмашылық болуы мүмкін.",
       },
       ru: {
@@ -361,6 +365,10 @@
         s5: "Введите имя получателя на латинице",
         s6: "Введите точную сумму",
         s7: "Нажмите кнопку “Перевести”",
+        qrTitle: "Оплатите по QR",
+        qrHint: "Отсканируйте QR в банковском приложении или откройте ссылку оплаты",
+        openPay: "Открыть оплату",
+        phoneLabel: "Номер телефона",
         fxNote: "Уважаемый пользователь, из-за конвертации валюты банком могут быть минимальные отличия в сумме зачисления депозита.",
       },
     };
@@ -511,20 +519,46 @@
     function icoBag() {
       return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M7 8h10l1 12H6L7 8z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8V7a3 3 0 0 1 6 0v1" stroke="currentColor" stroke-width="1.7"/></svg>`;
     }
-    function renderDetails(pd, amountLine, amountCopy) {
-      const card = pd && (pd.card_number || pd.phone || pd.deposit_number);
+    function isHttpUrl(v) {
+      return typeof v === "string" && /^https?:\/\//i.test(v);
+    }
+    function renderQrDetails(pd, amountLine, amountCopy) {
+      let html = "";
+      html += `<div class="step"><div class="num">1</div><div class="step-body"><b>${esc(t("qrTitle"))}</b><div class="chip-label" style="margin-top:6px">${esc(t("qrHint"))}</div></div></div>`;
+      if (pd && isHttpUrl(pd.qr_image_url)) {
+        html += `<div style="text-align:center;margin:12px 0"><img alt="QR" src="${esc(pd.qr_image_url)}" style="max-width:240px;width:100%;height:auto;border-radius:12px;background:#fff;padding:10px"></div>`;
+      }
+      if (pd && isHttpUrl(pd.payment_form_url)) {
+        html += `<p style="margin:12px 0"><a class="kaspi" href="${esc(pd.payment_form_url)}" rel="noopener noreferrer">${esc(t("openPay"))}</a></p>`;
+      }
+      html += step(2, t("s6"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      return html;
+    }
+    function renderPhoneDetails(pd, amountLine, amountCopy) {
+      const phone = pd && pd.phone;
       const owner = pd && pd.owner;
       let html = "";
-      html += step(1, t("s1"), chip(icoCard(), t("card"), card ? spaceCard(card) : "", card ? String(card).replace(/\s/g, "") : ""));
+      html += step(1, t("phoneLabel"), chip(icoCard(), t("phone"), phone || "", phone ? String(phone).replace(/\s/g, "") : ""));
+      if (owner) html += step(2, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || ""));
+      html += step(owner ? 3 : 2, t("s6"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      return html;
+    }
+    function renderDetails(pd, amountLine, amountCopy, pageMode) {
+      const card = pd && pd.card_number;
+      const phone = pd && pd.phone;
+      const deposit = pd && pd.deposit_number;
+      const owner = pd && pd.owner;
+      const qrOnly = pageMode === "qr" || (!card && !phone && !deposit && (isHttpUrl(pd && pd.qr_image_url) || isHttpUrl(pd && pd.payment_form_url)));
+      if (qrOnly) return renderQrDetails(pd, amountLine, amountCopy);
+      if (!card && phone) return renderPhoneDetails(pd, amountLine, amountCopy);
+      let html = "";
+      html += step(1, t("s1"), chip(icoCard(), t("card"), card ? spaceCard(card) : (deposit || ""), card ? String(card).replace(/\s/g, "") : (deposit || "")));
       html += step(2, t("s2"));
       html += step(3, t("s3"));
       html += step(4, t("s4"));
       html += step(5, t("s5"), chip(icoUser(), t("owner"), owner || "", owner || ""));
       html += step(6, t("s6"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
       html += step(7, t("s7"));
-      if (pd && pd.payment_form_url && /^https?:\/\//i.test(pd.payment_form_url) && !card) {
-        html += `<p><a class="kaspi" href="${esc(pd.payment_form_url)}" rel="noopener noreferrer">${esc(t("payLink"))}</a></p>`;
-      }
       return html;
     }
     function isAndroid() { return /android/i.test(navigator.userAgent || ""); }
@@ -655,9 +689,10 @@
       document.getElementById("cur-chip").textContent = data.currency || "KZT";
       document.getElementById("pid").textContent = (PAY_IN_ID || "").slice(0, 6) + "…" + (PAY_IN_ID || "").slice(-4);
       document.getElementById("details").innerHTML = renderDetails(
-        data.payment_details, amt, lastAmountCopy
+        data.payment_details, amt, lastAmountCopy, data.page_mode
       );
-      renderBankActions(data);
+      if ((data.bank_actions || []).length) renderBankActions(data);
+      else document.getElementById("bank-actions").innerHTML = "";
       setupReceiptUi(data);
       wireCopyButtons();
       document.getElementById("copy-amount").onclick = () => {

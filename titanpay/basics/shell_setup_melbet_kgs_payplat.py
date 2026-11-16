@@ -1,15 +1,15 @@
 """
-Локальный KGS (QR / LKQ) для Melbet через PayPlat.
+Локальный KGS для Melbet через PayPlat:
+  QRKGS  (lkq)    ← qr_kgs / lkq / elqr / default_kgs
+  C2CKGS (card)   ← card2card_kgs / card_kgs
+  PHONEKGS(mobile)← phone_kgs / mobile_kgs
 
-Создаёт Currency KGS, PaymentSystem QRKGS, виртуальную группу payplat1,
-MerchantSolution (melbet / melbet_test) и ключи method_map:
-  default_kgs, qr_kgs, lkq, elqr → QRKGS + KGS
+Создаёт Currency KGS, PS, виртуальные группы payplat1, MerchantSolution,
+method_map. Не трогает KZT method_map.
 
-Не трогает публичную документацию и не перезаписывает KZT method_map.
-
-Перед запуском в .env (если JSON задан явно — добавьте QRKGS):
-  PAYPLAT_REQUISITE_TYPE_MAP=... ,"QRKGS":"lkq"}
-  # payer для QRKGS не нужен; currency=kgs уходит в POST /deals
+Перед запуском в .env (merge JSON, не дропать C2CKZT):
+  PAYPLAT_REQUISITE_TYPE_MAP=... "QRKGS":"lkq","C2CKGS":"card","PHONEKGS":"mobile"}
+  # payer=kz для KGS не ставить; deals шлют currency=kgs
 
 Запуск:
   docker compose exec -T app python manage.py shell < titanpay/basics/shell_setup_melbet_kgs_payplat.py
@@ -18,10 +18,8 @@ MerchantSolution (melbet / melbet_test) и ключи method_map:
   MERCHANT_USERNAMES=melbet,melbet_test
   MIN_LIMIT_IN=100 MAX_LIMIT_IN=500000
   USDT_RATE=87
-  MERCHANT_MDR_IN=8   # должно быть ≥ PayPlat mdr_in + DEAL_MARGIN_MIN_PCT (7+0.2)
-  OVERWRITE_LIMITS=0
-  OVERWRITE_MDR=0     # 1 — обновить mdr_in у существующих solutions
-  UPDATE_RATE=0
+  MERCHANT_MDR_IN=8
+  OVERWRITE_LIMITS=0 OVERWRITE_MDR=0 UPDATE_RATE=0
 """
 from __future__ import annotations
 
@@ -43,17 +41,20 @@ from basics.models import (
     TrafficType,
 )
 from basics.shell_merchant_solution import ensure_merchant_solution
-from merchant.kzt_settlement import ensure_kgs_balances
+from merchant.kzt_settlement import (
+    C2C_KGS_PS_NAME,
+    KGS_PS_NAME,
+    PHONE_KGS_PS_NAME,
+    ensure_kgs_balances,
+)
 from merchant.models import Merchant
 from payments.integrations.melbet.models import MelbetIntegrationConfig
 from payments.payplat_client import payplat_trader_username
 
-PS_NAME = "QRKGS"
 CURRENCY_SYMBOL = "KGS"
 TRAFFIC_NAME = "Standard"
 GROUP_OWNER = "PayPlat Virtual Drop"
 DEFAULT_MDR_IN = Decimal("7")
-# Без KZT dual-FX маржа = merchant_mdr − trader_mdr; 2.5% vs PayPlat 7% → margin_low.
 DEFAULT_MERCHANT_MDR_IN = Decimal(os.environ.get("MERCHANT_MDR_IN", "8") or "8")
 DEFAULT_MERCHANT_MDR_OUT = Decimal(os.environ.get("MERCHANT_MDR_OUT", "3") or "3")
 DEFAULT_RATE = Decimal(os.environ.get("USDT_RATE", "87") or "87")
@@ -63,11 +64,27 @@ OVERWRITE_LIMITS = os.environ.get("OVERWRITE_LIMITS", "0").strip().lower() in ("
 OVERWRITE_MDR = os.environ.get("OVERWRITE_MDR", "0").strip().lower() in ("1", "true", "yes")
 UPDATE_RATE = os.environ.get("UPDATE_RATE", "0").strip().lower() in ("1", "true", "yes")
 
+PS_SPECS = (
+    (KGS_PS_NAME, {}),
+    (
+        C2C_KGS_PS_NAME,
+        {"card_number": {"regex": r"^\d{16}$", "pattern": "Card number"}},
+    ),
+    (
+        PHONE_KGS_PS_NAME,
+        {"phone": {"regex": r"^\+?\d{10,15}$", "pattern": "Phone number"}},
+    ),
+)
+
 KGS_METHOD_MAP = {
-    "default_kgs": {"payment_system": PS_NAME, "currency": "KGS"},
-    "qr_kgs": {"payment_system": PS_NAME, "currency": "KGS"},
-    "lkq": {"payment_system": PS_NAME, "currency": "KGS"},
-    "elqr": {"payment_system": PS_NAME, "currency": "KGS"},
+    "default_kgs": {"payment_system": KGS_PS_NAME, "currency": "KGS"},
+    "qr_kgs": {"payment_system": KGS_PS_NAME, "currency": "KGS"},
+    "lkq": {"payment_system": KGS_PS_NAME, "currency": "KGS"},
+    "elqr": {"payment_system": KGS_PS_NAME, "currency": "KGS"},
+    "card2card_kgs": {"payment_system": C2C_KGS_PS_NAME, "currency": "KGS"},
+    "card_kgs": {"payment_system": C2C_KGS_PS_NAME, "currency": "KGS"},
+    "phone_kgs": {"payment_system": PHONE_KGS_PS_NAME, "currency": "KGS"},
+    "mobile_kgs": {"payment_system": PHONE_KGS_PS_NAME, "currency": "KGS"},
 }
 
 
@@ -86,13 +103,13 @@ def ensure_currency() -> Currency:
     return cur
 
 
-def ensure_payment_system(currency: Currency) -> PaymentSystem:
-    ps = PaymentSystem.objects.filter(name=PS_NAME, currency=currency).first()
+def ensure_payment_system(currency: Currency, name: str, required_fields: dict) -> PaymentSystem:
+    ps = PaymentSystem.objects.filter(name=name, currency=currency).first()
     if ps is None:
         ps = PaymentSystem.objects.create(
-            name=PS_NAME,
+            name=name,
             currency=currency,
-            required_fields={},
+            required_fields=required_fields or {},
             usdt_exchange_rate=DEFAULT_RATE,
             expired_time_in=datetime.timedelta(minutes=15),
             expired_time_out=datetime.timedelta(minutes=10),
@@ -102,7 +119,7 @@ def ensure_payment_system(currency: Currency) -> PaymentSystem:
             out_on=False,
             sbp_compatible=False,
         )
-        print(f"  + PaymentSystem {PS_NAME} rate={DEFAULT_RATE}")
+        print(f"  + PaymentSystem {name} rate={DEFAULT_RATE}")
         return ps
     fields: list[str] = []
     if not ps.in_on:
@@ -111,21 +128,26 @@ def ensure_payment_system(currency: Currency) -> PaymentSystem:
     if UPDATE_RATE and ps.usdt_exchange_rate != DEFAULT_RATE:
         ps.usdt_exchange_rate = DEFAULT_RATE
         fields.append("usdt_exchange_rate")
+    if required_fields and ps.required_fields != required_fields:
+        ps.required_fields = required_fields
+        fields.append("required_fields")
     if fields:
         ps.save(update_fields=fields)
-        print(f"  ~ PaymentSystem {PS_NAME} updated {fields}")
+        print(f"  ~ PaymentSystem {name} updated {fields}")
     else:
-        print(f"  ~ PaymentSystem {PS_NAME} rate={ps.usdt_exchange_rate}")
+        print(f"  ~ PaymentSystem {name} rate={ps.usdt_exchange_rate}")
     return ps
 
 
-def ensure_payplat_group(trader: Trader, currency: Currency, ps: PaymentSystem, traffic: TrafficType) -> None:
+def ensure_payplat_group(
+    trader: Trader, currency: Currency, ps: PaymentSystem, traffic: TrafficType
+) -> None:
     group = PaymentDetailsGroup.objects.filter(
         trader=trader, payment_system=ps, currency=currency
     ).first()
     if group is None:
         group = PaymentDetailsGroup.objects.create(
-            owner=f"{GROUP_OWNER} {PS_NAME}",
+            owner=f"{GROUP_OWNER} {ps.name}",
             trader=trader,
             currency=currency,
             payment_system=ps,
@@ -141,7 +163,7 @@ def ensure_payplat_group(trader: Trader, currency: Currency, ps: PaymentSystem, 
             current_volume=Decimal("0"),
         )
         group.allowed_traffic.add(traffic)
-        print(f"  + group {PS_NAME} {group.id}")
+        print(f"  + group {ps.name} {group.id}")
     else:
         changed = False
         for field, val in (("status", 1), ("in_active", True), ("amount", Decimal("999999"))):
@@ -152,7 +174,7 @@ def ensure_payplat_group(trader: Trader, currency: Currency, ps: PaymentSystem, 
             group.save()
         if not group.allowed_traffic.filter(pk=traffic.pk).exists():
             group.allowed_traffic.add(traffic)
-        print(f"  ~ group {PS_NAME} {group.id} in_active={group.in_active}")
+        print(f"  ~ group {ps.name} {group.id} in_active={group.in_active}")
 
     if not PaymentDetails.objects.filter(group=group, status=1).exists():
         card = "4" + uuid.uuid4().hex[:15]
@@ -166,7 +188,7 @@ def ensure_payplat_group(trader: Trader, currency: Currency, ps: PaymentSystem, 
             sberpay_enabled=False,
             sbp_enabled=False,
         )
-        print(f"    + virtual card")
+        print(f"    + virtual card ({ps.name})")
 
 
 def merge_method_map(cfg: MelbetIntegrationConfig) -> None:
@@ -185,7 +207,7 @@ def merge_method_map(cfg: MelbetIntegrationConfig) -> None:
 
 
 def run() -> None:
-    print("=== Melbet KGS / QRKGS via PayPlat LKQ ===")
+    print("=== Melbet KGS via PayPlat (QR / card / phone) ===")
     username = payplat_trader_username()
     user = User.objects.filter(username=username).first()
     if user is None:
@@ -197,24 +219,26 @@ def run() -> None:
         return
 
     currency = ensure_currency()
-    ps = ensure_payment_system(currency)
     traffic, _ = TrafficType.objects.get_or_create(name=TRAFFIC_NAME, defaults={"risk_level": 0})
-
-    if trader.team_id:
-        TraderTeamRates.objects.get_or_create(
-            team=trader.team,
-            payment_system=ps,
-            defaults={"mdr_in": DEFAULT_MDR_IN, "mdr_out": Decimal("2.5")},
-        )
-
-    ensure_payplat_group(trader, currency, ps, traffic)
-
     limits = {
         "min_limit_in": MIN_IN,
         "max_limit_in": MAX_IN,
         "min_limit_out": MIN_IN,
         "max_limit_out": MAX_IN,
     }
+
+    payment_systems: list[PaymentSystem] = []
+    for ps_name, required in PS_SPECS:
+        ps = ensure_payment_system(currency, ps_name, required)
+        payment_systems.append(ps)
+        if trader.team_id:
+            TraderTeamRates.objects.get_or_create(
+                team=trader.team,
+                payment_system=ps,
+                defaults={"mdr_in": DEFAULT_MDR_IN, "mdr_out": Decimal("2.5")},
+            )
+        ensure_payplat_group(trader, currency, ps, traffic)
+
     for uname in _merchant_usernames():
         mu = User.objects.filter(username=uname).first()
         merchant = Merchant.objects.filter(user=mu).first() if mu else None
@@ -222,17 +246,21 @@ def run() -> None:
             print(f"  ! merchant {uname} not found — skip solutions/method_map")
             continue
         ensure_kgs_balances(merchant)
-        print(f"  ~ {uname} balance_kgs={merchant.balance_kgs.amount if merchant.balance_kgs_id else 'n/a'}")
-        ensure_merchant_solution(
-            merchant,
-            ps,
-            traffic,
-            overwrite_limits=OVERWRITE_LIMITS,
-            overwrite_mdr=OVERWRITE_MDR,
-            limits=limits,
-            mdr_in=DEFAULT_MERCHANT_MDR_IN,
-            mdr_out=DEFAULT_MERCHANT_MDR_OUT,
+        print(
+            f"  ~ {uname} balance_kgs="
+            f"{merchant.balance_kgs.amount if merchant.balance_kgs_id else 'n/a'}"
         )
+        for ps in payment_systems:
+            ensure_merchant_solution(
+                merchant,
+                ps,
+                traffic,
+                overwrite_limits=OVERWRITE_LIMITS,
+                overwrite_mdr=OVERWRITE_MDR,
+                limits=limits,
+                mdr_in=DEFAULT_MERCHANT_MDR_IN,
+                mdr_out=DEFAULT_MERCHANT_MDR_OUT,
+            )
         cfg = MelbetIntegrationConfig.objects.filter(merchant=merchant).first()
         if cfg is None:
             print(f"  ! no MelbetIntegrationConfig for {uname}")
@@ -242,9 +270,12 @@ def run() -> None:
         merge_method_map(cfg)
 
     print("\n.env reminder (merge into existing JSON, do not drop C2CKZT):")
-    print('  PAYPLAT_REQUISITE_TYPE_MAP=... "QRKGS":"lkq"')
-    print("  # do not set payer=kz for QRKGS; deals send currency=kgs")
-    print("\nMelbet method to send: qr_kgs  currency: kgs")
+    print(
+        '  PAYPLAT_REQUISITE_TYPE_MAP=... '
+        '"QRKGS":"lkq","C2CKGS":"card","PHONEKGS":"mobile"}'
+    )
+    print("  # do not set payer=kz for KGS; deals send currency=kgs")
+    print("\nMelbet methods: qr_kgs | card2card_kgs | phone_kgs   currency: kgs")
 
 
 run()

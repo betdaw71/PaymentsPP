@@ -15,6 +15,17 @@ from payments.integrations.melbet.mapping import sender_bank_for_melbet_method
 
 
 class MelbetPaymentPageBankTest(SimpleTestCase):
+    def test_kgs_methods_have_no_sender_bank(self):
+        for method in (
+            "qr_kgs",
+            "lkq",
+            "elqr",
+            "card2card_kgs",
+            "phone_kgs",
+            "mobile_kgs",
+        ):
+            self.assertIsNone(sender_bank_for_melbet_method(method), method)
+
     def test_card2card_kzt_kaspi_opens_kaspi_not_homebank(self):
         self.assertEqual(sender_bank_for_melbet_method("card2card_kzt_kaspi"), "kaspi")
 
