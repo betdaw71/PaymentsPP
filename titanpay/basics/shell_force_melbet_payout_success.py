@@ -212,6 +212,8 @@ def ensure_test_trader(ps: PaymentSystem) -> Trader:
 
         detail = PaymentDetails.objects.filter(group=group, status=1).first()
         if detail is None:
+            # unique_active_phone / unique_active_card_number — разные значения на каждый PS.
+            suffix = uuid.uuid4().int % 10**7
             kwargs = {
                 "group": group,
                 "status": 1,
@@ -222,7 +224,7 @@ def ensure_test_trader(ps: PaymentSystem) -> Trader:
                 "bank_name": "MBank",
             }
             if p.name.upper() in {"PHONEKGS", "QRKGS"}:
-                kwargs["phone"] = "+996700111222"
+                kwargs["phone"] = f"+9967{suffix:07d}"
                 if p.name.upper() == "QRKGS":
                     kwargs["qr_payload"] = "https://example.invalid/media/pd_qr/test.png"
             else:
