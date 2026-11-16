@@ -380,67 +380,25 @@ def apply(po: PayOut, trader: Trader) -> None:
         f"trader={od.payment_details.group.trader.user.username}"
     )
     if SEND_CB:
-        session = _ensure_melbet_payout_session(po)
+        from payments.integrations.melbet.callbacks import (
+            _post_melbet_callback,
+            ensure_melbet_payout_session,
+        )
+
+        session = ensure_melbet_payout_session(po)
         sent = try_send_melbet_payout_callback(po, status_name="Success")
         print(f"  melbet payout callback={sent} session={session.id if session else None}")
-        if not sent and session is not None and po.callback_url:
-            from payments.integrations.melbet.callbacks import _post_melbet_callback
-
+        # shell вне atomic: on_commit уже сработал; на всякий случай прямой POST
+        if session is not None and po.callback_url:
             code = _post_melbet_callback(session, po.callback_url)
-            print(f"  fallback direct Melbet CB http={code}")
-
-
-def _ensure_melbet_payout_session(po: PayOut):
-    """Session иногда отсутствует (ручной Success / потеря связи) — восстановить для CB."""
-    from payments.integrations.melbet.models import MelbetIntegrationConfig, MelbetTransactionSession
-
-    session = (
-        MelbetTransactionSession.objects.filter(pay_out=po).select_related("config").first()
-    )
-    if session is not None:
-        return session
-
-    candidates = _moid_candidates(po.merchant_order_id or "")
-    for oid in candidates:
-        session = (
-            MelbetTransactionSession.objects.filter(order_id=oid).select_related("config").first()
-        )
-        if session is None:
-            continue
-        if session.pay_out_id and session.pay_out_id != po.id:
-            print(
-                f"  WARN: session order_id={oid} привязан к другому PayOut={session.pay_out_id}"
-            )
-            continue
-        if session.pay_out_id is None:
-            session.pay_out = po
-            session.save(update_fields=["pay_out"])
-            print(f"  reattached session to PayOut order_id={oid}")
-        return session
-
-    config = MelbetIntegrationConfig.objects.filter(merchant=po.merchant, active=True).first()
-    if config is None:
-        config = MelbetIntegrationConfig.objects.filter(merchant=po.merchant).first()
-    if config is None:
-        print("  ERROR: MelbetIntegrationConfig not found for merchant")
-        return None
-
-    order_id = (po.merchant_order_id or "").strip()
-    details = po.details if isinstance(po.details, dict) else {}
-    account = (details.get("phone") or details.get("card") or details.get("account") or "").strip()
-    session = MelbetTransactionSession.objects.create(
-        config=config,
-        pay_out=po,
-        order_id=order_id,
-        melbet_method=(po.payment_system.name if po.payment_system_id else "") or "",
-        account_number=account,
-    )
-    print(f"  created MelbetTransactionSession id={session.id} order_id={order_id!r}")
-    return session
+            print(f"  direct Melbet CB http={code}")
 
 
 def resend_melbet_cb(po: PayOut) -> None:
-    from payments.integrations.melbet.callbacks import _post_melbet_callback
+    from payments.integrations.melbet.callbacks import (
+        _post_melbet_callback,
+        ensure_melbet_payout_session,
+    )
 
     st = po.status.name if po.status_id else None
     print(f"RESEND_CB PayOut status={st}")
@@ -449,10 +407,11 @@ def resend_melbet_cb(po: PayOut) -> None:
     if not po.callback_url:
         print("  ERROR: empty callback_url")
         return
-    session = _ensure_melbet_payout_session(po)
+    session = ensure_melbet_payout_session(po)
     if session is None:
+        print("  ERROR: MelbetIntegrationConfig/session not available")
         return
-    print(f"  callback_url={po.callback_url}")
+    print(f"  callback_url={po.callback_url} session={session.id}")
     code = _post_melbet_callback(session, po.callback_url)
     print(f"  posted Melbet CB order_id={session.order_id!r} http={code}")
 
