@@ -1,29 +1,22 @@
 """
-Живая киргизская команда для Melbet local KGS (карта / телефон / ELQR).
+Живая киргизская команда / донастройка существующих трейдеров для Melbet local KGS.
 
-Не PSP: реквизиты вводят вручную в ЛК. PS уже должны существовать
-(shell_setup_melbet_kgs_payplat.py) — новые имена PS не нужны:
-  QRKGS   = local KGS ELQR (телефон +996…)
-  PHONEKGS = local KGS phone
-  C2CKGS  = local KGS card
+PS уже есть (shell_setup_melbet_kgs_payplat.py), новые имена не нужны:
+  QRKGS   = ELQR (телефон +996…)
+  PHONEKGS = phone
+  C2CKGS  = card
 
-Создаёт / обновляет:
-  - TraderTeam + TraderTeamRates на QRKGS / C2CKGS / PHONEKGS
-  - трейдеров (currency=KGS, manual_mode=True) или цепляет существующих
-  - пустые активные группы на каждый PS (реки добавят в ЛК)
+Существующие трейдеры (resdfe / resdfe1) — не трогает team/currency:
+  CREATE_USERS=0 TRADER_USERNAMES=resdfe,resdfe1 \\
+  docker compose exec -T -e CREATE_USERS -e TRADER_USERNAMES app \\
+    python manage.py shell < titanpay/basics/shell_create_melbet_kgs_live_team.py
 
 Новая команда:
-  TEAM_NAME='KG Local' TRADER_USERNAMES=kg_trader1,kg_trader2 \\
+  TEAM_NAME='KG Local' TRADER_USERNAMES=kg1,kg2 \\
   docker compose exec -T -e TEAM_NAME -e TRADER_USERNAMES app \\
     python manage.py shell < titanpay/basics/shell_create_melbet_kgs_live_team.py
 
-Существующая команда (только ставки + группы на юзеров):
-  TEAM_NAME='ИмяКоманды' TRADER_USERNAMES=user1,user2 CREATE_USERS=0 \\
-  docker compose exec -T -e TEAM_NAME -e TRADER_USERNAMES -e CREATE_USERS app \\
-    python manage.py shell < titanpay/basics/shell_create_melbet_kgs_live_team.py
-
-Опционально:
-  PASSWORD=... MDR_IN=7 USDT_BALANCE=5000
+Опционально: MDR_IN=7 MDR_OUT=2.5 PASSWORD=... USDT_BALANCE=5000 FORCE_TEAM=1
 """
 from __future__ import annotations
 
@@ -53,6 +46,8 @@ MDR_IN = Decimal(os.environ.get("MDR_IN", "7") or "7")
 MDR_OUT = Decimal(os.environ.get("MDR_OUT", "2.5") or "2.5")
 USDT_BALANCE = Decimal(os.environ.get("USDT_BALANCE", "5000") or "5000")
 CREATE_USERS = os.environ.get("CREATE_USERS", "1").strip().lower() in ("1", "true", "yes")
+# Не переносить существующих на TEAM_NAME / не менять currency (для resdfe).
+FORCE_TEAM = os.environ.get("FORCE_TEAM", "0").strip().lower() in ("1", "true", "yes")
 PS_NAMES = (KGS_PS_NAME, C2C_KGS_PS_NAME, PHONE_KGS_PS_NAME)
 
 
@@ -61,6 +56,22 @@ def _usernames() -> list[str]:
     if raw:
         return [u.strip() for u in raw.split(",") if u.strip()]
     return ["kg_trader1"] if CREATE_USERS else []
+
+
+def _ensure_rates(team: TraderTeam, payment_systems: list[PaymentSystem]) -> None:
+    for ps in payment_systems:
+        rate, created = TraderTeamRates.objects.get_or_create(
+            team=team,
+            payment_system=ps,
+            defaults={"mdr_in": MDR_IN, "mdr_out": MDR_OUT},
+        )
+        if not created and (rate.mdr_in != MDR_IN or rate.mdr_out != MDR_OUT):
+            rate.mdr_in = MDR_IN
+            rate.mdr_out = MDR_OUT
+            rate.save(update_fields=["mdr_in", "mdr_out"])
+            print(f"  ~ rates team={team.name} {ps.name} mdr_in={rate.mdr_in}")
+        else:
+            print(f"  {'+' if created else '~'} rates team={team.name} {ps.name} mdr_in={rate.mdr_in}")
 
 
 def run() -> None:
@@ -78,7 +89,6 @@ def run() -> None:
         if ps is None:
             print(f"ERROR: PaymentSystem {name} missing — run shell_setup_melbet_kgs_payplat.py")
             return
-        # Живые ELQR/phone: в ЛК нужен required_fields.phone
         if name in (KGS_PS_NAME, PHONE_KGS_PS_NAME):
             want = {"phone": {"regex": r"^\+\d{10,15}$", "pattern": "Phone +996…"}}
             if ps.required_fields != want:
@@ -91,36 +101,23 @@ def run() -> None:
             print(f"  ~ PS {name}")
         payment_systems.append(ps)
 
-    team = TraderTeam.objects.filter(name=TEAM_NAME).first()
-    if team is None:
-        team = TraderTeam.objects.create(name=TEAM_NAME)
-        print(f"  + team {TEAM_NAME} id={team.id}")
-    else:
-        print(f"  ~ team {TEAM_NAME} id={team.id}")
-
-    for ps in payment_systems:
-        rate, created = TraderTeamRates.objects.get_or_create(
-            team=team,
-            payment_system=ps,
-            defaults={"mdr_in": MDR_IN, "mdr_out": MDR_OUT},
-        )
-        if not created and rate.mdr_in != MDR_IN:
-            rate.mdr_in = MDR_IN
-            rate.mdr_out = MDR_OUT
-            rate.save(update_fields=["mdr_in", "mdr_out"])
-            print(f"  ~ rates {ps.name} mdr_in={rate.mdr_in}")
-        else:
-            print(f"  {'+' if created else '~'} rates {ps.name} mdr_in={rate.mdr_in}")
-
     usernames = _usernames()
+    fallback_team = TraderTeam.objects.filter(name=TEAM_NAME).first()
+    if fallback_team is None and (CREATE_USERS or FORCE_TEAM or not usernames):
+        fallback_team = TraderTeam.objects.create(name=TEAM_NAME)
+        print(f"  + team {TEAM_NAME} id={fallback_team.id}")
+    elif fallback_team is not None:
+        print(f"  ~ team {TEAM_NAME} id={fallback_team.id}")
+
+    if fallback_team is not None and (CREATE_USERS or FORCE_TEAM or not usernames):
+        _ensure_rates(fallback_team, payment_systems)
+
     if not usernames:
         print("WARN: TRADER_USERNAMES пуст — ставки команды готовы, трейдеров не трогали")
-        print("\nДальше в ЛК трейдера:")
-        print("  QRKGS (ELQR)  → телефон +996…")
-        print("  PHONEKGS      → телефон +996…")
-        print("  C2CKGS        → карта 16 цифр")
+        print("\nДальше в ЛК: QRKGS/PHONEKGS → +996… ; C2CKGS → карта 16 цифр")
         return
 
+    touched_teams: set[int] = set()
     for i, uname in enumerate(usernames):
         user = User.objects.filter(username=uname).first()
         if user is None:
@@ -136,16 +133,19 @@ def run() -> None:
         else:
             print(f"  ~ user {uname}")
 
-        trader = Trader.objects.filter(user=user).first()
+        trader = Trader.objects.filter(user=user).select_related("team").first()
         if trader is None:
             if not CREATE_USERS:
                 print(f"  ! trader {uname} не найден — пропуск")
+                continue
+            if fallback_team is None:
+                print(f"  ! нет TEAM_NAME={TEAM_NAME} для нового трейдера")
                 continue
             bal = Balance.objects.create(type=0, amount=USDT_BALANCE)
             frozen = Balance.objects.create(type=1, amount=Decimal("0"))
             trader = Trader.objects.create(
                 user=user,
-                team=team,
+                team=fallback_team,
                 currency=kgs,
                 language=lang,
                 balance_usdt=bal,
@@ -158,10 +158,10 @@ def run() -> None:
             print(f"  + trader {uname} boss={trader.is_boss} balance={USDT_BALANCE}")
         else:
             fields = []
-            if trader.team_id != team.id:
-                trader.team = team
+            if FORCE_TEAM and fallback_team is not None and trader.team_id != fallback_team.id:
+                trader.team = fallback_team
                 fields.append("team")
-            if trader.currency_id != kgs.id:
+            if FORCE_TEAM and trader.currency_id != kgs.id:
                 trader.currency = kgs
                 fields.append("currency")
             if not trader.manual_mode:
@@ -169,7 +169,15 @@ def run() -> None:
                 fields.append("manual_mode")
             if fields:
                 trader.save(update_fields=fields)
-            print(f"  ~ trader {uname} updated {fields or 'ok'}")
+            team_label = trader.team.name if trader.team_id else None
+            print(f"  ~ trader {uname} team={team_label} updated {fields or 'ok'}")
+
+        if trader.team_id is None:
+            print(f"  ! trader {uname} без команды — ставки некуда писать")
+            continue
+        if trader.team_id not in touched_teams:
+            _ensure_rates(trader.team, payment_systems)
+            touched_teams.add(trader.team_id)
 
         for ps in payment_systems:
             group = PaymentDetailsGroup.objects.filter(
