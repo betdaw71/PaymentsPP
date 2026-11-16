@@ -31,12 +31,25 @@ def kzt_c2c_bank_ps_names() -> set[str]:
     return {p.strip() for p in parts if p.strip()}
 
 
+def melbet_kgs_ps_names() -> set[str]:
+    """Melbet Kyrgyzstan local methods (QR / card / phone) — same SberRouting as C2C."""
+    raw = getattr(settings, "MELBET_KGS_PS_NAMES", None)
+    if raw is None:
+        raw = "QRKGS,C2CKGS,PHONEKGS"
+    if isinstance(raw, (list, tuple, set)):
+        parts = [str(p) for p in raw]
+    else:
+        parts = str(raw).split(",")
+    return {p.strip() for p in parts if p.strip()}
+
+
 def card_like_ps_names() -> set[str]:
     names = {
         settings.SBER_NAME,
         settings.C2C_NAME,
         settings.PROTOCOL_C2C_NAME,
         *kzt_c2c_bank_ps_names(),
+        *melbet_kgs_ps_names(),
     }
     test_ps = (getattr(settings, "PLUTUS_TEST_PS_NAME", None) or "").strip()
     if test_ps:
