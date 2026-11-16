@@ -432,11 +432,20 @@ const saveDetail = (index, data) => {
   console.log ({ index, data })
   baseStore.addPaymentDetailToDetailsById({
     ...data,
-  }, itemData.value.id).then (response => {
+  }, itemData.value.id).then (async response => {
     if (response.error) {
       throw response.error
     }
-    itemData.value.details[index] = response.data
+    const saved = response.data
+    // Empty/legacy 200 body must not wipe the row — reload group details.
+    if (saved && typeof saved === "object" && !Array.isArray(saved) && (saved.id || saved.card_number || saved.phone)) {
+      itemData.value.details[index] = saved
+    } else {
+      const refreshed = await baseStore.getPaymentDetailsById({}, itemData.value.id)
+      if (!refreshed.error && refreshed.data?.details) {
+        itemData.value.details = refreshed.data.details
+      }
+    }
     snackbar.value = {
       enabled: true,
       type: "success",

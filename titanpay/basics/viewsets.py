@@ -16,8 +16,8 @@ from basics.serializers import LanguageSerializer, CurrencySerializer, PaymentSy
     SupportMemberCreateSerializer, TraderTeamSerializer, BalanceSerializer, TrafficTypeSerializer, \
     PaymentDetailsGroupCreateSerializer, PaymentDetailsGroupFullSerializer, PaymentDetailsGroupShortSerializer, \
     PaymentDetailsSberActionSerializer, PaymentDetailsGroupStatusSerializer, PaymentDetailsStatusSerializer, \
-    RatesSerializer, PaymentDetailsSberAddSerializer, MinMaxAmountOutSerializer, TeamLeadSerializer, \
-    DepositModeSerializer
+    RatesSerializer, PaymentDetailsSberAddSerializer, PaymentDetailsSberSerializer, MinMaxAmountOutSerializer, \
+    TeamLeadSerializer, DepositModeSerializer
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from basics.permissions import ReadOnly, SupportPermission, TraderPermission, MerchantPermission, HeadSupportPermission, \
@@ -663,9 +663,12 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
         if details_group != group:
             return Response(status=status.HTTP_400_BAD_REQUEST, data={'error': 'Wrong payment details group'})
 
-        serializer.save()
-
-        return Response(status=status.HTTP_200_OK)
+        detail = serializer.save()
+        # Frontend expects 201 + detail payload; empty 200 made the row "vanish" in LK.
+        return Response(
+            PaymentDetailsSberSerializer(detail).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @transaction.atomic
     @action(detail=True, methods=['POST'], permission_classes=[TraderPermission], url_path='change-details-status')
@@ -691,7 +694,10 @@ class PaymentDetailsGroupViewSet(viewsets.ModelViewSet):
         details.status = serializer_data['status']
         details.save()
 
-        return Response(status=status.HTTP_200_OK)
+        return Response(
+            PaymentDetailsSberSerializer(details).data,
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=['POST'], permission_classes=[TraderPermission | DebugPermission | SupportPermission], url_path='in-out')
     @transaction.atomic

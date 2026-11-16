@@ -544,7 +544,8 @@ export const useBaseStore = defineStore ({
     },
     async addPaymentDetailToDetailsById (params, id) {
       const response = await instance.post (`/base/details/${id}/add-details/`, params)
-      if (response.status === 201) {
+      // Backend historically returned empty 200; FE expected 201 → row looked "vanished".
+      if (response.status === 201 || response.status === 200) {
         return {
           data: response.data,
           error: null,
@@ -552,13 +553,13 @@ export const useBaseStore = defineStore ({
       }
 
       return {
-        data: [],
+        data: null,
         error: response.data,
       }
     },
     async changePaymentDetailToDetailsById (params, id) {
       const response = await instance.post (`/base/details/${id}/change-details-status/`, params)
-      if (response.status === 201) {
+      if (response.status === 201 || response.status === 200) {
         return {
           data: response.data,
           error: null,
@@ -566,7 +567,7 @@ export const useBaseStore = defineStore ({
       }
 
       return {
-        data: [],
+        data: null,
         error: response.data,
       }
     },
