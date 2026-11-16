@@ -224,7 +224,7 @@
             <div id="bank-actions"></div>
           </div>
           <div class="steps" id="details"></div>
-          <div class="fx-note"><span class="info-ico">!</span><p id="txt-fx-note"></p></div>
+          <div class="fx-note" id="fx-note-box"><span class="info-ico">!</span><p id="txt-fx-note"></p></div>
         </div>
         <div class="receipt-box hidden" id="receipt-box">
           <div id="txt-receipt-label"></div>
@@ -331,8 +331,13 @@
         s7: "“Аудару” түймесін басыңыз",
         qrTitle: "QR арқылы төлеңіз",
         qrHint: "Банк қосымшасымен QR кодты сканерлеңіз немесе төлем сілтемесін ашыңыз",
+        qrMissing: "QR код әзірге қолжетімсіз. Төлем сілтемесін ашыңыз немесе кейінірек қайталаңыз.",
         openPay: "Төлемді ашу",
         phoneLabel: "Телефон нөмірі",
+        kgsCardTitle: "Карта нөмірін көшіріп, банк қосымшасында аударым жасаңыз",
+        kgsPhoneTitle: "Телефон нөмірін көшіріп, банк қосымшасында аударым жасаңыз",
+        kgsStepApp: "Кез келген банк қосымшасын ашыңыз (Kyrgyzstan)",
+        kgsStepPay: "Дәл көрсетілген сомаға аударым жасаңыз",
         fxNote: "Құрметті пайдаланушы, банк валютаны айырбастауына байланысты депозитке түсетін сомада шамалы айырмашылық болуы мүмкін.",
       },
       ru: {
@@ -366,9 +371,14 @@
         s6: "Введите точную сумму",
         s7: "Нажмите кнопку “Перевести”",
         qrTitle: "Оплатите по QR",
-        qrHint: "Отсканируйте QR в банковском приложении или откройте ссылку оплаты",
+        qrHint: "Отсканируйте QR-код в банковском приложении Кыргызстана или откройте ссылку оплаты",
+        qrMissing: "QR-код пока недоступен. Откройте ссылку оплаты или повторите попытку позже.",
         openPay: "Открыть оплату",
         phoneLabel: "Номер телефона",
+        kgsCardTitle: "Скопируйте номер карты и переведите в банковском приложении",
+        kgsPhoneTitle: "Скопируйте номер телефона и переведите в банковском приложении",
+        kgsStepApp: "Откройте приложение любого банка Кыргызстана",
+        kgsStepPay: "Переведите точную указанную сумму",
         fxNote: "Уважаемый пользователь, из-за конвертации валюты банком могут быть минимальные отличия в сумме зачисления депозита.",
       },
     };
@@ -523,36 +533,47 @@
       return typeof v === "string" && /^https?:\/\//i.test(v);
     }
     function renderQrDetails(pd, amountLine, amountCopy) {
+      const hasQr = pd && isHttpUrl(pd.qr_image_url);
+      const hasLink = pd && isHttpUrl(pd.payment_form_url);
       let html = "";
       html += `<div class="step"><div class="num">1</div><div class="step-body"><b>${esc(t("qrTitle"))}</b><div class="chip-label" style="margin-top:6px">${esc(t("qrHint"))}</div></div></div>`;
-      if (pd && isHttpUrl(pd.qr_image_url)) {
-        html += `<div style="text-align:center;margin:12px 0"><img alt="QR" src="${esc(pd.qr_image_url)}" style="max-width:240px;width:100%;height:auto;border-radius:12px;background:#fff;padding:10px"></div>`;
+      if (hasQr) {
+        html += `<div style="text-align:center;margin:14px 0 8px"><img alt="QR" src="${esc(pd.qr_image_url)}" style="max-width:260px;width:100%;height:auto;border-radius:16px;background:#fff;padding:12px;box-shadow:0 8px 24px rgba(28,36,52,.08)"></div>`;
       }
-      if (pd && isHttpUrl(pd.payment_form_url)) {
+      if (hasLink) {
         html += `<p style="margin:12px 0"><a class="kaspi" href="${esc(pd.payment_form_url)}" rel="noopener noreferrer">${esc(t("openPay"))}</a></p>`;
       }
-      html += step(2, t("s6"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      if (!hasQr && !hasLink) {
+        html += `<p class="chip-label" style="margin:10px 0 4px;color:#ef4d55">${esc(t("qrMissing"))}</p>`;
+      }
+      html += step(2, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
       return html;
     }
-    function renderPhoneDetails(pd, amountLine, amountCopy) {
+    function renderKgsPhoneDetails(pd, amountLine, amountCopy) {
       const phone = pd && pd.phone;
       const owner = pd && pd.owner;
       let html = "";
-      html += step(1, t("phoneLabel"), chip(icoCard(), t("phone"), phone || "", phone ? String(phone).replace(/\s/g, "") : ""));
-      if (owner) html += step(2, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || ""));
-      html += step(owner ? 3 : 2, t("s6"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      html += step(1, t("kgsPhoneTitle"), chip(icoCard(), t("phoneLabel"), phone || "", phone ? String(phone).replace(/\s/g, "") : ""));
+      html += step(2, t("kgsStepApp"));
+      if (owner) html += step(3, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || ""));
+      html += step(owner ? 4 : 3, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
       return html;
     }
-    function renderDetails(pd, amountLine, amountCopy, pageMode) {
+    function renderKgsCardDetails(pd, amountLine, amountCopy) {
       const card = pd && pd.card_number;
-      const phone = pd && pd.phone;
-      const deposit = pd && pd.deposit_number;
       const owner = pd && pd.owner;
-      const qrOnly = pageMode === "qr" || (!card && !phone && !deposit && (isHttpUrl(pd && pd.qr_image_url) || isHttpUrl(pd && pd.payment_form_url)));
-      if (qrOnly) return renderQrDetails(pd, amountLine, amountCopy);
-      if (!card && phone) return renderPhoneDetails(pd, amountLine, amountCopy);
       let html = "";
-      html += step(1, t("s1"), chip(icoCard(), t("card"), card ? spaceCard(card) : (deposit || ""), card ? String(card).replace(/\s/g, "") : (deposit || "")));
+      html += step(1, t("kgsCardTitle"), chip(icoCard(), t("card"), card ? spaceCard(card) : "", card ? String(card).replace(/\s/g, "") : ""));
+      html += step(2, t("kgsStepApp"));
+      if (owner) html += step(3, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || ""));
+      html += step(owner ? 4 : 3, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+      return html;
+    }
+    function renderH2hDetails(pd, amountLine, amountCopy) {
+      const card = pd && (pd.card_number || pd.deposit_number);
+      const owner = pd && pd.owner;
+      let html = "";
+      html += step(1, t("s1"), chip(icoCard(), t("card"), card && pd.card_number ? spaceCard(pd.card_number) : (card || ""), pd.card_number ? String(pd.card_number).replace(/\s/g, "") : (card || "")));
       html += step(2, t("s2"));
       html += step(3, t("s3"));
       html += step(4, t("s4"));
@@ -560,6 +581,12 @@
       html += step(6, t("s6"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
       html += step(7, t("s7"));
       return html;
+    }
+    function renderDetails(pd, amountLine, amountCopy, pageMode) {
+      if (pageMode === "qr") return renderQrDetails(pd, amountLine, amountCopy);
+      if (pageMode === "phone") return renderKgsPhoneDetails(pd, amountLine, amountCopy);
+      if (pageMode === "card_kgs") return renderKgsCardDetails(pd, amountLine, amountCopy);
+      return renderH2hDetails(pd, amountLine, amountCopy);
     }
     function isAndroid() { return /android/i.test(navigator.userAgent || ""); }
     function copyClipboardQuiet(text) {
@@ -663,7 +690,21 @@
       }
       return false;
     }
+    function syncLocaleFromData(data) {
+      // KGS local: всегда RU (не держим kk из localStorage Kaspi-страницы).
+      const mode = data.page_mode || "h2h";
+      if (mode !== "h2h") {
+        locale = "ru";
+        localStorage.setItem(`pay_locale_${PAY_IN_ID}`, "ru");
+      } else if (data.locale === "kk" || data.locale === "ru") {
+        locale = data.locale;
+      }
+      const showKk = data.show_lang_kk !== false && mode === "h2h";
+      const optKk = document.getElementById("lang-opt-kk");
+      if (optKk) optKk.classList.toggle("hidden", !showKk);
+    }
     function renderPay(data) {
+      syncLocaleFromData(data);
       applyStaticI18n();
       if (handleTerminal(data)) return;
       if (data.waiting_confirmation || data.pending_verification || wasSent()) {
@@ -683,13 +724,19 @@
       const amt = fmtAmount(xfer.amount, xfer.currency);
       lastAmountCopy = copyAmountText(xfer.amount);
       document.getElementById("amount-value").textContent = amt;
-      document.getElementById("amount-line").textContent = amt;
+      const amountLineEl = document.getElementById("amount-line");
+      if (amountLineEl) amountLineEl.textContent = amt;
       document.getElementById("txt-banner").innerHTML = t("banner").replace("{amt}", amt);
-      document.getElementById("ps-line").textContent = data.payment_system || "";
-      document.getElementById("cur-chip").textContent = data.currency || "KZT";
-      document.getElementById("pid").textContent = (PAY_IN_ID || "").slice(0, 6) + "…" + (PAY_IN_ID || "").slice(-4);
+      const psLine = document.getElementById("ps-line");
+      if (psLine) psLine.textContent = data.payment_system || "";
+      const curChip = document.getElementById("cur-chip");
+      if (curChip) curChip.textContent = data.currency || "KZT";
+      const pid = document.getElementById("pid");
+      if (pid) pid.textContent = (PAY_IN_ID || "").slice(0, 6) + "…" + (PAY_IN_ID || "").slice(-4);
+      const fxBox = document.getElementById("fx-note-box");
+      if (fxBox) fxBox.classList.toggle("hidden", data.show_fx_note === false || (data.page_mode && data.page_mode !== "h2h"));
       document.getElementById("details").innerHTML = renderDetails(
-        data.payment_details, amt, lastAmountCopy, data.page_mode
+        data.payment_details, amt, lastAmountCopy, data.page_mode || "h2h"
       );
       if ((data.bank_actions || []).length) renderBankActions(data);
       else document.getElementById("bank-actions").innerHTML = "";

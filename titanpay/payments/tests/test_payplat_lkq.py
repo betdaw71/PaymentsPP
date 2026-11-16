@@ -85,6 +85,21 @@ class PayplatLkqTest(SimpleTestCase):
         self.assertEqual(req["card_number"], "4154795018971797")
         self.assertNotIn("payment_form_url", req)
 
+    def test_lkq_prefer_qr_wins_over_phone(self):
+        body = {
+            "qr_url": "https://payplat.example/lkq/abc",
+            "qr_image_url": "https://payplat.example/qr.png",
+            "requisite": {"phone_number": "+996506505435", "holder_name": "TEST"},
+        }
+        h2h = payplat_map_requisite(body)
+        self.assertEqual(h2h.get("phone"), "+996506505435")
+        qr = payplat_map_requisite(body, prefer_qr=True)
+        self.assertEqual(qr["payment_form_url"], "https://payplat.example/lkq/abc")
+        self.assertEqual(qr["qr_image_url"], "https://payplat.example/qr.png")
+        self.assertNotIn("phone", qr)
+        self.assertTrue(payplat_requisite_matches_requested_type(qr, "lkq"))
+        self.assertFalse(payplat_requisite_matches_requested_type(h2h, "lkq"))
+
     def test_kgs_usdt_quote_is_not_paid_fiat(self):
         body = {
             "shop_internal_id": "x",

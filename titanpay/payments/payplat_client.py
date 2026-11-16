@@ -767,7 +767,7 @@ def payplat_requisite_currency_ok(
 
 
 def payplat_requisite_matches_requested_type(req: dict, requisite_type: str | None) -> bool:
-    """CARD не должен отдавать телефон, MOBILE — не карту."""
+    """CARD ≠ телефон; MOBILE ≠ карта; LKQ/QR — только widget/QR, не H2H phone/card."""
     rt = (requisite_type or "").strip().lower()
     if not isinstance(req, dict):
         return False
@@ -775,6 +775,11 @@ def payplat_requisite_matches_requested_type(req: dict, requisite_type: str | No
         return bool(str(req.get("card_number") or "").strip())
     if rt in ("mobile", "phone"):
         return bool(str(req.get("phone") or "").strip())
+    if rt in ("lkq", "qr", "elqr"):
+        return bool(
+            str(req.get("payment_form_url") or "").strip()
+            or str(req.get("qr_image_url") or "").strip()
+        )
     return True
 
 
@@ -786,10 +791,58 @@ def _http_url(*values) -> str:
     return ""
 
 
-def payplat_map_requisite(create_body: dict) -> dict:
-    """H2H card/phone first (трансгран KZT). LKQ widget/QR — только если карты/телефона нет."""
+def _payplat_extract_qr_widget(create_body: dict) -> dict:
+    invoice = create_body.get("invoice") if isinstance(create_body.get("invoice"), dict) else {}
+    payment_data = invoice.get("payment_data") if isinstance(invoice.get("payment_data"), dict) else {}
+    requisite = create_body.get("requisite") if isinstance(create_body.get("requisite"), dict) else {}
+    widget = _http_url(
+        create_body.get("widget_url"),
+        create_body.get("qr_url"),
+        create_body.get("payment_form_url"),
+        create_body.get("payment_url"),
+        create_body.get("pay_url"),
+        invoice.get("widget_url"),
+        invoice.get("qr_url"),
+        invoice.get("payment_form_url"),
+        payment_data.get("widget_url"),
+        payment_data.get("qr_url"),
+        payment_data.get("payment_form_url"),
+        requisite.get("widget_url"),
+        requisite.get("qr_url"),
+        requisite.get("payment_form_url"),
+    )
+    qr_img = _http_url(
+        create_body.get("qr_image_url"),
+        create_body.get("qr_image"),
+        invoice.get("qr_image_url"),
+        payment_data.get("qr_image_url"),
+        requisite.get("qr_image_url"),
+    )
+    if not widget and not qr_img:
+        return {}
+    out: dict[str, str] = {}
+    if widget:
+        out["payment_form_url"] = widget
+    if qr_img:
+        out["qr_image_url"] = qr_img
+    owner = requisite.get("holder_name") or payment_data.get("card_holder") or ""
+    bank = requisite.get("bank") or payment_data.get("bank") or ""
+    if owner:
+        out["owner"] = str(owner)
+    if bank:
+        out["bank"] = str(bank)
+    return out
+
+
+def payplat_map_requisite(create_body: dict, *, prefer_qr: bool = False) -> dict:
+    """H2H card/phone first (трансгран KZT). Для LKQ — prefer_qr=True: widget/QR важнее phone/card."""
     if not isinstance(create_body, dict):
         return {}
+
+    if prefer_qr:
+        qr = _payplat_extract_qr_widget(create_body)
+        if qr:
+            return qr
 
     requisite = create_body.get("requisite")
     if isinstance(requisite, dict):
@@ -840,41 +893,7 @@ def payplat_map_requisite(create_body: dict) -> dict:
                     "bank": bank,
                 }
 
-    invoice = create_body.get("invoice") if isinstance(create_body.get("invoice"), dict) else {}
-    payment_data = invoice.get("payment_data") if isinstance(invoice.get("payment_data"), dict) else {}
-    requisite = create_body.get("requisite") if isinstance(create_body.get("requisite"), dict) else {}
-    widget = _http_url(
-        create_body.get("widget_url"),
-        create_body.get("qr_url"),
-        create_body.get("payment_form_url"),
-        invoice.get("widget_url"),
-        invoice.get("qr_url"),
-        payment_data.get("widget_url"),
-        payment_data.get("qr_url"),
-        requisite.get("widget_url"),
-        requisite.get("qr_url"),
-    )
-    qr_img = _http_url(
-        create_body.get("qr_image_url"),
-        invoice.get("qr_image_url"),
-        payment_data.get("qr_image_url"),
-        requisite.get("qr_image_url"),
-    )
-    if widget or qr_img:
-        out: dict[str, str] = {}
-        if widget:
-            out["payment_form_url"] = widget
-        if qr_img:
-            out["qr_image_url"] = qr_img
-        owner = requisite.get("holder_name") or payment_data.get("card_holder") or ""
-        bank = requisite.get("bank") or payment_data.get("bank") or ""
-        if owner:
-            out["owner"] = owner
-        if bank:
-            out["bank"] = bank
-        return out
-
-    return {}
+    return _payplat_extract_qr_widget(create_body)
 
 
 def payplat_requisite_for_payin(pay_in: Any) -> dict | None:
@@ -883,7 +902,10 @@ def payplat_requisite_for_payin(pay_in: Any) -> dict | None:
     s = PayplatPayInSession.objects.filter(pay_in_id=pay_in.pk).first()
     if s is None:
         return None
-    req = payplat_map_requisite(s.create_response or {})
+    ps_name = pay_in.payment_system.name if getattr(pay_in, "payment_system", None) else None
+    req_type = payplat_requisite_type_for(ps_name, pay_in)
+    prefer_qr = req_type in {"lkq", "qr", "elqr"}
+    req = payplat_map_requisite(s.create_response or {}, prefer_qr=prefer_qr)
     from payments.psp_payin import requisite_payload_has_fields
 
     return req if requisite_payload_has_fields(req) else None
@@ -961,7 +983,8 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
     session.provider_order_id = str((session.create_response or {}).get("order_id") or "")
     session.save(update_fields=["create_response", "provider_order_id", "updated_at"])
 
-    req = payplat_map_requisite(session.create_response)
+    prefer_qr = (requisite_type or "").strip().lower() in {"lkq", "qr", "elqr"}
+    req = payplat_map_requisite(session.create_response, prefer_qr=prefer_qr)
     from payments.psp_payin import requisite_payload_has_fields
 
     if requisite_payload_has_fields(req) and not payplat_requisite_matches_requested_type(req, requisite_type):

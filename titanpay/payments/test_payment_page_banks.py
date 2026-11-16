@@ -12,6 +12,7 @@ from payments.bank_deeplinks import (
 )
 from payments.bank_guides import build_bank_guides
 from payments.integrations.melbet.mapping import sender_bank_for_melbet_method
+from payments.payment_page_enrich import page_mode_for_payin, resolve_locale
 
 
 class MelbetPaymentPageBankTest(SimpleTestCase):
@@ -25,6 +26,18 @@ class MelbetPaymentPageBankTest(SimpleTestCase):
             "mobile_kgs",
         ):
             self.assertIsNone(sender_bank_for_melbet_method(method), method)
+
+    def test_qrkgs_page_mode_is_qr_even_with_phone_payload(self):
+        pay_in = SimpleNamespace(
+            payment_system=SimpleNamespace(name="QRKGS"),
+            currency=SimpleNamespace(symbol="KGS"),
+            melbet_session=SimpleNamespace(melbet_method="elqr"),
+        )
+        self.assertEqual(
+            page_mode_for_payin(pay_in, {"phone": "+996506505435"}),
+            "qr",
+        )
+        self.assertEqual(resolve_locale(pay_in), "ru")
 
     def test_card2card_kzt_kaspi_opens_kaspi_not_homebank(self):
         self.assertEqual(sender_bank_for_melbet_method("card2card_kzt_kaspi"), "kaspi")
