@@ -867,6 +867,45 @@ def _payplat_extract_qr_widget(create_body: dict) -> dict:
     return out
 
 
+def _looks_like_phone(raw: str) -> bool:
+    s = (raw or "").strip()
+    if not s:
+        return False
+    if s.startswith("+"):
+        return True
+    digits = "".join(c for c in s if c.isdigit())
+    # KG mobile / international, не 16-значная карта.
+    if 9 <= len(digits) <= 15 and not (len(digits) == 16):
+        return True
+    return False
+
+
+def _normalize_phone(raw: str) -> str:
+    phone = (raw or "").strip()
+    digits = "".join(c for c in phone if c.isdigit())
+    if phone.startswith("+"):
+        return phone
+    return f"+{digits}" if digits else phone
+
+
+def _map_card_or_phone(card: str, phone: str, *, owner: str = "", bank: str = "") -> dict:
+    """PayPlat KGS часто кладёт телефон в card_number (+996…)."""
+    card = (card or "").strip()
+    phone = (phone or "").strip()
+    if phone:
+        return {"phone": _normalize_phone(phone), "owner": owner, "bank": bank}
+    if card and _looks_like_phone(card):
+        return {"phone": _normalize_phone(card), "owner": owner, "bank": bank}
+    if card:
+        digits = "".join(c for c in card if c.isdigit())
+        return {
+            "card_number": digits[:16] if len(digits) >= 16 else card,
+            "owner": owner,
+            "bank": bank,
+        }
+    return {}
+
+
 def payplat_map_requisite(create_body: dict, *, prefer_qr: bool = False) -> dict:
     """H2H card/phone first (трансгран KZT). Для LKQ — prefer_qr=True: widget/QR важнее phone/card."""
     if not isinstance(create_body, dict):
@@ -879,52 +918,31 @@ def payplat_map_requisite(create_body: dict, *, prefer_qr: bool = False) -> dict
 
     requisite = create_body.get("requisite")
     if isinstance(requisite, dict):
-        card = (requisite.get("card_number") or "").strip()
-        phone = (requisite.get("phone_number") or "").strip()
-        owner = requisite.get("holder_name") or ""
-        bank = requisite.get("bank") or ""
-        if card:
-            digits = "".join(c for c in card if c.isdigit())
-            return {"card_number": digits[:16] if len(digits) >= 16 else card, "owner": owner, "bank": bank}
-        if phone:
-            digits = "".join(c for c in phone if c.isdigit())
-            return {
-                "phone": phone if phone.startswith("+") else (f"+{digits}" if digits else phone),
-                "owner": owner,
-                "bank": bank,
-            }
+        mapped = _map_card_or_phone(
+            requisite.get("card_number") or "",
+            requisite.get("phone_number") or "",
+            owner=requisite.get("holder_name") or "",
+            bank=requisite.get("bank") or "",
+        )
+        if mapped:
+            return mapped
 
     top_phone = (create_body.get("phone_number") or "").strip()
     if top_phone:
-        digits = "".join(c for c in top_phone if c.isdigit())
-        return {
-            "phone": top_phone if top_phone.startswith("+") else (f"+{digits}" if digits else top_phone),
-            "owner": "",
-            "bank": "",
-        }
+        return {"phone": _normalize_phone(top_phone), "owner": "", "bank": ""}
 
     invoice = create_body.get("invoice")
     if isinstance(invoice, dict):
         payment_data = invoice.get("payment_data")
         if isinstance(payment_data, dict):
-            card = (payment_data.get("card_number") or "").strip()
-            owner = payment_data.get("card_holder") or payment_data.get("holder_name") or ""
-            bank = payment_data.get("bank") or ""
-            if card:
-                digits = "".join(c for c in card if c.isdigit())
-                return {
-                    "card_number": digits[:16] if len(digits) >= 16 else card,
-                    "owner": owner,
-                    "bank": bank,
-                }
-            phone = (payment_data.get("phone_number") or payment_data.get("phone") or "").strip()
-            if phone:
-                digits = "".join(c for c in phone if c.isdigit())
-                return {
-                    "phone": phone if phone.startswith("+") else (f"+{digits}" if digits else phone),
-                    "owner": owner,
-                    "bank": bank,
-                }
+            mapped = _map_card_or_phone(
+                payment_data.get("card_number") or "",
+                payment_data.get("phone_number") or payment_data.get("phone") or "",
+                owner=payment_data.get("card_holder") or payment_data.get("holder_name") or "",
+                bank=payment_data.get("bank") or "",
+            )
+            if mapped:
+                return mapped
 
     return _payplat_extract_qr_widget(create_body)
 

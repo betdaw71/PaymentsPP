@@ -209,6 +209,23 @@ class PayplatCardPhoneSplitTest(SimpleTestCase):
         self.assertTrue(payplat_requisite_matches_requested_type(card, "card"))
         self.assertFalse(payplat_requisite_matches_requested_type(card, "mobile"))
 
+    def test_kgs_phone_in_card_number_field_maps_to_phone(self):
+        req = payplat_map_requisite(
+            {
+                "invoice": {
+                    "payment_data": {
+                        "card_number": "+996506505435",
+                        "card_holder": "TEST",
+                        "bank": "MBank",
+                    }
+                }
+            }
+        )
+        self.assertEqual(req.get("phone"), "+996506505435")
+        self.assertNotIn("card_number", req)
+        self.assertTrue(payplat_requisite_matches_requested_type(req, "mobile"))
+        self.assertFalse(payplat_requisite_matches_requested_type(req, "card"))
+
 
 class MelbetKgsMethodMapTest(TestCase):
     def test_resolves_kgs_methods(self):
