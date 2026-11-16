@@ -150,12 +150,22 @@ def create_melbet_deposit(
     first_amount = candidate_amounts[0]
 
     with transaction.atomic():
-        in_order = InOrder.create(
-            amount=first_amount,
-            solution=solution,
-            client_deposit_count=client.order_count,
-            merchant_order_id=order_id,
-        )
+        try:
+            in_order = InOrder.create(
+                amount=first_amount,
+                solution=solution,
+                client_deposit_count=client.order_count,
+                merchant_order_id=order_id,
+            )
+        except ValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, (list, tuple)) and detail:
+                message = str(detail[0])
+            elif isinstance(detail, dict):
+                message = str(detail.get("error") or detail)
+            else:
+                message = str(detail)
+            raise MelbetServiceError(message, code=400) from exc
         pay_in = PayIn.objects.create(
             amount=first_amount,
             currency=currency,
