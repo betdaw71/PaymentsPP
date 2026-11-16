@@ -47,6 +47,8 @@ MOID_RAW = (os.environ.get("MERCHANT_ORDER_ID") or os.environ.get("ORDER_ID") or
 TRADER = (os.environ.get("TRADER") or "melbet_kgs_payout_test").strip() or "melbet_kgs_payout_test"
 TEAM_NAME = (os.environ.get("TEAM_NAME") or "Melbet KGS Payout Test").strip()
 APPLY = (os.environ.get("APPLY") or "").strip().lower() in {"1", "true", "yes"}
+# Только повторный Melbet CB (order_id), если у нас уже Success, а у Melbet остался отказ.
+RESEND_CB = (os.environ.get("RESEND_CB") or "").strip().lower() in {"1", "true", "yes"}
 SEND_CB = (os.environ.get("SEND_CALLBACK") or "1").strip().lower() not in {"0", "false", "no"}
 MDR_OUT = Decimal(os.environ.get("MDR_OUT", "2.5") or "2.5")
 MDR_IN = Decimal(os.environ.get("MDR_IN", "7") or "7")
@@ -382,11 +384,34 @@ def apply(po: PayOut, trader: Trader) -> None:
         print(f"  melbet payout callback={sent}")
 
 
+def resend_melbet_cb(po: PayOut) -> None:
+    from payments.integrations.melbet.callbacks import _post_melbet_callback
+    from payments.integrations.melbet.models import MelbetTransactionSession
+
+    st = po.status.name if po.status_id else None
+    print(f"RESEND_CB PayOut status={st}")
+    if st != "Success":
+        print("  WARN: статус не Success — Melbet после CB увидит FAILED/PENDING")
+    session = MelbetTransactionSession.objects.filter(pay_out=po).select_related("config").first()
+    if session is None:
+        session = MelbetTransactionSession.objects.filter(order_id=po.merchant_order_id).select_related(
+            "config"
+        ).first()
+    if session is None:
+        print("  ERROR: MelbetTransactionSession not found")
+        return
+    if not po.callback_url:
+        print("  ERROR: empty callback_url")
+        return
+    code = _post_melbet_callback(session, po.callback_url)
+    print(f"  posted Melbet CB order_id={session.order_id} http={code}")
+
+
 def run() -> None:
     if not MOID_RAW:
         print("ERROR: set MERCHANT_ORDER_ID=w5547812021")
         return
-    print(f"MERCHANT_ORDER_ID={MOID_RAW!r} TRADER={TRADER} APPLY={APPLY}")
+    print(f"MERCHANT_ORDER_ID={MOID_RAW!r} TRADER={TRADER} APPLY={APPLY} RESEND_CB={RESEND_CB}")
     print(f"  lookup candidates={_moid_candidates(MOID_RAW)}")
 
     po = find_payout(MOID_RAW)
@@ -406,6 +431,10 @@ def run() -> None:
         return
 
     inspect(po)
+    if RESEND_CB:
+        resend_melbet_cb(po)
+        return
+
     ps = po.payment_system
     if ps is None:
         print("ERROR: no payment_system")
@@ -415,6 +444,7 @@ def run() -> None:
     print(f"  test detail ready={detail.id if detail else None}")
     if not APPLY:
         print("DRY-RUN — set APPLY=1 to assign test trader + Success")
+        print("  если уже Success у нас, а у Melbet отказ: RESEND_CB=1")
         return
     apply(po, trader)
 
