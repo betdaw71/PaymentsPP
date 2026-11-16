@@ -791,7 +791,20 @@ def _http_url(*values) -> str:
     return ""
 
 
+def _qr_image_src(*values) -> str:
+    """PayPlat LKQ отдаёт qr_image как data:image/png;base64,... или https URL."""
+    for raw in values:
+        s = (raw or "").strip()
+        if not s:
+            continue
+        low = s.lower()
+        if low.startswith("http://") or low.startswith("https://") or low.startswith("data:image/"):
+            return s
+    return ""
+
+
 def _payplat_extract_qr_widget(create_body: dict) -> dict:
+    """LKQ payload: widget_url + invoice.payment_data.qr_image / qr_code (MBank)."""
     invoice = create_body.get("invoice") if isinstance(create_body.get("invoice"), dict) else {}
     payment_data = invoice.get("payment_data") if isinstance(invoice.get("payment_data"), dict) else {}
     requisite = create_body.get("requisite") if isinstance(create_body.get("requisite"), dict) else {}
@@ -806,17 +819,22 @@ def _payplat_extract_qr_widget(create_body: dict) -> dict:
         invoice.get("payment_form_url"),
         payment_data.get("widget_url"),
         payment_data.get("qr_url"),
+        payment_data.get("qr_code"),
         payment_data.get("payment_form_url"),
         requisite.get("widget_url"),
         requisite.get("qr_url"),
+        requisite.get("qr_code"),
         requisite.get("payment_form_url"),
     )
-    qr_img = _http_url(
+    qr_img = _qr_image_src(
         create_body.get("qr_image_url"),
         create_body.get("qr_image"),
         invoice.get("qr_image_url"),
+        invoice.get("qr_image"),
         payment_data.get("qr_image_url"),
+        payment_data.get("qr_image"),
         requisite.get("qr_image_url"),
+        requisite.get("qr_image"),
     )
     if not widget and not qr_img:
         return {}

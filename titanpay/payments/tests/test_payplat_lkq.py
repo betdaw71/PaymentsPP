@@ -100,6 +100,33 @@ class PayplatLkqTest(SimpleTestCase):
         self.assertTrue(payplat_requisite_matches_requested_type(qr, "lkq"))
         self.assertFalse(payplat_requisite_matches_requested_type(h2h, "lkq"))
 
+    def test_lkq_real_payplat_payload_maps_qr_image_and_widget(self):
+        body = {
+            "status": "IN_PROGRESS",
+            "widget_url": "https://qrnspk.ru/l/abc",
+            "shop_internal_id": "oid",
+            "invoice": {
+                "payment_method": "LKQ",
+                "payment_data": {
+                    "bank": "MBank",
+                    "qr_code": "https://app.mbank.kg/qr/#000201",
+                    "qr_image": "data:image/png;base64,aaa",
+                    "card_holder": "SHERMUKHAMMAD TURSUNMUKHA",
+                    "card_number": "+996506505435",
+                },
+            },
+        }
+        # Без prefer_qr старый путь взял бы «карту»-телефон.
+        h2h = payplat_map_requisite(body)
+        self.assertEqual(h2h.get("card_number"), "+996506505435")
+        qr = payplat_map_requisite(body, prefer_qr=True)
+        self.assertEqual(qr["payment_form_url"], "https://qrnspk.ru/l/abc")
+        self.assertEqual(qr["qr_image_url"], "data:image/png;base64,aaa")
+        self.assertEqual(qr["owner"], "SHERMUKHAMMAD TURSUNMUKHA")
+        self.assertEqual(qr["bank"], "MBank")
+        self.assertNotIn("card_number", qr)
+        self.assertTrue(payplat_requisite_matches_requested_type(qr, "lkq"))
+
     def test_kgs_usdt_quote_is_not_paid_fiat(self):
         body = {
             "shop_internal_id": "x",

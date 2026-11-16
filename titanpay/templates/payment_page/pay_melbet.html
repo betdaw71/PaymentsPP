@@ -532,8 +532,11 @@
     function isHttpUrl(v) {
       return typeof v === "string" && /^https?:\/\//i.test(v);
     }
+    function isQrImageSrc(v) {
+      return typeof v === "string" && (/^https?:\/\//i.test(v) || /^data:image\//i.test(v));
+    }
     function renderQrDetails(pd, amountLine, amountCopy) {
-      const hasQr = pd && isHttpUrl(pd.qr_image_url);
+      const hasQr = pd && isQrImageSrc(pd.qr_image_url);
       const hasLink = pd && isHttpUrl(pd.payment_form_url);
       let html = "";
       html += `<div class="step"><div class="num">1</div><div class="step-body"><b>${esc(t("qrTitle"))}</b><div class="chip-label" style="margin-top:6px">${esc(t("qrHint"))}</div></div></div>`;
