@@ -572,6 +572,23 @@ NEXUS_TIMEOUT_SECONDS = int(os.getenv('NEXUS_TIMEOUT_SECONDS', '900') or '900')
 NEXUS_WEBHOOK_SKIP_VERIFY = os.getenv('NEXUS_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
 NEXUS_CALLBACK_URL = os.getenv('NEXUS_CALLBACK_URL', '')
 
+# PrismaPay / Spyder (https://prismapay.software, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/prisma/)
+# Local KGS: C2CKGS→card, PHONEKGS→phone, QRKGS→qr (baseCurrency=KGS).
+PRISMA_API_BASE = os.getenv('PRISMA_API_BASE', 'https://prismapay.software').rstrip('/')
+PRISMA_API_TOKEN = os.getenv('PRISMA_API_TOKEN', '')
+PRISMA_CALLBACK_SECRET = os.getenv('PRISMA_CALLBACK_SECRET', '')
+PRISMA_TRADER_USERNAME = os.getenv('PRISMA_TRADER_USERNAME', 'prisma1')
+PRISMA_PAYMENT_METHOD = os.getenv('PRISMA_PAYMENT_METHOD', 'card')
+PRISMA_PAYMENT_METHOD_MAP = os.getenv(
+    'PRISMA_PAYMENT_METHOD_MAP',
+    '{"C2CKGS":"card","PHONEKGS":"phone","QRKGS":"qr","C2CKZT":"card","PHONEKZT":"phone"}',
+)
+PRISMA_PAYMENT_BANK = os.getenv('PRISMA_PAYMENT_BANK', '')
+PRISMA_PAYMENT_CLIENT = os.getenv('PRISMA_PAYMENT_CLIENT', '')
+PRISMA_TIMEOUT_SECONDS = int(os.getenv('PRISMA_TIMEOUT_SECONDS', '900') or '900')
+PRISMA_WEBHOOK_SKIP_VERIFY = os.getenv('PRISMA_WEBHOOK_SKIP_VERIFY', 'false').lower() in ('true', '1', 'yes')
+PRISMA_CALLBACK_URL = os.getenv('PRISMA_CALLBACK_URL', '')
+
 # PayPlat PSP (https://payplat.su, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/payplat/)
 PAYPLAT_API_BASE = os.getenv('PAYPLAT_API_BASE', 'https://payplat.su/test/api').rstrip('/')
 PAYPLAT_SHOP_ID = os.getenv('PAYPLAT_SHOP_ID', '')

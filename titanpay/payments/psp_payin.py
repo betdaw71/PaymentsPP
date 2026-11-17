@@ -63,6 +63,7 @@ def is_psp_trader(trader) -> bool:
     from payments import patriotpay_client as ppc2
     from payments import prochub_client as prhc
     from payments import nexus_client as nxc
+    from payments import prisma_client as pric
 
     return (
         fc.is_fairpay_trader(trader)
@@ -81,6 +82,7 @@ def is_psp_trader(trader) -> bool:
         or ppc2.is_patriotpay_trader(trader)
         or prhc.is_prochub_trader(trader)
         or nxc.is_nexus_trader(trader)
+        or pric.is_prisma_trader(trader)
     )
 
 
@@ -325,9 +327,13 @@ def _psp_routing_priority_map() -> dict[str, int]:
     out.setdefault(prochub_trader_username(), 4)
     out.setdefault("prochub1", 4)
     from payments.nexus_client import nexus_trader_username
+    from payments.prisma_client import prisma_trader_username
 
     out.setdefault(nexus_trader_username(), 8)
     out.setdefault("nexus1", 8)
+    # Melbet local KGS: Prisma ahead of PayPlat (payplat default=1).
+    out.setdefault(prisma_trader_username(), 0)
+    out.setdefault("prisma1", 0)
     return out
 
 
@@ -723,12 +729,21 @@ def psp_routing_amount_ok(trader, amount) -> bool:
 
 
 def preferred_payin_psp_usernames() -> tuple[str, ...]:
-    """payplat / gipay всегда в каскаде, даже если .env переименовал username."""
+    """prisma (KGS) / payplat / gipay всегда в каскаде, даже если .env переименовал username."""
     from payments.gipay_client import gipay_trader_username
     from payments.payplat_client import payplat_trader_username
+    from payments.prisma_client import prisma_trader_username
 
     names: list[str] = []
-    for raw in (payplat_trader_username(), "payplat1", gipay_trader_username(), "gipay1"):
+    # Prisma ahead of PayPlat for Melbet local KGS (card/phone/qr).
+    for raw in (
+        prisma_trader_username(),
+        "prisma1",
+        payplat_trader_username(),
+        "payplat1",
+        gipay_trader_username(),
+        "gipay1",
+    ):
         name = (raw or "").strip()
         if name and name not in names:
             names.append(name)
@@ -746,7 +761,7 @@ def is_preferred_payin_psp(trader) -> bool:
 
 def apply_preferred_psp_order(groups, merchant=None):
     """
-    Среди PSP: payplat затем gipay раньше остальных preferred.
+    Среди PSP: prisma → payplat → gipay раньше остальных preferred.
     Живых трейдеров не двигаем — они остаются впереди каскада.
 
     Если включён PSP_ROUTING_SHARE_MAP — не переставляем: иначе доли
@@ -793,6 +808,7 @@ def psp_trader_usernames() -> frozenset[str]:
     from payments import patriotpay_client as ppc2
     from payments import prochub_client as prhc
     from payments import nexus_client as nxc
+    from payments import prisma_client as pric
 
     names = {
         fc.fairpay_trader_username(),
@@ -811,6 +827,7 @@ def psp_trader_usernames() -> frozenset[str]:
         ppc2.patriotpay_trader_username(),
         prhc.prochub_trader_username(),
         nxc.nexus_trader_username(),
+        pric.prisma_trader_username(),
         "payplat1",
         "gipay1",
         "layerone1",
@@ -818,6 +835,7 @@ def psp_trader_usernames() -> frozenset[str]:
         "patriot1",
         "prochub1",
         "nexus1",
+        "prisma1",
     }
     extra = getattr(settings, "PSP_TRADER_USERNAMES", None)
     if isinstance(extra, str) and extra.strip():
@@ -850,6 +868,7 @@ def requisite_payload_has_fields(req: dict | None) -> bool:
         or str(req.get("deeplink") or "").strip()
         or str(req.get("payment_form_url") or "").strip()
         or str(req.get("qr_image_url") or "").strip()
+        or str(req.get("qr_payload") or "").strip()
     )
 
 
@@ -870,6 +889,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
     from payments import patriotpay_client as ppc2
     from payments import prochub_client as prhc
     from payments import nexus_client as nxc
+    from payments import prisma_client as pric
 
     for getter in (
         fc.fairpay_requisite_for_payin,
@@ -887,6 +907,7 @@ def requisite_for_payin(pay_in: Any) -> dict | None:
         loc.layerone_requisite_for_payin,
         ppc2.patriotpay_requisite_for_payin,
         prhc.prochub_requisite_for_payin,
+        pric.prisma_requisite_for_payin,
         nxc.nexus_requisite_for_payin,
     ):
         req = getter(pay_in)
@@ -912,6 +933,7 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     from payments import patriotpay_client as ppc2
     from payments import prochub_client as prhc
     from payments import nexus_client as nxc
+    from payments import prisma_client as pric
 
     representation = fc.enrich_payin_payment_details(representation, pay_in)
     representation = ec.enrich_payin_payment_details(representation, pay_in)
@@ -923,12 +945,17 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
     representation = asc.enrich_payin_payment_details(representation, pay_in)
     representation = syc.enrich_payin_payment_details(representation, pay_in)
     return nxc.enrich_payin_payment_details(
-        prhc.enrich_payin_payment_details(
-        ppc2.enrich_payin_payment_details(
-            loc.enrich_payin_payment_details(
-                ppc.enrich_payin_payment_details(
-                    vxc.enrich_payin_payment_details(
-                        gpc.enrich_payin_payment_details(representation, pay_in),
+        pric.enrich_payin_payment_details(
+            prhc.enrich_payin_payment_details(
+                ppc2.enrich_payin_payment_details(
+                    loc.enrich_payin_payment_details(
+                        ppc.enrich_payin_payment_details(
+                            vxc.enrich_payin_payment_details(
+                                gpc.enrich_payin_payment_details(representation, pay_in),
+                                pay_in,
+                            ),
+                            pay_in,
+                        ),
                         pay_in,
                     ),
                     pay_in,
@@ -936,8 +963,6 @@ def enrich_payin_payment_details(representation: dict, pay_in: Any) -> dict:
                 pay_in,
             ),
             pay_in,
-        ),
-        pay_in,
         ),
         pay_in,
     )
@@ -1019,6 +1044,7 @@ def _psp_provider_for_trader(trader):
     from payments import patriotpay_client as ppc2
     from payments import prochub_client as prhc
     from payments import nexus_client as nxc
+    from payments import prisma_client as pric
 
     if pc.is_protocol_trader(trader):
         return "protocol", pc.try_attach_protocol_session
@@ -1028,6 +1054,8 @@ def _psp_provider_for_trader(trader):
         return "patriotpay", ppc2.try_attach_patriotpay_session
     if prhc.is_prochub_trader(trader):
         return "prochub", prhc.try_attach_prochub_session
+    if pric.is_prisma_trader(trader):
+        return "prisma", pric.try_attach_prisma_session
     if nxc.is_nexus_trader(trader):
         return "nexus", nxc.try_attach_nexus_session
     if gpc.is_gipay_trader(trader):
@@ -1485,6 +1513,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     from payments import patriotpay_client as ppc2
     from payments import prochub_client as prhc
     from payments import nexus_client as nxc
+    from payments import prisma_client as pric
 
     fc.fairpay_cancel_if_linked(pay_in)
     ec.expayone_cancel_if_linked(pay_in)
@@ -1502,6 +1531,7 @@ def cancel_psp_if_linked(pay_in: Any) -> None:
     ppc2.patriotpay_cancel_if_linked(pay_in)
     prhc.prochub_cancel_if_linked(pay_in)
     nxc.nexus_cancel_if_linked(pay_in)
+    pric.prisma_cancel_if_linked(pay_in)
 
 
 def _norm_webhook_status(raw) -> str:
@@ -1523,9 +1553,14 @@ def parse_psp_webhook_paid_amount(body: dict | None) -> Decimal | None:
     from payments.visionx_client import visionx_is_webhook_body, visionx_webhook_paid_amount
     from payments.prochub_client import prochub_is_webhook_body, prochub_webhook_paid_amount
     from payments.nexus_client import nexus_is_webhook_body, nexus_webhook_paid_amount
+    from payments.prisma_client import prisma_is_webhook_body, prisma_webhook_paid_amount
 
     if payplat_is_webhook_body(body):
         return payplat_webhook_paid_amount(body)
+    if prisma_is_webhook_body(body):
+        paid = prisma_webhook_paid_amount(body)
+        if paid is not None:
+            return paid
     if nexus_is_webhook_body(body):
         paid = nexus_webhook_paid_amount(body)
         if paid is not None:
@@ -1639,6 +1674,7 @@ def psp_success_webhook_allows_completed_recalc(webhook_body: dict | None) -> bo
     from payments.visionx_client import visionx_success_webhook_allows_completed_recalc
     from payments.prochub_client import prochub_success_webhook_allows_completed_recalc
     from payments.nexus_client import nexus_success_webhook_allows_completed_recalc
+    from payments.prisma_client import prisma_success_webhook_allows_completed_recalc
 
     return (
         payplat_success_webhook_allows_completed_recalc(webhook_body)
@@ -1649,6 +1685,7 @@ def psp_success_webhook_allows_completed_recalc(webhook_body: dict | None) -> bo
         or layerone_success_webhook_allows_completed_recalc(webhook_body)
         or prochub_success_webhook_allows_completed_recalc(webhook_body)
         or nexus_success_webhook_allows_completed_recalc(webhook_body)
+        or prisma_success_webhook_allows_completed_recalc(webhook_body)
     )
 
 
@@ -1829,6 +1866,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         PayplatPayInSession,
         ProchubPayInSession,
         NexusPayInSession,
+        PrismaPayInSession,
     )
 
     order = getattr(pay_in, "order", None)
@@ -1846,6 +1884,7 @@ def classify_payin_decline(pay_in: Any) -> str:
         PayplatPayInSession,
         ProchubPayInSession,
         NexusPayInSession,
+        PrismaPayInSession,
         PlaymentsPayInSession,
         ConcoredPayInSession,
         PaymapPayInSession,
@@ -1899,6 +1938,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         PayplatPayInSession,
         ProchubPayInSession,
         NexusPayInSession,
+        PrismaPayInSession,
     )
 
     code = classify_payin_decline(pay_in)
@@ -1918,6 +1958,7 @@ def psp_create_failure_reason_internal(pay_in: Any) -> str:
         (PatriotpayPayInSession, "patriotpay"),
         (ProchubPayInSession, "prochub"),
         (NexusPayInSession, "nexus"),
+        (PrismaPayInSession, "prisma"),
         (PayplatPayInSession, "payplat"),
         (PlaymentsPayInSession, "playments"),
         (ConcoredPayInSession, "concored"),
@@ -1976,6 +2017,7 @@ _PSP_SESSION_PROVIDER_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("payments.models.PatriotpayPayInSession", "patriotpay", "provider_invoice_id"),
     ("payments.models.ProchubPayInSession", "prochub", "provider_invoice_id"),
     ("payments.models.NexusPayInSession", "nexus", "provider_order_id"),
+    ("payments.models.PrismaPayInSession", "prisma", "provider_order_id"),
     ("payments.models.PayplatPayInSession", "payplat", "provider_order_id"),
     ("payments.models.PlaymentsPayInSession", "playments", "provider_deposit_id"),
     ("payments.models.ConcoredPayInSession", "concored", "provider_payment_id"),

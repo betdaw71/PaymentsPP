@@ -34,6 +34,7 @@ from payments.visionx_views import VisionxWebhookView
 from payments.patriotpay_views import PatriotpayWebhookView
 from payments.prochub_views import ProchubWebhookView
 from payments.nexus_views import NexusWebhookView
+from payments.prisma_views import PrismaWebhookView
 from payments.payplat_views import PayplatWebhookView
 from payments.payment_page import payment_page, payment_page_redirect
 from payments.payment_page_assets import serve_payment_page_asset
@@ -81,6 +82,8 @@ urlpatterns = [
     path('api/v1/webhooks/psp/prochub/', ProchubWebhookView.as_view(), name='webhook-prochub'),
     path('api/v1/webhooks/psp/nexus', NexusWebhookView.as_view(), name='webhook-nexus-no-slash'),
     path('api/v1/webhooks/psp/nexus/', NexusWebhookView.as_view(), name='webhook-nexus'),
+    path('api/v1/webhooks/psp/prisma', PrismaWebhookView.as_view(), name='webhook-prisma-no-slash'),
+    path('api/v1/webhooks/psp/prisma/', PrismaWebhookView.as_view(), name='webhook-prisma'),
     path('api/v1/webhooks/psp/payplat', PayplatWebhookView.as_view(), name='webhook-payplat-no-slash'),
     path('api/v1/webhooks/psp/payplat/', PayplatWebhookView.as_view(), name='webhook-payplat'),
     path('prometheus-X60iSjSJB4PA2mdqDnA1mRBZbmGpapdMpwZ6L29c', include('django_prometheus.urls')),
