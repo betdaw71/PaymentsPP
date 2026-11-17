@@ -740,11 +740,15 @@ def snapshot(now=None) -> dict:
         merchant_total + agent_total + teamlead_total + psp_deposit_owed_total + owed_trader_total
     )
     cash = money(assets_total - liabilities_total)
+    # «Мои деньги» в смысле владельца: кассовый разрыв + накопленная маржа на агрегаторe.
+    # Маржа +70$/день растёт equity, но не обязана закрывать минус ликвидности (cash).
+    equity = money(cash + aggregator_total)
     end = current
     return {
         "as_of": current.isoformat(),
         "timezone": "Europe/Moscow",
         "cash": money_str(cash),
+        "equity": money_str(equity),
         "kzt_usdt_rate": money_str(kzt_rate),
         "assets": {
             "total": money_str(assets_total),
@@ -776,8 +780,9 @@ def snapshot(now=None) -> dict:
             "working_deposit": money_str(deposit_total),
             "platform_aggregator": money_str(aggregator_total),
             "note": (
-                "platform_aggregator = Balance type=2 (маржа сделок); "
-                "не входит в кассу A−L. Mostbet rolling: если available < rolling → актив «нам должны»."
+                "Касса = ликвидный разрыв (A−L). Equity = касса + агрегатор (маржа). "
+                "Дневной NET увеличивает equity через агрегатор, не обязан поднять кассу. "
+                "Mostbet rolling: available < rolling → актив «нам должны»."
             ),
         },
         "pnl": {
@@ -793,6 +798,8 @@ def format_telegram(data: dict | None = None) -> str:
     month = data["pnl"]["month"]
     return (
         f"Касса {data['cash']} USDT ({data['timezone']})\n"
+        f"моё (equity) {data.get('equity', data['cash'])} = касса + агрегатор "
+        f"{data.get('memo', {}).get('platform_aggregator', '0.00')}\n"
         f"активы {data['assets']['total']} − пассивы {data['liabilities']['total']}\n"
         f"PSP предоплата {data['assets']['psp_total']} · "
         f"кошелёк {data['assets'].get('wallet_total', '0.00')} · "

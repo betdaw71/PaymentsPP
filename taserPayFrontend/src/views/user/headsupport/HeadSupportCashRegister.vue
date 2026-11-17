@@ -28,6 +28,8 @@ const empty = () => ({
     psp_deposits: [],
     traders_owed: [],
   },
+  cash: '0.00',
+  equity: '0.00',
   memo: { rolling_reserve: '0.00', working_deposit: '0.00', platform_aggregator: '0.00' },
   pnl: {
     day: { net: '0.00', payin_mdr: '0.00', payin_fx: '0.00', payout_mdr: '0.00', trader_fee: '0.00', agent_fee: '0.00', expenses: '0.00', orders_in: 0, orders_out: 0 },
@@ -104,7 +106,7 @@ onMounted(() => {
         <VRow>
           <VCol
             cols="12"
-            md="4"
+            md="3"
           >
             <VCard variant="outlined">
               <VCardText>
@@ -125,7 +127,29 @@ onMounted(() => {
           </VCol>
           <VCol
             cols="12"
-            md="4"
+            md="3"
+          >
+            <VCard variant="outlined">
+              <VCardText>
+                <div class="text-caption text-medium-emphasis">
+                  {{ t('cash_register.equity') }}
+                </div>
+                <div
+                  class="text-h5 font-weight-medium"
+                  :class="moneyClass(data.equity || '0')"
+                >
+                  {{ data.equity || '0.00' }} USDT
+                </div>
+                <div class="text-caption mt-1">
+                  {{ t('cash_register.equity_hint') }}
+                  · {{ data.memo.platform_aggregator || '0.00' }}
+                </div>
+              </VCardText>
+            </VCard>
+          </VCol>
+          <VCol
+            cols="12"
+            md="3"
           >
             <VCard variant="outlined">
               <VCardText>
@@ -146,7 +170,7 @@ onMounted(() => {
           </VCol>
           <VCol
             cols="12"
-            md="4"
+            md="3"
           >
             <VCard variant="outlined">
               <VCardText>

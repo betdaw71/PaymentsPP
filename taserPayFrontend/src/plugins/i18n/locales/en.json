@@ -226,8 +226,10 @@
   "teamlead_balance": "Team lead balance",
   "no_agents": "No agents",
   "cash_register": {
-    "hint": "Assets: wallet + prepaid PSP + Melbet/Mostbet rolling owed to us. Liabilities: merchants + PayPlat/Prochub + agents/TLs + top-up teams (resdfe). Day NET ≠ cash: margin sits on aggregator (memo).",
-    "cash": "Cash",
+    "hint": "Cash = liquidity gap (assets−liabilities). Mine = cash + aggregator (retained margin). +$70/day grows equity, not necessarily closes the cash gap.",
+    "cash": "Cash (gap)",
+    "equity": "Mine (equity)",
+    "equity_hint": "cash + aggregator",
     "day": "Today",
     "month": "This month",
     "assets": "Assets",
