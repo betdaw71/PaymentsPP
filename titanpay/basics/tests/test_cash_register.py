@@ -86,6 +86,16 @@ class CashRegisterMathTest(SimpleTestCase):
             Decimal("7.00"),
         )
 
+    def test_payout_pnl_with_fiat_trader_fee_converted(self):
+        # Melbet KGS test: MDR 150 KGS → ~1.72 USDT; trader 125 KGS → ~1.44 USDT
+        mdr = merchant_fee_to_usd("150", "5000", "57.47", fiat_settlement=True)
+        tf = merchant_fee_to_usd("125", "5000", "57.47", fiat_settlement=True)
+        self.assertEqual(mdr, Decimal("1.72"))
+        self.assertEqual(tf, Decimal("1.44"))
+        self.assertEqual(payout_pnl(merchant_fee=mdr, trader_fee=tf), Decimal("0.28"))
+        # Old bug: subtract 125 as USDT → day ≈ −123
+        self.assertEqual(payout_pnl(merchant_fee=mdr, trader_fee="125"), Decimal("-123.28"))
+
 
 @override_settings(PAYPLAT_TRADER_USERNAME="payplat1")
 @patch("basics.cash_register.fetch_platform_wallet_usdt", return_value=(Decimal("0"), "TEPKpVsAUyrkLx38ueFzSQP1HXGX8XK1Tt"))

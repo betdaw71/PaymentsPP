@@ -1056,9 +1056,12 @@ class OutOrder(models.Model):
         )
 
         if uses_melbet_fiat_settlement(solution.merchant, solution.payment_system):
-            for_merchant, for_trader, for_platform = calculate_fees(amount, solution, trader, direction="out")
+            # merchant_fee в фиате (KZT/KGS ledger); trader_fee сразу в USDT
+            # (complete кредитует balance_usdt = usd_amount + trader_fee).
+            for_merchant, _, for_platform = calculate_fees(amount, solution, trader, direction="out")
             merchant_fee = for_merchant - amount
-            trader_fee = for_trader - amount
+            _, for_trader_usd, _ = calculate_fees(usd_amount, solution, trader, direction="out")
+            trader_fee = for_trader_usd - usd_amount
             merchant_bal = merchant_available_balance(solution.merchant, solution.payment_system)
             from merchant.kzt_settlement import balance_allows_negative_ledger
 
@@ -1189,7 +1192,18 @@ class OutOrder(models.Model):
 
         if uses_melbet_fiat_settlement(merchant, self.solution.payment_system):
             for_merchant = out_order_freeze_kzt(self)
-            for_trader = self.usd_amount + self.trader_fee
+            # Legacy outs хранили trader_fee в фиате (fee > usd) — конвертим.
+            trader_fee_usd = self.trader_fee
+            if (
+                self.amount
+                and self.usd_amount
+                and self.trader_fee is not None
+                and self.trader_fee > self.usd_amount
+            ):
+                trader_fee_usd = (self.trader_fee * self.usd_amount / self.amount).quantize(
+                    Decimal("0.01")
+                )
+            for_trader = self.usd_amount + trader_fee_usd
             frozen_kzt = merchant_frozen_balance(merchant, self.solution.payment_system)
         else:
             for_merchant, for_trader = self.usd_amount + self.merchant_fee, self.usd_amount + self.trader_fee
@@ -1288,7 +1302,17 @@ class OutOrder(models.Model):
 
         if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
             for_merchant = out_order_freeze_kzt(self)
-            for_trader = self.usd_amount + self.trader_fee
+            trader_fee_usd = self.trader_fee
+            if (
+                self.amount
+                and self.usd_amount
+                and self.trader_fee is not None
+                and self.trader_fee > self.usd_amount
+            ):
+                trader_fee_usd = (self.trader_fee * self.usd_amount / self.amount).quantize(
+                    Decimal("0.01")
+                )
+            for_trader = self.usd_amount + trader_fee_usd
             merchant_fr = merchant_frozen_balance(self.solution.merchant, self.solution.payment_system)
         else:
             for_merchant, for_trader = self.usd_amount + self.merchant_fee, self.usd_amount + self.trader_fee

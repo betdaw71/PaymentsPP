@@ -312,11 +312,14 @@ def apply(po: PayOut, trader: Trader) -> None:
             rate = ps.get_rate()
             usd_amount = (od.amount / Decimal(str(rate))).quantize(Decimal("0.01"))
             if uses_melbet_fiat_settlement(od.solution.merchant, ps):
-                for_merchant, for_trader, _ = calculate_fees(
+                for_merchant, _, _ = calculate_fees(
                     od.amount, od.solution, trader, direction="out"
                 )
-                merchant_fee = for_merchant - od.amount
-                trader_fee = for_trader - od.amount
+                merchant_fee = for_merchant - od.amount  # fiat
+                _, for_trader_usd, _ = calculate_fees(
+                    usd_amount, od.solution, trader, direction="out"
+                )
+                trader_fee = for_trader_usd - usd_amount  # USDT
             else:
                 for_merchant, for_trader, _ = calculate_fees(
                     usd_amount, od.solution, trader, direction="out"

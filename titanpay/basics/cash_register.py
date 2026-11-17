@@ -235,6 +235,28 @@ def melbet_fiat_merchant_fee_usd_expr():
     )
 
 
+def melbet_fiat_trader_fee_usd_expr():
+    """SQL: Melbet out trader_fee иногда в KZT/KGS (create), иногда уже USDT (recalculate).
+
+    Heuristic: fee > usd_amount → фиат, конвертим fee*usd/amount; иначе уже USDT.
+    Без этого тестовая PHONEKGS 5000 / fee 125 роняла «день» кассы на ~−123 USDT.
+    """
+    fiat_fee_usd = ExpressionWrapper(
+        F("trader_fee") * F("usd_amount") / F("amount"),
+        output_field=DEC,
+    )
+    return Case(
+        When(
+            trader_fee__gt=F("usd_amount"),
+            amount__gt=0,
+            usd_amount__gt=0,
+            then=fiat_fee_usd,
+        ),
+        default=F("trader_fee"),
+        output_field=DEC,
+    )
+
+
 # Back-compat alias for older shells.
 _melbet_fiat_merchant_fee_usd_expr = melbet_fiat_merchant_fee_usd_expr
 
@@ -244,13 +266,14 @@ def _period_pnl(start: datetime, end: datetime) -> dict:
     from trade.models import InOrder, OutOrder
 
     mdr_usd = melbet_fiat_merchant_fee_usd_expr()
+    trader_fee_usd = melbet_fiat_trader_fee_usd_expr()
     in_agg = InOrder.objects.filter(
         status__name="Completed",
         completion_date__gte=start,
         completion_date__lt=end,
     ).aggregate(
         merchant_fee=Coalesce(Sum(mdr_usd), Value(ZERO, output_field=DEC)),
-        trader_fee=Coalesce(Sum("trader_fee"), Value(ZERO, output_field=DEC)),
+        trader_fee=Coalesce(Sum(trader_fee_usd), Value(ZERO, output_field=DEC)),
         agent_fee=Coalesce(Sum("agent_fee"), Value(ZERO, output_field=DEC)),
         fx_spread=Coalesce(
             Sum(ExpressionWrapper(_psp_effective_usd() - F("usd_amount"), output_field=DEC)),
@@ -265,7 +288,7 @@ def _period_pnl(start: datetime, end: datetime) -> dict:
         completion_date__lt=end,
     ).aggregate(
         merchant_fee=Coalesce(Sum(mdr_usd), Value(ZERO, output_field=DEC)),
-        trader_fee=Coalesce(Sum("trader_fee"), Value(ZERO, output_field=DEC)),
+        trader_fee=Coalesce(Sum(trader_fee_usd), Value(ZERO, output_field=DEC)),
         turnover=Coalesce(Sum("usd_amount"), Value(ZERO, output_field=DEC)),
         count=Count("id"),
     )
