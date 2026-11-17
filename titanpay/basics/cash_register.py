@@ -78,7 +78,25 @@ def _name_set(setting: str, default: str) -> frozenset[str]:
 
 
 def prepaid_to_psp_names() -> frozenset[str]:
-    return _name_set("CASH_REGISTER_PREPAID_TO_PSP", "gipay1,visionx1,bitzone1,patriot1,layerone1")
+    """PSP, куда заливаем наперёд → актив (|avail+frozen| в ЛК).
+
+    Astrum (asterisk) всегда подмешиваем из ASTRUM_TRADER_USERNAME, даже если
+    забыли дописать в CASH_REGISTER_PREPAID_TO_PSP.
+    """
+    from django.conf import settings
+
+    names = set(
+        _name_set(
+            "CASH_REGISTER_PREPAID_TO_PSP",
+            "gipay1,visionx1,bitzone1,patriot1,layerone1,astrum_kzt",
+        )
+    )
+    astrum = (getattr(settings, "ASTRUM_TRADER_USERNAME", None) or "astrum_kzt").strip()
+    if astrum:
+        names.add(astrum)
+    # historical routing alias — если вдруг заведён отдельный user
+    names.add("asterisk")
+    return frozenset(names)
 
 
 def deposit_from_psp_names() -> frozenset[str]:
