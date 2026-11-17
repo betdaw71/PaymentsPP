@@ -14,7 +14,7 @@ from django.conf import settings
 
 from basics.cash_register import (
     c2ckzt_usdt_rate,
-    fetch_platform_wallet_usdt,
+    cash_register_include_trader_wallets,
     kzt_to_usd,
     money,
     prepaid_to_psp_names,
@@ -68,22 +68,21 @@ def main() -> None:
     prepaid = prepaid_to_psp_names()
     print(f"CASH_REGISTER_PREPAID_TO_PSP={sorted(prepaid)}")
     print(f"CASH_REGISTER_TRC20_WALLET={getattr(settings, 'CASH_REGISTER_TRC20_WALLET', '')!r}")
+    print(f"CASH_REGISTER_INCLUDE_TRADER_WALLETS={cash_register_include_trader_wallets()}")
 
-    # Не долбим TronGrid второй раз — берём из snapshot (там уже cache/retry).
+    # Берём из snapshot: platform + trader watched wallets (уже с cache).
     snap_wallet = money(snap["assets"].get("wallet_total") or 0)
-    snap_addr = ""
+    print(f"on-chain wallets in cash (sum) → {snap_wallet}")
     for row in snap["assets"].get("wallets") or []:
-        snap_addr = row.get("address") or snap_addr
-    print(f"wallet in cash snapshot: {snap_addr!r} → {snap_wallet}")
-    wallet_usdt, wallet_addr = snap_wallet, snap_addr
+        print(f"  {row.get('username')}: {row.get('address')} = {row.get('available')}")
+    wallet_usdt = snap_wallet
     if exp_wallet is not None:
         diff = money(wallet_usdt - exp_wallet)
-        print(f"  you said TronLink={exp_wallet}  delta={diff}")
+        print(f"  you said TronLink(sum)={exp_wallet}  delta={diff}")
         if abs(diff) > Decimal("1"):
             print(
-                "  ! расхождение: проверь что TronLink = USDT TRC20 на "
-                f"{getattr(settings, 'CASH_REGISTER_TRC20_WALLET', '')} "
-                "(не другой кошелёк / не TRX / не суммa нескольких адресов)"
+                "  ! если в TronLink ещё адреса вне WatchedDepositWallet / platform — "
+                "добавь их в TEAM_CRYPTO_DEPOSIT_WALLETS или CASH_REGISTER_TRC20_WALLET"
             )
 
     for uname, expect in (("gipay1", exp_gipay), ("patriot1", exp_patriot)):

@@ -401,6 +401,8 @@ CASH_REGISTER_TRC20_WALLET = os.getenv(
     'CASH_REGISTER_TRC20_WALLET',
     'TEPKpVsAUyrkLx38ueFzSQP1HXGX8XK1Tt',
 )
+# 1 = в активы кассы также суммировать WatchedDepositWallet трейдеров (как в TronLink).
+CASH_REGISTER_INCLUDE_TRADER_WALLETS = os.getenv('CASH_REGISTER_INCLUDE_TRADER_WALLETS', '1')
 # Кому заливаем наперёд → актив. Кто дал депозит нам → пассив (остаток трафика).
 CASH_REGISTER_PREPAID_TO_PSP = os.getenv(
     'CASH_REGISTER_PREPAID_TO_PSP',

@@ -2,6 +2,7 @@
 
 Mostbet: available+frozen−rolling > 0 → пассив; < 0 → актив (держит наш rolling после сетла).
 Команды-пополнения (CASH_REGISTER_OWED_TO_TRADERS): пассив + topups day/month + wallet.
+On-chain USDT: CASH_REGISTER_TRC20_WALLET + WatchedDepositWallet трейдеров (TronLink-сумма).
 Маржа сделок на Balance type=2 — memo.platform_aggregator, не в A−L.
 """
 from __future__ import annotations
@@ -165,6 +166,68 @@ def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
     if cached is not None:
         return cached[0], wallet
     return ZERO, wallet
+
+
+def cash_register_include_trader_wallets() -> bool:
+    from django.conf import settings
+
+    raw = getattr(settings, "CASH_REGISTER_INCLUDE_TRADER_WALLETS", "1")
+    return str(raw).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def iter_cash_wallet_targets() -> list[tuple[str, str]]:
+    """Адреса для on-chain USDT в кассе: платформенный + watched кошельки трейдеров."""
+    from django.conf import settings
+
+    seen: set[str] = set()
+    out: list[tuple[str, str]] = []
+
+    def _add(address: str, label: str) -> None:
+        addr = (address or "").strip()
+        if not addr or addr in seen:
+            return
+        seen.add(addr)
+        out.append((addr, label))
+
+    platform = (getattr(settings, "CASH_REGISTER_TRC20_WALLET", "") or "").strip()
+    _add(platform, "platform_wallet")
+
+    if cash_register_include_trader_wallets():
+        try:
+            from trade.models import WatchedDepositWallet
+
+            qs = (
+                WatchedDepositWallet.objects.filter(enabled=True)
+                .select_related("trader__user")
+                .order_by("address_public")
+            )
+            for w in qs:
+                uname = w.trader.user.username if w.trader_id and w.trader.user_id else "?"
+                _add(w.address_public, f"trader:{uname}")
+        except Exception:
+            logger.warning("cash register: cannot list watched trader wallets", exc_info=True)
+    return out
+
+
+def fetch_cash_wallets_usdt() -> tuple[Decimal, list[dict]]:
+    """Сумма USDT TRC-20: платформа + кошельки трейдеров (как ты считаешь в TronLink)."""
+    import time
+
+    rows: list[dict] = []
+    total = ZERO
+    targets = iter_cash_wallet_targets()
+    for i, (address, label) in enumerate(targets):
+        if i:
+            time.sleep(0.35)
+        amount, _ = fetch_platform_wallet_usdt(address)
+        total = money(total + amount)
+        rows.append({
+            "username": label,
+            "address": address,
+            "available": money_str(amount),
+            "kind": "trc20_usdt",
+        })
+    return total, rows
 
 
 def fx_spread(usd_amount, psp_usd_amount) -> Decimal:
@@ -571,15 +634,9 @@ def snapshot(now=None) -> dict:
             "frozen": money_str(frozen),
         })
 
-    wallet_usdt, wallet_address = fetch_platform_wallet_usdt()
-    wallet_rows = []
-    if wallet_address:
-        wallet_rows.append({
-            "username": "platform_wallet",
-            "address": wallet_address,
-            "available": money_str(wallet_usdt),
-            "kind": "trc20_usdt",
-        })
+    # On-chain USDT: платформенный кошелёк + WatchedDepositWallet трейдеров
+    # (физическая ликвидность; долг трейдеру по ЛК уже в liabilities.traders_owed).
+    wallet_usdt, wallet_rows = fetch_cash_wallets_usdt()
 
     # Маржа сделок физически оседает на Balance type=2 (агрегатор) — в A−L не входит,
     # иначе двойной счёт с пассивами. Показываем в memo для сверки с дневным NET.
