@@ -88,7 +88,7 @@ def prepaid_to_psp_names() -> frozenset[str]:
     names = set(
         _name_set(
             "CASH_REGISTER_PREPAID_TO_PSP",
-            "gipay1,visionx1,bitzone1,patriot1,layerone1,astrum_kzt",
+            "gipay1,visionx1,bitzone1,patriot1,astrum_kzt",
         )
     )
     astrum = (getattr(settings, "ASTRUM_TRADER_USERNAME", None) or "astrum_kzt").strip()
@@ -100,7 +100,8 @@ def prepaid_to_psp_names() -> frozenset[str]:
 
 
 def deposit_from_psp_names() -> frozenset[str]:
-    return _name_set("CASH_REGISTER_DEPOSIT_FROM_PSP", "payplat1,prochub1")
+    # layerone1: теперь мы должны им (пассив), не предоплата-актив.
+    return _name_set("CASH_REGISTER_DEPOSIT_FROM_PSP", "payplat1,prochub1,layerone1")
 
 
 def liability_merchant_names() -> frozenset[str]:

@@ -406,11 +406,11 @@ CASH_REGISTER_INCLUDE_TRADER_WALLETS = os.getenv('CASH_REGISTER_INCLUDE_TRADER_W
 # Кому заливаем наперёд → актив. Кто дал депозит нам → пассив (остаток трафика).
 CASH_REGISTER_PREPAID_TO_PSP = os.getenv(
     'CASH_REGISTER_PREPAID_TO_PSP',
-    'gipay1,visionx1,bitzone1,patriot1,layerone1,astrum_kzt',
+    'gipay1,visionx1,bitzone1,patriot1,astrum_kzt',
 )
 CASH_REGISTER_DEPOSIT_FROM_PSP = os.getenv(
     'CASH_REGISTER_DEPOSIT_FROM_PSP',
-    'payplat1,prochub1',
+    'payplat1,prochub1,layerone1',
 )
 CASH_REGISTER_LIABILITY_MERCHANTS = os.getenv(
     'CASH_REGISTER_LIABILITY_MERCHANTS',
