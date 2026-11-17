@@ -254,7 +254,30 @@ class SberRouting:
                 groups = pref + [g for g in groups if g not in pref]
 
         for group in groups:
-            chosen_detail = PaymentDetails.objects.filter(group=group, status=1, sberpay_enabled=False, sbp_enabled=False, card_number__isnull=False).order_by('?').first()
+            # KGS phone/QR out details may have phone/qr_payload without card_number.
+            base = PaymentDetails.objects.filter(
+                group=group,
+                status=1,
+                sberpay_enabled=False,
+                sbp_enabled=False,
+            )
+            chosen_detail = (
+                base.exclude(card_number__isnull=True)
+                .exclude(card_number="")
+                .order_by("?")
+                .first()
+            )
+            if chosen_detail is None:
+                chosen_detail = (
+                    base.exclude(phone__isnull=True).exclude(phone="").order_by("?").first()
+                )
+            if chosen_detail is None:
+                chosen_detail = (
+                    base.exclude(qr_payload__isnull=True)
+                    .exclude(qr_payload="")
+                    .order_by("?")
+                    .first()
+                )
             if chosen_detail is not None:
                 return chosen_detail
 

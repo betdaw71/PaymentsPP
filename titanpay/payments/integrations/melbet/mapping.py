@@ -104,15 +104,41 @@ def mask_account_number(raw: str | None) -> str:
 
 
 def account_number_to_details(account_number: str, payment_system_name: str) -> dict:
+    """Melbet withdrawal account_number → destination details for OutOrder.check_details.
+
+    Local KGS PS required_fields include bank_name (and QR fields) — fill defaults so
+    Melbet host-to-host payouts are not rejected before routing.
+    """
     acct = (account_number or "").strip().replace(" ", "")
     ps = (payment_system_name or "").upper()
     if ps == "C2CTRY" or acct.upper().startswith("TR"):
         return {"iban": acct}
-    if acct.startswith("+"):
-        return {"phone": acct}
-    if acct.isdigit() and len(acct) == 16:
-        return {"card_number": acct}
-    return {"card_number": acct}
+
+    digits = "".join(c for c in acct if c.isdigit())
+    is_kgs = ps in {"C2CKGS", "PHONEKGS", "QRKGS"} or ps.endswith("KGS")
+
+    if ps in {"PHONEKGS", "PHONEKZT"} or acct.startswith("+") or (
+        is_kgs and ps.startswith("PHONE") and digits
+    ):
+        phone = acct if acct.startswith("+") else (f"+{digits}" if digits else acct)
+        out: dict[str, str] = {"phone": phone}
+        if is_kgs or ps == "PHONEKGS":
+            out["bank_name"] = "MBank"
+        if ps == "QRKGS":
+            # PS requires qr_payload + phone; Melbet may send only phone/account.
+            out["qr_payload"] = phone or acct or "pending"
+        return out
+
+    if digits and len(digits) >= 16:
+        out = {"card_number": digits[:19]}
+        if is_kgs or ps in {"C2CKGS", "C2CKZT"}:
+            out["bank_name"] = "MBank"
+        return out
+
+    out = {"card_number": acct}
+    if is_kgs:
+        out["bank_name"] = "MBank"
+    return out
 
 
 def client_name_from_fields(fields: dict | None) -> str | None:
