@@ -103,13 +103,24 @@ def trader_balance_owed(available, frozen=0) -> Decimal:
     return net if net > 0 else ZERO
 
 
+_WALLET_CACHE: dict[str, tuple[Decimal, float]] = {}
+_WALLET_CACHE_TTL_SEC = 60.0
+
+
 def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
-    """USDT TRC-20 на кошельке площадки через TronGrid. Сбой сети → 0, кассу не роняем."""
+    """USDT TRC-20 на кошельке площадки через TronGrid. Сбой сети → last cache / 0."""
+    import time
+
     from django.conf import settings
 
     wallet = (address or getattr(settings, "CASH_REGISTER_TRC20_WALLET", "") or "").strip()
     if not wallet:
         return ZERO, ""
+    now = time.monotonic()
+    cached = _WALLET_CACHE.get(wallet)
+    if cached is not None and (now - cached[1]) < _WALLET_CACHE_TTL_SEC:
+        return cached[0], wallet
+
     contract = (getattr(settings, "USDT_TRC20_CONTRACT", None) or "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t").strip()
     headers = {}
     api_key = (getattr(settings, "TRONGRID_API_KEY", None) or "").strip()
@@ -118,23 +129,41 @@ def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
     try:
         import requests
 
-        response = requests.get(
-            f"https://api.trongrid.io/v1/accounts/{wallet}",
-            headers=headers,
-            timeout=12,
-        )
-        response.raise_for_status()
-        rows = (response.json() or {}).get("data") or []
-        account = rows[0] if rows else {}
-        for item in account.get("trc20") or []:
-            if not isinstance(item, dict):
-                continue
-            raw = item.get(contract)
-            if raw is None:
-                continue
-            return money(Decimal(str(raw)) / Decimal("1000000")), wallet
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = requests.get(
+                    f"https://api.trongrid.io/v1/accounts/{wallet}",
+                    headers=headers,
+                    timeout=12,
+                )
+                if response.status_code == 429:
+                    time.sleep(1.2 * (attempt + 1))
+                    last_exc = requests.exceptions.HTTPError("429 Too Many Requests", response=response)
+                    continue
+                response.raise_for_status()
+                rows = (response.json() or {}).get("data") or []
+                account = rows[0] if rows else {}
+                for item in account.get("trc20") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    raw = item.get(contract)
+                    if raw is None:
+                        continue
+                    amount = money(Decimal(str(raw)) / Decimal("1000000"))
+                    _WALLET_CACHE[wallet] = (amount, time.monotonic())
+                    return amount, wallet
+                _WALLET_CACHE[wallet] = (ZERO, time.monotonic())
+                return ZERO, wallet
+            except Exception as exc:
+                last_exc = exc
+                time.sleep(0.4)
+        if last_exc is not None:
+            logger.warning("cash register wallet fetch failed for %s: %s", wallet, last_exc)
     except Exception:
         logger.warning("cash register wallet fetch failed for %s", wallet, exc_info=True)
+    if cached is not None:
+        return cached[0], wallet
     return ZERO, wallet
 
 

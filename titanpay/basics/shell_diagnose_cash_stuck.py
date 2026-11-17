@@ -69,13 +69,22 @@ def main() -> None:
     print(f"CASH_REGISTER_PREPAID_TO_PSP={sorted(prepaid)}")
     print(f"CASH_REGISTER_TRC20_WALLET={getattr(settings, 'CASH_REGISTER_TRC20_WALLET', '')!r}")
 
-    wallet_usdt, wallet_addr = fetch_platform_wallet_usdt()
-    print(f"TronGrid wallet {wallet_addr!r} → {wallet_usdt}")
+    # Не долбим TronGrid второй раз — берём из snapshot (там уже cache/retry).
+    snap_wallet = money(snap["assets"].get("wallet_total") or 0)
+    snap_addr = ""
+    for row in snap["assets"].get("wallets") or []:
+        snap_addr = row.get("address") or snap_addr
+    print(f"wallet in cash snapshot: {snap_addr!r} → {snap_wallet}")
+    wallet_usdt, wallet_addr = snap_wallet, snap_addr
     if exp_wallet is not None:
         diff = money(wallet_usdt - exp_wallet)
         print(f"  you said TronLink={exp_wallet}  delta={diff}")
         if abs(diff) > Decimal("1"):
-            print("  ! касса тянет TronGrid по CASH_REGISTER_TRC20_WALLET — другой адрес или API=0")
+            print(
+                "  ! расхождение: проверь что TronLink = USDT TRC20 на "
+                f"{getattr(settings, 'CASH_REGISTER_TRC20_WALLET', '')} "
+                "(не другой кошелёк / не TRX / не суммa нескольких адресов)"
+            )
 
     for uname, expect in (("gipay1", exp_gipay), ("patriot1", exp_patriot)):
         t = Trader.objects.select_related("user", "balance_usdt", "frozen_balance_usdt").filter(
@@ -96,6 +105,11 @@ def main() -> None:
                     "  ! касса считает баланс PSP из ЛК трейдера, НЕ с сайта провайдера. "
                     "Пока ЛК не синхронизирован — цифра в кассе не двигается."
                 )
+                if uname == "patriot1" and held > expect + Decimal("100"):
+                    print(
+                        f"  !! MAIN DRIFT: patriot в кассе как актив {held}$, на сайте {expect}$. "
+                        f"Лишние ~{money(held - expect)}$ раздувают assets и «замораживают» кассу."
+                    )
 
     print("\n--- astrum ---")
     astrum_traders = list(
