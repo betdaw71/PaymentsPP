@@ -740,15 +740,17 @@ def snapshot(now=None) -> dict:
         merchant_total + agent_total + teamlead_total + psp_deposit_owed_total + owed_trader_total
     )
     cash = money(assets_total - liabilities_total)
-    # «Мои деньги» в смысле владельца: кассовый разрыв + накопленная маржа на агрегаторe.
-    # Маржа +70$/день растёт equity, но не обязана закрывать минус ликвидности (cash).
-    equity = money(cash + aggregator_total)
+    # accounting_margin = Balance type=2. Это НЕ выводимый USDT на TronLink/PSP.
+    # Реальные деньги владельца ≈ cash (A−L ликвидности), не cash+aggregator.
+    accounting_margin = aggregator_total
     end = current
     return {
         "as_of": current.isoformat(),
         "timezone": "Europe/Moscow",
         "cash": money_str(cash),
-        "equity": money_str(equity),
+        # back-compat for UI that still reads equity; same as cash (real liquidity gap)
+        "equity": money_str(cash),
+        "accounting_margin": money_str(accounting_margin),
         "kzt_usdt_rate": money_str(kzt_rate),
         "assets": {
             "total": money_str(assets_total),
@@ -780,9 +782,11 @@ def snapshot(now=None) -> dict:
             "working_deposit": money_str(deposit_total),
             "platform_aggregator": money_str(aggregator_total),
             "note": (
-                "Касса = ликвидный разрыв (A−L). Equity = касса + агрегатор (маржа). "
-                "Дневной NET увеличивает equity через агрегатор, не обязан поднять кассу. "
-                "Mostbet rolling: available < rolling → актив «нам должны»."
+                "Касса = реальный разрыв ликвидности (кошельки+PSP+receivable − долги). "
+                "Агрегатор (~type=2) — учётная маржа в БД, не Tether на кошельке. "
+                "Дневной NET должен в идеале улучшать кассу через рост выводимых остатков / "
+                "падение долгов; если касса стоит — маржа съедена ростом пассивов или "
+                "сидит в невыводимом Melbet KZT. Mostbet rolling: avail<RR → нам должны."
             ),
         },
         "pnl": {
@@ -797,8 +801,8 @@ def format_telegram(data: dict | None = None) -> str:
     day = data["pnl"]["day"]
     month = data["pnl"]["month"]
     return (
-        f"Касса {data['cash']} USDT ({data['timezone']})\n"
-        f"моё (equity) {data.get('equity', data['cash'])} = касса + агрегатор "
+        f"Касса {data['cash']} USDT ({data['timezone']}) — реальная ликвидность A−L\n"
+        f"учётная маржа (агрегатор, НЕ выводимый USDT) "
         f"{data.get('memo', {}).get('platform_aggregator', '0.00')}\n"
         f"активы {data['assets']['total']} − пассивы {data['liabilities']['total']}\n"
         f"PSP предоплата {data['assets']['psp_total']} · "

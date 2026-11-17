@@ -106,7 +106,7 @@ onMounted(() => {
         <VRow>
           <VCol
             cols="12"
-            md="3"
+            md="4"
           >
             <VCard variant="outlined">
               <VCardText>
@@ -127,29 +127,7 @@ onMounted(() => {
           </VCol>
           <VCol
             cols="12"
-            md="3"
-          >
-            <VCard variant="outlined">
-              <VCardText>
-                <div class="text-caption text-medium-emphasis">
-                  {{ t('cash_register.equity') }}
-                </div>
-                <div
-                  class="text-h5 font-weight-medium"
-                  :class="moneyClass(data.equity || '0')"
-                >
-                  {{ data.equity || '0.00' }} USDT
-                </div>
-                <div class="text-caption mt-1">
-                  {{ t('cash_register.equity_hint') }}
-                  · {{ data.memo.platform_aggregator || '0.00' }}
-                </div>
-              </VCardText>
-            </VCard>
-          </VCol>
-          <VCol
-            cols="12"
-            md="3"
+            md="4"
           >
             <VCard variant="outlined">
               <VCardText>
@@ -170,7 +148,7 @@ onMounted(() => {
           </VCol>
           <VCol
             cols="12"
-            md="3"
+            md="4"
           >
             <VCard variant="outlined">
               <VCardText>
