@@ -124,11 +124,62 @@ def trader_balance_owed(available, frozen=0) -> Decimal:
 
 
 _WALLET_CACHE: dict[str, tuple[Decimal, float]] = {}
-_WALLET_CACHE_TTL_SEC = 60.0
+_WALLET_CACHE_TTL_SEC = 120.0
+_WALLET_DJANGO_CACHE_TTL = 6 * 60 * 60  # last-known-good across workers / 429 storms
+
+
+def _manual_wallet_balances() -> dict[str, Decimal]:
+    """CASH_REGISTER_WALLET_BALANCES=addr:123.45,addr2:67.89 — ручной pin при 429."""
+    from django.conf import settings
+
+    raw = (getattr(settings, "CASH_REGISTER_WALLET_BALANCES", None) or "").strip()
+    out: dict[str, Decimal] = {}
+    for part in raw.split(","):
+        part = part.strip()
+        if not part or ":" not in part:
+            continue
+        addr, amt = part.split(":", 1)
+        addr = addr.strip()
+        try:
+            out[addr] = money(amt.strip())
+        except Exception:
+            continue
+    return out
+
+
+def _remember_wallet(address: str, amount: Decimal) -> None:
+    import time
+
+    _WALLET_CACHE[address] = (amount, time.monotonic())
+    try:
+        from django.core.cache import cache
+
+        cache.set(f"cash_reg_wallet_usdt:{address}", str(amount), _WALLET_DJANGO_CACHE_TTL)
+    except Exception:
+        pass
+
+
+def _recall_wallet(address: str) -> Decimal | None:
+    import time
+
+    cached = _WALLET_CACHE.get(address)
+    if cached is not None and (time.monotonic() - cached[1]) < _WALLET_CACHE_TTL_SEC:
+        return cached[0]
+    try:
+        from django.core.cache import cache
+
+        raw = cache.get(f"cash_reg_wallet_usdt:{address}")
+        if raw is not None:
+            return money(raw)
+    except Exception:
+        pass
+    if cached is not None:
+        return cached[0]
+    return None
 
 
 def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
-    """USDT TRC-20 на кошельке площадки через TronGrid. Сбой сети → last cache / 0."""
+    """USDT TRC-20 через TronGrid. 429 → last-known-good / manual pin, не обнуляем."""
     import time
 
     from django.conf import settings
@@ -136,10 +187,19 @@ def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
     wallet = (address or getattr(settings, "CASH_REGISTER_TRC20_WALLET", "") or "").strip()
     if not wallet:
         return ZERO, ""
-    now = time.monotonic()
-    cached = _WALLET_CACHE.get(wallet)
-    if cached is not None and (now - cached[1]) < _WALLET_CACHE_TTL_SEC:
-        return cached[0], wallet
+
+    manual = _manual_wallet_balances()
+    if wallet in manual:
+        _remember_wallet(wallet, manual[wallet])
+        return manual[wallet], wallet
+
+    recalled = _recall_wallet(wallet)
+    cached_pair = _WALLET_CACHE.get(wallet)
+    if (
+        cached_pair is not None
+        and (time.monotonic() - cached_pair[1]) < _WALLET_CACHE_TTL_SEC
+    ):
+        return cached_pair[0], wallet
 
     contract = (getattr(settings, "USDT_TRC20_CONTRACT", None) or "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t").strip()
     headers = {}
@@ -150,7 +210,7 @@ def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
         import requests
 
         last_exc: Exception | None = None
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 response = requests.get(
                     f"https://api.trongrid.io/v1/accounts/{wallet}",
@@ -158,8 +218,10 @@ def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
                     timeout=12,
                 )
                 if response.status_code == 429:
-                    time.sleep(1.2 * (attempt + 1))
-                    last_exc = requests.exceptions.HTTPError("429 Too Many Requests", response=response)
+                    time.sleep(2.0 * (attempt + 1))
+                    last_exc = requests.exceptions.HTTPError(
+                        "429 Too Many Requests", response=response
+                    )
                     continue
                 response.raise_for_status()
                 rows = (response.json() or {}).get("data") or []
@@ -171,19 +233,25 @@ def fetch_platform_wallet_usdt(address=None) -> tuple[Decimal, str]:
                     if raw is None:
                         continue
                     amount = money(Decimal(str(raw)) / Decimal("1000000"))
-                    _WALLET_CACHE[wallet] = (amount, time.monotonic())
+                    _remember_wallet(wallet, amount)
                     return amount, wallet
-                _WALLET_CACHE[wallet] = (ZERO, time.monotonic())
+                _remember_wallet(wallet, ZERO)
                 return ZERO, wallet
             except Exception as exc:
                 last_exc = exc
-                time.sleep(0.4)
+                time.sleep(0.8 * (attempt + 1))
         if last_exc is not None:
             logger.warning("cash register wallet fetch failed for %s: %s", wallet, last_exc)
     except Exception:
         logger.warning("cash register wallet fetch failed for %s", wallet, exc_info=True)
-    if cached is not None:
-        return cached[0], wallet
+
+    if recalled is not None:
+        logger.warning(
+            "cash register wallet %s using last-known-good %s after fetch failure",
+            wallet,
+            recalled,
+        )
+        return recalled, wallet
     return ZERO, wallet
 
 
@@ -237,7 +305,8 @@ def fetch_cash_wallets_usdt() -> tuple[Decimal, list[dict]]:
     targets = iter_cash_wallet_targets()
     for i, (address, label) in enumerate(targets):
         if i:
-            time.sleep(0.35)
+            # TronGrid free tier легко ловит 429 на втором адресе
+            time.sleep(2.0)
         amount, _ = fetch_platform_wallet_usdt(address)
         total = money(total + amount)
         rows.append({
