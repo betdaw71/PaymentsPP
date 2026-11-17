@@ -4,6 +4,8 @@ import unittest
 from unittest.mock import patch
 
 from payments.prisma_client import (
+    _assert_ascii_header_value,
+    _sanitize_secret,
     prisma_map_requisite,
     prisma_payment_method_for,
     prisma_webhook_outcome,
@@ -83,3 +85,10 @@ class PrismaCallbackSignatureTest(unittest.TestCase):
         self.assertEqual(prisma_webhook_outcome({"status": "EXPIRED"}), "fail")
         self.assertEqual(prisma_webhook_outcome({"status": "NO_REQUISITES"}), "fail")
         self.assertIsNone(prisma_webhook_outcome({"status": "PENDING"}))
+
+    def test_token_must_be_ascii_for_http_header(self):
+        self.assertEqual(_sanitize_secret('  "abc"  '), "abc")
+        self.assertIsNone(_assert_ascii_header_value("PRISMA_API_TOKEN", "ascii-token-123"))
+        err = _assert_ascii_header_value("PRISMA_API_TOKEN", "токен")
+        self.assertIsNotNone(err)
+        self.assertIn("non-ASCII", err or "")

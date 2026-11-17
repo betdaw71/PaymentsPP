@@ -82,16 +82,37 @@ def prisma_callback_url() -> str:
     return f"{base}/api/v1/webhooks/psp/prisma/"
 
 
+def _sanitize_secret(raw: str | None) -> str:
+    """Strip whitespace/quotes; HTTP Authorization must be latin-1 / ASCII."""
+    value = (raw or "").strip().strip('"').strip("'").strip()
+    if value.startswith("\ufeff"):
+        value = value.lstrip("\ufeff").strip()
+    return value
+
+
 def _api_token() -> str:
-    return (getattr(settings, "PRISMA_API_TOKEN", None) or "").strip()
+    return _sanitize_secret(getattr(settings, "PRISMA_API_TOKEN", None))
 
 
 def _callback_secret() -> str:
-    return (getattr(settings, "PRISMA_CALLBACK_SECRET", None) or "").strip()
+    return _sanitize_secret(getattr(settings, "PRISMA_CALLBACK_SECRET", None))
 
 
 def _api_base() -> str:
     return (getattr(settings, "PRISMA_API_BASE", "https://prismapay.software") or "").rstrip("/")
+
+
+def _assert_ascii_header_value(name: str, value: str) -> str | None:
+    """Return error message if value cannot go into an HTTP header."""
+    try:
+        value.encode("latin-1")
+    except UnicodeEncodeError:
+        bad = [f"U+{ord(ch):04X}" for ch in value if ord(ch) > 255][:8]
+        return (
+            f"{name} has non-ASCII characters {bad} — "
+            "paste the API token from Prisma cabinet (ASCII only), not a Cyrillic label"
+        )
+    return None
 
 
 def _timeout_seconds() -> int:
@@ -151,6 +172,10 @@ def _request(
     token = _api_token()
     if not token:
         return False, "PRISMA_API_TOKEN is empty"
+    token_err = _assert_ascii_header_value("PRISMA_API_TOKEN", token)
+    if token_err:
+        logger.error("Prisma API: %s", token_err)
+        return False, token_err
     base = _api_base()
     if not base:
         return False, "PRISMA_API_BASE is empty"
@@ -176,6 +201,7 @@ def _request(
             r = requests.request(method, url, headers=headers, timeout=timeout)
         else:
             headers["Content-Type"] = "application/json"
+            # Body may contain Cyrillic bank names; headers must stay latin-1.
             r = requests.request(
                 method,
                 url,
@@ -183,6 +209,19 @@ def _request(
                 data=json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
                 timeout=timeout,
             )
+    except UnicodeEncodeError as exc:
+        logger.exception("Prisma %s %s header encode failed: %s", method, path, exc)
+        err = _assert_ascii_header_value("PRISMA_API_TOKEN", token) or str(exc)
+        trace_log(
+            pay_in=pay_in,
+            direction=Direction.PRISMA_OUT_RESPONSE,
+            body={"error": err},
+            http_method=method,
+            url=url,
+            status_code=None,
+            note="header encode failed",
+        )
+        return False, err
     except requests.RequestException as exc:
         logger.exception("Prisma %s %s failed: %s", method, path, exc)
         trace_log(
