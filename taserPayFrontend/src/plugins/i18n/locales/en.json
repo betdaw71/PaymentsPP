@@ -241,6 +241,7 @@
     "trader_fee": "PSP / trader fee",
     "agent_fee": "Agent fee",
     "expenses": "Bot expenses",
+    "melbet_rate_gap": "Melbet top-up rate",
     "net": "Net",
     "memo": "Not in cash",
     "receivable": "owes us",

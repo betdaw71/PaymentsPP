@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -400,3 +401,49 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(day["payin_mdr"], "8.50")
         # net was 2.16; +1.50 MDR -1.00 trader -0.04 agent = +0.46 → 2.62
         self.assertEqual(day["net"], "2.62")
+        self.assertEqual(day["melbet_rate_gap"], "0.00")
+
+    @override_settings(MELBET_KZT_USERNAMES="melbet,melbet_test", MELBET_KZT_PS_NAMES="C2CKZT,PHONEKZT")
+    def test_day_pnl_subtracts_melbet_topup_rate(self, _wallet):
+        from basics.models import Currency, PaymentSystem
+        from trade.models import InOrder, InOrderStatus, Transaction
+
+        kzt = Currency.objects.get(symbol="KZTCR")
+        ps = PaymentSystem.objects.create(name="C2CKZT", currency=kzt, usdt_exchange_rate=Decimal("500"))
+        traffic = TrafficType.objects.get(name="Standard CR")
+        user = User.objects.create_user(username="melbet", password="x")
+        merchant = Merchant.objects.create(
+            user=user,
+            balance=Balance.objects.create(type=0, amount=Decimal("0")),
+            frozen_balance=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
+        solution = MerchantSolution.objects.create(
+            merchant=merchant,
+            payment_system=ps,
+            traffic=traffic,
+            mdr_in=Decimal("7.50"),
+        )
+        Transaction.objects.create(
+            comment="Manual crypto prepaid 2000 USDT @ 480 = 960000.00 KZT",
+            value=Decimal("960000.00"),
+            creation_date=timezone.now() - timedelta(hours=1),
+        )
+        InOrder.objects.create(
+            status=InOrderStatus.objects.get(name="Completed"),
+            amount=Decimal("10000.00"),
+            usd_amount=Decimal("20.00"),
+            merchant_rate=Decimal("500"),
+            psp_usd_amount=Decimal("20.00"),
+            solution=solution,
+            merchant_fee=Decimal("750.00"),
+            trader_fee=Decimal("0"),
+            agent_fee=Decimal("0"),
+            completion_date=timezone.now(),
+            arbitrage_comment="",
+            pic="https://example.com/melbet-rate",
+        )
+        day = snapshot()["pnl"]["day"]
+        # credit 9250 KZT: buy 9250/480 − order 9250/500 = 0.77
+        self.assertEqual(day["melbet_rate_gap"], "0.77")
+        # base day net 2.16 + melbet MDR 1.50 − gap 0.77
+        self.assertEqual(day["net"], "2.89")
