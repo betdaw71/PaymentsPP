@@ -670,6 +670,24 @@ try:
 except (TypeError, ValueError):
     PSP_ROUTING_SHARE_WINDOW_HOURS = 24
 
+# Живые трейдеры: равномерная выдача (не current_volume — fail-loop после Expired).
+# HUMAN_ROUTING_FAIR=0 — старый порядок (volume ASC).
+HUMAN_ROUTING_FAIR = os.getenv('HUMAN_ROUTING_FAIR', '1')
+try:
+    HUMAN_ROUTING_WINDOW_HOURS = int(os.getenv('HUMAN_ROUTING_WINDOW_HOURS', '6') or '6')
+except (TypeError, ValueError):
+    HUMAN_ROUTING_WINDOW_HOURS = 6
+# Карта с ≥N открытыми заявками (любая сумма) не выдаётся. 0 = выкл.
+try:
+    HUMAN_ROUTING_MAX_OPEN_PER_DETAIL = int(os.getenv('HUMAN_ROUTING_MAX_OPEN_PER_DETAIL', '2') or '2')
+except (TypeError, ValueError):
+    HUMAN_ROUTING_MAX_OPEN_PER_DETAIL = 2
+# Soft-skip трейдера, если выдач за окно ≥ min(peers)+LEAD и есть другой кандидат. 0 = выкл.
+try:
+    HUMAN_ROUTING_FAIR_SHARE_LEAD = int(os.getenv('HUMAN_ROUTING_FAIR_SHARE_LEAD', '3') or '3')
+except (TypeError, ValueError):
+    HUMAN_ROUTING_FAIR_SHARE_LEAD = 3
+
 # Protocol PSP (prot0col.com, колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/protocol/)
 PROTOCOL_API_BASE = os.getenv('PROTOCOL_API_BASE', 'https://prot0col.com').rstrip('/')
 PROTOCOL_MERCHANT_ID = os.getenv('PROTOCOL_MERCHANT_ID', '')
