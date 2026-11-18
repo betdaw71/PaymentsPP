@@ -23,7 +23,6 @@ from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
-from django.db.models import Q
 from django.utils import timezone
 
 from payments.integrations.melbet.models import MelbetTransactionSession
