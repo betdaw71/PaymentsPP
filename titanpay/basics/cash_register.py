@@ -114,7 +114,7 @@ def rolling_merchant_names() -> frozenset[str]:
 
 def owed_to_trader_names() -> frozenset[str]:
     """Живые трейдеры: баланс + страховой депозит команды = пассив (долг им)."""
-    return _name_set("CASH_REGISTER_OWED_TO_TRADERS", "resdfe")
+    return _name_set("CASH_REGISTER_OWED_TO_TRADERS", "resdfe,resdfe1")
 
 
 def trader_balance_owed(available, frozen=0) -> Decimal:
