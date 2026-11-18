@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -46,6 +47,21 @@ MIN_ISSUED_BASE = max(1, int(os.environ.get("MIN_ISSUED_BASE") or "5"))
 DROP_PP = Decimal(str(os.environ.get("DROP_PP") or "15"))
 MAX_NOW_PCT = Decimal(str(os.environ.get("MAX_NOW_PCT") or "40"))
 TOP = max(5, min(100, int(os.environ.get("TOP") or "40")))
+
+# Заявки из письма Melbet про отключение Kaspi P2P Trans (можно переопределить MOIDS=)
+DEFAULT_COMPLAINT_MOIDS = (
+    "24750525419",
+    "24750506617",
+    "24750448393",
+    "24750326809",
+    "24750297973",
+    "24750201293",
+    "24750126935",
+    "24750118533",
+    "24749928877",
+    "24749876839",
+    "24749837149",
+)
 
 
 def pct(ok: int, iss: int) -> Decimal | None:
@@ -170,6 +186,7 @@ def _aggregate(pays: list[PayIn]):
     by_bank: dict[str, Cell] = defaultdict(Cell)
     by_trader: dict[str, Cell] = defaultdict(Cell)
     meta: dict[str, tuple[str, str, str]] = {}
+    pays_by_req: dict[str, list[PayIn]] = defaultdict(list)
     for p in pays:
         st = p.status.name if p.status_id else ""
         detail_id, label, trader, bank = _req_key(p)
@@ -177,7 +194,8 @@ def _aggregate(pays: list[PayIn]):
         by_bank[bank].add(st)
         by_trader[trader].add(st)
         meta[detail_id] = (label, trader, bank)
-    return by_req, by_bank, by_trader, meta
+        pays_by_req[detail_id].append(p)
+    return by_req, by_bank, by_trader, meta, pays_by_req
 
 
 def _print_drops(
@@ -269,9 +287,18 @@ def main() -> None:
     pays_base = _load_pays(base_start, base_end)
     print(f"  loaded now={len(pays_now)} base={len(pays_base)}")
 
-    now_req, now_bank, now_trader, meta = _aggregate(pays_now)
-    base_req, base_bank, base_trader, meta_b = _aggregate(pays_base)
+    now_req, now_bank, now_trader, meta, pays_by_req_now = _aggregate(pays_now)
+    base_req, base_bank, base_trader, meta_b, _pays_by_req_base = _aggregate(pays_base)
     meta = {**meta_b, **meta}
+
+    # Melbet complaint list — пересечение с плохими реквизитами
+    complaint_raw = (os.environ.get("MOIDS") or "").strip()
+    if complaint_raw.lower() in {"0", "none", "off", "-"}:
+        complaint: set[str] = set()
+    elif complaint_raw:
+        complaint = {p.strip() for p in re.split(r"[\s,;]+", complaint_raw) if p.strip()}
+    else:
+        complaint = set(DEFAULT_COMPLAINT_MOIDS)
 
     # overall
     def _tot(pays):
@@ -353,15 +380,66 @@ def main() -> None:
     print("\n=== ACTION (выключить/ограничить) ===")
     if not drop_reqs and not fresh:
         print("  Явной просадки по отдельным реквизитам нет — смотреть трейдера/банк целиком.")
+    action_keys: list[str] = []
     for drop, _np, key, label, now, base, now_p, base_p, dpp in (drop_reqs or [])[:15]:
         text = label[0] if isinstance(label, tuple) else label
         extra = label[1] if isinstance(label, tuple) else ""
         delta = f"Δ={dpp:+.1f}pp" if dpp is not None else "Δ=n/a"
+        action_keys.append(key)
         print(
             f"  detail={key[:8]}…  {text}  {extra}  "
             f"now {pct_s(now.ok, now.iss)} ({now.ok}/{now.iss})  "
             f"base {pct_s(base.ok, base.iss)} ({base.ok}/{base.iss})  {delta}"
         )
+
+    # Конкретные заявки Melbet (merchant_order_id) по плохим реквизитам
+    print("\n=== ЗАЯВКИ MELBET по проблемным реквизитам (окно NOW) ===")
+    print("  только merchant=melbet, method~kaspi — это order_id мерчанта")
+    shown = 0
+    for key in action_keys:
+        label, trader, bank = meta.get(key, (key, "?", "-"))
+        deals = pays_by_req_now.get(key) or []
+        if not deals:
+            continue
+        shown += 1
+        ok_n = sum(1 for p in deals if p.status_id and p.status.name == "Success")
+        print(
+            f"\n  [{label}]  {trader}/{bank}  detail={key}  "
+            f"n={len(deals)} ok={ok_n} iss→ok={pct_s(ok_n, len(deals))}"
+        )
+        # свежие сверху
+        deals_sorted = sorted(deals, key=lambda p: p.created_at or timezone.now(), reverse=True)
+        for p in deals_sorted[:25]:
+            moid = p.merchant_order_id or "-"
+            mark = " ← Melbet list" if moid in complaint else ""
+            st = p.status.name if p.status_id else "-"
+            created = _msk(p.created_at) if p.created_at else "-"
+            print(
+                f"    moid={moid}  {st:12}  {p.amount}  {created}{mark}"
+            )
+        if len(deals) > 25:
+            print(f"    … +{len(deals) - 25} more Melbet orders")
+    if not shown:
+        print("  (нет)")
+
+    if complaint:
+        print(f"\n=== Пересечение с MOIDS от Melbet (n={len(complaint)}) ===")
+        hit = 0
+        for p in pays_now:
+            moid = p.merchant_order_id or ""
+            if moid not in complaint:
+                continue
+            detail_id, label, trader, bank = _req_key(p)
+            st = p.status.name if p.status_id else "-"
+            bad = detail_id in action_keys
+            print(
+                f"  {moid}  {st:12}  {label}  {trader}/{bank}  "
+                f"{'BAD_REQ' if bad else 'other'}"
+            )
+            hit += 1
+        if not hit:
+            print("  (ни один moid из MOIDS не попал в окно NOW / method~kaspi)")
+
     print("\nDONE")
 
 
