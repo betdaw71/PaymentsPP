@@ -611,7 +611,8 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     """
     Порядок выбора группы.
 
-    По умолчанию: живые трейдеры первыми (по current_volume), затем PSP.
+    По умолчанию: живые трейдеры первыми (равномерно по выдачам/open за окно),
+    затем PSP. HUMAN_ROUTING_FAIR=0 — снова только current_volume.
     Если мерчант в PSP_ROUTING_PSP_FIRST_MERCHANTS (mostbet): PSP первыми,
     живые после — и после отказа API уйдут через human fallback.
 
@@ -639,36 +640,30 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
         allowed = {str(k).strip().lower() for k in custom_map}
         psp = [g for g in psp if _group_username(g).lower() in allowed]
 
-    # Живые: current_volume, затем меньше выдач за 24ч — ровнее между реквизитами одного трейдера.
-    recent_by_group: dict = {}
-    if rest:
-        from datetime import timedelta
+    # Живые: равномерно по числу выдач/открытых (не current_volume — он падает на Expired
+    # и отдаёт весь поток «проигрывающему» трейдеру). См. trade.routing.human_fair.
+    try:
+        from trade.routing.human_fair import fair_routing_enabled, sort_human_groups
 
-        from django.db.models import Count
-        from django.utils import timezone
-
-        from trade.models import InOrder
-
-        since = timezone.now() - timedelta(hours=24)
-        gids = [g.id for g in rest]
-        recent_by_group = {
-            row["payment_details__group_id"]: row["n"]
-            for row in (
-                InOrder.objects.filter(
-                    payment_details__group_id__in=gids,
-                    creation_date__gte=since,
-                )
-                .values("payment_details__group_id")
-                .annotate(n=Count("id"))
+        if fair_routing_enabled():
+            rest_sorted = sort_human_groups(rest)
+        else:
+            rest_sorted = sorted(
+                rest,
+                key=lambda g: (
+                    g.current_volume or Decimal(0),
+                    _group_username(g),
+                ),
             )
-        }
-    rest_sorted = sorted(
-        rest,
-        key=lambda g: (
-            g.current_volume or Decimal(0),
-            recent_by_group.get(g.id, 0),
-        ),
-    )
+    except Exception:
+        logger.exception("human fair sort failed; fallback volume ASC")
+        rest_sorted = sorted(
+            rest,
+            key=lambda g: (
+                g.current_volume or Decimal(0),
+                _group_username(g),
+            ),
+        )
 
     def cascade_key(group):
         trader = group.trader

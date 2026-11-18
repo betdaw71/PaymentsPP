@@ -98,8 +98,22 @@ class SberRouting:
         margin_ps = payment_system
 
         from trade.routing.deal_spacing import group_skip_reason_for_deal_spacing
+        from trade.routing.human_fair import (
+            exclude_overloaded_details,
+            fair_routing_enabled,
+            fetch_group_load_stats,
+            should_skip_fair_share,
+        )
 
-        for group in chosen_group:
+        human_groups = [
+            g for g in chosen_group
+            if not is_psp_trader(g.trader) and not is_preferred_payin_psp(g.trader)
+        ]
+        human_load = {}
+        if fair_routing_enabled() and human_groups:
+            human_load = fetch_group_load_stats([g.id for g in human_groups])
+
+        for idx, group in enumerate(chosen_group):
             uname = group.trader.user.username if group.trader and group.trader.user else "?"
             is_human = not is_psp_trader(group.trader) and not is_preferred_payin_psp(group.trader)
             if is_human:
@@ -111,6 +125,24 @@ class SberRouting:
                         "skip": spacing_skip,
                     })
                     continue
+                if fair_routing_enabled() and human_load:
+                    remaining_humans = [
+                        g for g in chosen_group[idx + 1:]
+                        if not is_psp_trader(g.trader) and not is_preferred_payin_psp(g.trader)
+                    ]
+                    fair_skip = should_skip_fair_share(
+                        group,
+                        peer_groups=human_groups,
+                        load_stats=human_load,
+                        remaining_peers=remaining_humans,
+                    )
+                    if fair_skip:
+                        skipped.append({
+                            "trader": uname,
+                            "group_id": str(group.id),
+                            "skip": fair_skip,
+                        })
+                        continue
             if margin_ps is not None:
                 margin_ok, margin_skip = margin_ok_for_group(
                     group,
@@ -152,6 +184,8 @@ class SberRouting:
             # PSP / payplat / gipay: виртуальная карта не блокируется активной заявкой на ту же сумму.
             if is_human:
                 available_details = available_details.exclude(id__in=active_details)
+                if fair_routing_enabled():
+                    available_details = exclude_overloaded_details(available_details)
             if not available_details.exists():
                 skipped.append({"trader": uname, "group_id": str(group.id), "skip": "no_free_card"})
                 continue

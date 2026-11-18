@@ -9,16 +9,25 @@ from django.utils import timezone
 _OPEN_STATUSES = ("New", "Money sent by user", "Arbitrage", "Recalculation")
 
 
+def _pick_window_hours() -> int:
+    try:
+        from trade.routing.human_fair import fair_window_hours
+
+        return fair_window_hours()
+    except Exception:
+        return 24
+
+
 def pick_least_loaded_detail(available_details: QuerySet):
     """
     Среди свободных PaymentDetails выбираем наименее загруженный:
-      1) меньше открытых заявок
-      2) меньше выдач за последние 24ч
+      1) меньше открытых заявок (любая сумма)
+      2) меньше выдач за окно HUMAN_ROUTING_WINDOW_HOURS
       3) random tie-break
     """
     if available_details is None:
         return None
-    since = timezone.now() - timedelta(hours=24)
+    since = timezone.now() - timedelta(hours=_pick_window_hours())
     ranked = available_details.annotate(
         open_cnt=Count(
             "inorders",
