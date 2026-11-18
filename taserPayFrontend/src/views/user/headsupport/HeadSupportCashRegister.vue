@@ -32,8 +32,8 @@ const empty = () => ({
   equity: '0.00',
   memo: { rolling_reserve: '0.00', working_deposit: '0.00', platform_aggregator: '0.00' },
   pnl: {
-    day: { net: '0.00', payin_mdr: '0.00', payin_fx: '0.00', payout_mdr: '0.00', trader_fee: '0.00', agent_fee: '0.00', expenses: '0.00', orders_in: 0, orders_out: 0 },
-    month: { net: '0.00', payin_mdr: '0.00', payin_fx: '0.00', payout_mdr: '0.00', trader_fee: '0.00', agent_fee: '0.00', expenses: '0.00', orders_in: 0, orders_out: 0 },
+    day: { net: '0.00', payin_mdr: '0.00', payin_fx: '0.00', payout_mdr: '0.00', trader_fee: '0.00', agent_fee: '0.00', expenses: '0.00', melbet_rate_gap: '0.00', orders_in: 0, orders_out: 0 },
+    month: { net: '0.00', payin_mdr: '0.00', payin_fx: '0.00', payout_mdr: '0.00', trader_fee: '0.00', agent_fee: '0.00', expenses: '0.00', melbet_rate_gap: '0.00', orders_in: 0, orders_out: 0 },
   },
   timezone: 'Europe/Moscow',
 })
@@ -492,6 +492,15 @@ onMounted(() => {
                   </td>
                   <td class="text-end">
                     {{ data.pnl.month.expenses }}
+                  </td>
+                </tr>
+                <tr>
+                  <td>{{ t('cash_register.melbet_rate_gap') }}</td>
+                  <td class="text-end">
+                    {{ data.pnl.day.melbet_rate_gap || '0.00' }}
+                  </td>
+                  <td class="text-end">
+                    {{ data.pnl.month.melbet_rate_gap || '0.00' }}
                   </td>
                 </tr>
                 <tr>

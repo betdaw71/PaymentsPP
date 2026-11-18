@@ -8,6 +8,7 @@ On-chain USDT: CASH_REGISTER_TRC20_WALLET + WatchedDepositWallet трейдер�
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
@@ -440,6 +441,78 @@ def melbet_fiat_trader_fee_usd_expr():
 # Back-compat alias for older shells.
 _melbet_fiat_merchant_fee_usd_expr = melbet_fiat_merchant_fee_usd_expr
 
+_PREPAID_RATE_RE = re.compile(r"USDT\s*@\s*([0-9]+(?:[.,][0-9]+)?)", re.I)
+
+
+def melbet_funding_gap(start: datetime, end: datetime) -> Decimal:
+    """На сколько NET завышен: съеденные KZT Melbet оценены по курсу заявки (xe+5),
+    а куплены по курсу залива из «Manual crypto prepaid … USDT @ rate».
+
+    Дыра = credit_kzt/курс_залива − credit_kzt/курс_заявки. В отчёте её вычитаем.
+    """
+    from trade.models import InOrder, Transaction
+
+    lots: list[tuple[datetime, Decimal]] = []
+    for tx in (
+        Transaction.objects.filter(comment__icontains="USDT @")
+        .order_by("creation_date")
+        .only("creation_date", "comment")
+    ):
+        match = _PREPAID_RATE_RE.search(tx.comment or "")
+        if not match:
+            continue
+        rate = Decimal(match.group(1).replace(",", "."))
+        if rate > 0:
+            lots.append((tx.creation_date, rate))
+    if not lots:
+        return ZERO
+
+    from merchant.kzt_settlement import melbet_kzt_usernames
+
+    names = list(melbet_kzt_usernames()) or ["melbet"]
+    gap = ZERO
+    orders = (
+        InOrder.objects.filter(
+            status__name="Completed",
+            completion_date__gte=start,
+            completion_date__lt=end,
+            solution__merchant__user__username__in=names,
+            amount__gt=0,
+            usd_amount__gt=0,
+            merchant_fee__gt=F("usd_amount"),
+        )
+        .only(
+            "amount",
+            "usd_amount",
+            "merchant_fee",
+            "merchant_rate",
+            "completion_date",
+        )
+        .order_by("completion_date")
+    )
+    lot_i = 0
+    current_rate: Decimal | None = None
+    for order in orders.iterator(chunk_size=300):
+        when = order.completion_date
+        while lot_i < len(lots) and lots[lot_i][0] <= when:
+            current_rate = lots[lot_i][1]
+            lot_i += 1
+        if current_rate is None or current_rate <= 0:
+            continue
+        amount = Decimal(str(order.amount))
+        usd = Decimal(str(order.usd_amount))
+        fee = Decimal(str(order.merchant_fee))
+        order_rate = Decimal(str(order.merchant_rate or 0))
+        if order_rate <= 0 and usd > 0:
+            order_rate = amount / usd
+        if order_rate <= 0:
+            continue
+        credit = amount - fee
+        if credit <= 0:
+            continue
+        gap += credit / current_rate - credit / order_rate
+    return money(gap)
+
 
 def _period_pnl(start: datetime, end: datetime) -> dict:
     from basics.models import PlatformExpense
@@ -483,6 +556,7 @@ def _period_pnl(start: datetime, end: datetime) -> dict:
     payout_mdr = money(out_agg["merchant_fee"])
     payout_trader = money(out_agg["trader_fee"])
     expense_total = money(expenses["total"])
+    rate_gap = melbet_funding_gap(start, end)
     net = money(
         payin_mdr
         + payin_fx
@@ -491,6 +565,7 @@ def _period_pnl(start: datetime, end: datetime) -> dict:
         - payout_trader
         - agent
         - expense_total
+        - rate_gap
     )
     return {
         "from": start.isoformat(),
@@ -506,6 +581,7 @@ def _period_pnl(start: datetime, end: datetime) -> dict:
         "agent_fee": money_str(agent),
         "expenses": money_str(expense_total),
         "expense_count": expenses["count"],
+        "melbet_rate_gap": money_str(rate_gap),
         "net": money_str(net),
     }
 
@@ -814,7 +890,8 @@ def format_telegram(data: dict | None = None) -> str:
         f"агенты {data['liabilities']['agents_total']} · "
         f"тимлиды {data['liabilities']['teamleads_total']}\n"
         f"день {day['net']} (MDR {day['payin_mdr']}+{day['payout_mdr']} · FX {day['payin_fx']} · "
-        f"PSP {day['trader_fee']} · агент {day['agent_fee']} · расход {day['expenses']})\n"
+        f"PSP {day['trader_fee']} · агент {day['agent_fee']} · расход {day['expenses']} · "
+        f"Melbet залив {day.get('melbet_rate_gap', '0.00')})\n"
         f"месяц {month['net']}\n"
         f"агрегатор(type2) {data['memo'].get('platform_aggregator', '0.00')} · "
         f"трейдеры-команды {data['liabilities'].get('traders_owed_total', '0.00')}"

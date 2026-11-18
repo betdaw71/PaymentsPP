@@ -240,6 +240,7 @@
     "trader_fee": "Комиссия PSP / трейдера",
     "agent_fee": "Комиссия агента",
     "expenses": "Расходы бота",
+    "melbet_rate_gap": "Melbet курс залива",
     "net": "Итого",
     "memo": "Учёт (не выводимый USDT)",
     "receivable": "нам должны",

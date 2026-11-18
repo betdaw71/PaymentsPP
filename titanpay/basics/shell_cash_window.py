@@ -130,8 +130,9 @@ print(f"  agent fee:      {pnl['agent_fee']}")
 print(f"  expenses:       {pnl['expenses']} (n={pnl['expense_count']})")
 print(f"  ★ NET:          {pnl['net']} USDT")
 print(
-    "  формула: payin_mdr + payin_fx + payout_mdr − trader − agent − expenses"
+    "  формула: payin_mdr + payin_fx + payout_mdr − trader − agent − expenses − Melbet курс залива"
 )
+print(f"  Melbet курс залива: {pnl.get('melbet_rate_gap', '0.00')}")
 
 rate = c2ckzt_usdt_rate()
 rows: list[tuple] = []
