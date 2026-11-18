@@ -44,8 +44,25 @@ def parse_wallet_map(raw: str | None = None) -> list[tuple[str, str]]:
     return out
 
 
+def _trongrid_retry_attempts() -> int:
+    try:
+        n = int(getattr(settings, "TRONGRID_RETRY_ATTEMPTS", 4) or 4)
+    except (TypeError, ValueError):
+        n = 4
+    return max(1, min(8, n))
+
+
+def _trongrid_retry_base_sec() -> float:
+    try:
+        return max(0.5, min(30.0, float(getattr(settings, "TRONGRID_RETRY_BASE_SEC", 2) or 2)))
+    except (TypeError, ValueError):
+        return 2.0
+
+
 def fetch_trc20_incoming(address: str, *, min_timestamp_ms: int | None = None, limit: int = 50) -> list[dict]:
-    """Incoming USDT TRC-20 transfers to `address` via TronGrid."""
+    """Incoming USDT TRC-20 transfers to `address` via TronGrid (retry on 429)."""
+    import time
+
     import requests
 
     contract = (getattr(settings, "USDT_TRC20_CONTRACT", None) or USDT_CONTRACT_DEFAULT).strip()
@@ -62,16 +79,49 @@ def fetch_trc20_incoming(address: str, *, min_timestamp_ms: int | None = None, l
     if min_timestamp_ms is not None and min_timestamp_ms > 0:
         params["min_timestamp"] = str(int(min_timestamp_ms))
 
-    response = requests.get(
-        f"https://api.trongrid.io/v1/accounts/{address}/transactions/trc20",
-        headers=headers,
-        params=params,
-        timeout=20,
-    )
-    response.raise_for_status()
-    payload = response.json() or {}
-    rows = payload.get("data") or []
-    return [row for row in rows if isinstance(row, dict)]
+    url = f"https://api.trongrid.io/v1/accounts/{address}/transactions/trc20"
+    attempts = _trongrid_retry_attempts()
+    base = _trongrid_retry_base_sec()
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=20)
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After")
+                try:
+                    wait = float(retry_after) if retry_after else base * (2**attempt)
+                except (TypeError, ValueError):
+                    wait = base * (2**attempt)
+                wait = max(1.0, min(60.0, wait))
+                logger.warning(
+                    "TronGrid 429 for %s attempt=%s/%s sleep=%.1fs",
+                    address,
+                    attempt + 1,
+                    attempts,
+                    wait,
+                )
+                time.sleep(wait)
+                continue
+            response.raise_for_status()
+            payload = response.json() or {}
+            rows = payload.get("data") or []
+            return [row for row in rows if isinstance(row, dict)]
+        except requests.HTTPError as exc:
+            last_exc = exc
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status == 429 and attempt + 1 < attempts:
+                time.sleep(base * (2**attempt))
+                continue
+            raise
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt + 1 < attempts:
+                time.sleep(base * (2**attempt))
+                continue
+            raise
+    if last_exc is not None:
+        raise last_exc
+    return []
 
 
 def _transfer_amount_usdt(row: dict) -> Decimal:
@@ -229,14 +279,25 @@ def credit_incoming_for_wallet(wallet) -> dict:
 
 def poll_watched_crypto_deposits() -> dict:
     """Cron entry: ensure configured wallets exist, then credit new incoming USDT."""
+    import time
+
     from trade.models import WatchedDepositWallet
 
     ensure_watched_wallets_from_settings()
     totals = {"wallets": 0, "fetched": 0, "credited": 0, "skipped": 0, "errors": 0}
-    qs = WatchedDepositWallet.objects.filter(enabled=True).select_related(
-        "trader", "trader__user", "trader__balance_usdt"
+    qs = list(
+        WatchedDepositWallet.objects.filter(enabled=True).select_related(
+            "trader", "trader__user", "trader__balance_usdt"
+        )
     )
-    for wallet in qs:
+    try:
+        gap = float(getattr(settings, "TRONGRID_WALLET_POLL_GAP_SEC", 1.5) or 1.5)
+    except (TypeError, ValueError):
+        gap = 1.5
+    gap = max(0.0, min(10.0, gap))
+    for i, wallet in enumerate(qs):
+        if i > 0 and gap > 0:
+            time.sleep(gap)
         totals["wallets"] += 1
         part = credit_incoming_for_wallet(wallet)
         for key in ("fetched", "credited", "skipped", "errors"):

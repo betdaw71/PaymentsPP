@@ -429,6 +429,19 @@ CASH_REGISTER_OWED_TO_TRADERS = os.getenv(
 )
 USDT_TRC20_CONTRACT = os.getenv('USDT_TRC20_CONTRACT', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t')
 TRONGRID_API_KEY = os.getenv('TRONGRID_API_KEY', os.getenv('TRONGRID_KEY', ''))
+# Retry / spacing for TronGrid 429 when polling TEAM_CRYPTO_DEPOSIT_WALLETS
+try:
+    TRONGRID_RETRY_ATTEMPTS = int(os.getenv('TRONGRID_RETRY_ATTEMPTS', '4') or '4')
+except (TypeError, ValueError):
+    TRONGRID_RETRY_ATTEMPTS = 4
+try:
+    TRONGRID_RETRY_BASE_SEC = float(os.getenv('TRONGRID_RETRY_BASE_SEC', '2') or '2')
+except (TypeError, ValueError):
+    TRONGRID_RETRY_BASE_SEC = 2.0
+try:
+    TRONGRID_WALLET_POLL_GAP_SEC = float(os.getenv('TRONGRID_WALLET_POLL_GAP_SEC', '1.5') or '1.5')
+except (TypeError, ValueError):
+    TRONGRID_WALLET_POLL_GAP_SEC = 1.5
 # Внешние USDT TRC-20 кошельки команд: address:trader_username[,…]
 # TronGrid watcher зачисляет входящие на balance_usdt трейдера (без private key / без sweep).
 # Не добавлять эти адреса в cryptodb.wallets — иначе двойное зачисление через crypto-service.

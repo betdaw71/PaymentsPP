@@ -8,7 +8,12 @@ from django.test import TestCase
 from django.utils import timezone
 
 from basics.models import Balance, Currency, Language, Trader, TraderTeam
-from trade.crypto_deposit_watch import credit_incoming_for_wallet, deposit_address_for_trader, parse_wallet_map
+from trade.crypto_deposit_watch import (
+    credit_incoming_for_wallet,
+    deposit_address_for_trader,
+    fetch_trc20_incoming,
+    parse_wallet_map,
+)
 from trade.models import CryptoDepositCredit, TransactionType, WatchedDepositWallet
 
 
@@ -69,6 +74,24 @@ class CryptoDepositWatchTest(TestCase):
         self.assertEqual(stats2["credited"], 0)
         self.trader.balance_usdt.refresh_from_db()
         self.assertEqual(self.trader.balance_usdt.amount, Decimal("11.50"))
+
+    @patch("time.sleep", return_value=None)
+    @patch("requests.get")
+    def test_fetch_retries_on_429(self, get, _sleep):
+        ok = type("R", (), {})()
+        ok.status_code = 200
+        ok.headers = {}
+        ok.json = lambda: {"data": [{"transaction_id": "x"}]}
+        ok.raise_for_status = lambda: None
+
+        limited = type("R", (), {})()
+        limited.status_code = 429
+        limited.headers = {"Retry-After": "1"}
+
+        get.side_effect = [limited, ok]
+        rows = fetch_trc20_incoming("TJtxY4nnixqBGMf1PMqFokH8HirHxH7eXC")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(get.call_count, 2)
 
     @patch("trade.crypto_deposit_watch.fetch_trc20_incoming")
     def test_skips_before_watch_from(self, fetch):
