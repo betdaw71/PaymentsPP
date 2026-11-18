@@ -425,7 +425,7 @@ CASH_REGISTER_ROLLING_MERCHANTS = os.getenv(
 # Живые трейдеры: их balance_usdt (+frozen) и insurance_deposit команды = наш долг им (пассив).
 CASH_REGISTER_OWED_TO_TRADERS = os.getenv(
     'CASH_REGISTER_OWED_TO_TRADERS',
-    'resdfe',
+    'resdfe,resdfe1',
 )
 USDT_TRC20_CONTRACT = os.getenv('USDT_TRC20_CONTRACT', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t')
 TRONGRID_API_KEY = os.getenv('TRONGRID_API_KEY', os.getenv('TRONGRID_KEY', ''))
@@ -434,7 +434,8 @@ TRONGRID_API_KEY = os.getenv('TRONGRID_API_KEY', os.getenv('TRONGRID_KEY', ''))
 # Не добавлять эти адреса в cryptodb.wallets — иначе двойное зачисление через crypto-service.
 TEAM_CRYPTO_DEPOSIT_WALLETS = os.getenv(
     'TEAM_CRYPTO_DEPOSIT_WALLETS',
-    'TTr5G2wrtchVEF4DfMRbNZZeZppHxyyWyL:resdfe',
+    'TTr5G2wrtchVEF4DfMRbNZZeZppHxyyWyL:resdfe,'
+    'TJtxY4nnixqBGMf1PMqFokH8HirHxH7eXC:resdfe1',
 )
 
 # FairPay PSP (колбек: {PUBLIC_API_URL}/api/v1/webhooks/psp/fairpay/)

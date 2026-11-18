@@ -10,6 +10,7 @@ from basics.cash_register import (
     kzt_to_usd,
     merchant_fee_to_usd,
     merchant_usdt_net,
+    owed_to_trader_names,
     payin_pnl,
     payout_pnl,
     psp_deposit_owed,
@@ -33,6 +34,11 @@ from trade.models import InOrder, InOrderStatus, OutOrder, OutOrderStatus
 
 
 class CashRegisterMathTest(SimpleTestCase):
+    def test_default_owed_traders_include_resdfe1(self):
+        names = owed_to_trader_names()
+        self.assertIn("resdfe", names)
+        self.assertIn("resdfe1", names)
+
     def test_fx_spread_uses_psp_usd(self):
         self.assertEqual(fx_spread("100.00", "102.00"), Decimal("2.00"))
 
@@ -223,7 +229,7 @@ class CashRegisterSnapshotTest(TestCase):
         self.assertEqual(row["net"], "500.00")
         self.assertEqual(data["liabilities"]["psp_deposits_total"], "500.00")
 
-    @override_settings(CASH_REGISTER_OWED_TO_TRADERS="resdfe")
+    @override_settings(CASH_REGISTER_OWED_TO_TRADERS="resdfe,resdfe1")
     def test_owed_live_trader_balance_and_insurance(self, _wallet):
         kzt = Currency.objects.get(symbol="KZTCR")
         team = TraderTeam.objects.create(name="resdfe-cr", insurance_deposit=Decimal("1000.00"))
@@ -235,15 +241,27 @@ class CashRegisterSnapshotTest(TestCase):
             balance_usdt=Balance.objects.create(type=0, amount=Decimal("200.00")),
             frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("50.00")),
         )
+        team1 = TraderTeam.objects.create(name="resdfe1-cr", insurance_deposit=Decimal("0"))
+        user1 = User.objects.create_user(username="resdfe1", password="x")
+        Trader.objects.create(
+            user=user1,
+            team=team1,
+            currency=kzt,
+            balance_usdt=Balance.objects.create(type=0, amount=Decimal("80.00")),
+            frozen_balance_usdt=Balance.objects.create(type=1, amount=Decimal("0")),
+        )
         data = snapshot()
         row = next(item for item in data["liabilities"]["traders_owed"] if item["username"] == "resdfe")
         self.assertEqual(row["balance_owed"], "250.00")
         self.assertEqual(row["insurance_owed"], "1000.00")
         self.assertEqual(row["net"], "1250.00")
-        self.assertEqual(data["liabilities"]["traders_owed_total"], "1250.00")
+        row1 = next(item for item in data["liabilities"]["traders_owed"] if item["username"] == "resdfe1")
+        self.assertEqual(row1["balance_owed"], "80.00")
+        self.assertEqual(row1["net"], "80.00")
+        self.assertEqual(data["liabilities"]["traders_owed_total"], "1330.00")
         self.assertEqual(data["liabilities"]["insurance_deposits_total"], "1000.00")
-        # cash was 42 without resdfe → 42 - 1250
-        self.assertEqual(data["cash"], "-1208.00")
+        # cash was 42 without traders → 42 - 1330
+        self.assertEqual(data["cash"], "-1288.00")
 
     def test_payplat_prepaid_liability_is_remaining_lk(self, _wallet):
         from basics.models import Trader

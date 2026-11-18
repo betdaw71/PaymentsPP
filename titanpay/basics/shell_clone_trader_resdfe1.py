@@ -181,7 +181,15 @@ def run(
     print(f"  deposit_address : {deposit_address}")
     print("\nNext:")
     print("  1) Head support: add team to controlled_teams if needed")
-    print("  2) For auto crypto sweep: add address+private_key to cryptodb.wallets")
+    print("  2) Автопополнение (TronGrid watcher, без private key):")
+    print(f"       TEAM_CRYPTO_DEPOSIT_WALLETS=...,{deposit_address}:{target_username}")
+    print(f"       CASH_REGISTER_OWED_TO_TRADERS=resdfe,{target_username}")
+    print("     затем: docker compose up -d app  (+ worker/beat если есть)")
+    print(
+        "     и shell_ensure_resdfe1_deposit_wallet.py (APPLY=1) — "
+        "создаёт WatchedDepositWallet"
+    )
+    print("  3) НЕ класть этот адрес в cryptodb.wallets — будет двойное зачисление")
     return trader
 
 
