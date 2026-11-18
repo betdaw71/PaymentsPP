@@ -190,12 +190,13 @@ class InOrder(models.Model):
         return order_obj
 
     def freeze(self, comment=""):
-        trader = self.payment_details.group.trader
-        value = self.usd_amount
-        from payments.psp_payin import is_psp_trader, psp_order_usd_ledger_amount
+        # Курс команды (psp_usd / xe+N), не курс мерчанта. Иначе FX остаётся на ЛК трейдера.
+        from payments.psp_payin import psp_order_usd_ledger_amount
 
-        if is_psp_trader(trader):
-            value = psp_order_usd_ledger_amount(self)
+        trader = self.payment_details.group.trader
+        value = psp_order_usd_ledger_amount(self)
+        if value <= 0:
+            value = self.usd_amount
 
         transaction_type = TransactionType.objects.get(name="Freeze")
         Transaction.create(_from=trader.balance_usdt, _to=trader.frozen_balance_usdt,
@@ -312,6 +313,26 @@ class InOrder(models.Model):
         )
         return value
 
+    def _topup_freeze_to(self, need: Decimal) -> None:
+        """Доморозить заявку до need, не трогая чужой frozen на общем балансе."""
+        need = Decimal(str(need or 0)).quantize(Decimal("0.01"))
+        if need <= 0:
+            return
+        residual = self.freeze_residual_usdt().quantize(Decimal("0.01"))
+        shortfall = (need - residual).quantize(Decimal("0.01"))
+        if shortfall <= 0:
+            return
+        trader = self.payment_details.group.trader
+        transaction_type = TransactionType.objects.get(name="Freeze")
+        Transaction.create(
+            _from=trader.balance_usdt,
+            _to=trader.frozen_balance_usdt,
+            value=shortfall,
+            _transaction_type=transaction_type,
+            _linked_in_order=self,
+            _comment="FX freeze top-up before complete",
+        )
+
     def decrease_current_volume(self):
         group = PaymentDetailsGroup.objects.select_for_update().get(id=self.payment_details.group.id)
         if self.creation_date.timestamp() // SYSTEM_INTERVAL_VALUE == int(timezone.now().timestamp()) // SYSTEM_INTERVAL_VALUE:
@@ -326,9 +347,12 @@ class InOrder(models.Model):
         trader = self.payment_details.group.trader
         from payments.psp_payin import is_psp_trader, psp_order_usd_ledger_amount
 
-        charge_usd = self.usd_amount
-        if is_psp_trader(trader):
-            charge_usd = psp_order_usd_ledger_amount(self)
+        charge_usd = psp_order_usd_ledger_amount(self)
+        if charge_usd <= 0:
+            charge_usd = self.usd_amount
+        # Старые открытые заявки заморожены на merchant usd. Добираем FX до psp до Charge.
+        if not is_psp_trader(trader):
+            self._topup_freeze_to(charge_usd)
 
         status = InOrderStatus.objects.get(name="Completed")
         self.status = status
@@ -625,7 +649,7 @@ class InOrder(models.Model):
         """Перерасчёт после Completed (Bitzone re_calculation после closed)."""
         from decimal import ROUND_HALF_UP
 
-        from payments.psp_payin import is_psp_trader, psp_order_usd_ledger_amount
+        from payments.psp_payin import psp_order_usd_ledger_amount
 
         if self.status.name != "Completed":
             raise ValidationError({"error": "Wrong status for completed PSP recalc"})
@@ -635,7 +659,9 @@ class InOrder(models.Model):
 
         trader = self.payment_details.group.trader
         old_amount = self.amount
-        old_charge = psp_order_usd_ledger_amount(self) if is_psp_trader(trader) else self.usd_amount
+        old_charge = psp_order_usd_ledger_amount(self)
+        if old_charge <= 0:
+            old_charge = self.usd_amount
         old_for_merchant = self._merchant_credit_amount()
         old_for_trader = self.trader_fee
 
@@ -660,7 +686,9 @@ class InOrder(models.Model):
         self.usd_amount = new_usd
         self.merchant_fee = new_merchant_fee
         self.trader_fee = new_trader_fee
-        new_charge = psp_order_usd_ledger_amount(self) if is_psp_trader(trader) else new_usd
+        new_charge = psp_order_usd_ledger_amount(self)
+        if new_charge <= 0:
+            new_charge = new_usd
         new_for_merchant = self._merchant_credit_amount()
         new_for_trader = new_trader_fee
 
