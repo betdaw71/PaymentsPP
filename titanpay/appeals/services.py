@@ -177,6 +177,11 @@ def _provider_caption(*, pay_in, psp_provider: str, provider_external_id: str) -
         return str(pay_in.id)
     if provider_external_id:
         return provider_external_id
+    order = getattr(pay_in, "order", None)
+    order_id = getattr(order, "id", None) if order is not None else None
+    if order_id:
+        # Живой трейдер ищет заявку в ЛК по id InOrder.
+        return str(order_id)
     return str(pay_in.id)
 
 

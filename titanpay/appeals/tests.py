@@ -181,6 +181,26 @@ class ProviderPrivacyTest(SimpleTestCase):
             fallback,
         )
         self.assertEqual(provider_safe_caption(fallback, fallback=fallback), fallback)
+        self.assertEqual(provider_safe_caption("aggrepay resdfe", fallback=fallback), fallback)
+
+    def test_human_trader_caption_is_in_order_id(self):
+        from types import SimpleNamespace
+
+        from appeals.services import _provider_caption
+
+        pay_in = SimpleNamespace(id="pay-in", order=SimpleNamespace(id="in-order"))
+        self.assertEqual(
+            _provider_caption(pay_in=pay_in, psp_provider="", provider_external_id=""),
+            "in-order",
+        )
+        self.assertEqual(
+            _provider_caption(pay_in=pay_in, psp_provider="astrum", provider_external_id="psp-9"),
+            "psp-9",
+        )
+        self.assertEqual(
+            _provider_caption(pay_in=pay_in, psp_provider="payplat", provider_external_id="psp-9"),
+            "pay-in",
+        )
 
     def test_ticket_pdf_detected_by_text(self):
         from appeals.provider_privacy import extract_pdf_text, is_merchant_ticket_file

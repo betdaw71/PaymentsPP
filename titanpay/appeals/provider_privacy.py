@@ -10,7 +10,9 @@ import zlib
 logger = logging.getLogger(__name__)
 
 MERCHANT_BRAND_RE = re.compile(
-    r"melbet|мелбет|avapay|авапей|авапэй|titanpay|титанпэй|taserpay",
+    r"melbet|мелбет|mostbet|мостбет|aggrepay|аггрепей|агрепей|pandapay|пандапей|"
+    r"avapay|авапей|авапэй|titanpay|титанпэй|taserpay|"
+    r"resdfe|astrum|аструм|gipay|visionx|patriot",
     re.IGNORECASE,
 )
 

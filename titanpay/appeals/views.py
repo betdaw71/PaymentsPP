@@ -43,6 +43,14 @@ def _collect_deal_ids(pay_in) -> dict:
     if pay_in.order:
         order = pay_in.order
         result["in_order_status"] = order.status.name if order.status else ""
+        trader_name = ""
+        details = order.payment_details if order.payment_details_id else None
+        group = details.group if details is not None and details.group_id else None
+        trader = group.trader if group is not None else None
+        user = getattr(trader, "user", None) if trader is not None else None
+        trader_name = (getattr(user, "username", None) or "").strip()
+        if trader_name:
+            result["trader"] = trader_name
 
     # PSP sessions
     psp_sessions = [

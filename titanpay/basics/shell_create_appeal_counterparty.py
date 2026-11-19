@@ -29,9 +29,16 @@ from payments.psp_payin import _psp_provider_for_trader
 MERCHANT_USERNAME = os.environ.get("MERCHANT_USERNAME", "").strip()
 MERCHANT_COUNTERPARTY_NAME = os.environ.get("MERCHANT_COUNTERPARTY_NAME", "").strip()
 DEFAULT_MERCHANTS = [
+    ("aggrepay", "Aggrepay"),
+    ("melbet", "Melbet"),
+    ("mostbet", "Mostbet"),
     ("pandapay", "PandaPay"),
     ("alemkredit", "Alemkredit"),
     ("lunatrixpay", "LunatrixPay"),
+]
+LIVE_TRADERS = [
+    ("resdfe", "resdfe"),
+    ("resdfe1", "resdfe1"),
 ]
 TEST_TRADER_USERNAME = os.environ.get("TEST_TRADER_USERNAME", "kzt_c2c_test")
 TEST_TRADER_COUNTERPARTY_NAME = os.environ.get(
@@ -40,10 +47,12 @@ TEST_TRADER_COUNTERPARTY_NAME = os.environ.get(
 )
 
 PROVIDERS = [
-    {"name": "BitZone", "psp_provider": "bitzone"},
-    {"name": "Protocol", "psp_provider": "protocol"},
+    {"name": "Astrum", "psp_provider": "astrum"},
+    {"name": "PatriotPay", "psp_provider": "patriotpay"},
     {"name": "GiPay", "psp_provider": "gipay"},
     {"name": "VisionX Pay", "psp_provider": "visionx"},
+    {"name": "BitZone", "psp_provider": "bitzone"},
+    {"name": "Protocol", "psp_provider": "protocol"},
     {"name": "PayPlat", "psp_provider": "payplat"},
     {"name": "Prochub", "psp_provider": "prochub"},
     {"name": "Nexus", "psp_provider": "nexus"},
@@ -79,6 +88,31 @@ def ensure_merchant_counterparty(username: str | None = None, name: str | None =
     )
     print(f"Merchant {cp.name}: uuid={cp.id}")
     print(f"  → в группе мерчанта: /init {cp.id}")
+    return cp
+
+
+def ensure_live_trader(username: str, display: str):
+    trader = Trader.objects.filter(user__username=username).first()
+    if trader is None:
+        print(f"WARN: trader {username!r} not found — пропускаем")
+        return None
+    psp_key, _ = _psp_provider_for_trader(trader)
+    if psp_key:
+        cp, _created = AppealCounterparty.objects.get_or_create(
+            role=AppealCounterpartyRole.PROVIDER,
+            psp_provider=psp_key,
+            defaults={"name": display},
+        )
+        print(f"Provider PSP {psp_key} ({username}): uuid={cp.id}")
+        print(f"  → в группе провайдера: /init {cp.id}")
+        return cp
+    cp, _created = AppealCounterparty.objects.get_or_create(
+        role=AppealCounterpartyRole.PROVIDER,
+        trader_username=username,
+        defaults={"name": display},
+    )
+    print(f"Provider trader {username}: uuid={cp.id}")
+    print(f"  → в группе провайдера: /init {cp.id}")
     return cp
 
 
@@ -119,6 +153,19 @@ def ensure_provider_counterparties():
         print(f"Provider {item['name']}: uuid={cp.id}")
 
 
+def print_chat_status():
+    print("\n=== Чаты апелляционного бота ===")
+    rows = AppealCounterparty.objects.filter(is_active=True).order_by("role", "name")
+    for cp in rows:
+        chats = list(cp.telegram_chats.filter(is_active=True))
+        who = cp.psp_provider or cp.trader_username or (cp.merchant.user.username if cp.merchant_id and cp.merchant.user_id else "")
+        if chats:
+            for chat in chats:
+                print(f"OK  {cp.role:8} {cp.name} [{who}] chat={chat.telegram_chat_id} {chat.title}")
+        else:
+            print(f"НЕТ {cp.role:8} {cp.name} [{who}]  /init {cp.id}")
+
+
 print("=== Appeal bot setup ===")
 ensure_appeal_bot_user()
 if MERCHANT_USERNAME:
@@ -126,7 +173,10 @@ if MERCHANT_USERNAME:
 else:
     for username, display in DEFAULT_MERCHANTS:
         ensure_merchant_counterparty(username, display)
+for username, display in LIVE_TRADERS:
+    ensure_live_trader(username, display)
 ensure_test_trader_counterparty()
-print("\n--- Все PSP-провайдеры (если нужны prod-группы) ---")
+print("\n--- PSP-провайдеры ---")
 ensure_provider_counterparties()
-print("\nГотово.")
+print_chat_status()
+print("\nГотово. Бота добавить в чат и написать там /init <uuid> из строки НЕТ.")

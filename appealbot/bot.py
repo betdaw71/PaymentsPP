@@ -263,6 +263,7 @@ def _format_lookup(data: dict) -> str:
         ("in_order_status", "InOrder Status"),
         ("amount", "Amount"),
         ("merchant", "Merchant"),
+        ("trader", "Trader"),
         ("melbet_session_id", "Melbet Session ID"),
         ("melbet_order_id", "Melbet Order ID"),
     ]
@@ -310,6 +311,10 @@ def _format_lookup(data: dict) -> str:
 
 def _reply_lookup(message: Message) -> None:
     _audit(message)
+    role = backend_chat_role(message.chat.id)
+    if role in {"merchant", "provider"}:
+        bot.reply_to(message, "Команда недоступна в этом чате.")
+        return
     query = _lookup_query(message.text or "")
     if not query:
         bot.reply_to(

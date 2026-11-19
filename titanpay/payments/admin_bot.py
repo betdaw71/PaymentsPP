@@ -17,6 +17,7 @@ OFFSET_KEY = "admin_bot:update_offset"
 
 HELP = (
     "Касса / балансы:\n"
+    "/lookup <ID заявки>\n"
     "касса\n"
     "обнови баланс провайдера payplat1 на 1234.56\n"
     "обнови баланс мерча mostbet на 2800\n"
@@ -40,6 +41,12 @@ def parse_command(text: str) -> dict | None:
     low = raw.lower()
     if low in ("/help", "help", "помощь"):
         return {"op": "help"}
+    lookup = re.match(r"^/lookup(?:@\w+)?(?:\s+([\s\S]+))?$", raw, re.I)
+    if lookup:
+        query = (lookup.group(1) or "").strip()
+        if not query:
+            return {"op": "lookup_help"}
+        return {"op": "lookup", "query": query}
     if low in ("касса", "/касса", "cash"):
         return {"op": "cash"}
     m = re.match(
@@ -115,9 +122,44 @@ def _move(balance, delta: Decimal, comment: str):
         )
 
 
+def _format_lookup(query: str) -> str:
+    from appeals.id_resolve import resolve_pay_in_from_message
+    from appeals.views import _collect_deal_ids
+
+    resolved = resolve_pay_in_from_message(query)
+    if not resolved.ok or resolved.pay_in is None:
+        return resolved.error_message or "Заявка не найдена."
+    data = _collect_deal_ids(resolved.pay_in)
+    lines = ["Все ID по сделке"]
+    labels = (
+        ("pay_in_id", "PayIn"),
+        ("in_order_id", "InOrder"),
+        ("merchant_order_id", "Merchant order"),
+        ("status", "PayIn status"),
+        ("in_order_status", "InOrder status"),
+        ("amount", "Amount"),
+        ("merchant", "Merchant"),
+        ("trader", "Trader"),
+    )
+    for key, label in labels:
+        val = data.get(key)
+        if val:
+            lines.append(f"{label}: {val}")
+    for key, val in data.items():
+        if key.endswith("_external_id") and val:
+            lines.append(f"{key}: {val}")
+        elif key.endswith("_provider_id") and val:
+            lines.append(f"{key}: {val}")
+    return "\n".join(lines)
+
+
 def handle_command(cmd: dict) -> str:
     if cmd["op"] == "help":
         return HELP
+    if cmd["op"] == "lookup_help":
+        return "Использование: /lookup <ID заявки>"
+    if cmd["op"] == "lookup":
+        return _format_lookup(cmd["query"])
     if cmd["op"] == "cash":
         from basics.cash_register import format_telegram
 

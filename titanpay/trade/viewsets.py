@@ -393,6 +393,18 @@ class CharInFilter(django_filters.BaseInFilter, django_filters.CharFilter):
     pass
 
 
+def _filter_in_order_id(queryset, _name, value):
+    from trade.order_id_query import apply_order_id_filter
+
+    return apply_order_id_filter(queryset, value, "pay_in_id")
+
+
+def _filter_out_order_id(queryset, _name, value):
+    from trade.order_id_query import apply_order_id_filter
+
+    return apply_order_id_filter(queryset, value, "pay_out_id")
+
+
 class InOrderFilter(django_filters.FilterSet):
     payment_system__name__in = CharInFilter(field_name='solution__payment_system__name')
     currency__symbol__in = CharInFilter(field_name='solution__payment_system__currency__symbol')
@@ -402,11 +414,11 @@ class InOrderFilter(django_filters.FilterSet):
     merchant__user__username__in = CharInFilter(field_name='solution__merchant__user__username')
     transaction_id = django_filters.CharFilter(field_name='pay_in__id')
     customer_id = django_filters.CharFilter(field_name='pay_in__client__client_id')
+    id = django_filters.CharFilter(method=_filter_in_order_id)
 
     class Meta:
         model = InOrder
         fields = {
-            'id': ['exact'],
             'creation_date': ['range'],
             'payment_details__group__trader__user__username': ['in'],
             'payment_details__group__trader__team__name': ['in'],
@@ -816,11 +828,11 @@ class OutOrderFilter(django_filters.FilterSet):
     merchant__user__username__in = CharInFilter(field_name='solution__merchant__user__username')
     transaction_id = django_filters.CharFilter(field_name='pay_out__id')
     customer_id = django_filters.CharFilter(field_name='pay_out__client__client_id')
+    id = django_filters.CharFilter(method=_filter_out_order_id)
 
     class Meta:
         model = OutOrder
         fields = {
-            'id': ['exact'],
             'creation_date': ['range'],
             'first_creation_date': ['range'],
             'payment_details__group__trader__user__username': ['in'],

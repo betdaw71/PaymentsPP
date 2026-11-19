@@ -207,9 +207,9 @@ const buildOrderFilterParams = ({ paginate = false } = {}) => {
 
   if (filters.value.ordering)
     params.ordering = filters.value.ordering
+  if (filters.value.searchQueryId)
+    params.id = String(filters.value.searchQueryId).trim()
   if (filters.value.apply_filters) {
-    if (filters.value.searchQueryId)
-      params.id = filters.value.searchQueryId
     if (filters.value.selectedStatus && filters.value.selectedStatus.length > 0)
       params.status__name__in = filters.value.selectedStatus.join (",")
     if (filters.value.selectedPaymentSystems && filters.value.selectedPaymentSystems.length > 0)

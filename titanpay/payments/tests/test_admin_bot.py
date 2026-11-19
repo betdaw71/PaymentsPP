@@ -23,6 +23,14 @@ class AdminBotParseTest(SimpleTestCase):
         self.assertEqual(cmd["amount"], Decimal("40.00"))
         self.assertEqual(cmd["comment"], "хостинг")
 
+    def test_lookup(self):
+        cmd = parse_command("/lookup 3f2a1c0e-1111-2222-3333-444455556666")
+        self.assertEqual(cmd["op"], "lookup")
+        self.assertIn("3f2a1c0e", cmd["query"])
+
+    def test_lookup_without_id(self):
+        self.assertEqual(parse_command("/lookup")["op"], "lookup_help")
+
     def test_topup(self):
         cmd = parse_command("пополни мерча mostbet 100 сетл")
         self.assertEqual(cmd["op"], "delta")
