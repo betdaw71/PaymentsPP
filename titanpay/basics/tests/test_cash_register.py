@@ -16,6 +16,7 @@ from basics.cash_register import (
     payout_pnl,
     psp_deposit_owed,
     psp_held_usdt,
+    psp_site_withdrawal_fee,
     snapshot,
     trader_balance_owed,
 )
@@ -102,6 +103,16 @@ class CashRegisterMathTest(SimpleTestCase):
         self.assertEqual(payout_pnl(merchant_fee=mdr, trader_fee=tf), Decimal("0.28"))
         # Old bug: subtract 125 as USDT → day ≈ −123
         self.assertEqual(payout_pnl(merchant_fee=mdr, trader_fee="125"), Decimal("-123.28"))
+
+
+    @override_settings(
+        CASH_REGISTER_PSP_SITE_WITHDRAWAL_FEE="5",
+        CASH_REGISTER_PSP_FREE_WITHDRAWAL="payplat1,prochub1",
+    )
+    def test_psp_site_withdrawal_fee_defaults(self):
+        self.assertEqual(psp_site_withdrawal_fee("gipay1"), Decimal("5.00"))
+        self.assertEqual(psp_site_withdrawal_fee("payplat1"), Decimal("0.00"))
+        self.assertEqual(psp_site_withdrawal_fee("prochub1"), Decimal("0.00"))
 
 
 @override_settings(PAYPLAT_TRADER_USERNAME="payplat1")
