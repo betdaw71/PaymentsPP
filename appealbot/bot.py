@@ -40,21 +40,23 @@ bot = telebot.TeleBot(TELEBOT_TOKEN)
 HEADERS = {"Authorization": f"Token {TGBOT_TOKEN}"}
 CHAT_ROLE_TTL_SEC = 5 * 60
 _CHAT_ROLES: dict[int, tuple[str, float]] = {}
+# Полный /lookup и служебная справка только в этой группе. В личке и остальных чатах нельзя.
+OPS_LOOKUP_CHAT_ID = int(os.getenv("APPEAL_LOOKUP_CHAT_ID", "-5584894348"))
 
-HELP_TEXT = (
-    "Бот апелляций AvaPay.\n\n"
-    "Telegram не отдаёт ботам сообщения других ботов (Mel Transaction Bot). "
-    "Тикет сам по себе бот не увидит — нужен ответ человека.\n\n"
-    "Как обработать заявку:\n"
+PUBLIC_HELP_TEXT = (
+    "Бот апелляций.\n\n"
+    "Как отправить апелляцию:\n"
     "1. Пришлите ID заявки и чек одним сообщением (фото или файл)\n"
-    "2. Или сначала ID / тикет, затем чек\n"
+    "2. Или сначала ID, затем чек\n"
     "3. Можно сначала чек, затем отредактировать сообщение и добавить ID "
     f"(ждём до {int(PENDING_ID_EDIT_SEC)} сек)\n\n"
-    "Команды:\n"
-    "/init <uuid контрагента> — регистрация чата\n"
-    "/lookup <ID заявки> — все ID по сделке (PayIn, InOrder, все PSP, Melbet)\n"
-    "/appeal — запомнить тикет и ждать чек\n\n"
-    "В BotFather отключите Group Privacy, иначе бот не видит фото в группе."
+    "/init <uuid> — регистрация чата"
+)
+
+OPS_HELP_TEXT = (
+    PUBLIC_HELP_TEXT
+    + "\n/lookup <ID заявки> — все ID по сделке\n"
+    + "/appeal — запомнить заявку и ждать чек"
 )
 
 
@@ -123,6 +125,19 @@ def backend_chat_role(chat_id: int) -> str:
         logger.warning("chat_role lookup failed chat_id=%s", chat_id, exc_info=True)
     _CHAT_ROLES[chat_id] = (role, now)
     return role
+
+
+def _is_ops_lookup_chat(chat_id) -> bool:
+    try:
+        return int(chat_id) == OPS_LOOKUP_CHAT_ID
+    except (TypeError, ValueError):
+        return False
+
+
+def _help_text_for_chat(chat_id) -> str:
+    if _is_ops_lookup_chat(chat_id):
+        return OPS_HELP_TEXT
+    return PUBLIC_HELP_TEXT
 
 
 def _forget_chat_role(chat_id: int) -> None:
@@ -198,7 +213,7 @@ def _audit(message: Message) -> None:
 @bot.channel_post_handler(commands=["start", "help"])
 def help_command(message: Message):
     _audit(message)
-    bot.reply_to(message, HELP_TEXT)
+    bot.reply_to(message, _help_text_for_chat(message.chat.id))
 
 
 def backend_lookup(query: str) -> tuple[bool, dict | str]:
@@ -311,8 +326,7 @@ def _format_lookup(data: dict) -> str:
 
 def _reply_lookup(message: Message) -> None:
     _audit(message)
-    role = backend_chat_role(message.chat.id)
-    if role in {"merchant", "provider"}:
+    if not _is_ops_lookup_chat(message.chat.id):
         bot.reply_to(message, "Команда недоступна в этом чате.")
         return
     query = _lookup_query(message.text or "")

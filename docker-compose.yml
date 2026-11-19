@@ -354,6 +354,7 @@ services:
       BACKEND_URL: http://app:8080/api/v1/bot/appeals
       TGBOT_TOKEN: ${APPEAL_BOT_API_TOKEN}
       TELEBOT_TOKEN: ${APPEAL_TELEBOT_TOKEN}
+      APPEAL_LOOKUP_CHAT_ID: ${APPEAL_LOOKUP_CHAT_ID:--5584894348}
     depends_on:
       - app
     networks:
