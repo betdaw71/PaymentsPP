@@ -371,12 +371,27 @@ def _psp_routing_priority_by_merchant_maps() -> dict[str, dict[str, int]]:
     return out
 
 
+# aggrepay: Asterisk (astrum_kzt) первым. Явный ключ aggrepay в env не перетираем.
+_AGGREPAY_USERNAME = "aggrepay"
+_AGGREPAY_ASTERISK_CASCADE = {"astrum_kzt": 1}
+
+
+def _aggrepay_asterisk_first() -> bool:
+    from django.conf import settings
+
+    raw = getattr(settings, "AGGREPAY_ASTERISK_FIRST", "1")
+    return str(raw).strip().lower() not in {"0", "false", "no", "off"}
+
+
 def merchant_psp_priority_map(merchant) -> dict[str, int] | None:
     """Кастомный каскад мерчанта или None (глобальный)."""
     key = _merchant_routing_username(merchant)
     if not key:
         return None
-    return _psp_routing_priority_by_merchant_maps().get(key)
+    maps = _psp_routing_priority_by_merchant_maps()
+    if key == _AGGREPAY_USERNAME and key not in maps and _aggrepay_asterisk_first():
+        return dict(_AGGREPAY_ASTERISK_CASCADE)
+    return maps.get(key)
 
 
 def _psp_first_merchant_usernames() -> frozenset[str]:
@@ -387,10 +402,12 @@ def _psp_first_merchant_usernames() -> frozenset[str]:
 
 
 def merchant_wants_psp_first(merchant) -> bool:
-    """PSP раньше живых трейдеров (mostbet: patriot → traders)."""
+    """PSP раньше живых трейдеров (mostbet: patriot → traders, aggrepay: astrum → traders)."""
     key = _merchant_routing_username(merchant)
     if not key:
         return False
+    if key == _AGGREPAY_USERNAME and _aggrepay_asterisk_first():
+        return True
     return key in _psp_first_merchant_usernames()
 
 
@@ -613,8 +630,9 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
 
     По умолчанию: живые трейдеры первыми (равномерно по выдачам/open за окно),
     затем PSP. HUMAN_ROUTING_FAIR=0 — снова только current_volume.
-    Если мерчант в PSP_ROUTING_PSP_FIRST_MERCHANTS (mostbet): PSP первыми,
-    живые после — и после отказа API уйдут через human fallback.
+    Если мерчант в PSP_ROUTING_PSP_FIRST_MERCHANTS (mostbet) или это aggrepay:
+    PSP первыми, живые после — и после отказа API уйдут через human fallback.
+    aggrepay без своего ключа в map: только astrum_kzt, затем команды трейдеров.
 
     Если задан PSP_ROUTING_SHARE_MAP — среди провайдеров с долей > 0
     порядок взвешенно-случайный. SHARE_MAP не применяется при per-merchant каскаде.
@@ -1248,7 +1266,7 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
 
 
 def try_human_trader_fallback(pay_in: Any, *, failed_provider: str) -> bool:
-    """mostbet psp_first: Patriot/PSP отказал → живая команда трейдеров с реальной картой."""
+    """psp_first: PSP отказал → живая команда. mostbet после Patriot, aggrepay после Astrum."""
     from basics.models import PaymentDetails
     from payments.deal_margin import margin_ok_for_group
     from payments.payin_trace import Direction, trace_log

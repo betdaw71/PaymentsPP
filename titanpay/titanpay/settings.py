@@ -660,17 +660,48 @@ PSP_ROUTING_PRIORITY_MAP = os.getenv(
     '"layerone1":10,"nexus1":11,"plutus1":98,"astrum_kzt":97,"payplat1":99}',
 )
 # JSON: per-merchant каскад (перебивает глобальный priority + отключает SHARE_MAP для этого мерча).
+# aggrepay: только astrum_kzt (Asterisk). Если ключа нет в env, код всё равно ставит его первым.
 PSP_ROUTING_PRIORITY_BY_MERCHANT = os.getenv(
     'PSP_ROUTING_PRIORITY_BY_MERCHANT',
     '{"pandapay":{"patriot1":1,"gipay1":2,"prochub1":3,"layerone1":4,'
-    '"plutus1":98,"astrum_kzt":97,"payplat1":99}}',
+    '"plutus1":98,"astrum_kzt":97,"payplat1":99},"aggrepay":{"astrum_kzt":1}}',
 )
-# Мерчанты, у которых PSP идут раньше живых трейдеров (mostbet: patriot → traders).
+# Мерчанты, у которых PSP идут раньше живых трейдеров.
+# mostbet: patriot → traders. aggrepay: astrum → traders (AGGREPAY_ASTERISK_FIRST).
 # После отказа PSP (нет реквизита) — fallback на команды трейдеров.
 PSP_ROUTING_PSP_FIRST_MERCHANTS = os.getenv(
     'PSP_ROUTING_PSP_FIRST_MERCHANTS',
-    'mostbet',
+    'mostbet,aggrepay',
 )
+# 0 выключает принудительный каскад aggrepay (astrum, потом трейдеры), если ключа нет в map.
+AGGREPAY_ASTERISK_FIRST = os.getenv('AGGREPAY_ASTERISK_FIRST', '1')
+# Сторож реквизитов живых трейдеров. Высокие пороги: карта гасится, только если она
+# пустая в обеих половинах окна, спам-клиенты это не объясняют, соседние карты
+# трейдера и остальные карты мерчанта платят, и на этой карте нет оплат у других мерчантов.
+REQ_CONV_GUARD_ENABLED = os.getenv('REQ_CONV_GUARD_ENABLED', '1')
+try:
+    REQ_CONV_GUARD_WINDOW_H = int(os.getenv('REQ_CONV_GUARD_WINDOW_H', '72') or '72')
+except (TypeError, ValueError):
+    REQ_CONV_GUARD_WINDOW_H = 72
+try:
+    REQ_CONV_GUARD_INTERVAL_SEC = int(os.getenv('REQ_CONV_GUARD_INTERVAL_SEC', '1800') or '1800')
+except (TypeError, ValueError):
+    REQ_CONV_GUARD_INTERVAL_SEC = 1800
+REQ_CONV_GUARD_MIN_ISSUED = os.getenv('REQ_CONV_GUARD_MIN_ISSUED', '25')
+REQ_CONV_GUARD_MAX_PCT = os.getenv('REQ_CONV_GUARD_MAX_PCT', '5')
+REQ_CONV_GUARD_HALF_MIN_ISSUED = os.getenv('REQ_CONV_GUARD_HALF_MIN_ISSUED', '8')
+REQ_CONV_GUARD_HALF_MAX_PCT = os.getenv('REQ_CONV_GUARD_HALF_MAX_PCT', '10')
+REQ_CONV_GUARD_CLEAN_MIN_ISSUED = os.getenv('REQ_CONV_GUARD_CLEAN_MIN_ISSUED', '12')
+REQ_CONV_GUARD_CLEAN_MAX_PCT = os.getenv('REQ_CONV_GUARD_CLEAN_MAX_PCT', '5')
+REQ_CONV_GUARD_PEER_MIN_ISSUED = os.getenv('REQ_CONV_GUARD_PEER_MIN_ISSUED', '20')
+REQ_CONV_GUARD_PEER_MIN_CARDS = os.getenv('REQ_CONV_GUARD_PEER_MIN_CARDS', '2')
+REQ_CONV_GUARD_PEER_MIN_PCT = os.getenv('REQ_CONV_GUARD_PEER_MIN_PCT', '15')
+REQ_CONV_GUARD_MERCHANT_MIN_ISSUED = os.getenv('REQ_CONV_GUARD_MERCHANT_MIN_ISSUED', '25')
+REQ_CONV_GUARD_MERCHANT_MIN_PCT = os.getenv('REQ_CONV_GUARD_MERCHANT_MIN_PCT', '12')
+REQ_CONV_GUARD_OTHER_MERCHANT_MIN_ISSUED = os.getenv('REQ_CONV_GUARD_OTHER_MERCHANT_MIN_ISSUED', '8')
+REQ_CONV_GUARD_OTHER_MERCHANT_SAVE_PCT = os.getenv('REQ_CONV_GUARD_OTHER_MERCHANT_SAVE_PCT', '15')
+REQ_CONV_GUARD_OTHER_MERCHANT_SAVE_OK = os.getenv('REQ_CONV_GUARD_OTHER_MERCHANT_SAVE_OK', '3')
+REQ_CONV_GUARD_SPAM_CLIENT_MIN = os.getenv('REQ_CONV_GUARD_SPAM_CLIENT_MIN', '5')
 # JSON: доля трафика PSP в % за скользящее окно. Пустой {} = только каскад по приоритету.
 # Пример: {"payplat1": 70, "gipay1": 30}. Доли нормализуются среди провайдеров,
 # которые сейчас в каскаде (выключенный PSP не занимает %). 0 или отсутствие username —

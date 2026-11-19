@@ -247,7 +247,7 @@ class MerchantCascadeOverrideTest(SimpleTestCase):
 
     def test_other_merchant_keeps_share_map(self, _mdr):
         groups = [_group("payplat1", 1), _group("gipay1", 2)]
-        merchant = SimpleNamespace(user=SimpleNamespace(username="aggrepay"))
+        merchant = SimpleNamespace(user=SimpleNamespace(username="melbet"))
         ordered = sort_groups_for_routing(
             groups, merchant=merchant, rng=_ScriptedRng([0.99, 0.0])
         )
@@ -305,7 +305,7 @@ class MostbetPatriotThenTradersTest(SimpleTestCase):
             _group("patriot1", 1, volume="0"),
             _group("live_a", 21, volume="10"),
         ]
-        merchant = SimpleNamespace(user=SimpleNamespace(username="aggrepay"))
+        merchant = SimpleNamespace(user=SimpleNamespace(username="melbet"))
         ordered = sort_groups_for_routing(
             groups, merchant=merchant, rng=_ScriptedRng([0.0])
         )
@@ -313,3 +313,20 @@ class MostbetPatriotThenTradersTest(SimpleTestCase):
             [g.trader.user.username for g in ordered],
             ["live_a", "patriot1"],
         )
+
+    @override_settings(HUMAN_ROUTING_FAIR="0")
+    def test_aggrepay_asterisk_then_live_traders(self, _mdr):
+        groups = [
+            _group("resdfe1", 22, volume="0"),
+            _group("payplat1", 3, volume="0"),
+            _group("astrum_kzt", 1, volume="0"),
+            _group("resdfe", 21, volume="0"),
+            _group("gipay1", 2, volume="0"),
+        ]
+        merchant = SimpleNamespace(user=SimpleNamespace(username="aggrepay"))
+        ordered = sort_groups_for_routing(groups, merchant=merchant)
+        self.assertEqual(
+            [g.trader.user.username for g in ordered],
+            ["astrum_kzt", "resdfe", "resdfe1"],
+        )
+        self.assertTrue(merchant_wants_psp_first(merchant))

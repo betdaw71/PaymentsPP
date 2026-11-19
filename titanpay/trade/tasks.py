@@ -70,6 +70,14 @@ def update_all():
     except Exception as e:
         logging.error("admin ops health alerts failed: %s", e)
 
+    logging.debug("requisite conversion guard")
+    try:
+        from payments.requisite_guard import maybe_run_requisite_guard
+
+        maybe_run_requisite_guard()
+    except Exception as e:
+        logging.error("requisite guard failed: %s", e)
+
     logging.debug("admin bot commands")
     try:
         from payments.admin_bot import poll_admin_bot
