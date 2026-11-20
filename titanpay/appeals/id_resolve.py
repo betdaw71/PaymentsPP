@@ -37,8 +37,24 @@ TICKET_LABEL_RE = re.compile(
     re.IGNORECASE,
 )
 PSP_NUMBER_RE = re.compile(
-    r"(?:Номер в [ПГ]?ПС|PSP(?:\s*ID)?|provider[_ ]?(?:id|order))\s*[:：]\s*"
+    r"(?:Номер в [ПГ]?ПС|PSP(?:\s*ID)?|provider[_ ]?(?:id|order)|"
+    r"ID\s+заявки\s+провайдера)\s*[:：]?\s*"
     r"[\r\n\s]*([A-Za-z0-9._-]{3,64})",
+    re.IGNORECASE,
+)
+# Aggrepay merchant_order_id: обычный UUID, но в первой группе 9 hex и в конце буква g.
+# Внутри такой строки лежит чужой UUID на 1 символ короче — его нельзя считать отдельным id.
+AGGREPAY_MERCHANT_ORDER_RE = re.compile(
+    r"[0-9a-fA-F]{9}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}g\b",
+    re.IGNORECASE,
+)
+DEAL_LABEL_RE = re.compile(
+    r"(?:ID\s*сделки|Чек\s+по\s+сделке|По\s+сделке)\s*[:：]?\s*[\r\n\s]*"
+    r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
+    re.IGNORECASE,
+)
+FOLLOWUP_CHATTER_RE = re.compile(
+    r"новост|скорректир|удалось|какое решение|дайте ответ|приоритет|ознаком",
     re.IGNORECASE,
 )
 
@@ -63,9 +79,25 @@ class ResolveResult:
     recognized: bool = False
 
 
+def extract_aggrepay_order_ids(text: str) -> list[str]:
+    if not text:
+        return []
+    return _dedupe([match.group(0) for match in AGGREPAY_MERCHANT_ORDER_RE.finditer(text)])
+
+
+def is_followup_chatter(text: str) -> bool:
+    """Уточнение по уже открытой апелляции, не новая заявка с чеком."""
+    return bool(FOLLOWUP_CHATTER_RE.search(text or ""))
+
+
+def _without_aggrepay_order_ids(text: str) -> str:
+    return AGGREPAY_MERCHANT_ORDER_RE.sub(" ", text or "")
+
+
 def extract_uuids(text: str) -> list[str]:
     if not text:
         return []
+    text = _without_aggrepay_order_ids(text)
     seen: set[str] = set()
     out: list[str] = []
 
@@ -124,6 +156,8 @@ def parse_appeal_ticket(text: str) -> TicketHints:
     text = normalize_appeal_text(text)
     order_ids = [m.group(1).strip() for m in ORDER_LABEL_RE.finditer(text)]
     order_ids.extend(m.group(1).strip() for m in GENERIC_ID_LABEL_RE.finditer(text))
+    order_ids.extend(m.group(1).strip() for m in DEAL_LABEL_RE.finditer(text))
+    order_ids.extend(extract_aggrepay_order_ids(text))
     ticket_hexes = [m.group(1).lower() for m in TICKET_LABEL_RE.finditer(text)]
     psp_ids = [m.group(1).strip() for m in PSP_NUMBER_RE.finditer(text)]
     return TicketHints(
@@ -323,6 +357,7 @@ def _pay_in_for_psp_id(value: str) -> PayIn | None:
         PatriotpayPayInSession,
         ProchubPayInSession,
         NexusPayInSession,
+        AstrumPayInSession,
     )
 
     candidate = (value or "").strip()
@@ -346,6 +381,8 @@ def _pay_in_for_psp_id(value: str) -> PayIn | None:
         (ProchubPayInSession, {"external_id": candidate}),
         (NexusPayInSession, {"provider_order_id": candidate}),
         (NexusPayInSession, {"external_id": candidate}),
+        (AstrumPayInSession, {"provider_deal_id": candidate}),
+        (AstrumPayInSession, {"external_id": candidate}),
         (PayplatPayInSession, {"provider_order_id": candidate}),
         (PayplatPayInSession, {"external_id": candidate}),
         (BitzonePayInSession, {"provider_transaction_id": candidate}),

@@ -147,7 +147,7 @@ def provider_safe_filename(filename: str | None, file_bytes: bytes = b"") -> str
     if data.startswith(b"GIF8"):
         return "receipt.gif"
     ext = os.path.splitext(os.path.basename(filename or ""))[1].lower()
-    allowed = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf", ".heic", ".heif"}
+    allowed = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf", ".heic", ".heif", ".mp4", ".mov", ".webm"}
     if ext in allowed:
         if ext in {".jpeg", ".jpg"}:
             return "receipt.jpg"

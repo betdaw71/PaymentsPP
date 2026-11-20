@@ -39,7 +39,10 @@ API id / hash (один раз)
   TELEGRAM_API_ID=...
   TELEGRAM_API_HASH=...
   TELEGRAM_SESSION_STRING=...
-  USERBOT_WATCH_CHAT_IDS=-100xxxxxxxxxx   # id группы Support 1 (необязательно, но лучше)
+  USERBOT_WATCH_CHAT_IDS=-1003769960326,-1003933546441,-1004386075514
+                                          # Melbet Support 1, PandaPay support, Aggrepay DISPUT.
+                                          # Сообщения Mel Transaction Bot и Payment Gateway
+                                          # обычный бот не видит — их забирает только этот аккаунт.
   USERBOT_SOURCE_USERNAMES=               # пусто = любой бот в этих чатах;
                                           # иначе username Mel Transaction Bot без @
   USERBOT_CLICK_INLINE=0                  # 1 — жать Подтвердить/Отклонить после резолва

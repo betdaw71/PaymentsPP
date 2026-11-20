@@ -28,6 +28,40 @@ MELBET_TICKET = """
 """.strip()
 
 
+class MerchantFormatParseTest(SimpleTestCase):
+    def test_aggrepay_order_id_is_not_a_shifted_uuid(self):
+        from appeals.id_resolve import extract_aggrepay_order_ids, extract_uuids, parse_appeal_ticket
+
+        raw = "ac19cd58f-9697-4710-9ad1-f1ced40e002cg\nВидео"
+        self.assertEqual(extract_uuids(raw), [])
+        self.assertEqual(
+            extract_aggrepay_order_ids(raw),
+            ["ac19cd58f-9697-4710-9ad1-f1ced40e002cg"],
+        )
+        hints = parse_appeal_ticket(raw)
+        self.assertEqual(hints.merchant_order_ids, ["ac19cd58f-9697-4710-9ad1-f1ced40e002cg"])
+
+    def test_pandapay_deal_and_provider_ids(self):
+        from appeals.id_resolve import parse_appeal_ticket
+
+        text = (
+            "Апелляция\n"
+            "Причина: Сделка не подтверждена\n"
+            "ID сделки: 7b71196a-0ad2-49ec-a996-590694f0ea8b\n"
+            "ID заявки провайдера: 6c82f3ef-22ab-4dcd-a590-cf3cff2c1d08\n"
+            "Сумма: 3000 KZT"
+        )
+        hints = parse_appeal_ticket(text)
+        self.assertIn("7b71196a-0ad2-49ec-a996-590694f0ea8b", hints.merchant_order_ids)
+        self.assertIn("6c82f3ef-22ab-4dcd-a590-cf3cff2c1d08", hints.psp_ids)
+
+    def test_followup_is_not_a_new_appeal(self):
+        from appeals.id_resolve import is_followup_chatter
+
+        self.assertTrue(is_followup_chatter("24765956945 нет новостей ?\nприоритетный пользователь"))
+        self.assertFalse(is_followup_chatter("Тикет #7cef4bae\nЗаказ: 24776999853\nКомментарий: Не пришел депозит"))
+
+
 class MelbetTicketParseTest(SimpleTestCase):
     def test_extracts_order_and_ticket_hex(self):
         hints = parse_appeal_ticket(MELBET_TICKET)

@@ -8,7 +8,7 @@ from io import BytesIO
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from appeals.id_resolve import resolve_pay_in_from_message
+from appeals.id_resolve import is_followup_chatter, resolve_pay_in_from_message
 from appeals.models import (
     AppealCounterparty,
     AppealCounterpartyRole,
@@ -398,6 +398,8 @@ def process_merchant_appeal_message(
 
     resolved = resolve_pay_in_from_message(combined_text)
     if not has_receipt:
+        if resolved.error_code == "ambiguous_id" or is_followup_chatter(combined_text):
+            return _skip()
         if resolved.ok or resolved.recognized:
             return _await_receipt(NEED_RECEIPT, recognized=True)
         # Ticket-like PDF/file without extractable ID — ask to resend with ID + receipt.

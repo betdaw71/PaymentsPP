@@ -439,6 +439,13 @@ def _download_file(message: Message | None) -> tuple[bytes, str] | None:
             return None
         return content, "receipt.jpg"
 
+    video = getattr(message, "video", None)
+    if video is not None:
+        content = _download_by_file_id(video.file_id)
+        if content is None:
+            return None
+        return content, (getattr(video, "file_name", None) or "receipt.mp4")
+
     if message.document and _is_receipt_document(message.document):
         document = message.document
         content = _download_by_file_id(document.file_id)
@@ -991,10 +998,10 @@ def handle_text(message: Message):
             )
 
 
-@bot.message_handler(content_types=["photo", "document"])
-@bot.edited_message_handler(content_types=["photo", "document"])
-@bot.channel_post_handler(content_types=["photo", "document"])
-@bot.edited_channel_post_handler(content_types=["photo", "document"])
+@bot.message_handler(content_types=["photo", "document", "video"])
+@bot.edited_message_handler(content_types=["photo", "document", "video"])
+@bot.channel_post_handler(content_types=["photo", "document", "video"])
+@bot.edited_channel_post_handler(content_types=["photo", "document", "video"])
 def handle_receipt(message: Message):
     try:
         _handle_receipt(message)

@@ -10,11 +10,13 @@ UUID_RE = re.compile(
 TICKET_HINT_RE = re.compile(
     r"(тикет\s*[#№n]?\s*[:：]?\s*[0-9a-fA-F]{8}|заказ\s*[:：]|id\s*заказа|номер заказа|"
     r"реквизиты из заявки|маска юзера|номер в [пг]?пс|order\s*id\s*[:：]|"
+    r"id\s*сделки|id\s+заявки\s+провайдера|чек\s+по\s+сделке|"
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|"
+    r"[0-9a-fA-F]{9}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}g\b|"
     r"\b[0-9a-fA-F]{32}\b|\b\d{8,}\b)",
     re.IGNORECASE,
 )
-RECEIPT_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif")
+RECEIPT_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif", ".mp4", ".mov", ".webm")
 TICKET_NAME_HINTS = ("melbet", "мелбет", "ticket", "тикет", "avapay")
 
 
@@ -46,7 +48,7 @@ def is_pdf_document(mime: str | None, name: str | None) -> bool:
 def is_receipt_document(mime: str | None, name: str | None) -> bool:
     mime_l = (mime or "").lower()
     name_l = (name or "").lower()
-    if mime_l.startswith("image/") or mime_l in ("application/pdf", "application/x-pdf"):
+    if mime_l.startswith("image/") or mime_l.startswith("video/") or mime_l in ("application/pdf", "application/x-pdf"):
         return True
     if mime_l in ("application/octet-stream", "binary/octet-stream", ""):
         return name_l.endswith(RECEIPT_EXTS)
@@ -75,7 +77,7 @@ def generic_receipt_name(filename: str | None, content: bytes) -> str:
     if content.startswith(b"GIF8"):
         return "receipt.gif"
     name = (filename or "").lower()
-    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf", ".heic", ".heif"):
+    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf", ".heic", ".heif", ".mp4", ".mov", ".webm"):
         if name.endswith(ext):
             if ext in {".jpeg", ".heic", ".heif"}:
                 return "receipt.jpg"
