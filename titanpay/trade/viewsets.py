@@ -396,13 +396,13 @@ class CharInFilter(django_filters.BaseInFilter, django_filters.CharFilter):
 def _filter_in_order_id(queryset, _name, value):
     from trade.order_id_query import apply_order_id_filter
 
-    return apply_order_id_filter(queryset, value, "pay_in_id")
+    return apply_order_id_filter(queryset, value, "pay_in")
 
 
 def _filter_out_order_id(queryset, _name, value):
     from trade.order_id_query import apply_order_id_filter
 
-    return apply_order_id_filter(queryset, value, "pay_out_id")
+    return apply_order_id_filter(queryset, value, "pay_out")
 
 
 class InOrderFilter(django_filters.FilterSet):
