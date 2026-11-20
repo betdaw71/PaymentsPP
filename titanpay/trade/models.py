@@ -80,7 +80,7 @@ class InOrder(models.Model):
     arbitrage_comment = models.CharField(max_length=63)
     merchant_order_id = models.CharField(default="", max_length=256)
 
-    pic = models.URLField()
+    pic = models.URLField(max_length=500)
 
     recalculated_amount = models.DecimalField(default=0, validators=[MinValueValidator(0)], max_digits=32, decimal_places=2)
 
