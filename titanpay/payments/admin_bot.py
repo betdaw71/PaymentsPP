@@ -18,6 +18,7 @@ OFFSET_KEY = "admin_bot:update_offset"
 HELP = (
     "Касса / балансы:\n"
     "/lookup <ID заявки>\n"
+    "Перерасчёт заявки приходит сюда кнопками Подтвердить / Отклонить.\n"
     "касса\n"
     "обнови баланс провайдера payplat1 на 1234.56\n"
     "обнови баланс мерча mostbet на 2800\n"
@@ -188,6 +189,35 @@ def handle_command(cmd: dict) -> str:
     return f"{label}: {before} → {bal.amount} USDT"
 
 
+def _handle_recalc_callback(callback: dict, allowed_chat: str) -> bool:
+    from payments.recalc_confirm import (
+        answer_callback,
+        apply_recalc_decision,
+        edit_admin_message,
+        parse_recalc_callback,
+    )
+
+    callback_id = str(callback.get("id") or "")
+    message = callback.get("message") or {}
+    chat_id = str((message.get("chat") or {}).get("id") or "")
+    parsed = parse_recalc_callback(callback.get("data") or "")
+    if parsed is None:
+        return False
+    if chat_id != str(allowed_chat):
+        answer_callback(callback_id, "Нет доступа")
+        return False
+    side, order_id, approve = parsed
+    try:
+        result = apply_recalc_decision(side, order_id, approve)
+    except Exception:
+        logger.exception("recalc confirm failed order=%s", order_id)
+        result = "Ошибка выполнения"
+    answer_callback(callback_id, result)
+    original = message.get("text") or ""
+    edit_admin_message(chat_id, message.get("message_id"), f"{original}\n\nИтог: {result}")
+    return True
+
+
 def poll_admin_bot() -> int:
     token = _bot_token()
     allowed = _chat_id()
@@ -197,7 +227,7 @@ def poll_admin_bot() -> int:
     try:
         response = requests.get(
             f"https://api.telegram.org/bot{token}/getUpdates",
-            params={"timeout": 0, "offset": offset, "allowed_updates": ["message"]},
+            params={"timeout": 0, "offset": offset, "allowed_updates": ["message", "callback_query"]},
             timeout=20,
         )
         payload = response.json()
@@ -211,6 +241,11 @@ def poll_admin_bot() -> int:
     last_id = offset
     for upd in payload.get("result") or []:
         last_id = max(last_id, int(upd.get("update_id", 0)) + 1)
+        callback = upd.get("callback_query")
+        if callback:
+            if _handle_recalc_callback(callback, allowed):
+                handled += 1
+            continue
         msg = upd.get("message") or {}
         chat = str((msg.get("chat") or {}).get("id") or "")
         if chat != str(allowed):

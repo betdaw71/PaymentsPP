@@ -902,6 +902,9 @@ class InOrder(models.Model):
         self.status = status
         self.save()
         InOrderStatusChange.create(order=self, status=status)
+        from payments.recalc_confirm import queue_recalc_confirmation
+
+        queue_recalc_confirmation(self, "rin")
         return
 
         # self.recalculate(new_amount)
@@ -1532,6 +1535,9 @@ class OutOrder(models.Model):
         self.recalculated_amount = new_amount
         self.save()
         OutOrderStatusChange.create(order=self, status=status)
+        from payments.recalc_confirm import queue_recalc_confirmation
+
+        queue_recalc_confirmation(self, "rout")
 
     def recalculate(self, new_amount: Decimal):
         if self.status.name != "Recalculation":
