@@ -351,14 +351,16 @@ class MerchantAppealForwardTest(TestCase):
             result = process_merchant_appeal_message(
                 chat_id=111,
                 message_id=10,
-                text="",
+                text=MELBET_TICKET,
                 file_bytes=pdf,
                 filename="Melbet_ticket.pdf",
             )
-        self.assertEqual(result.outcome, "await_receipt")
-        self.assertIn("чек", result.message.lower())
+        self.assertEqual(result.outcome, "pending")
         mock_file.assert_not_called()
-        mock_text.assert_not_called()
+        mock_text.assert_called_once()
+        caption = mock_text.call_args.kwargs["text"]
+        self.assertEqual(caption, str(self.pay_in.id))
+        self.assertNotRegex(caption, r"(?i)melbet|тикет|заказ")
 
     def test_text_only_ticket_goes_to_provider_without_merchant_name(self):
         from unittest.mock import patch

@@ -65,6 +65,16 @@ def looks_like_ticket_document(mime: str | None, name: str | None, caption: str 
     return filename_looks_like_ticket(name)
 
 
+def attachment_is_ticket_file(mime: str | None, name: str | None, caption: str | None) -> bool:
+    """Whether this attachment is the merchant ticket rather than the payment receipt.
+
+    Mel Transaction Bot sends one message: ticket text in the caption and a PDF
+    whose name is a content hash. The caption looks like a ticket, but the file
+    is the receipt. Only a ticket-like filename moves the bytes out of the receipt.
+    """
+    return looks_like_ticket_document(mime, name, caption)
+
+
 def generic_receipt_name(filename: str | None, content: bytes) -> str:
     if content.startswith(b"\xff\xd8\xff"):
         return "receipt.jpg"

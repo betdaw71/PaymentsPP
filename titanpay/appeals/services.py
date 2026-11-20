@@ -400,12 +400,16 @@ def process_merchant_appeal_message(
     if not has_receipt:
         if resolved.error_code == "ambiguous_id" or is_followup_chatter(combined_text):
             return _skip()
-        if resolved.ok or resolved.recognized:
-            return _await_receipt(NEED_RECEIPT, recognized=True)
-        # Ticket-like PDF/file without extractable ID — ask to resend with ID + receipt.
-        if file_bytes:
-            return _reject(ID_NOT_RECOGNIZED, recognized=True)
-        return _skip()
+        # Melbet often attaches the ticket itself as a PDF (hash filename or
+        # "ticket.pdf"). The order is known, but that file must not be sent to
+        # the provider. Open the appeal and send only the provider id.
+        ticket_only = bool(ticket_file_bytes) or file_is_ticket
+        if not (resolved.ok and resolved.pay_in is not None and ticket_only):
+            if resolved.ok or resolved.recognized:
+                return _await_receipt(NEED_RECEIPT, recognized=True)
+            if file_bytes:
+                return _reject(ID_NOT_RECOGNIZED, recognized=True)
+            return _skip()
 
     if not resolved.ok or resolved.pay_in is None:
         # Pandapay often posts the receipt first, then edits the caption to add the ID.

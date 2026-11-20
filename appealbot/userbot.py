@@ -25,7 +25,7 @@ from ticket_detect import (
     env_flag,
     generic_receipt_name,
     inline_button_action,
-    is_pdf_document,
+    attachment_is_ticket_file,
     is_receipt_document,
     looks_like_ticket,
     looks_like_ticket_document,
@@ -226,9 +226,7 @@ async def _process_album(client: TelegramClient, messages) -> None:
         if not data:
             continue
         is_photo = isinstance(message.media, MessageMediaPhoto) or bool(getattr(message, "photo", None))
-        if looks_like_ticket_document(mime, name, caption) or (
-            is_pdf_document(mime, name) and looks_like_ticket(caption)
-        ):
+        if attachment_is_ticket_file(mime, name, caption):
             ticket_bytes = ticket_bytes or data
             continue
         if is_photo:
@@ -273,12 +271,21 @@ async def _apply_userbot_outcome(message, payload: dict) -> None:
     if payload.get("skip"):
         return
     outcome = payload.get("outcome") or "rejected"
-    if payload.get("recognized") or payload.get("ok") or outcome == "await_receipt":
-        await _react(message, "👀")
+    logger.info(
+        "userbot outcome chat=%s msg=%s outcome=%s ok=%s recognized=%s message=%s",
+        getattr(message, "chat_id", None),
+        getattr(message, "id", None),
+        outcome,
+        payload.get("ok"),
+        payload.get("recognized"),
+        (payload.get("message") or "")[:180],
+    )
     if outcome == "success":
         await _react(message, "👍")
         return
-    if outcome in {"pending", "partial", "await_receipt"}:
+    # await_id used to fall through to 👎, so a found-looking ticket was marked failed.
+    if outcome in {"pending", "partial", "await_receipt", "await_id"}:
+        await _react(message, "👀")
         return
     await _react(message, "👎")
 
@@ -306,7 +313,7 @@ async def _download_payload(client: TelegramClient, message) -> tuple[bytes, str
     if not data:
         return b"", "", None
     is_photo = isinstance(message.media, MessageMediaPhoto) or bool(getattr(message, "photo", None))
-    if looks_like_ticket_document(mime, name, caption) or (is_pdf_document(mime, name) and looks_like_ticket(caption)):
+    if attachment_is_ticket_file(mime, name, caption):
         return b"", "", data
     if is_photo or is_receipt_document(mime, name):
         # Keep original filename for backend ID mining; provider side still sanitizes.

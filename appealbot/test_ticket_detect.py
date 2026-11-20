@@ -93,6 +93,28 @@ class TicketDetectTest(unittest.TestCase):
             looks_like_ticket_document("application/pdf", "Melbet_ticket.pdf", "anything")
         )
 
+    def test_melbet_caption_does_not_hide_hash_named_receipt(self):
+        from ticket_detect import attachment_is_ticket_file, looks_like_ticket
+
+        caption = (
+            "Тикет #bd31adc3\n"
+            "Заказ: 24781441961\n"
+            "Номер в ПС:\n"
+            "74f6a81b-040a-4280-865b-75473180\n"
+            "f76f"
+        )
+        self.assertTrue(looks_like_ticket(caption))
+        self.assertFalse(
+            attachment_is_ticket_file(
+                "application/pdf",
+                "1d7cee2e863c3f3dd5e99351.pdf",
+                caption,
+            )
+        )
+        self.assertTrue(
+            attachment_is_ticket_file("application/pdf", "Melbet_ticket.pdf", caption)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
