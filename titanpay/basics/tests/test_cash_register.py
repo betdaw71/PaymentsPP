@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from basics.cash_register import (
     fx_spread,
+    iter_cash_wallet_targets,
     kzt_to_usd,
     merchant_fee_to_usd,
     merchant_usdt_net,
@@ -102,6 +103,21 @@ class CashRegisterMathTest(SimpleTestCase):
         self.assertEqual(payout_pnl(merchant_fee=mdr, trader_fee=tf), Decimal("0.28"))
         # Old bug: subtract 125 as USDT → day ≈ −123
         self.assertEqual(payout_pnl(merchant_fee=mdr, trader_fee="125"), Decimal("-123.28"))
+
+
+@override_settings(
+    CASH_REGISTER_TRC20_WALLET="TEPKpVsAUyrkLx38ueFzSQP1HXGX8XK1Tt",
+    CASH_REGISTER_EXTRA_WALLETS="TS5uJhkh8VoSw1gWCWy2o7s6a3bKapK97d",
+    CASH_REGISTER_INCLUDE_TRADER_WALLETS="0",
+)
+class OwnerWalletAssetTest(SimpleTestCase):
+    def test_owner_wallet_is_included_once(self):
+        targets = iter_cash_wallet_targets()
+        addresses = [address for address, _label in targets]
+        self.assertEqual(addresses[0], "TEPKpVsAUyrkLx38ueFzSQP1HXGX8XK1Tt")
+        self.assertIn("TS5uJhkh8VoSw1gWCWy2o7s6a3bKapK97d", addresses)
+        self.assertEqual(addresses.count("TS5uJhkh8VoSw1gWCWy2o7s6a3bKapK97d"), 1)
+        self.assertEqual(dict(targets)["TS5uJhkh8VoSw1gWCWy2o7s6a3bKapK97d"], "owner_wallet")
 
 
 @override_settings(PAYPLAT_TRADER_USERNAME="payplat1")

@@ -403,6 +403,11 @@ CASH_REGISTER_TRC20_WALLET = os.getenv(
 )
 # 1 = в активы кассы также суммировать WatchedDepositWallet трейдеров (как в TronLink).
 CASH_REGISTER_INCLUDE_TRADER_WALLETS = os.getenv('CASH_REGISTER_INCLUDE_TRADER_WALLETS', '1')
+# Дополнительные свои TRC-20 кошельки в активах кассы (не автозачисление трейдеру).
+CASH_REGISTER_EXTRA_WALLETS = os.getenv(
+    'CASH_REGISTER_EXTRA_WALLETS',
+    'TS5uJhkh8VoSw1gWCWy2o7s6a3bKapK97d',
+)
 # Ручной pin on-chain USDT при TronGrid 429: addr:amount,addr2:amount
 CASH_REGISTER_WALLET_BALANCES = os.getenv('CASH_REGISTER_WALLET_BALANCES', '')
 # Кому заливаем наперёд → актив. Кто дал депозит нам → пассив (остаток трафика).

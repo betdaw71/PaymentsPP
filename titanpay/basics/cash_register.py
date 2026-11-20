@@ -2,7 +2,7 @@
 
 Mostbet: available+frozen−rolling > 0 → пассив; < 0 → актив (держит наш rolling после сетла).
 Команды-пополнения (CASH_REGISTER_OWED_TO_TRADERS): пассив + topups day/month + wallet.
-On-chain USDT: CASH_REGISTER_TRC20_WALLET + WatchedDepositWallet трейдеров (TronLink-сумма).
+On-chain USDT: CASH_REGISTER_TRC20_WALLET + CASH_REGISTER_EXTRA_WALLETS + WatchedDepositWallet трейдеров.
 Маржа сделок на Balance type=2 — memo.platform_aggregator, не в A−L.
 """
 from __future__ import annotations
@@ -279,6 +279,10 @@ def iter_cash_wallet_targets() -> list[tuple[str, str]]:
 
     platform = (getattr(settings, "CASH_REGISTER_TRC20_WALLET", "") or "").strip()
     _add(platform, "platform_wallet")
+
+    extra = (getattr(settings, "CASH_REGISTER_EXTRA_WALLETS", "") or "").strip()
+    for part in extra.split(","):
+        _add(part, "owner_wallet")
 
     if cash_register_include_trader_wallets():
         try:
