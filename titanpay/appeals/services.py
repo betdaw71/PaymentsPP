@@ -3,10 +3,13 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from io import BytesIO
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from appeals.id_resolve import is_followup_chatter, resolve_pay_in_from_message
 from appeals.models import (
@@ -194,29 +197,148 @@ def _upload_receipt(file_bytes: bytes, pay_in_id: str, filename: str) -> str:
     return upload_receipt_storage(BytesIO(file_bytes), object_name)
 
 
+_ARBITRAGE_FROM_RELEASED = {
+    "Cancelled",
+    "Expired",
+    "Cancelled by support",
+    "Cancelled by trader",
+}
+_ARBITRAGE_STILL_OPEN = {"Money sent by user", "New"}
+_ARBITRAGE_LEAVE = {"Arbitrage", "Completed", "Recalculation", "Cannot process"}
+_FUND_ERRORS = (ValidationError, DRFValidationError)
+
+
 def _save_order_pic(order, receipt_url: str) -> None:
     if not order or not receipt_url:
         return
-    if len(receipt_url) > 200:
+    limit = order._meta.get_field("pic").max_length or 500
+    if len(receipt_url) > limit:
+        logger.warning(
+            "appeal receipt url longer than order.pic (%s > %s) order=%s",
+            len(receipt_url),
+            limit,
+            order.id,
+        )
         return
-    try:
-        order.pic = receipt_url
-        order.save(update_fields=["pic"])
-    except ValidationError:
-        pass
+    order.pic = receipt_url
+    order.save(update_fields=["pic"])
+
+
+def _freeze_need(order) -> Decimal:
+    from payments.psp_payin import psp_order_usd_ledger_amount
+
+    value = psp_order_usd_ledger_amount(order)
+    if value <= 0:
+        value = order.usd_amount or Decimal("0")
+    return Decimal(value).quantize(Decimal("0.01"))
+
+
+def _cover_freeze_from_insurance(order, need: Decimal) -> Decimal:
+    """Move the freeze shortfall onto the trader working balance and debit the team insurance.
+
+    The insurance ledger may go negative: the appeal must still freeze and enter Arbitrage.
+    Balance type=3 is the blockchain source used for the same insurance top-up on manual completes.
+    """
+    from basics.models import Balance, TraderTeam
+    from trade.models import Transaction, TransactionType
+
+    details = order.payment_details
+    trader = None if details is None or details.group_id is None else details.group.trader
+    if trader is None or trader.balance_usdt_id is None or trader.team_id is None:
+        return Decimal("0")
+    if need <= 0:
+        return Decimal("0")
+
+    working = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
+    shortfall = (need - Decimal(working.amount)).quantize(Decimal("0.01"))
+    if shortfall <= 0:
+        return Decimal("0")
+
+    chain = Balance.objects.select_for_update().filter(type=3).first()
+    if chain is None:
+        logger.warning("appeal insurance cover skipped: no blockchain balance order=%s", order.id)
+        return Decimal("0")
+
+    team = TraderTeam.objects.select_for_update().get(pk=trader.team_id)
+    Transaction.create(
+        _from=chain,
+        _to=working,
+        value=shortfall,
+        _transaction_type=TransactionType.objects.filter(name="Deposit").first(),
+        _linked_in_order=order,
+        _comment="Insurance deposit cover for appeal arbitrage",
+    )
+    team.insurance_deposit = (Decimal(team.insurance_deposit or 0) - shortfall).quantize(Decimal("0.01"))
+    team.save(update_fields=["insurance_deposit"])
+    logger.info(
+        "appeal insurance cover order=%s amount=%s insurance_left=%s",
+        order.id,
+        shortfall,
+        team.insurance_deposit,
+    )
+    return shortfall
+
+
+def _set_arbitrage_status(order, comment: str) -> None:
+    from trade.models import InOrderStatus, InOrderStatusChange, arbitrage_block_payment_group
+
+    status = InOrderStatus.objects.get(name="Arbitrage")
+    order.arbitrage_comment = (comment or "")[:63]
+    arbitrage_block_payment_group(order)
+    order.status = status
+    if order.payment_details_id:
+        order.payment_details.save()
+    order.updated_date = timezone.now()
+    order.save()
+    InOrderStatusChange.create(order=order, status=status)
+
+
+def _arbitrage_limit_reached(order) -> bool:
+    from titanpay.settings import ARBITRAGE_LIMIT
+    from trade.models import InOrderStatus, InOrderStatusChange
+
+    status = InOrderStatus.objects.filter(name="Arbitrage").first()
+    if status is None:
+        return False
+    return InOrderStatusChange.objects.filter(status=status, order=order).count() >= ARBITRAGE_LIMIT
 
 
 def _try_order_arbitrage(order) -> None:
-    if order is None:
+    if order is None or order.status_id is None or order.payment_details_id is None:
         return
     status_name = order.status.name
-    try:
-        if status_name in {"Cancelled", "Expired", "Cancelled by support", "Cancelled by trader"}:
-            order.arbitrage()
-        elif status_name in {"Money sent by user", "New"}:
+    if status_name in _ARBITRAGE_LEAVE:
+        return
+    if _arbitrage_limit_reached(order):
+        logger.warning("appeal arbitrage limit reached order=%s; status only", order.id)
+        _set_arbitrage_status(order, "Arbitrage called by client")
+        return
+    if status_name in _ARBITRAGE_STILL_OPEN:
+        # Funds were frozen when the order was issued. Do not freeze a second time.
+        try:
             order.arbitrage_expired()
-    except ValidationError:
-        pass
+        except _FUND_ERRORS:
+            logger.exception("appeal open-order arbitrage failed order=%s", order.id)
+            _set_arbitrage_status(order, "Arbitrage due to inactivity")
+        return
+
+    try:
+        _cover_freeze_from_insurance(order, _freeze_need(order))
+    except Exception:
+        logger.exception("appeal insurance cover failed order=%s", order.id)
+    try:
+        if status_name in _ARBITRAGE_FROM_RELEASED:
+            order.arbitrage()
+        else:
+            order.freeze("Arbitrage")
+            _set_arbitrage_status(order, "Arbitrage called by client")
+    except _FUND_ERRORS:
+        logger.exception(
+            "appeal arbitrage freeze failed order=%s status=%s; setting Arbitrage anyway",
+            order.id,
+            status_name,
+        )
+        _set_arbitrage_status(order, "Arbitrage called by client")
 
 
 def _psp_meta_for_pay_in(pay_in):
