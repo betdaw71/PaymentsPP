@@ -52,11 +52,6 @@ DEFAULT_LOOKUP_IDS = [
     "91ac1b28-d37a-4eef-aff0-5d6e374a141b",
     "9540c2e6-8268-4e63-9614-61c54460e08a",
     "9869c736-e2e4-474d-a6fe-0e1293c59738",
-    "cd0429bd",
-    "ca296c72",
-    "5dba0665",
-    "97c7edf4",
-    "d2821681",
 ]
 
 OPEN_STATUSES = (
@@ -116,10 +111,24 @@ def lookup(*ids: str) -> None:
                 if pay_in:
                     print("  via PayIn.merchant_order_id")
 
-        if pay_in is None and resolved.error_message:
-            print(f"  resolve: FAIL recognized={resolved.recognized} err={resolved.error_message}")
-        elif pay_in is None:
-            print("  resolve: NOT FOUND")
+        if pay_in is None:
+            if resolved.error_message:
+                print(
+                    f"  resolve: FAIL recognized={resolved.recognized} "
+                    f"err={resolved.error_message}"
+                )
+            else:
+                print("  resolve: NOT FOUND")
+            continue
+
+        # resolved.pay_in может прийти без select_related — подгружаем связи
+        pay_in = (
+            PayIn.objects.filter(pk=pay_in.pk)
+            .select_related("status", "currency", "merchant__user", "order__status")
+            .first()
+        )
+        if pay_in is None:
+            print("  resolve: NOT FOUND (исчез после resolve)")
             continue
 
         order = pay_in.order
@@ -130,13 +139,13 @@ def lookup(*ids: str) -> None:
             f"merchant={getattr(merchant, 'username', None)} "
             f"moid={pay_in.merchant_order_id}"
         )
-        if order:
+        if order is not None:
             print(
                 f"  in_order={order.id} status={getattr(order.status, 'name', None)} "
                 f"updated={order.updated_date}"
             )
 
-        appeals = (
+        appeals = list(
             PayInAppeal.objects.filter(pay_in=pay_in)
             .order_by("-created_at")
             .values(
@@ -234,32 +243,32 @@ def run(hours: int = 24, lookup_ids: list[str] | None = None, limit: int = 40) -
     if problem_qs.count() > limit:
         print(f"  … ещё {problem_qs.count() - limit}")
 
-    # Melbet: pay-in с сессией, ордер не Success, апелляции нет (тикет мог не дойти)
-    melbet_open = (
+    # Melbet в арбитраже / money sent — без апелляции (реальные «тикет не дошёл»)
+    melbet_arb = (
         PayIn.objects.filter(melbet_session__isnull=False)
-        .exclude(order__status__name="Success")
-        .filter(created_at__gte=since)
+        .filter(order__status__name__in=["Arbitrage", "Money sent by user"])
+        .filter(order__updated_date__gte=since)
         .select_related("status", "merchant__user", "order__status")
-        .order_by("-created_at")
+        .order_by("-order__updated_date")
     )
-    melbet_ids = list(melbet_open.values_list("id", flat=True)[:500])
+    melbet_arb_ids = list(melbet_arb.values_list("id", flat=True)[:500])
     appealed_ids = set(
-        PayInAppeal.objects.filter(pay_in_id__in=melbet_ids).values_list("pay_in_id", flat=True)
+        PayInAppeal.objects.filter(pay_in_id__in=melbet_arb_ids).values_list("pay_in_id", flat=True)
     )
-    missing_qs = [p for p in melbet_open[:500] if p.id not in appealed_ids]
+    missing_arb = [p for p in melbet_arb[:500] if p.id not in appealed_ids]
     _print_section(
-        f"Melbet pay-in (не Success, созданы за {hours}ч) без PayInAppeal: "
-        f"{len(missing_qs)} из {len(melbet_ids)}"
+        f"Melbet Arbitrage/MoneySent без PayInAppeal (order updated за {hours}ч): "
+        f"{len(missing_arb)} из {len(melbet_arb_ids)}"
     )
-    for pay_in in missing_qs[:limit]:
+    for pay_in in missing_arb[:limit]:
         print(
             f"  pay_in={pay_in.id} moid={pay_in.merchant_order_id} "
             f"st={getattr(pay_in.status, 'name', None)} "
             f"order_st={getattr(getattr(pay_in.order, 'status', None), 'name', None)} "
             f"amount={pay_in.amount}"
         )
-    if len(missing_qs) > limit:
-        print(f"  … ещё {len(missing_qs) - limit}")
+    if len(missing_arb) > limit:
+        print(f"  … ещё {len(missing_arb) - limit}")
 
     arb = InOrder.objects.filter(
         status__name="Arbitrage",
