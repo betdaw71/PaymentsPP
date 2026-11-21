@@ -49,6 +49,9 @@ export const useAuthStore = defineStore ({
     is_head_of_support () {
       return this.userData.role === 5
     },
+    is_agent () {
+      return this.userData.role === 8
+    },
     is_trader () {
       return this.userData.role === 1 || this.userData.role === 2
     },

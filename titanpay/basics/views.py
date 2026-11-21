@@ -1,22 +1,25 @@
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes
+import uuid
+from decimal import Decimal
+
+from django.db import transaction
+from django.db.models import Min, Max, Sum
+from rest_framework import status
+from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.response import Response
+
+from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates, TeamLead
+from basics.models import PaymentDetails
+from basics.permissions import TraderPermission, DebugPermission, SupportPermission, HeadSupportPermission
 from basics.serializers import TraderShortSupportSerializer, TraderToTransferSerializer, \
     TraderFromTransferSerializer, PaymentSystemSerializer, CurrencySerializer, TrafficTypeSerializer, \
     TraderTeamRatesSerializer
-from rest_framework import status
-from rest_framework.response import Response
-from basics.models import Trader, Currency, TraderTeam, Balance, TrafficType, PaymentSystem, TraderTeamRates
-from basics.permissions import TraderPermission, DebugPermission, SupportPermission, HeadSupportPermission
 from basics.serializers import TraderShortSerializer
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
-from basics.models import PaymentDetails
+from basics.utils import get_balances, get_range
 from merchant.models import Merchant
 from titanpay.settings import SBER_NAME, TBANK_NAME
 from trade.models import Address
-from basics.utils import get_balances, get_range
-from django.db.models import Min, Max, Sum
-from decimal import Decimal
-from django.db import transaction
 
 
 @api_view(['POST'])
@@ -152,7 +155,13 @@ def get_balances_stats(request, *args, **kwargs):
         for team in sub_teams:
             team_data = {"team_name": team.name, "data": []}
             traders = Trader.objects.filter(team=team).distinct()
-            team_data["data"] = [{"username": trader.user.username,  "available_balance_amount": trader.balance_usdt.amount, "frozen_balance_amount": trader.frozen_balance_usdt.amount} for trader in traders]
+            team_data["data"] = [{
+                "username": trader.user.username,
+                "available_balance_amount": trader.balance_usdt.amount,
+                "frozen_balance_amount": trader.frozen_balance_usdt.amount,
+                "credit_limit": trader.credit_limit,
+                "working_deposit": trader.working_deposit,
+            } for trader in traders]
             team_data["total_amount"] = sum([_trader["available_balance_amount"] for _trader in team_data["data"]])
             team_data["total_frozen"] = sum([_trader["frozen_balance_amount"] for _trader in team_data["data"]])
             team_data["insurance_deposit"] = team.insurance_deposit
@@ -233,6 +242,11 @@ def get_user_filter_support(request, *args, **kwargs):
     if user.supportmember.is_head:
         merchants = Merchant.objects.all()
         users += [{"name": merch.user.username} for merch in merchants]
+        teamleads = TeamLead.objects.all()
+        users += [{"name": teamlead.user.username} for teamlead in teamleads]
+        from merchant.models import Agent
+
+        users += [{"name": agent.user.username} for agent in Agent.objects.select_related("user")]
 
     return Response(status=status.HTTP_200_OK, data={"users": users})
 
@@ -240,8 +254,25 @@ def get_user_filter_support(request, *args, **kwargs):
 @api_view(['GET'])
 @permission_classes([TraderPermission | DebugPermission])
 def get_pdgroup_creation_data(request, *args, **kwargs):
+    from django.db.models import Q
+
+    from trade.routing.ps_names import (
+        kzt_c2c_bank_ps_names,
+        kzt_c2c_merchant_ps_names,
+        melbet_kgs_ps_names,
+    )
+
     currencies = Currency.objects.all()
-    payment_systems = PaymentSystem.objects.filter(sbp_compatible=True)
+    # SBP-совместимые + KZT трансгран банки + Melbet local KGS (QR/card/phone).
+    # Банки/KGS создаются с sbp_compatible=False, иначе попадут в SBP-роутинг.
+    bank_names = (
+        kzt_c2c_bank_ps_names()
+        | kzt_c2c_merchant_ps_names()
+        | melbet_kgs_ps_names()
+    )
+    payment_systems = PaymentSystem.objects.filter(
+        Q(sbp_compatible=True) | Q(name__in=bank_names)
+    ).distinct()
     traffic_types = TrafficType.objects.all()
 
     data = dict()
@@ -252,15 +283,136 @@ def get_pdgroup_creation_data(request, *args, **kwargs):
     return Response(status=status.HTTP_200_OK, data=data)
 
 
+_SBER_LIKE_PD_FIELDS = {
+    "phone": {"type": "text", "unique": True, "cash": False},
+    "card_number": {"type": "number", "unique": False, "cash": False},
+    "deposit_number": {"type": "number", "unique": False, "cash": True},
+    "sberpay_enabled": {"type": "bool", "unique": True, "cash": False},
+    "sbp_enabled": {"type": "bool", "unique": True, "cash": False},
+}
+_CARD_PD_FIELDS = {
+    "card_number": {"type": "number", "unique": False, "cash": False},
+}
+_KGS_BANK_OPTIONS = [
+    "MBank",
+    "Optima Bank",
+    "Bakai Bank",
+    "O!Bank",
+    "Demir Bank",
+    "KICB",
+    "Kompanion",
+    "Companion",
+    "DoscredoBank",
+    "Keremet Bank",
+    "Other",
+]
+_KGS_BANK_FIELD = {
+    "type": "select",
+    "unique": False,
+    "cash": False,
+    "options": list(_KGS_BANK_OPTIONS),
+}
+
+
+def _pd_fields_for_payment_system(ps: PaymentSystem) -> dict:
+    if ps.name in (SBER_NAME, TBANK_NAME):
+        return dict(_SBER_LIKE_PD_FIELDS)
+    name = (ps.name or "").upper()
+    # Melbet local KGS: карта / телефон / ELQR.
+    if name == "C2CKGS":
+        return {
+            "card_number": dict(_CARD_PD_FIELDS["card_number"]),
+            "bank_name": dict(_KGS_BANK_FIELD),
+        }
+    if name == "PHONEKGS":
+        return {
+            "phone": {"type": "text", "unique": True, "cash": False},
+            "bank_name": dict(_KGS_BANK_FIELD),
+        }
+    if name == "QRKGS":
+        # ELQR: фото QR (+ опционально телефон / банк).
+        return {
+            "qr_payload": {"type": "image", "unique": False, "cash": False},
+            "phone": {"type": "text", "unique": True, "cash": False},
+            "bank_name": dict(_KGS_BANK_FIELD),
+        }
+    req = ps.required_fields if isinstance(ps.required_fields, dict) else {}
+    fields = {}
+    if "card_number" in req:
+        fields["card_number"] = dict(_CARD_PD_FIELDS["card_number"])
+    if "phone" in req:
+        fields["phone"] = {"type": "text", "unique": True, "cash": False}
+    if "qr_payload" in req:
+        fields["qr_payload"] = {"type": "image", "unique": False, "cash": False}
+    if "bank_name" in req:
+        fields["bank_name"] = dict(_KGS_BANK_FIELD)
+    if "deposit_number" in req:
+        fields["deposit_number"] = {"type": "number", "unique": False, "cash": True}
+    return fields or dict(_CARD_PD_FIELDS)
+
+
 @api_view(['GET'])
 @permission_classes([TraderPermission | DebugPermission])
 def get_pd_creation_data(request, *args, **kwargs):
-    ps1 = PaymentSystem.objects.get(name=SBER_NAME)
-    ps2 = PaymentSystem.objects.get(name=TBANK_NAME)
-
-    data = {str(ps1.id): {"phone": {"type": "text", "unique": True, "cash": False}, "card_number": {"type": "number", "unique": False, "cash": False}, "deposit_number": {"type": "number", "unique": False, "cash": True}, "sberpay_enabled": {"type": "bool", "unique": True, "cash": False}, "sbp_enabled": {"type": "bool", "unique": True, "cash": False}}}
-    data[str(ps2.id)] = {"phone": {"type": "text", "unique": True}, "card_number": {"type": "number", "unique": False}, "deposit_number": {"type": "number", "unique": False}, "sberpay_enabled": {"type": "bool", "unique": True}, "sbp_enabled": {"type": "bool", "unique": True}}
+    """Схема полей карты/телефона по id PaymentSystem — кабинет трейдера Add Payment Detail."""
+    data = {str(ps.id): _pd_fields_for_payment_system(ps) for ps in PaymentSystem.objects.all()}
     return Response(status=status.HTTP_200_OK, data=data)
+
+
+_QR_IMAGE_TYPES = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+_QR_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+
+
+@api_view(["POST"])
+@permission_classes([TraderPermission])
+@parser_classes([MultiPartParser, FormParser])
+def upload_pd_qr_image(request, *args, **kwargs):
+    """Загрузка фото QR для QRKGS: файл → URL в media/S3, кладётся в qr_payload."""
+    trader = getattr(request.user, "trader", None)
+    if trader is None:
+        return Response({"detail": "Not a trader"}, status=status.HTTP_403_FORBIDDEN)
+
+    uploaded = request.FILES.get("file")
+    if uploaded is None:
+        return Response({"file": ["No file uploaded"]}, status=status.HTTP_400_BAD_REQUEST)
+
+    content_type = (uploaded.content_type or "").lower().strip()
+    ext = _QR_IMAGE_TYPES.get(content_type)
+    if ext is None:
+        name = (uploaded.name or "").lower()
+        if name.endswith(".jpg") or name.endswith(".jpeg"):
+            ext = "jpg"
+        elif name.endswith(".png"):
+            ext = "png"
+        elif name.endswith(".webp"):
+            ext = "webp"
+        elif name.endswith(".gif"):
+            ext = "gif"
+        else:
+            return Response(
+                {"file": ["Only image files are allowed (jpg/png/webp/gif)"]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    size = getattr(uploaded, "size", None)
+    if size is not None and size > _QR_IMAGE_MAX_BYTES:
+        return Response({"file": ["Image too large (max 8MB)"]}, status=status.HTTP_400_BAD_REQUEST)
+
+    from payments.utils import upload_receipt_storage
+
+    object_name = f"pd_qr/{trader.id}/{uuid.uuid4().hex}.{ext}"
+    try:
+        url = upload_receipt_storage(uploaded, object_name)
+    except Exception:
+        return Response({"file": ["Upload failed"]}, status=status.HTTP_502_BAD_GATEWAY)
+
+    return Response({"url": url, "qr_payload": url}, status=status.HTTP_201_CREATED)
 
 
 @api_view(['GET'])

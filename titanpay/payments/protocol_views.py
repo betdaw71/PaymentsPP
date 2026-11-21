@@ -13,7 +13,12 @@ from rest_framework.views import APIView
 
 from payments.models import PayIn, ProtocolPayInSession
 from payments.payin_trace import Direction, trace_log
-from payments.protocol_client import protocol_webhook_outcome, verify_webhook_signature
+from payments.protocol_client import (
+    protocol_webhook_ids,
+    protocol_webhook_outcome,
+    protocol_webhook_state,
+    verify_webhook_signature,
+)
 from payments.psp_payin import complete_inorder_from_psp_webhook
 from trade.models import InOrder
 
@@ -42,9 +47,9 @@ class ProtocolWebhookView(APIView):
         except (UnicodeDecodeError, json.JSONDecodeError):
             body = request.data if isinstance(request.data, dict) else {}
 
-        order_id = body.get("orderId")
-        payment_id = body.get("id") or body.get("paymentId")
+        order_id, payment_id = protocol_webhook_ids(body)
         outcome = protocol_webhook_outcome(body)
+        notified_state = protocol_webhook_state(body)
 
         session = None
         if order_id:
@@ -70,11 +75,11 @@ class ProtocolWebhookView(APIView):
             body=body,
             http_method="POST",
             url="/api/v1/webhooks/psp/protocol/",
-            note=f"linked pay_in state={body.get('state')}",
+            note=f"linked pay_in state={notified_state or body.get('state')}",
         )
 
         session.last_webhook_payload = body
-        session.last_notified_state = _norm_status(body.get("state")) or session.last_notified_state
+        session.last_notified_state = _norm_status(notified_state) or session.last_notified_state
         session.save()
 
         if outcome == "success":
@@ -84,7 +89,7 @@ class ProtocolWebhookView(APIView):
         logger.warning(
             "Protocol webhook ignored PayIn=%s state=%s",
             session.pay_in_id,
-            body.get("state"),
+            notified_state or body.get("state"),
         )
         return Response({"ok": True, "ignored": True})
 
@@ -121,7 +126,18 @@ class ProtocolWebhookView(APIView):
             if locked.status and locked.status.name == "Completed":
                 return Response({"ok": True, "idempotent": True})
             locked_pi = PayIn.objects.select_for_update().get(pk=pay_in.pk)
-            if locked_pi.status and locked_pi.status.name not in ("Success", "Failed", "Declined"):
+            inorder_closed = False
+            if locked.status and locked.status.name in ("New", "Money sent by user"):
+                try:
+                    locked.deal_time_expired()
+                    inorder_closed = True
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Protocol webhook deal_time_expired: %s", exc)
+            if (
+                not inorder_closed
+                and locked_pi.status
+                and locked_pi.status.name not in ("Success", "Failed", "Declined")
+            ):
                 locked_pi.failed()
 
         return Response({"ok": True})

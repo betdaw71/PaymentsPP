@@ -5,6 +5,7 @@
 // import ChargebackDialog from "@/views/user/support/solutions/ChargebackDialog.vue"
 
 import { useAuthStore } from "@/stores/useAuthStore"
+import { useBaseStore } from "@/stores/useBaseStore"
 
 const props = defineProps ({
   id: {
@@ -38,6 +39,8 @@ const emit = defineEmits ([
   'save',
 ])
 
+const { t } = useI18n ()
+
 const snackbar = ref ({
   enabled: false,
   type: 'error',
@@ -45,9 +48,12 @@ const snackbar = ref ({
 })
 
 const authStore = useAuthStore ()
+const baseStore = useBaseStore ()
 const isDepositDialogVisible = ref (false)
 const isWithdrawDialogVisible = ref (false)
 const isChargebackDialogVisible = ref (false)
+const qrUploading = ref (false)
+const qrFileModel = ref (null)
 
 const localDetail = ref (structuredClone (toRaw (props.data)))
 const localFields = ref (structuredClone (toRaw (props.fields)))
@@ -64,6 +70,41 @@ const removeSolution = () => {
 const saveSolution = () => {
   console.log ('Saving solution', localDetail.value)
   emit ('save', props.id, localDetail.value)
+}
+
+const clearQrImage = field => {
+  localDetail.value[field] = ""
+  qrFileModel.value = null
+}
+
+const onQrImageSelected = async (field, files) => {
+  const file = Array.isArray (files) ? files[0] : files
+  if (!file || localDetail.value.id) {
+    return
+  }
+  qrUploading.value = true
+  try {
+    const response = await baseStore.uploadPaymentDetailsQrImage (file)
+    if (response.error) {
+      throw response.error
+    }
+    localDetail.value[field] = response.data?.qr_payload || response.data?.url || ""
+    snackbar.value = {
+      enabled: true,
+      type: "success",
+      message: `${t (`fields.${field}`)} ✓`,
+    }
+  } catch (error) {
+    console.error ("QR upload failed", error)
+    snackbar.value = {
+      enabled: true,
+      type: "error",
+      message: typeof error === "string" ? error : (error?.file?.[0] || error?.detail || "Upload failed"),
+    }
+    qrFileModel.value = null
+  } finally {
+    qrUploading.value = false
+  }
 }
 
 
@@ -127,8 +168,70 @@ const copyToClipboard = (valueToCopy, alertMessage, alertType = "error") => {
           <template
             v-if="((field_type?.unique && props.id === 0 && props.workType === 'by_card') || !field_type?.unique) && ((props?.workType === 'by_cash' && field_type?.cash) || props?.workType !== 'by_cash')"
           >
+            <div v-if="field_type?.type === 'image'">
+              <VFileInput
+                v-if="!localDetail.id"
+                v-model="qrFileModel"
+                accept="image/*"
+                :label="$t(`fields.${field}`)"
+                :loading="qrUploading"
+                :disabled="qrUploading"
+                prepend-icon="tabler-photo"
+                show-size
+                @update:model-value="onQrImageSelected(field, $event)"
+              />
+              <div
+                v-if="localDetail[field]"
+                class="mt-2"
+              >
+                <VImg
+                  :src="localDetail[field]"
+                  max-width="220"
+                  max-height="220"
+                  class="rounded border"
+                />
+                <div
+                  v-if="!localDetail.id"
+                  class="d-flex gap-2 mt-2"
+                >
+                  <VBtn
+                    size="small"
+                    variant="tonal"
+                    color="error"
+                    @click="clearQrImage(field)"
+                  >
+                    Удалить фото
+                  </VBtn>
+                </div>
+              </div>
+              <VAlert
+                v-else-if="!localDetail.id"
+                class="mt-2"
+                type="info"
+                variant="tonal"
+                density="compact"
+              >
+                {{ $t(`fields.${field}`) }}: jpg / png
+              </VAlert>
+            </div>
+            <AppSelect
+              v-else-if="field_type?.type === 'select'"
+              v-model="localDetail[field]"
+              :items="field_type.options || []"
+              :label="$t(`fields.${field}`)"
+              :disabled="!!localDetail.id"
+              clearable
+            />
+            <VTextarea
+              v-else-if="field_type?.type === 'textarea'"
+              v-model="localDetail[field]"
+              :readonly="localDetail.id"
+              :label="$t(`fields.${field}`)"
+              rows="4"
+              auto-grow
+            />
             <VTextField
-              v-if="field_type?.type !== 'bool'"
+              v-else-if="field_type?.type !== 'bool'"
               v-model="localDetail[field]"
               :type="field_type?.type"
               :readonly="localDetail.id"

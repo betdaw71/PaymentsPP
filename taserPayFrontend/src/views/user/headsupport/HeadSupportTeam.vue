@@ -318,6 +318,7 @@ const editRates = team => {
     <EditTraderDialog
       v-model:is-dialog-visible="isEditTraderDialogVisible"
       :user-data="userData"
+      @submit="updateTeam"
     />
     <EditRatesDialog
       v-model:is-dialog-visible="isEditDialogVisible"

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AvaPay — база знаний для трейдера</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-soft: #eff6ff;
+      --bg: #f8f7fa;
+      --surface: #ffffff;
+      --text: #2f2b3d;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+      --hit: #f59e0b;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(47, 43, 61, 0.08), 0 8px 24px rgba(47, 43, 61, 0.06);
+      --sidebar-width: 260px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--primary); }
+    .brand-badge {
+      width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      color: #fff; display: grid; place-items: center; font-weight: 800;
+    }
+    .sidebar p { color: var(--text-muted); font-size: 0.88rem; margin: 8px 0 16px; }
+    .nav-section {
+      margin: 16px 0 8px; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-muted); font-weight: 700;
+    }
+    .sidebar a {
+      display: block; padding: 8px 10px; margin: 2px 0; border-radius: 8px;
+      color: var(--text); text-decoration: none; font-size: 0.92rem;
+    }
+    .sidebar a:hover { background: var(--primary-soft); color: var(--primary); }
+    .content { flex: 1; padding: 28px 32px 80px; max-width: 1100px; }
+    .hero {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      color: #fff; border-radius: 16px; padding: 28px; margin-bottom: 24px; box-shadow: var(--shadow);
+    }
+    .hero h1 { margin: 0 0 8px; font-size: 1.7rem; }
+    section {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 22px 24px; margin-bottom: 20px; box-shadow: var(--shadow);
+    }
+    section h2 { margin: 0 0 8px; font-size: 1.2rem; }
+    .alert {
+      border-radius: 10px; padding: 12px 14px; margin: 12px 0; font-size: 0.92rem;
+    }
+    .alert-warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .alert-chat { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
+    .banks { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+    .bank {
+      background: var(--primary-soft); color: var(--primary); border-radius: 999px;
+      padding: 6px 12px; font-weight: 600; font-size: 0.85rem;
+    }
+    .shot-wrap { position: relative; margin: 14px 0 8px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+    .shot-wrap img { display: block; width: 100%; height: auto; }
+    .pin {
+      position: absolute;
+      transform: translate(-8px, -50%);
+      display: flex; align-items: center; gap: 8px;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,.25));
+      max-width: 46%;
+    }
+    .pin .dot {
+      flex-shrink: 0;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--hit); color: #1f2937;
+      font-weight: 800; font-size: 0.85rem;
+      display: grid; place-items: center;
+      outline: 3px solid #fff;
+    }
+    .pin .lab {
+      background: #111827; color: #fff;
+      font-size: 0.78rem; font-weight: 600;
+      padding: 6px 10px; border-radius: 8px; line-height: 1.3;
+    }
+    .pin.right { flex-direction: row-reverse; transform: translate(8px, -50%); }
+    ol.legend { margin: 8px 0 0; padding-left: 1.2rem; }
+    ol.legend li { margin: 4px 0; }
+    @media (max-width: 900px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; height: auto; position: relative; }
+      .content { padding: 16px; }
+      .pin .lab { font-size: 0.68rem; padding: 4px 7px; }
+      .pin .dot { width: 22px; height: 22px; font-size: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-badge">AP</span> AvaPay Docs</div>
+      <p>База знаний — скрины живого кабинета</p>
+      <div class="nav-section">Реквизиты</div>
+      <a href="#list">Список и Create</a>
+      <a href="#form">Форма создания</a>
+      <a href="#card">Карта и Save</a>
+      <a href="#banks">Какой банк</a>
+      <div class="nav-section">Заявки</div>
+      <a href="#orders">Список Orders In</a>
+      <a href="#complete">Закрыть заявку</a>
+      <a href="#filters">Фильтры</a>
+      <div class="nav-section">Кабинет</div>
+      <a href="#profile">Профиль</a>
+      <a href="#tx">Транзакции</a>
+      <a href="#deposit">Пополнение</a>
+      <a href="#chat">Рабочий чат</a>
+    </aside>
+
+    <main class="content">
+      <header class="hero">
+        <h1>База знаний трейдера</h1>
+        <p style="margin:0;opacity:.92">Как завести карту: те же экраны, что в кабинете. Жёлтые кружки — куда нажимать.</p>
+      </header>
+
+      <section id="list">
+        <h2>1. Payment Details → Create</h2>
+        <p>Слева меню <b>Payment Details</b>. На странице синяя кнопка <b>+ Create</b>.</p>
+        <div class="shot-wrap">
+          <img src="help-shots/01-list.png" alt="Список реквизитов и кнопка Create" />
+          <div class="pin" style="left:3%; top:28%;">
+            <span class="dot">1</span>
+            <span class="lab">Меню Payment Details</span>
+          </div>
+          <div class="pin" style="left:20%; top:49%;">
+            <span class="dot">2</span>
+            <span class="lab">+ Create — открывает форму справа</span>
+          </div>
+          <div class="pin right" style="left:78%; top:6%;">
+            <span class="dot">✉</span>
+            <span class="lab">Профиль (email) — сверху справа</span>
+          </div>
+        </div>
+        <ol class="legend">
+          <li>Откройте Payment Details</li>
+          <li>Нажмите + Create</li>
+        </ol>
+      </section>
+
+      <section id="form">
+        <h2>2. Заполните форму справа</h2>
+        <p>Справа выезжает <b>Payment Details Creation</b>. Сверху вниз:</p>
+        <div class="shot-wrap">
+          <img src="help-shots/02-form.png" alt="Пустая форма создания реквизита" />
+          <div class="pin right" style="left:72%; top:16%;">
+            <span class="dot">3</span>
+            <span class="lab">Owner — ФИО как на карте</span>
+          </div>
+          <div class="pin right" style="left:72%; top:24%;">
+            <span class="dot">4</span>
+            <span class="lab">Payment System — ваш банк из списка</span>
+          </div>
+          <div class="pin right" style="left:72%; top:32%;">
+            <span class="dot">5</span>
+            <span class="lab">Currency — Kazakhstani Tenge</span>
+          </div>
+          <div class="pin right" style="left:72%; top:40%;">
+            <span class="dot">6</span>
+            <span class="lab">Allowed Traffic — Standard (галочка)</span>
+          </div>
+          <div class="pin right" style="left:72%; top:48%;">
+            <span class="dot">7</span>
+            <span class="lab">Work Type — By Card</span>
+          </div>
+          <div class="pin right" style="left:72%; top:57%;">
+            <span class="dot">8</span>
+            <span class="lab">Active for Orders In — включить</span>
+          </div>
+          <div class="pin right" style="left:72%; top:88%;">
+            <span class="dot">9</span>
+            <span class="lab">Add Payment Detail + — поле карты</span>
+          </div>
+        </div>
+        <div class="alert alert-warn">Лимиты In/Out можно оставить как есть. Active for Orders Out для приёма депозитов не нужен.</div>
+      </section>
+
+      <section id="card">
+        <h2>3. Номер карты и Save</h2>
+        <p>После <b>Add Payment Detail</b> появляется <b>Card Number</b>. Вписываете 16 цифр и жмёте <b>Save</b>.</p>
+        <div class="shot-wrap">
+          <img src="help-shots/03-card.png" alt="Поле Card Number и кнопка Save" />
+          <div class="pin right" style="left:72%; top:72%;">
+            <span class="dot">10</span>
+            <span class="lab">Card Number — 16 цифр</span>
+          </div>
+          <div class="pin right" style="left:72%; top:90%;">
+            <span class="dot">11</span>
+            <span class="lab">Save — сохранить группу</span>
+          </div>
+        </div>
+        <p>Так выглядит уже заполненная форма (KZT, By Card, Active for Orders In, карта, Save):</p>
+        <div class="shot-wrap">
+          <img src="help-shots/04-filled.png" alt="Заполненная форма: тенге, By Card, карта, Save" />
+          <div class="pin right" style="left:72%; top:18%;">
+            <span class="dot">✓</span>
+            <span class="lab">Currency = Kazakhstani Tenge</span>
+          </div>
+          <div class="pin right" style="left:72%; top:38%;">
+            <span class="dot">✓</span>
+            <span class="lab">By Card + Active for Orders In</span>
+          </div>
+          <div class="pin right" style="left:72%; top:68%;">
+            <span class="dot">✓</span>
+            <span class="lab">Карта введена</span>
+          </div>
+          <div class="pin right" style="left:72%; top:90%;">
+            <span class="dot">✓</span>
+            <span class="lab">Save</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="banks">
+        <h2>Какой банк выбрать</h2>
+        <p>В поле <b>Payment System</b> выбираете свой банк из списка:</p>
+        <div class="banks">
+          <span class="bank">Elkard</span>
+          <span class="bank">Kompanion</span>
+          <span class="bank">Mbank</span>
+          <span class="bank">Optima</span>
+          <span class="bank">O bank</span>
+          <span class="bank">Bai-Tushum</span>
+        </div>
+      </section>
+
+      <section id="orders">
+        <h2>Заявки — Orders In</h2>
+        <p>Слева меню <b>Orders In</b>. В таблице статусы: <b>Expired</b> (время вышло), <b>Money Sent By User</b> (ожидает вашего подтверждения), <b>Completed</b> (закрыта).</p>
+        <div class="shot-wrap">
+          <img src="help-shots/05-orders.png" alt="Список входящих заявок" />
+          <div class="pin" style="left:3%; top:18%;">
+            <span class="dot">1</span>
+            <span class="lab">Orders In</span>
+          </div>
+          <div class="pin" style="left:18%; top:58%;">
+            <span class="dot">2</span>
+            <span class="lab">Money Sent By User — откройте строку</span>
+          </div>
+          <div class="pin" style="left:18%; top:72%;">
+            <span class="dot">✓</span>
+            <span class="lab">Completed — уже закрыта</span>
+          </div>
+        </div>
+        <p>В шапке <b>Balance / Frozen</b>: на время заявки сумма на холде (снежинка).</p>
+      </section>
+
+      <section id="complete">
+        <h2>Закрыть заявку</h2>
+        <p>Клик по строке открывает карточку справа. Если деньги пришли — <b>Complete (Double Click)</b>: два быстрых клика по зелёной кнопке.</p>
+        <div class="shot-wrap">
+          <img src="help-shots/06-order.png" alt="Карточка заявки и кнопка Complete" />
+          <div class="pin right" style="left:72%; top:12%;">
+            <span class="dot">3</span>
+            <span class="lab">Статус Money Sent By User</span>
+          </div>
+          <div class="pin right" style="left:72%; top:88%;">
+            <span class="dot">4</span>
+            <span class="lab">Complete — два клика</span>
+          </div>
+        </div>
+        <div class="alert alert-warn">Не закрывайте заявку, пока не видите зачисление. Спорные случаи — в рабочий чат.</div>
+      </section>
+
+      <section id="filters">
+        <h2>Фильтры заявок</h2>
+        <p>Раскройте <b>Filters</b>. Для апелляций в Status поставьте <b>Arbitrage</b> и нажмите <b>Search</b>.</p>
+        <div class="shot-wrap">
+          <img src="help-shots/07-filters.png" alt="Фильтры Orders In" />
+          <div class="pin" style="left:18%; top:18%;">
+            <span class="dot">5</span>
+            <span class="lab">Status — Arbitrage</span>
+          </div>
+          <div class="pin right" style="left:72%; top:62%;">
+            <span class="dot">6</span>
+            <span class="lab">Search</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="profile">
+        <h2>Профиль</h2>
+        <p>Сверху справа нажмите на <b>email</b> → профиль. Вкладки: Main Info, Team, Balance, Transactions, Withdrawals.</p>
+        <div class="shot-wrap">
+          <img src="help-shots/08-profile.png" alt="Профиль: Base Info и смена пароля" />
+          <div class="pin right" style="left:78%; top:6%;">
+            <span class="dot">✉</span>
+            <span class="lab">Email — вход в профиль</span>
+          </div>
+          <div class="pin" style="left:22%; top:48%;">
+            <span class="dot">7</span>
+            <span class="lab">Telegram / Phone → Update User</span>
+          </div>
+          <div class="pin" style="left:22%; top:78%;">
+            <span class="dot">8</span>
+            <span class="lab">Смена пароля</span>
+          </div>
+          <div class="pin right" style="left:62%; top:82%;">
+            <span class="dot">9</span>
+            <span class="lab">2FA Setup</span>
+          </div>
+        </div>
+        <div class="alert alert-chat">Email и имя в Base Info не меняйте сами. Если почта другая или доступ потерян — напишите в рабочий чат.</div>
+      </section>
+
+      <section id="tx">
+        <h2>Транзакции</h2>
+        <p>В профиле вкладка <b>Transactions</b>. Здесь движения по балансу: холд, возврат после expire, зачисление после Complete.</p>
+        <div class="shot-wrap">
+          <img src="help-shots/09-tx.png" alt="Список транзакций" />
+          <div class="pin" style="left:38%; top:12%;">
+            <span class="dot">10</span>
+            <span class="lab">Вкладка Transactions</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="deposit">
+        <h2>Пополнение баланса</h2>
+        <p>В шапке <b>Balance / Income / Frozen</b>.</p>
+        <div class="alert alert-chat"><b>Пополнение USDT — через рабочий чат.</b> Не переводите на адрес из кабинета, пока сумма, сеть и адрес не подтверждены в чате.</div>
+      </section>
+
+      <section id="chat">
+        <h2>Рабочий чат</h2>
+        <ul>
+          <li>пополнение и вывод USDT;</li>
+          <li>если не зайти в аккаунт / сменить почту;</li>
+          <li>спорные заявки (Arbitrage);</li>
+          <li>новые банки, лимиты, блокировки карт.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

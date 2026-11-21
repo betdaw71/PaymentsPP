@@ -9,8 +9,8 @@ export const useBaseStore = defineStore ({
       searchQueryId: "",
       rowsPerPage: 20,
       selectedType: [],
-      minAmount: 0,
-      maxAmount: 0,
+      minAmount: null,
+      maxAmount: null,
       searchQueryIn: "",
       searchQueryOut: "",
       dateRange: "",
@@ -33,8 +33,8 @@ export const useBaseStore = defineStore ({
       searchQueryId: "",
       rowsPerPage: 20,
       selectedType: [],
-      minAmount: 0,
-      maxAmount: 0,
+      minAmount: null,
+      maxAmount: null,
       searchQueryComment: "",
       searchQueryAddress: "",
       dateRange: "",
@@ -236,6 +236,76 @@ export const useBaseStore = defineStore ({
     },
     async getBalanceSupport (params) {
       const response = await instance.get (`/base/balance/support/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
+    async getCashRegister (params) {
+      const response = await instance.get (`/base/balance/cash-register/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: {},
+        error: response.data,
+      }
+    },
+    async getOpsDashboard (params) {
+      const response = await instance.get(`/base/balance/ops-dashboard/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: {},
+        error: response.data,
+      }
+    },
+    async getBalanceSupportAgent (params) {
+      const response = await instance.get (`/base/balance/support-agent/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
+    async getBalanceSupportTeamlead (params) {
+      const response = await instance.get (`/base/balance/support-teamlead/`, { params })
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
+    async getBalanceAgent (params) {
+      const response = await instance.get (`/base/balance/agent/`, { params })
       if (response.status === 200) {
         return {
           data: response.data,
@@ -474,7 +544,8 @@ export const useBaseStore = defineStore ({
     },
     async addPaymentDetailToDetailsById (params, id) {
       const response = await instance.post (`/base/details/${id}/add-details/`, params)
-      if (response.status === 201) {
+      // Backend historically returned empty 200; FE expected 201 → row looked "vanished".
+      if (response.status === 201 || response.status === 200) {
         return {
           data: response.data,
           error: null,
@@ -482,13 +553,13 @@ export const useBaseStore = defineStore ({
       }
 
       return {
-        data: [],
+        data: null,
         error: response.data,
       }
     },
     async changePaymentDetailToDetailsById (params, id) {
       const response = await instance.post (`/base/details/${id}/change-details-status/`, params)
-      if (response.status === 201) {
+      if (response.status === 201 || response.status === 200) {
         return {
           data: response.data,
           error: null,
@@ -496,7 +567,7 @@ export const useBaseStore = defineStore ({
       }
 
       return {
-        data: [],
+        data: null,
         error: response.data,
       }
     },
@@ -808,6 +879,20 @@ export const useBaseStore = defineStore ({
         error: response.data,
       }
     },
+    async setTraderManualModeById (params, id) {
+      const response = await instance.patch (`/base/trader/${id}/credit/`, params)
+      if (response.status === 200) {
+        return {
+          data: response.data,
+          error: null,
+        }
+      }
+
+      return {
+        data: [],
+        error: response.data,
+      }
+    },
     async getTransferTargets (params) {
       const response = await instance.get (`/base/transfer-targets/`, { params })
       if (response.status === 200) {
@@ -919,6 +1004,33 @@ export const useBaseStore = defineStore ({
       return {
         data: [],
         error: response.data,
+      }
+    },
+    async uploadPaymentDetailsQrImage (file) {
+      const form = new FormData ()
+      form.append ('file', file)
+      try {
+        const response = await instance.post (`/base/upload-pd-qr/`, form, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        })
+        if (response.status === 201 || response.status === 200) {
+          return {
+            data: response.data,
+            error: null,
+          }
+        }
+
+        return {
+          data: null,
+          error: response.data,
+        }
+      } catch (error) {
+        return {
+          data: null,
+          error: error?.response?.data || error?.message || 'Upload failed',
+        }
       }
     },
     async getPaymentDetailsGroupCreationData (params) {
