@@ -304,41 +304,63 @@ def _arbitrage_limit_reached(order) -> bool:
 
 
 def _try_order_arbitrage(order) -> None:
+    """Move the order to Arbitrage for an appeal.
+
+    Must never raise into process_merchant_appeal_message: a Melbet ticket after
+    patriotpay cancel previously 500'd here (Not enough funds / AttributeError /
+    broken outer atomic after a swallowed insurance error), so PayInAppeal was
+    never created and Mel Transaction Bot stayed on «Создан».
+    """
     if order is None or order.status_id is None or order.payment_details_id is None:
         return
-    status_name = order.status.name
-    if status_name in _ARBITRAGE_LEAVE:
-        return
-    if _arbitrage_limit_reached(order):
-        logger.warning("appeal arbitrage limit reached order=%s; status only", order.id)
-        _set_arbitrage_status(order, "Arbitrage called by client")
-        return
-    if status_name in _ARBITRAGE_STILL_OPEN:
-        # Funds were frozen when the order was issued. Do not freeze a second time.
-        try:
-            order.arbitrage_expired()
-        except _FUND_ERRORS:
-            logger.exception("appeal open-order arbitrage failed order=%s", order.id)
-            _set_arbitrage_status(order, "Arbitrage due to inactivity")
-        return
-
     try:
-        _cover_freeze_from_insurance(order, _freeze_need(order))
-    except Exception:
-        logger.exception("appeal insurance cover failed order=%s", order.id)
-    try:
-        if status_name in _ARBITRAGE_FROM_RELEASED:
-            order.arbitrage()
-        else:
-            order.freeze("Arbitrage")
+        status_name = order.status.name
+        if status_name in _ARBITRAGE_LEAVE:
+            return
+        if _arbitrage_limit_reached(order):
+            logger.warning("appeal arbitrage limit reached order=%s; status only", order.id)
             _set_arbitrage_status(order, "Arbitrage called by client")
-    except _FUND_ERRORS:
+            return
+        if status_name in _ARBITRAGE_STILL_OPEN:
+            # Funds were frozen when the order was issued. Do not freeze a second time.
+            try:
+                order.arbitrage_expired()
+            except Exception:
+                logger.exception("appeal open-order arbitrage failed order=%s", order.id)
+                _set_arbitrage_status(order, "Arbitrage due to inactivity")
+            return
+
+        # Nested savepoint: a failed cover must not poison the outer appeal atomic.
+        try:
+            with transaction.atomic():
+                _cover_freeze_from_insurance(order, _freeze_need(order))
+        except Exception:
+            logger.exception("appeal insurance cover failed order=%s", order.id)
+
+        try:
+            if status_name in _ARBITRAGE_FROM_RELEASED:
+                order.arbitrage()
+            else:
+                order.freeze("Arbitrage")
+                _set_arbitrage_status(order, "Arbitrage called by client")
+        except Exception:
+            logger.exception(
+                "appeal arbitrage freeze failed order=%s status=%s; setting Arbitrage anyway",
+                order.id,
+                status_name,
+            )
+            try:
+                _set_arbitrage_status(order, "Arbitrage called by client")
+            except Exception:
+                logger.exception(
+                    "appeal could not force Arbitrage status order=%s",
+                    getattr(order, "id", None),
+                )
+    except Exception:
         logger.exception(
-            "appeal arbitrage freeze failed order=%s status=%s; setting Arbitrage anyway",
-            order.id,
-            status_name,
+            "appeal arbitrage unexpected failure order=%s; appeal will still be created",
+            getattr(order, "id", None),
         )
-        _set_arbitrage_status(order, "Arbitrage called by client")
 
 
 def _psp_meta_for_pay_in(pay_in):

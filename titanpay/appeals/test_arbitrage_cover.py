@@ -148,3 +148,15 @@ class AppealArbitrageInsuranceTest(TestCase):
 
         order.refresh_from_db()
         self.assertEqual(order.pic, url)
+
+    def test_freeze_attribute_error_still_forces_arbitrage(self):
+        """Melbet Expired + broken trader balances must not abort the appeal."""
+        order = self._order(self.expired, usd="10.00", working="1.00")
+        self.trader.balance_usdt = None
+        self.trader.frozen_balance_usdt = None
+        self.trader.save(update_fields=["balance_usdt", "frozen_balance_usdt"])
+
+        _try_order_arbitrage(order)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status_id, self.arbitrage.id)
