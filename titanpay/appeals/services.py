@@ -225,58 +225,16 @@ def _save_order_pic(order, receipt_url: str) -> None:
 
 
 def _freeze_need(order) -> Decimal:
-    from payments.psp_payin import psp_order_usd_ledger_amount
+    from trade.models import freeze_usd_need
 
-    value = psp_order_usd_ledger_amount(order)
-    if value <= 0:
-        value = order.usd_amount or Decimal("0")
-    return Decimal(value).quantize(Decimal("0.01"))
+    return freeze_usd_need(order)
 
 
 def _cover_freeze_from_insurance(order, need: Decimal) -> Decimal:
-    """Move the freeze shortfall onto the trader working balance and debit the team insurance.
+    """Добирает нехватку со страхового депозита перед freeze арбитража."""
+    from trade.models import cover_freeze_from_insurance
 
-    The insurance ledger may go negative: the appeal must still freeze and enter Arbitrage.
-    Balance type=3 is the blockchain source used for the same insurance top-up on manual completes.
-    """
-    from basics.models import Balance, TraderTeam
-    from trade.models import Transaction, TransactionType
-
-    details = order.payment_details
-    trader = None if details is None or details.group_id is None else details.group.trader
-    if trader is None or trader.balance_usdt_id is None or trader.team_id is None:
-        return Decimal("0")
-    if need <= 0:
-        return Decimal("0")
-
-    working = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
-    shortfall = (need - Decimal(working.amount)).quantize(Decimal("0.01"))
-    if shortfall <= 0:
-        return Decimal("0")
-
-    chain = Balance.objects.select_for_update().filter(type=3).first()
-    if chain is None:
-        logger.warning("appeal insurance cover skipped: no blockchain balance order=%s", order.id)
-        return Decimal("0")
-
-    team = TraderTeam.objects.select_for_update().get(pk=trader.team_id)
-    Transaction.create(
-        _from=chain,
-        _to=working,
-        value=shortfall,
-        _transaction_type=TransactionType.objects.filter(name="Deposit").first(),
-        _linked_in_order=order,
-        _comment="Insurance deposit cover for appeal arbitrage",
-    )
-    team.insurance_deposit = (Decimal(team.insurance_deposit or 0) - shortfall).quantize(Decimal("0.01"))
-    team.save(update_fields=["insurance_deposit"])
-    logger.info(
-        "appeal insurance cover order=%s amount=%s insurance_left=%s",
-        order.id,
-        shortfall,
-        team.insurance_deposit,
-    )
-    return shortfall
+    return cover_freeze_from_insurance(order, need=need)
 
 
 def _set_arbitrage_status(order, comment: str) -> None:
@@ -339,9 +297,10 @@ def _try_order_arbitrage(order) -> None:
 
         try:
             if status_name in _ARBITRAGE_FROM_RELEASED:
+                # cover уже внутри arbitrage() → freeze_for_arbitrage
                 order.arbitrage()
             else:
-                order.freeze("Arbitrage")
+                order.freeze_for_arbitrage("Arbitrage")
                 _set_arbitrage_status(order, "Arbitrage called by client")
         except Exception:
             logger.exception(
