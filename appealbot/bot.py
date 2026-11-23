@@ -144,6 +144,67 @@ def _forget_chat_role(chat_id: int) -> None:
     _CHAT_ROLES.pop(chat_id, None)
 
 
+def _provider_button_or_reply(message: Message) -> bool:
+    """Ответ провайдера на апелляцию (причина отклонения). True — сообщение обработано."""
+    reply = getattr(message, "reply_to_message", None)
+    if reply is None:
+        return False
+    text = (getattr(message, "text", None) or getattr(message, "caption", None) or "").strip()
+    if not text or text.startswith("/"):
+        return False
+    try:
+        response = requests.post(
+            f"{BACKEND_URL}/provider_reply/",
+            json={
+                "chat_id": message.chat.id,
+                "reply_to_message_id": reply.message_id,
+                "text": text,
+            },
+            headers=HEADERS,
+            timeout=60,
+        )
+        payload = _api_json(response)
+    except requests.RequestException:
+        logger.exception("provider_reply failed chat_id=%s", message.chat.id)
+        return False
+    if not payload.get("handled"):
+        return False
+    if not payload.get("ok"):
+        try:
+            bot.reply_to(message, payload.get("message") or "Не удалось сохранить причину")
+        except Exception:
+            logger.warning("provider reply ack failed", exc_info=True)
+    return True
+
+
+@bot.callback_query_handler(func=lambda call: (call.data or "").startswith("ap:"))
+def handle_provider_callback(call):
+    message = getattr(call, "message", None)
+    try:
+        response = requests.post(
+            f"{BACKEND_URL}/provider_action/",
+            json={"callback_data": call.data or ""},
+            headers=HEADERS,
+            timeout=60,
+        )
+        payload = _api_json(response)
+    except requests.RequestException:
+        logger.exception("provider_action failed")
+        payload = {"ok": False, "message": "Не удалось обработать кнопку"}
+    try:
+        bot.answer_callback_query(call.id, (payload.get("message") or "Ок")[:180], show_alert=not payload.get("ok"))
+    except Exception:
+        logger.warning("answer_callback_query failed", exc_info=True)
+    if message is not None and payload.get("ok") and payload.get("message"):
+        logger.info(
+            "provider callback chat=%s msg=%s ok=%s text=%s",
+            message.chat.id,
+            message.message_id,
+            payload.get("ok"),
+            payload.get("message"),
+        )
+
+
 def _skip_provider_chat(chat_id: int) -> bool:
     role = backend_chat_role(chat_id)
     if role == "provider":
@@ -899,6 +960,8 @@ def _handle_receipt_album(messages: list[Message]) -> None:
 
 def _handle_receipt(message: Message):
     _audit(message)
+    if _provider_button_or_reply(message):
+        return
     if _skip_provider_chat(message.chat.id):
         return
 
@@ -976,6 +1039,8 @@ def handle_text(message: Message):
     body = message.text or message.caption or ""
     if body.startswith("/"):
         return
+    if _provider_button_or_reply(message):
+        return
     if _skip_provider_chat(message.chat.id):
         return
     text = _collect_appeal_text(message)
@@ -1026,5 +1091,11 @@ if __name__ == "__main__":
     bot.infinity_polling(
         timeout=30,
         long_polling_timeout=30,
-        allowed_updates=["message", "edited_message", "channel_post", "edited_channel_post"],
+        allowed_updates=[
+            "message",
+            "edited_message",
+            "channel_post",
+            "edited_channel_post",
+            "callback_query",
+        ],
     )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -40,6 +41,7 @@ def send_receipt_to_provider_chat(
     file_bytes: bytes,
     filename: str,
     caption: str,
+    reply_markup: dict | None = None,
 ) -> SendResult:
     token = _bot_token()
     if not token:
@@ -61,6 +63,8 @@ def send_receipt_to_provider_chat(
     data = {"chat_id": str(chat_id)}
     if safe_caption:
         data["caption"] = safe_caption
+    if reply_markup is not None:
+        data["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
 
     try:
         response = requests.post(url, data=data, files=files, timeout=30)
@@ -81,16 +85,89 @@ def send_text_to_provider_chat(
     chat_id: int,
     text: str,
     reply_to_message_id: int | None = None,
+    reply_markup: dict | None = None,
 ) -> SendResult:
     caption = provider_safe_caption(text, fallback="appeal")
     payload = {"chat_id": chat_id, "text": caption}
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     result = _api_post("sendMessage", payload)
     if not result.get("ok"):
         return SendResult(ok=False, error=result.get("description") or "sendMessage failed")
     message_id = (result.get("result") or {}).get("message_id")
     return SendResult(ok=True, message_id=message_id)
+
+
+def edit_provider_appeal_message(
+    *,
+    chat_id: int,
+    message_id: int,
+    text: str,
+    has_media: bool,
+    remove_keyboard: bool = False,
+) -> SendResult:
+    payload = {"chat_id": chat_id, "message_id": message_id}
+    if has_media:
+        payload["caption"] = (text or "")[:1024]
+        method = "editMessageCaption"
+    else:
+        payload["text"] = (text or "")[:4096]
+        method = "editMessageText"
+    if remove_keyboard:
+        payload["reply_markup"] = {"inline_keyboard": []}
+    result = _api_post(method, payload)
+    if not result.get("ok"):
+        logger.warning(
+            "edit provider appeal failed chat_id=%s message_id=%s: %s",
+            chat_id,
+            message_id,
+            result.get("description") or result,
+        )
+        return SendResult(ok=False, error=result.get("description") or "edit failed")
+    return SendResult(ok=True, message_id=message_id)
+
+
+def clear_provider_keyboard(*, chat_id: int, message_id: int) -> None:
+    result = _api_post(
+        "editMessageReplyMarkup",
+        {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "reply_markup": {"inline_keyboard": []},
+        },
+    )
+    if not result.get("ok"):
+        logger.warning(
+            "clear provider keyboard failed chat_id=%s message_id=%s: %s",
+            chat_id,
+            message_id,
+            result.get("description") or result,
+        )
+
+
+def send_merchant_notice(
+    *,
+    chat_id: int | None,
+    text: str,
+    reply_to_message_id: int | None = None,
+) -> bool:
+    if not chat_id or not text:
+        logger.warning("merchant appeal notice skipped chat_id=%s", chat_id)
+        return False
+    payload = {"chat_id": chat_id, "text": text[:4096]}
+    if reply_to_message_id:
+        payload["reply_to_message_id"] = reply_to_message_id
+    result = _api_post("sendMessage", payload)
+    if not result.get("ok"):
+        logger.error(
+            "merchant appeal notice failed chat_id=%s: %s",
+            chat_id,
+            result.get("description") or result,
+        )
+        return False
+    return True
 
 
 def notify_merchant_appeal_message(

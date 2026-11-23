@@ -274,3 +274,53 @@ def lookup_deal(request):
 
     data = _collect_deal_ids(resolved.pay_in)
     return Response({"ok": True, "data": data})
+
+
+@api_view(["POST"])
+@permission_classes([TgBotPermission])
+def provider_action(request):
+    from appeals.provider_actions import apply_provider_callback
+
+    callback_data = (request.data.get("callback_data") or "").strip()
+    if not callback_data:
+        return Response(
+            {"ok": False, "handled": False, "message": "Нужен callback_data."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        result = apply_provider_callback(callback_data)
+    except Exception:
+        logger.exception("provider_action failed data=%s", callback_data)
+        return Response(
+            {"ok": False, "handled": True, "message": "Не удалось обработать кнопку."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    return Response({"ok": result.ok, "handled": result.handled, "message": result.message})
+
+
+@api_view(["POST"])
+@permission_classes([TgBotPermission])
+def provider_reply(request):
+    from appeals.provider_actions import apply_provider_reject_reply
+
+    chat_id = request.data.get("chat_id")
+    reply_to = request.data.get("reply_to_message_id")
+    text = request.data.get("text") or ""
+    if chat_id is None or reply_to is None:
+        return Response(
+            {"ok": False, "handled": False, "message": "Нужны chat_id и reply_to_message_id."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        result = apply_provider_reject_reply(
+            chat_id=int(chat_id),
+            reply_to_message_id=int(reply_to),
+            text=text,
+        )
+    except Exception:
+        logger.exception("provider_reply failed chat_id=%s", chat_id)
+        return Response(
+            {"ok": False, "handled": True, "message": "Не удалось сохранить причину."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    return Response({"ok": result.ok, "handled": result.handled, "message": result.message})

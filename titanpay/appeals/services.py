@@ -391,6 +391,7 @@ def _forward_appeal_to_provider(
         appeal.save(update_fields=["status", "error_message"])
         return _partial("")
 
+    from appeals.provider_actions import provider_keyboard
     from appeals.telegram_out import send_receipt_to_provider_chat, send_text_to_provider_chat
 
     raw_caption = _provider_caption(
@@ -404,14 +405,21 @@ def _forward_appeal_to_provider(
         pay_in=pay_in,
     )
     ticket_file = bool(file_bytes) and is_merchant_ticket_file(filename=filename, file_bytes=file_bytes)
-    if not file_bytes or ticket_file:
-        sent = send_text_to_provider_chat(chat_id=provider_chat.telegram_chat_id, text=caption)
+    has_media = bool(file_bytes) and not ticket_file
+    keyboard = provider_keyboard(appeal.id)
+    if not has_media:
+        sent = send_text_to_provider_chat(
+            chat_id=provider_chat.telegram_chat_id,
+            text=caption,
+            reply_markup=keyboard,
+        )
     else:
         sent = send_receipt_to_provider_chat(
             chat_id=provider_chat.telegram_chat_id,
             file_bytes=file_bytes,
             filename=provider_safe_filename(filename, file_bytes),
             caption=caption,
+            reply_markup=keyboard,
         )
     if not sent.ok:
         appeal.status = PayInAppealStatus.FAILED
@@ -422,7 +430,17 @@ def _forward_appeal_to_provider(
     appeal.status = PayInAppealStatus.SENT_TO_PROVIDER
     appeal.provider_chat_id = provider_chat.telegram_chat_id
     appeal.provider_message_id = sent.message_id
-    appeal.save(update_fields=["status", "provider_chat_id", "provider_message_id"])
+    appeal.provider_original_text = caption
+    appeal.provider_has_media = has_media
+    appeal.save(
+        update_fields=[
+            "status",
+            "provider_chat_id",
+            "provider_message_id",
+            "provider_original_text",
+            "provider_has_media",
+        ]
+    )
     return _pending("")
 
 
@@ -448,6 +466,7 @@ def process_payment_page_receipt(
         status__in=[
             PayInAppealStatus.CREATED,
             PayInAppealStatus.SENT_TO_PROVIDER,
+            PayInAppealStatus.AWAITING_REJECT_REASON,
         ],
     ).exists():
         return _pending("Чек уже отправлен.")

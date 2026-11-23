@@ -361,6 +361,12 @@ class MerchantAppealForwardTest(TestCase):
         caption = mock_text.call_args.kwargs["text"]
         self.assertEqual(caption, str(self.pay_in.id))
         self.assertNotRegex(caption, r"(?i)melbet|тикет|заказ")
+        labels = [
+            button["text"]
+            for row in mock_text.call_args.kwargs["reply_markup"]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertEqual(labels, ["Подтвердить", "Отклонить", "Запросить доп информацию"])
 
     def test_text_only_ticket_goes_to_provider_without_merchant_name(self):
         from unittest.mock import patch

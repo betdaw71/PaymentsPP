@@ -72,6 +72,7 @@ class PayInAppealSource(models.TextChoices):
 class PayInAppealStatus(models.TextChoices):
     CREATED = "created", "Created"
     SENT_TO_PROVIDER = "sent_to_provider", "Sent to provider"
+    AWAITING_REJECT_REASON = "awaiting_reject_reason", "Awaiting reject reason"
     APPROVED = "approved", "Approved"
     REJECTED = "rejected", "Rejected"
     DUPLICATE = "duplicate", "Duplicate"
@@ -102,6 +103,9 @@ class PayInAppeal(models.Model):
     provider_external_id = models.CharField(max_length=255, blank=True, default="")
     provider_chat_id = models.BigIntegerField(null=True, blank=True)
     provider_message_id = models.BigIntegerField(null=True, blank=True)
+    provider_original_text = models.TextField(blank=True, default="")
+    provider_has_media = models.BooleanField(default=False)
+    provider_reject_reason = models.TextField(blank=True, default="")
     provider_nudge_1h_at = models.DateTimeField(null=True, blank=True)
     provider_nudge_3h_at = models.DateTimeField(null=True, blank=True)
     source_telegram_chat_id = models.BigIntegerField(null=True, blank=True)
