@@ -1193,6 +1193,63 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
                 yield provider_name, attach, detail
 
 
+def _attach_until_bank_allowed(pay_in: Any, attach, provider_name: str) -> bool:
+    """Для artur_kids грузинский банк не принимаем: отменяем сделку и спрашиваем ещё раз."""
+    from payments.georgian_banks import (
+        georgian_bank_retry_limit,
+        payin_blocks_georgian_banks,
+        requisite_bank,
+        requisite_bank_is_georgian,
+        scrub_psp_sessions,
+    )
+    from payments.payin_trace import Direction, trace_log
+
+    if not payin_blocks_georgian_banks(pay_in):
+        return attach(pay_in) is True
+
+    limit = georgian_bank_retry_limit()
+    for attempt in range(1, limit + 1):
+        try:
+            result = attach(pay_in)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "PSP attach raised pay_in_id=%s provider=%s attempt=%s",
+                getattr(pay_in, "id", None),
+                provider_name,
+                attempt,
+            )
+            return False
+        if result is not True:
+            return False
+        req = requisite_for_payin(pay_in)
+        if not requisite_bank_is_georgian(req):
+            return True
+        bank = requisite_bank(req)
+        logger.info(
+            "Georgian bank blocked pay_in=%s provider=%s bank=%s attempt=%s/%s",
+            getattr(pay_in, "id", None),
+            provider_name,
+            bank,
+            attempt,
+            limit,
+        )
+        trace_log(
+            pay_in=pay_in,
+            direction=Direction.ROUTING,
+            body={
+                "provider": provider_name,
+                "bank": bank,
+                "attempt": attempt,
+                "limit": limit,
+                "rejected": "georgian_bank",
+            },
+            note="georgian bank rejected, retry",
+        )
+        cancel_psp_if_linked(pay_in)
+        scrub_psp_sessions(pay_in, bank=bank, attempt=attempt)
+    return False
+
+
 def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     """Protocol/ExpayOne не выдал реквизиты — пробуем другой PSP с активной группой."""
     import time
@@ -1234,7 +1291,7 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     for provider_name, attach, detail in candidates:
         _swap_inorder_payment_details(pay_in, detail, pay_in.amount)
         started = time.monotonic()
-        result = attach(pay_in)
+        result = _attach_until_bank_allowed(pay_in, attach, provider_name or "")
         elapsed_ms = int((time.monotonic() - started) * 1000)
         has_req = _payin_has_psp_requisite(pay_in) if result is True else False
         trace_log(
@@ -1265,7 +1322,7 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     return False
 
 
-def try_human_trader_fallback(pay_in: Any, *, failed_provider: str) -> bool:
+def try_human_trader_fallback(pay_in: Any, *, failed_provider: str, force: bool = False) -> bool:
     """psp_first: PSP отказал → живая команда. mostbet после Patriot, aggrepay после Astrum."""
     from basics.models import PaymentDetails
     from payments.deal_margin import margin_ok_for_group
@@ -1279,7 +1336,7 @@ def try_human_trader_fallback(pay_in: Any, *, failed_provider: str) -> bool:
     if order is None or order.solution_id is None:
         return False
     merchant = getattr(order.solution, "merchant", None)
-    if not merchant_wants_psp_first(merchant):
+    if not force and not merchant_wants_psp_first(merchant):
         return False
 
     ps = pay_in.payment_system
@@ -1338,8 +1395,14 @@ def try_human_trader_fallback(pay_in: Any, *, failed_provider: str) -> bool:
             sbp_enabled=False,
             card_number__isnull=False,
         ).exclude(id__in=active_details)
+        from payments.georgian_banks import exclude_georgian_human_details
+
+        available, georgian_blocked = exclude_georgian_human_details(available, merchant)
         if not available.exists():
-            skipped.append({"trader": uname, "skip": "no_free_card"})
+            skipped.append({
+                "trader": uname,
+                "skip": "georgian_bank" if georgian_blocked else "no_free_card",
+            })
             continue
         group_ps = group.payment_system
         group_rate = group_ps.get_rate() if group_ps else None
@@ -1435,7 +1498,7 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
 
         started = time.monotonic()
         try:
-            result = attach(pay_in)
+            result = _attach_until_bank_allowed(pay_in, attach, provider_name or "")
         except Exception:  # noqa: BLE001
             logger.exception(
                 "PSP attach raised pay_in_id=%s provider=%s — fallback",
@@ -1456,7 +1519,10 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
                 pay_in.order.refresh_from_db()
             return
 
-        if provider_name == "payplat":
+        from payments.georgian_banks import psp_rejected_georgian_bank
+
+        rejected_georgian = psp_rejected_georgian_bank(pay_in)
+        if provider_name == "payplat" and not rejected_georgian:
             try:
                 from payments.admin_alerts import note_payplat_issuance_failure
 
@@ -1472,7 +1538,8 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
         if try_psp_provider_fallback(pay_in, failed_provider=failed):
             return
         # mostbet: после PSP — живые трейдеры (patriot → traders).
-        if try_human_trader_fallback(pay_in, failed_provider=failed):
+        # artur_kids: после отказа по грузинскому банку тоже ищем живую карту другого банка.
+        if try_human_trader_fallback(pay_in, failed_provider=failed, force=rejected_georgian):
             return
 
         mark_inorder_cannot_process_from_psp_api(pay_in, provider=provider_name)

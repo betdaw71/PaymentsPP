@@ -541,10 +541,20 @@ def resolve_payplat_webhook_session(
     if not sid:
         return None
 
+    import uuid
+
+    try:
+        uuid.UUID(sid)
+    except (ValueError, AttributeError, TypeError):
+        return None
+
     pay_in = PayIn.objects.filter(pk=sid).select_related("order__payment_details__group__trader").first()
     if pay_in is None or pay_in.order is None or pay_in.order.payment_details is None:
         return None
     if not is_payplat_trader(pay_in.order.payment_details.group.trader):
+        return None
+    existing = PayplatPayInSession.objects.filter(pay_in=pay_in).first()
+    if existing is not None and (existing.external_id or "") not in ("", sid):
         return None
 
     session, created = PayplatPayInSession.objects.get_or_create(
@@ -982,7 +992,6 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
     if not payin_routed_group_matches_ps(pay_in):
         return False
 
-    external_id = str(pay_in.id)
     ps_name = pay_in.payment_system.name if pay_in.payment_system else None
     requisite_type = payplat_requisite_type_for(ps_name, pay_in)
     bank = payplat_bank_for(ps_name)
@@ -990,8 +999,11 @@ def try_attach_payplat_session(pay_in: Any) -> bool | None:
 
     session, _ = PayplatPayInSession.objects.get_or_create(
         pay_in=pay_in,
-        defaults={"external_id": external_id, "create_response": {}, "last_webhook_payload": {}},
+        defaults={"external_id": str(pay_in.id), "create_response": {}, "last_webhook_payload": {}},
     )
+    from payments.georgian_banks import payplat_external_id
+
+    external_id = payplat_external_id(pay_in, session)
     session.external_id = external_id
     session.save(update_fields=["external_id", "updated_at"])
 

@@ -301,6 +301,10 @@ XE_KZT_MARKUP_BY_MERCHANT = os.getenv(
     'XE_KZT_MARKUP_BY_MERCHANT',
     '{"pandapay":"1.04","aggrepay":"1.04"}',
 )
+# Мерчанты, которым не выдаём грузинские банки (TBC / Bank of Georgia / BOG).
+# Повтор запроса к провайдеру — GEORGIAN_BANK_REQUISITE_RETRIES раз, затем следующий провайдер.
+GEORGIAN_BANK_BLOCK_MERCHANTS = os.getenv('GEORGIAN_BANK_BLOCK_MERCHANTS', 'artur_kids')
+GEORGIAN_BANK_REQUISITE_RETRIES = os.getenv('GEORGIAN_BANK_REQUISITE_RETRIES', '5')
 # Фильтр выдачи: не слать pay-in на трейдера/PSP, если маржа площадки < DEAL_MARGIN_MIN_PCT % merchant USD.
 DEAL_MARGIN_FILTER_ENABLED = os.getenv('DEAL_MARGIN_FILTER_ENABLED', '1')
 DEAL_MARGIN_MIN_PCT = os.getenv('DEAL_MARGIN_MIN_PCT', '0.2')

@@ -186,6 +186,18 @@ class SberRouting:
                 available_details = available_details.exclude(id__in=active_details)
                 if fair_routing_enabled():
                     available_details = exclude_overloaded_details(available_details)
+                from payments.georgian_banks import exclude_georgian_human_details
+
+                available_details, georgian_blocked = exclude_georgian_human_details(
+                    available_details, merchant
+                )
+                if georgian_blocked and not available_details.exists():
+                    skipped.append({
+                        "trader": uname,
+                        "group_id": str(group.id),
+                        "skip": "georgian_bank",
+                    })
+                    continue
             if not available_details.exists():
                 skipped.append({"trader": uname, "group_id": str(group.id), "skip": "no_free_card"})
                 continue
