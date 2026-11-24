@@ -128,7 +128,7 @@ class InOrderTraderFullSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InOrder
-        fields = ['id', 'creation_date', 'status', 'completion_date', 'amount', 'usd_amount', 'payment_details', 'auto_closed', 'trader_fee', 'pic', 'rejection_reason']
+        fields = ['id', 'creation_date', 'status', 'completion_date', 'amount', 'usd_amount', 'payment_details', 'auto_closed', 'trader_fee', 'pic', 'rejection_reason', 'recalculated_amount', 'arbitrage_comment']
         read_only_fields = ['amount', 'usd_amount']
 
     def get_payment_details(self, obj):
@@ -189,7 +189,7 @@ class InOrderTraderBossFullSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InOrder
-        fields = ['id', 'creation_date', 'status', 'completion_date', 'amount', 'usd_amount', 'payment_details', 'auto_closed', 'trader_fee', 'pic', 'rejection_reason']
+        fields = ['id', 'creation_date', 'status', 'completion_date', 'amount', 'usd_amount', 'payment_details', 'auto_closed', 'trader_fee', 'pic', 'rejection_reason', 'recalculated_amount', 'arbitrage_comment']
         read_only_fields = ['amount', 'usd_amount']
 
     def get_payment_details(self, obj):
@@ -297,7 +297,7 @@ class InOrderSupportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InOrder
-        fields = ['id', 'creation_date', 'status', 'completion_date', 'amount', 'usd_amount', 'payment_details', 'auto_closed', 'trader_fee', 'merchant_fee', 'merchant_order_id', 'pic', 'recalculated_amount', 'rejection_reason']
+        fields = ['id', 'creation_date', 'status', 'completion_date', 'amount', 'usd_amount', 'payment_details', 'auto_closed', 'trader_fee', 'merchant_fee', 'merchant_order_id', 'pic', 'recalculated_amount', 'rejection_reason', 'arbitrage_comment']
         read_only_fields = ['amount', 'usd_amount']
 
     def get_payment_details(self, obj):

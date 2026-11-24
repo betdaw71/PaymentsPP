@@ -764,7 +764,10 @@ class InOrderViewset(viewsets.ModelViewSet):
             if serializer_data['amount'] == order.amount:
                 return Response(status=status.HTTP_400_BAD_REQUEST, data={'error': 'Amount has not changed'})
 
-            order.support_recalculate(serializer_data['amount'])
+            if order.status.name == "Completed":
+                order.open_recalc_arbitrage(serializer_data['amount'])
+            else:
+                order.support_recalculate(serializer_data['amount'])
 
         elif hasattr(request.user, 'trader'):
             order = InOrder.objects.get(id=id)

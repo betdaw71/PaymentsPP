@@ -35,6 +35,21 @@ class RecalcCallbackParseTest(SimpleTestCase):
         self.assertIn("melbet", text)
         self.assertIn("resdfe", text)
         self.assertIn("24781441961", text)
+        self.assertIn("отменить заявку", text)
+
+    def test_post_success_prompt_keeps_original_success(self):
+        text = format_recalc_prompt(
+            side="rin",
+            order_id="order-1",
+            merchant="melbet",
+            trader="resdfe",
+            currency="KZT",
+            amount=Decimal("3000"),
+            new_amount=Decimal("5000"),
+            post_success=True,
+        )
+        self.assertIn("списать разницу", text)
+        self.assertIn("исходный успех", text)
 
 
 class RecalcDecisionTest(SimpleTestCase):
@@ -80,3 +95,35 @@ class RecalcDecisionTest(SimpleTestCase):
             result = apply_recalc_decision("rin", str(uuid4()), True)
         self.assertIn("Уже обработано", result)
         self.assertIn("Completed", result)
+
+    def test_post_success_confirm_uses_delta_path(self):
+        order = SimpleNamespace(
+            status_id=1,
+            status=SimpleNamespace(name="Recalculation"),
+            recalculated_amount=Decimal("5000"),
+            arbitrage_comment="Recalc after success",
+            confirm_post_success_recalc=lambda: setattr(order, "confirmed", True),
+            support_recalculate=lambda amount: (_ for _ in ()).throw(AssertionError("full recalc")),
+        )
+        with patch("payments.recalc_confirm.transaction.atomic", nullcontext), patch(
+            "payments.recalc_confirm._locked", return_value=order
+        ):
+            result = apply_recalc_decision("rin", str(uuid4()), True)
+        self.assertTrue(order.confirmed)
+        self.assertIn("Подтверждено", result)
+
+    def test_post_success_reject_restores_success(self):
+        order = SimpleNamespace(
+            status_id=1,
+            status=SimpleNamespace(name="Recalculation"),
+            recalculated_amount=Decimal("5000"),
+            arbitrage_comment="Recalc after success",
+            restore_completed_after_rejected_recalc=lambda: setattr(order, "restored", True),
+            cancel_by_support=lambda: (_ for _ in ()).throw(AssertionError("cancelled paid order")),
+        )
+        with patch("payments.recalc_confirm.transaction.atomic", nullcontext), patch(
+            "payments.recalc_confirm._locked", return_value=order
+        ):
+            result = apply_recalc_decision("rin", str(uuid4()), False)
+        self.assertTrue(order.restored)
+        self.assertIn("исходной суммой", result)

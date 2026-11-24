@@ -14,6 +14,9 @@ from django.utils import timezone
 from decimal import Decimal
 from titanpay.settings import SYSTEM_INTERVAL_VALUE, ARBITRAGE_LIMIT
 
+# Саппорт открыл перерасчёт уже успешной заявки. Отмена возвращает успех, а не Cancelled.
+POST_SUCCESS_RECALC_COMMENT = "Recalc after success"
+
 
 def arbitrage_block_payment_group(order) -> None:
     """Опционально блокирует группу реквизитов (status=4) при арбитраже — см. ARBITRAGE_BLOCK_PAYMENT_GROUP."""
@@ -559,8 +562,8 @@ class InOrder(models.Model):
         tx_deposit = TransactionType.objects.get(name="Deposit")
         comment = "PSP completed recalculation"
 
+        d_charge = (new_charge_usd - old_charge_usd).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         if is_psp_trader(trader):
-            d_charge = (new_charge_usd - old_charge_usd).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if d_charge > 0:
                 ensure_psp_frozen_for_complete(self)
                 Transaction.create(
@@ -579,6 +582,30 @@ class InOrder(models.Model):
                     _transaction_type=tx_deposit,
                     _linked_in_order=self,
                     _comment=comment,
+                )
+        else:
+            # Живой трейдер: после успеха freeze уже списан, разницу берём с рабочего баланса.
+            human_comment = "Success recalculation"
+            if d_charge > 0:
+                from appeals.services import _cover_freeze_from_insurance
+
+                _cover_freeze_from_insurance(self, d_charge)
+                Transaction.create(
+                    _from=trader.balance_usdt,
+                    _to=aggregator,
+                    value=d_charge,
+                    _transaction_type=tx_charge,
+                    _linked_in_order=self,
+                    _comment=human_comment,
+                )
+            elif d_charge < 0:
+                Transaction.create(
+                    _from=aggregator,
+                    _to=trader.balance_usdt,
+                    value=-d_charge,
+                    _transaction_type=tx_deposit,
+                    _linked_in_order=self,
+                    _comment=human_comment,
                 )
 
         if uses_melbet_fiat_settlement(self.solution.merchant, self.solution.payment_system):
@@ -659,6 +686,8 @@ class InOrder(models.Model):
 
         trader = self.payment_details.group.trader
         old_amount = self.amount
+        old_merchant_usd = self.usd_amount
+        old_agent_fee = Decimal(self.agent_fee or 0)
         old_charge = psp_order_usd_ledger_amount(self)
         if old_charge <= 0:
             old_charge = self.usd_amount
@@ -701,6 +730,10 @@ class InOrder(models.Model):
             new_for_merchant=new_for_merchant,
             new_for_trader=new_for_trader,
         )
+        from payments.psp_payin import is_psp_trader
+
+        if not is_psp_trader(trader):
+            self._apply_human_recalc_shares(trader, old_merchant_usd, new_usd, old_agent_fee)
 
         self.recalculated = True
         self.recalculated_amount = paid_amount
@@ -716,6 +749,66 @@ class InOrder(models.Model):
         pay_in.save(update_fields=["amount", "recalculated", "updated_at"])
         pay_in.send_callback({"status": pay_in.status.name})
         return True
+
+    def _apply_human_recalc_shares(self, trader, old_usd, new_usd, old_agent_fee: Decimal) -> None:
+        """Доли тимлида и агента на разницу суммы. Основной USDT уже списан в ledger."""
+        lead = trader.team.teamlead if trader.team_id else None
+        pct = Decimal(getattr(trader.team, "teamlead_percentage", 0) or 0) if trader.team_id else Decimal("0")
+        if lead is not None and pct > 0 and lead.balance_id is not None:
+            old_share = (Decimal(old_usd) * pct / Decimal(100)).quantize(Decimal("0.01"))
+            new_share = (Decimal(new_usd) * pct / Decimal(100)).quantize(Decimal("0.01"))
+            delta = (new_share - old_share).quantize(Decimal("0.01"))
+            if delta != 0:
+                tx_charge = TransactionType.objects.get(name="Charge")
+                tx_deposit = TransactionType.objects.get(name="Deposit")
+                if delta > 0:
+                    Transaction.create(
+                        _from=trader.balance_usdt,
+                        _to=lead.balance,
+                        value=delta,
+                        _transaction_type=tx_charge,
+                        _linked_in_order=self,
+                        _comment="Teamlead commission",
+                    )
+                else:
+                    Transaction.create(
+                        _from=lead.balance,
+                        _to=trader.balance_usdt,
+                        value=-delta,
+                        _transaction_type=tx_deposit,
+                        _linked_in_order=self,
+                        _comment="Teamlead commission",
+                    )
+
+        from merchant.agent_fee import compute_in_order_agent_fee
+
+        self.agent_fee = compute_in_order_agent_fee(self)
+        agent_delta = (Decimal(self.agent_fee or 0) - Decimal(old_agent_fee or 0)).quantize(Decimal("0.01"))
+        if agent_delta == 0:
+            return
+        merchant = self.solution.merchant if self.solution_id else None
+        agent = getattr(merchant, "agent", None) if merchant is not None else None
+        if agent is None or agent.balance_id is None:
+            return
+        chain = Balance.objects.get(type=3)
+        if agent_delta > 0:
+            Transaction.create(
+                _from=chain,
+                _to=agent.balance,
+                value=agent_delta,
+                _transaction_type=TransactionType.objects.get(name="Deposit"),
+                _linked_in_order=self,
+                _comment="Agent commission",
+            )
+        else:
+            Transaction.create(
+                _from=agent.balance,
+                _to=chain,
+                value=-agent_delta,
+                _transaction_type=TransactionType.objects.get(name="Charge"),
+                _linked_in_order=self,
+                _comment="Agent commission",
+            )
 
     def complete_from_psp_success(self, paid_amount: Decimal | None = None) -> None:
         """Завершение pay-in по success webhook PSP (в т.ч. Expired + перерасчёт)."""
@@ -820,6 +913,9 @@ class InOrder(models.Model):
     def complete_after_recalc(self):
         if self.status.name != "Recalculation":
             raise ValidationError({'error': 'Wrong status'})
+        if self.arbitrage_comment == POST_SUCCESS_RECALC_COMMENT:
+            self.confirm_post_success_recalc()
+            return
 
         self.complete()
 
@@ -827,6 +923,10 @@ class InOrder(models.Model):
         if self.status.name != "Arbitrage":
             raise ValidationError({
                 'error': 'Wrong method is used. This method is for changing status from "Arbitrage" to "Completed"'})
+        if self.arbitrage_comment == POST_SUCCESS_RECALC_COMMENT:
+            raise ValidationError({
+                'error': 'Это перерасчёт успешной заявки. Подтвердите новую сумму через перерасчёт.',
+            })
 
         arbitrage_orders = InOrder.objects.filter(status__name="Arbitrage", payment_details__group=self.payment_details.group)
         if arbitrage_orders.count() == 1 and self.payment_details.group.status == 4:
@@ -850,6 +950,12 @@ class InOrder(models.Model):
         InOrderStatusChange.create(order=self, status=status)
 
     def cancel_by_support(self):
+        if self.arbitrage_comment == POST_SUCCESS_RECALC_COMMENT and self.status.name in (
+            "Recalculation",
+            "Arbitrage",
+        ):
+            self.restore_completed_after_rejected_recalc()
+            return
         if self.status.name != "Recalculation":
             raise ValidationError({
                 'error': 'Wrong status"'})
@@ -867,6 +973,9 @@ class InOrder(models.Model):
         if self.status.name != "Arbitrage":
             raise ValidationError({
                 'error': 'Wrong method is used. This method is for changing status from "Arbitrage" to "Cancelled by support"'})
+        if self.arbitrage_comment == POST_SUCCESS_RECALC_COMMENT:
+            self.restore_completed_after_rejected_recalc()
+            return
         status = InOrderStatus.objects.get(name="Cancelled by trader")
 
         arbitrage_orders = InOrder.objects.filter(status__name="Arbitrage",
@@ -916,8 +1025,62 @@ class InOrder(models.Model):
     def support_recalculate(self, new_amount: Decimal):
         if self.status.name != "Recalculation":
             raise ValidationError({'error': 'Wrong status!'})
+        if self.arbitrage_comment == POST_SUCCESS_RECALC_COMMENT:
+            self.recalculated_amount = new_amount
+            self.confirm_post_success_recalc()
+            return
         self.recalculate(new_amount)
         return
+
+    def open_recalc_arbitrage(self, new_amount: Decimal):
+        """Саппорт отправляет трейдеру перерасчёт уже успешной заявки."""
+        if self.status.name != "Completed":
+            raise ValidationError({'error': 'Перерасчёт после успеха доступен только для успешной заявки'})
+        new_amount = Decimal(str(new_amount)).quantize(Decimal("0.01"))
+        if new_amount <= 0:
+            raise ValidationError({'error': 'Сумма должна быть больше нуля'})
+        if new_amount == self.amount:
+            raise ValidationError({'error': 'Amount has not changed'})
+        self.recalculated_amount = new_amount
+        self.arbitrage_comment = POST_SUCCESS_RECALC_COMMENT
+        status = InOrderStatus.objects.get(name="Arbitrage")
+        self.status = status
+        self.updated_date = timezone.now()
+        arbitrage_block_payment_group(self)
+        self.save()
+        InOrderStatusChange.create(order=self, status=status)
+
+    def confirm_post_success_recalc(self):
+        """Провести новую сумму по уже успешной заявке: списать у трейдера только разницу."""
+        if self.status.name != "Recalculation":
+            raise ValidationError({'error': 'Wrong status!'})
+        if self.arbitrage_comment != POST_SUCCESS_RECALC_COMMENT:
+            raise ValidationError({'error': 'Это не перерасчёт успешной заявки'})
+        paid = Decimal(self.recalculated_amount or 0).quantize(Decimal("0.01"))
+        if paid <= 0:
+            raise ValidationError({'error': 'Сумма перерасчёта не задана'})
+        completed = InOrderStatus.objects.get(name="Completed")
+        self.status = completed
+        self.updated_date = timezone.now()
+        self.save(update_fields=["status", "recalculated_amount", "updated_date"])
+        applied = self.apply_psp_completed_recalc(paid)
+        if not applied:
+            raise ValidationError({'error': 'Сумма не изменилась'})
+        self.arbitrage_comment = ""
+        self.save(update_fields=["arbitrage_comment"])
+        InOrderStatusChange.create(order=self, status=completed)
+
+    def restore_completed_after_rejected_recalc(self):
+        """Отклонение перерасчёта возвращает заявку в успех с исходной суммой."""
+        if self.arbitrage_comment != POST_SUCCESS_RECALC_COMMENT:
+            raise ValidationError({'error': 'Это не перерасчёт успешной заявки'})
+        completed = InOrderStatus.objects.get(name="Completed")
+        self.status = completed
+        self.recalculated_amount = Decimal("0")
+        self.arbitrage_comment = ""
+        self.updated_date = timezone.now()
+        self.save(update_fields=["status", "recalculated_amount", "arbitrage_comment", "updated_date"])
+        InOrderStatusChange.create(order=self, status=completed)
 
     def recalculate(self, new_amount: Decimal):
         new_usd_amount = new_amount / self.solution.payment_system.get_rate()

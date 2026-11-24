@@ -437,6 +437,9 @@
     "success": "Rates edited successfully!",
     "title": "Rates Management"
   },
+  "post_success_recalc_hint": "This order is already successful. The new amount goes to the trader as an arbitrage. Only the difference is charged after confirmation.",
+  "post_success_recalc_support_hint": "Confirming charges the trader only the difference. Cancelling keeps the original successful amount.",
+  "post_success_recalc_trader_hint": "Recalculation of a successful order. Confirm the receipt amount, or cancel to keep the original.",
   "recalculate_amount": "Recalculate Amount",
   "recalculated_amount": "Recalculated Amount",
   "recalculation": "Recalculation",
@@ -447,6 +450,7 @@
   "rejection_reason": "Rejection Reason",
   "remember_me": "Remember Me",
   "required": "Required",
+  "send_recalc_to_trader": "Send to trader",
   "roles": {
     "agent": "Agent",
     "anonymous": "Anonymous",

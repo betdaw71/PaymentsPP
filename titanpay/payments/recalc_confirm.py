@@ -36,6 +36,7 @@ def format_recalc_prompt(
     merchant_order_id: str = "",
     pay_id: str = "",
     receipt: str = "",
+    post_success: bool = False,
 ) -> str:
     title = "Перерасчёт входящей заявки" if side == "rin" else "Перерасчёт выплаты"
     pay_label = "PayIn" if side == "rin" else "PayOut"
@@ -60,7 +61,10 @@ def format_recalc_prompt(
     if receipt:
         lines.append(f"Чек: {receipt}")
     lines.append("")
-    lines.append("Подтвердить — провести новую сумму. Отклонить — отменить заявку.")
+    if post_success:
+        lines.append("Подтвердить — списать разницу и провести новую сумму. Отклонить — оставить исходный успех.")
+    else:
+        lines.append("Подтвердить — провести новую сумму. Отклонить — отменить заявку.")
     return "\n".join(lines)
 
 
@@ -100,14 +104,25 @@ def apply_recalc_decision(side: str, order_id: str, approve: bool) -> str:
             if status_name != "Recalculation":
                 return f"Уже обработано. Статус: {status_name or '—'}"
             new_amount = Decimal(order.recalculated_amount or 0)
+            from trade.models import POST_SUCCESS_RECALC_COMMENT
+
+            post_success = (
+                side == "rin"
+                and getattr(order, "arbitrage_comment", "") == POST_SUCCESS_RECALC_COMMENT
+            )
             if approve:
                 if new_amount <= 0:
                     return "Сумма перерасчёта не задана"
-                if side == "rin":
+                if post_success:
+                    order.confirm_post_success_recalc()
+                elif side == "rin":
                     order.support_recalculate(new_amount)
                 else:
                     order.recalculate(new_amount)
                 return f"Подтверждено. Новая сумма {_money(new_amount)}"
+            if post_success:
+                order.restore_completed_after_rejected_recalc()
+                return "Отклонено. Заявка осталась успешной с исходной суммой"
             if side == "rin":
                 order.cancel_by_support()
             else:
@@ -187,6 +202,7 @@ def _prompt_kwargs(order, side: str) -> dict:
         "merchant_order_id": order.merchant_order_id or "",
         "pay_id": pay_id,
         "receipt": receipt,
+        "post_success": side == "rin" and (getattr(order, "arbitrage_comment", "") or "") == "Recalc after success",
     }
 
 
