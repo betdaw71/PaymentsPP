@@ -110,6 +110,9 @@
     }
     .kaspi-mark { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; }
     .steps { padding-top: 14px; padding-bottom: 8px; }
+    .req-simple { display: flex; flex-direction: column; gap: 0; }
+    .req-simple .chip { margin-top: 8px; }
+    .req-simple .chip:first-child { margin-top: 0; }
     .step { display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: start; position: relative; padding: 5px 0 11px; }
     .step:not(:last-child)::before {
       content: ""; position: absolute; left: 10px; top: 24px; bottom: -8px; width: 2px;
@@ -337,7 +340,7 @@
     const I18N = {
       kk: {
         loading: "Төлем жүктелуде…", nav: "Шотты толықтыру",
-        timer: "Қалған уақыт:", card: "Карта мәліметтері", phone: "Телефон", account: "Шот",
+        timer: "Қалған уақыт:", card: "Карта нөмірі", phone: "Телефон", account: "Шот",
         payLink: "Төлем сілтемесі", owner: "Алушының толық аты-жөні", bank: "Алушы банкі", bic: "БИК",
         amountExact: "Төлем сомасы",
         copy: "Көшіру", copied: "Көшірілді",
@@ -390,7 +393,7 @@
       },
       ru: {
         loading: "Загрузка платежа…", nav: "Пополнение счёта",
-        timer: "Осталось времени:", card: "Реквизиты карты", phone: "Телефон", account: "Счёт",
+        timer: "Осталось времени:", card: "Номер карты", phone: "Телефон", account: "Счёт",
         payLink: "Ссылка для оплаты", owner: "Полное имя получателя", bank: "Банк получателя", bic: "БИК",
         amountExact: "Сумма платежа",
         copy: "Копировать", copied: "Скопировано",
@@ -648,31 +651,39 @@
       html += `</div>`;
       return html;
     }
-    function renderKgsPhoneDetails(pd, amountLine, amountCopy) {
-      const phone = pd && pd.phone;
-      const owner = pd && pd.owner;
-      const bank = pd && pd.bank;
-      let html = "";
-      html += step(1, t("kgsPhoneTitle"), chip(icoCard(), t("phoneLabel"), phone || "", phone ? String(phone).replace(/\s/g, "") : ""));
-      html += step(2, t("kgsStepApp"));
-      let n = 3;
-      if (bank) { html += step(n++, t("bank"), chip(icoCard(), t("bank"), bank || "", bank || "")); }
-      if (owner) { html += step(n++, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || "")); }
-      html += step(n, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
+    function renderSimpleReqDetails(fields) {
+      // Как на обычной платёжной странице: имя / банк / реквизит / сумма — без пошаговой инструкции.
+      let html = `<div class="req-simple">`;
+      for (const f of fields) {
+        if (!f || !f.value) continue;
+        html += chip(f.icon, f.label, f.value, f.copy != null ? f.copy : f.value);
+      }
+      html += `</div>`;
       return html;
     }
-    function renderKgsCardDetails(pd, amountLine, amountCopy) {
-      const card = pd && pd.card_number;
+    function renderKgsPhoneDetails(pd, amountLine, amountCopy) {
+      const phoneRaw = pd && pd.phone ? String(pd.phone).replace(/\s/g, "") : "";
+      const phone = phoneRaw ? formatKgPhone(phoneRaw) : "";
       const owner = pd && pd.owner;
       const bank = pd && pd.bank;
-      let html = "";
-      html += step(1, t("kgsCardTitle"), chip(icoCard(), t("card"), card ? spaceCard(card) : "", card ? String(card).replace(/\s/g, "") : ""));
-      html += step(2, t("kgsStepApp"));
-      let n = 3;
-      if (bank) { html += step(n++, t("bank"), chip(icoCard(), t("bank"), bank || "", bank || "")); }
-      if (owner) { html += step(n++, t("owner"), chip(icoUser(), t("owner"), owner || "", owner || "")); }
-      html += step(n, t("kgsStepPay"), chip(icoBag(), t("amountExact"), amountLine || "", amountCopy || ""));
-      return html;
+      return renderSimpleReqDetails([
+        { icon: icoUser(), label: t("owner"), value: owner || "", copy: owner || "" },
+        { icon: icoCard(), label: t("bank"), value: bank || "", copy: bank || "" },
+        { icon: icoBag(), label: t("amountExact"), value: amountLine || "", copy: amountCopy || "" },
+        { icon: icoCard(), label: t("phoneLabel"), value: phone, copy: phoneRaw },
+      ]);
+    }
+    function renderKgsCardDetails(pd, amountLine, amountCopy) {
+      const cardRaw = pd && pd.card_number ? String(pd.card_number).replace(/\s/g, "") : "";
+      const card = cardRaw ? spaceCard(cardRaw) : "";
+      const owner = pd && pd.owner;
+      const bank = pd && pd.bank;
+      return renderSimpleReqDetails([
+        { icon: icoUser(), label: t("owner"), value: owner || "", copy: owner || "" },
+        { icon: icoCard(), label: t("bank"), value: bank || "", copy: bank || "" },
+        { icon: icoBag(), label: t("amountExact"), value: amountLine || "", copy: amountCopy || "" },
+        { icon: icoCard(), label: t("card"), value: card, copy: cardRaw },
+      ]);
     }
     function renderH2hDetails(pd, amountLine, amountCopy) {
       const card = pd && (pd.card_number || pd.deposit_number);
