@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework import routers
 from payments import viewsets
+from payments.merchant_balance import MerchantBalanceView
 from payments.rate_views import PayoutKztRateView
 
 app_name = 'payments'
@@ -15,4 +16,5 @@ router.register(r'keys', viewsets.APIKeysViewset, basename="APIKeys")
 
 urlpatterns = [
     path("rate/payoutkzt/", PayoutKztRateView.as_view(), name="rate-payoutkzt"),
+    path("balance/", MerchantBalanceView.as_view(), name="merchant-balance"),
 ] + router.urls

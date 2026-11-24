@@ -356,6 +356,9 @@
       <div class="nav-section">Pay-out</div>
       <a href="#payout-h2h">Создание выплаты</a>
 
+      <div class="nav-section">Баланс</div>
+      <a href="#balance">Получение баланса</a>
+
       <div class="nav-section">Справочники</div>
       <a href="#currencies">Валюты</a>
       <a href="#payment-systems">Платёжные системы</a>
@@ -389,6 +392,7 @@
           <li>Получать callback при смене статуса операции</li>
           <li>Управлять API-ключами и IP whitelist</li>
           <li>Подавать апелляции по спорным pay-in транзакциям</li>
+          <li>Запрашивать текущий баланс мерчанта</li>
         </ul>
         <div class="alert alert-info">
           <strong>Два режима pay-in:</strong> <code>H2H</code> — реквизиты сразу в ответе API;
@@ -830,6 +834,40 @@ PUBLIC_API_URL=https://api.avapay.net
   }
 }</code></pre>
         <p>Поле <code>details</code> обязательно. Набор полей зависит от <code>payment_system</code> — см. <code>required_fields</code> в справочнике.</p>
+      </section>
+
+      <section id="balance">
+        <h2>Баланс мерчанта</h2>
+        <p>
+          <span class="method method-get">GET</span>
+          <span class="endpoint">/api/v1/payments/balance/</span>
+        </p>
+        <p class="lead">
+          Текущий баланс мерчанта, которому принадлежит API-токен.
+          Тело запроса пустое, заголовок <code>Signature</code> не нужен.
+        </p>
+        <pre><code>Authorization: Token &lt;ваш_api_token&gt;</code></pre>
+        <h3>Ответ 200</h3>
+        <pre><code>{
+  "amount": "1520.50",
+  "frozen_amount": "100.00",
+  "currency": "USDT",
+  "deposit_address": "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+}</code></pre>
+        <table>
+          <tr><th>Поле</th><th>Описание</th></tr>
+          <tr><td><code>amount</code></td><td>Доступный баланс, строка с двумя знаками</td></tr>
+          <tr><td><code>frozen_amount</code></td><td>Сумма в холде</td></tr>
+          <tr><td><code>currency</code></td><td>Валюта основного баланса, <code>USDT</code></td></tr>
+          <tr><td><code>deposit_address</code></td><td>Адрес для пополнения. Пустая строка, если адрес ещё не выпущен</td></tr>
+        </table>
+        <p>
+          В ответе может быть заголовок <code>Signature</code> — подпись JSON-тела тем же алгоритмом,
+          что и у callback. Сверяйте его, если проверяете подписи ответов.
+        </p>
+        <div class="alert alert-info">
+          Суммы совпадают с личным кабинетом. Это баланс мерчанта в USDT, не баланс провайдера.
+        </div>
       </section>
 
       <section id="currencies">
