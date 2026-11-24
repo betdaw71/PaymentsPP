@@ -791,6 +791,10 @@ class InOrder(models.Model):
             raise ValidationError({
                 'error': 'Wrong method is used. This method is for changing status to "Arbitrage"'})
 
+        # Same path as the appeal bot: a zero working balance is covered from the team insurance.
+        from appeals.services import cover_appeal_freeze_from_insurance
+
+        cover_appeal_freeze_from_insurance(self)
         self.freeze("Freeze for arbitrage")
 
         status = InOrderStatus.objects.get(name="Arbitrage")

@@ -233,6 +233,14 @@ def _freeze_need(order) -> Decimal:
     return Decimal(value).quantize(Decimal("0.01"))
 
 
+def cover_appeal_freeze_from_insurance(order) -> Decimal:
+    """Top up a trader's working balance from the team insurance before an appeal freeze.
+
+    Used by the appeal bot and by support arbitrage in the cabinet. Insurance may go negative.
+    """
+    return _cover_freeze_from_insurance(order, _freeze_need(order))
+
+
 def _cover_freeze_from_insurance(order, need: Decimal) -> Decimal:
     """Move the freeze shortfall onto the trader working balance and debit the team insurance.
 
@@ -333,7 +341,7 @@ def _try_order_arbitrage(order) -> None:
         # Nested savepoint: a failed cover must not poison the outer appeal atomic.
         try:
             with transaction.atomic():
-                _cover_freeze_from_insurance(order, _freeze_need(order))
+                cover_appeal_freeze_from_insurance(order)
         except Exception:
             logger.exception("appeal insurance cover failed order=%s", order.id)
 

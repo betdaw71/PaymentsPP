@@ -105,6 +105,21 @@ class AppealArbitrageInsuranceTest(TestCase):
         self.assertEqual(self.frozen.amount, Decimal("10.00"))
         self.assertEqual(self.team.insurance_deposit, Decimal("-5.00"))
 
+    def test_support_arbitrage_covers_zero_balance_from_insurance(self):
+        order = self._order(self.expired, usd="10.00", working="0.00")
+
+        order.arbitrage_support()
+
+        order.refresh_from_db()
+        self.working.refresh_from_db()
+        self.frozen.refresh_from_db()
+        self.team.refresh_from_db()
+        self.assertEqual(order.status.name, "Arbitrage")
+        self.assertEqual(order.arbitrage_comment, "Arbitrage called by support")
+        self.assertEqual(self.working.amount, Decimal("0.00"))
+        self.assertEqual(self.frozen.amount, Decimal("10.00"))
+        self.assertEqual(self.team.insurance_deposit, Decimal("-6.00"))
+
     def test_enough_working_balance_does_not_touch_insurance(self):
         order = self._order(self.expired, usd="10.00", working="20.00")
 
