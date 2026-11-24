@@ -28,6 +28,69 @@ def arbitrage_block_payment_group(order) -> None:
     group.save(update_fields=["status"])
 
 
+def freeze_usd_need(order) -> Decimal:
+    """Сумма USDT, которую нужно заморозить по заявке (курс команды / psp_usd)."""
+    from payments.psp_payin import psp_order_usd_ledger_amount
+
+    value = psp_order_usd_ledger_amount(order)
+    if value <= 0:
+        value = order.usd_amount or Decimal("0")
+    return Decimal(value).quantize(Decimal("0.01"))
+
+
+def cover_freeze_from_insurance(order, need: Decimal | None = None) -> Decimal:
+    """Добирает нехватку на рабочий баланс трейдера со страхового депозита команды.
+
+    Используется при открытии арбитража (апелляция / support), когда available = 0,
+    но у команды есть insurance_deposit. Депозит может уйти в минус — арбитраж
+    всё равно должен открыться. Проводка: blockchain (type=3) → working balance.
+    """
+    from basics.models import Balance, TraderTeam
+
+    if need is None:
+        need = freeze_usd_need(order)
+    need = Decimal(need).quantize(Decimal("0.01"))
+    if need <= 0:
+        return Decimal("0")
+
+    details = getattr(order, "payment_details", None)
+    trader = None if details is None or details.group_id is None else details.group.trader
+    if trader is None or trader.balance_usdt_id is None or trader.team_id is None:
+        return Decimal("0")
+
+    working = Balance.objects.select_for_update().get(pk=trader.balance_usdt_id)
+    shortfall = (need - Decimal(working.amount)).quantize(Decimal("0.01"))
+    if shortfall <= 0:
+        return Decimal("0")
+
+    chain = Balance.objects.select_for_update().filter(type=3).first()
+    if chain is None:
+        logging.getLogger(__name__).warning(
+            "insurance cover skipped: no blockchain balance order=%s",
+            getattr(order, "id", None),
+        )
+        return Decimal("0")
+
+    team = TraderTeam.objects.select_for_update().get(pk=trader.team_id)
+    Transaction.create(
+        _from=chain,
+        _to=working,
+        value=shortfall,
+        _transaction_type=TransactionType.objects.filter(name="Deposit").first(),
+        _linked_in_order=order,
+        _comment="Insurance deposit cover for appeal arbitrage",
+    )
+    team.insurance_deposit = (Decimal(team.insurance_deposit or 0) - shortfall).quantize(Decimal("0.01"))
+    team.save(update_fields=["insurance_deposit"])
+    logging.getLogger(__name__).info(
+        "insurance cover order=%s amount=%s insurance_left=%s",
+        getattr(order, "id", None),
+        shortfall,
+        team.insurance_deposit,
+    )
+    return shortfall
+
+
 class TransactionType(models.Model):
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     name = models.CharField(max_length=64, unique=True)
@@ -191,17 +254,18 @@ class InOrder(models.Model):
 
     def freeze(self, comment=""):
         # Курс команды (psp_usd / xe+N), не курс мерчанта. Иначе FX остаётся на ЛК трейдера.
-        from payments.psp_payin import psp_order_usd_ledger_amount
-
         trader = self.payment_details.group.trader
-        value = psp_order_usd_ledger_amount(self)
-        if value <= 0:
-            value = self.usd_amount
+        value = freeze_usd_need(self)
 
         transaction_type = TransactionType.objects.get(name="Freeze")
         Transaction.create(_from=trader.balance_usdt, _to=trader.frozen_balance_usdt,
                            value=value, _transaction_type=transaction_type, _linked_in_order=self,
                            _comment=comment)
+
+    def freeze_for_arbitrage(self, comment=""):
+        """Заморозка под арбитраж: нехватку добираем со страхового депозита команды."""
+        cover_freeze_from_insurance(self)
+        self.freeze(comment)
 
     def unfreeze(self, comment=""):
         """Разморозка всех неоткатанных Freeze по заявке (PSP может иметь несколько freeze)."""
@@ -776,7 +840,7 @@ class InOrder(models.Model):
         if arbitrage_count >= ARBITRAGE_LIMIT:
             raise ValidationError({'error': 'Arbitrage limit exceeded for this order'})
 
-        self.freeze("Arbitrage")
+        self.freeze_for_arbitrage("Arbitrage")
         self.arbitrage_comment = "Arbitrage called by client"
         arbitrage_block_payment_group(self)
 
@@ -791,7 +855,7 @@ class InOrder(models.Model):
             raise ValidationError({
                 'error': 'Wrong method is used. This method is for changing status to "Arbitrage"'})
 
-        self.freeze("Freeze for arbitrage")
+        self.freeze_for_arbitrage("Freeze for arbitrage")
 
         status = InOrderStatus.objects.get(name="Arbitrage")
         self.arbitrage_comment = "Arbitrage called by support"

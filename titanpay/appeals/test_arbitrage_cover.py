@@ -160,3 +160,38 @@ class AppealArbitrageInsuranceTest(TestCase):
 
         order.refresh_from_db()
         self.assertEqual(order.status_id, self.arbitrage.id)
+
+    def test_zero_working_balance_still_opens_appeal_arbitrage(self):
+        """При 0 на ЛК и страховом депозите апелляция всё равно уходит в Arbitrage."""
+        self.team.insurance_deposit = Decimal("50.00")
+        self.team.save(update_fields=["insurance_deposit"])
+        order = self._order(self.expired, usd="10.00", working="0.00")
+
+        _try_order_arbitrage(order)
+
+        order.refresh_from_db()
+        self.working.refresh_from_db()
+        self.frozen.refresh_from_db()
+        self.team.refresh_from_db()
+        self.assertEqual(order.status_id, self.arbitrage.id)
+        self.assertEqual(self.working.amount, Decimal("0.00"))
+        self.assertEqual(self.frozen.amount, Decimal("10.00"))
+        self.assertEqual(self.team.insurance_deposit, Decimal("40.00"))
+
+    def test_support_arbitrage_debits_insurance_at_zero_balance(self):
+        """Кнопка support arbitrage при 0 балансе списывает страховой депозит."""
+        self.team.insurance_deposit = Decimal("25.00")
+        self.team.save(update_fields=["insurance_deposit"])
+        order = self._order(self.expired, usd="10.00", working="0.00")
+
+        order.arbitrage_support()
+
+        order.refresh_from_db()
+        self.working.refresh_from_db()
+        self.frozen.refresh_from_db()
+        self.team.refresh_from_db()
+        self.assertEqual(order.status_id, self.arbitrage.id)
+        self.assertEqual(order.arbitrage_comment, "Arbitrage called by support")
+        self.assertEqual(self.working.amount, Decimal("0.00"))
+        self.assertEqual(self.frozen.amount, Decimal("10.00"))
+        self.assertEqual(self.team.insurance_deposit, Decimal("15.00"))
