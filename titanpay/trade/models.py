@@ -916,18 +916,32 @@ class InOrder(models.Model):
         return
 
     def recalculate(self, new_amount: Decimal):
-        new_usd_amount = new_amount / self.solution.payment_system.get_rate()
+        from merchant.agent_fee import compute_in_order_agent_fee
         from merchant.tiered_mdr import merchant_payin_fee
+        from payments.dual_fx import apply_dual_fx_to_order
 
+        trader = self.payment_details.group.trader
+        quote = apply_dual_fx_to_order(
+            self,
+            trader,
+            amount=new_amount,
+            payment_system=self.solution.payment_system,
+        )
+        new_usd_amount = quote.merchant_usd
         new_merchant_fee = merchant_payin_fee(
             solution=self.solution, amount=new_amount, usd_amount=new_usd_amount
         )
-        new_trader_fee = self.payment_details.group.trader.team.rate_in * new_usd_amount / Decimal(100)
+        team_rate = TraderTeamRates.objects.get(
+            team=trader.team,
+            payment_system=self.solution.payment_system,
+        )
+        new_trader_fee = team_rate.mdr_in * quote.psp_usd / Decimal(100)
 
         if self.creation_date.timestamp() // SYSTEM_INTERVAL_VALUE == int(timezone.now().timestamp()) // SYSTEM_INTERVAL_VALUE:
-            self.payment_details.group.current_volume -= self.amount + new_amount
-            self.payment_details.group.updated_at = timezone.now()
-            self.payment_details.group.save()
+            group = self.payment_details.group
+            group.current_volume += new_amount - self.amount
+            group.updated_at = timezone.now()
+            group.save()
 
         self.unfreeze("Recalculation")
 
@@ -935,10 +949,9 @@ class InOrder(models.Model):
         self.usd_amount = new_usd_amount
         self.merchant_fee = new_merchant_fee
         self.trader_fee = new_trader_fee
-        from merchant.agent_fee import compute_in_order_agent_fee
-
         self.agent_fee = compute_in_order_agent_fee(self)
         self.recalculated = True
+        self.recalculated_amount = new_amount
         self.save()
 
         self.freeze("Recalculation")
