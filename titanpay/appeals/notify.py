@@ -24,7 +24,10 @@ def _pending_appeals_for_order(order):
 
     pay_in_ids = PayIn.objects.filter(order_id=order.pk).values_list("id", flat=True)
     return PayInAppeal.objects.filter(
-        status=PayInAppealStatus.SENT_TO_PROVIDER,
+        status__in=[
+            PayInAppealStatus.SENT_TO_PROVIDER,
+            PayInAppealStatus.AWAITING_REJECT_REASON,
+        ],
     ).filter(
         Q(in_order_id=order.pk)
         | Q(pay_in_id__in=pay_in_ids)
@@ -60,7 +63,13 @@ def resolve_pending_appeals_for_pay_in(pay_in, *, approved: bool) -> None:
     if order is not None:
         resolve_pending_appeals_for_order(order, approved=approved)
         return
-    for appeal in PayInAppeal.objects.filter(pay_in=pay_in, status=PayInAppealStatus.SENT_TO_PROVIDER):
+    for appeal in PayInAppeal.objects.filter(
+        pay_in=pay_in,
+        status__in=[
+            PayInAppealStatus.SENT_TO_PROVIDER,
+            PayInAppealStatus.AWAITING_REJECT_REASON,
+        ],
+    ):
         appeal.status = PayInAppealStatus.APPROVED if approved else PayInAppealStatus.REJECTED
         appeal.save(update_fields=["status"])
         try:

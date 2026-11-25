@@ -43,12 +43,20 @@ class ProviderActionTextTest(SimpleTestCase):
             "23213959707\nСтатус: отклонено\nПричина: чек не тот",
         )
         self.assertEqual(
+            merchant_reject_text(pay_in, ""),
+            "23213959707\nСтатус: отклонено",
+        )
+        self.assertEqual(
             merchant_info_text(pay_in),
             "Запрос доп информации\n23213959707",
         )
         self.assertEqual(
             restored_provider_text("provider-id", "чек не тот"),
             "provider-id\n\nПричина отклонения: чек не тот",
+        )
+        self.assertEqual(
+            restored_provider_text("provider-id", ""),
+            "provider-id\n\nОтклонено (без указания причины)",
         )
 
     def test_empty_merchant_order_id_falls_back_to_pay_in(self):
