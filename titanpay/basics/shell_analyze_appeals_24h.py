@@ -16,15 +16,20 @@ Django shell: сводка по апелляциям за последние N �
 
   docker compose exec -T app python manage.py shell
   >>> exec(open("basics/shell_analyze_appeals_24h.py").read())
-  >>> run()
+  >>> run()          # по умолчанию 96ч
   >>> run(hours=48)
-  >>> lookup("24805994773", "9869c736-e2e4-474d-a6fe-0e1293c59738")
+  >>> lookup("24865205325", "7ace727f-6489-4732-b2d4-ef7999dcb23f")
 
 Параллельно логи userbot / appealbot (👎 = backend rejected):
 
-  docker compose logs --since=24h appeal-userbot 2>&1 | grep -E 'outcome=|👎|LISTEN|rejected|ID не распознан|ERROR|Traceback' | tail -200
-  docker compose logs --since=24h appealbot 2>&1 | grep -E 'outcome=|rejected|ERROR|Traceback' | tail -100
+  docker compose logs --since=96h appeal-userbot 2>&1 | grep -E 'outcome=|👎|LISTEN|rejected|ID не распознан|ERROR|Traceback' | tail -200
+  docker compose logs --since=96h appealbot 2>&1 | grep -E 'outcome=|rejected|provider_reply|сохранить причину|ERROR|Traceback' | tail -100
   docker compose ps | grep -E 'appeal|userbot'
+
+Спам «Не удалось сохранить причину» в Melbet:
+  - provider_reply на reply в merchant-чате + handled=True при 500
+  - проверить: docker compose logs appealbot --since=48h | grep provider_reply
+  - миграция: docker compose exec -T app python manage.py showmigrations appeals
 """
 from __future__ import annotations
 
@@ -40,8 +45,13 @@ from payments.integrations.melbet.models import MelbetTransactionSession
 from payments.models import PayIn
 from trade.models import InOrder
 
-# Тикеты из Melbet Support (скриншоты 21.11) — можно переопределить в run(lookup_ids=...).
+# Тикеты из Melbet Support — можно переопределить в run(lookup_ids=...).
 DEFAULT_LOOKUP_IDS = [
+    # 25.11 — Astrum / Mel Transaction Bot #51e500de (не распозналась)
+    "24865205325",
+    "7ace727f-6489-4732-b2d4-ef7999dcb23f",
+    "51e500de",
+    # 21.11
     "24790313993",
     "24790116125",
     "24791390383",
@@ -57,6 +67,7 @@ DEFAULT_LOOKUP_IDS = [
 OPEN_STATUSES = (
     PayInAppealStatus.CREATED,
     PayInAppealStatus.SENT_TO_PROVIDER,
+    PayInAppealStatus.AWAITING_REJECT_REASON,
 )
 PROBLEM_STATUSES = (
     PayInAppealStatus.FAILED,
@@ -170,7 +181,7 @@ def lookup(*ids: str) -> None:
             )
 
 
-def run(hours: int = 24, lookup_ids: list[str] | None = None, limit: int = 40) -> None:
+def run(hours: int = 96, lookup_ids: list[str] | None = None, limit: int = 40) -> None:
     since = _since(hours)
     qs = PayInAppeal.objects.filter(created_at__gte=since).select_related(
         "pay_in__merchant__user",
@@ -206,8 +217,29 @@ def run(hours: int = 24, lookup_ids: list[str] | None = None, limit: int = 40) -
     for row in by_merchant:
         print(f"  {row['pay_in__merchant__user__username'] or '—'} / {row['status']}: {row['n']}")
 
+    awaiting = qs.filter(status=PayInAppealStatus.AWAITING_REJECT_REASON)
+    _print_section(f"Застряли в awaiting_reject_reason: {awaiting.count()}")
+    for appeal in awaiting.order_by("created_at")[:limit]:
+        merchant = getattr(getattr(appeal.pay_in, "merchant", None), "user", None)
+        print(
+            f"  {appeal.created_at} psp={appeal.psp_provider or '—'} "
+            f"merchant={getattr(merchant, 'username', None)} "
+            f"moid={appeal.pay_in.merchant_order_id} "
+            f"provider_chat={appeal.provider_chat_id} msg={appeal.provider_message_id}"
+        )
+
+    astrum_qs = qs.filter(psp_provider="astrum")
+    _print_section(f"Astrum апелляции: {astrum_qs.count()}")
+    for row in astrum_qs.values("status").annotate(n=Count("id")).order_by("-n"):
+        print(f"  {row['status']}: {row['n']}")
+    for appeal in astrum_qs.order_by("-created_at")[:limit]:
+        print(
+            f"  {appeal.created_at} [{appeal.status}] moid={appeal.pay_in.merchant_order_id} "
+            f"ext={_short(appeal.provider_external_id, 40)} err={_short(appeal.error_message)}"
+        )
+
     open_qs = qs.filter(status__in=OPEN_STATUSES).order_by("created_at")
-    _print_section(f"Необработанные (created / sent_to_provider): {open_qs.count()}")
+    _print_section(f"Необработанные (created / sent_to_provider / awaiting_reject): {open_qs.count()}")
     for appeal in open_qs[:limit]:
         merchant = getattr(getattr(appeal.pay_in, "merchant", None), "user", None)
         order_status = getattr(getattr(appeal.in_order, "status", None), "name", None)

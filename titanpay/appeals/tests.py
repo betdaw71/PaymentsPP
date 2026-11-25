@@ -180,6 +180,30 @@ class MelbetTicketResolveTest(TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.pay_in.id, self.pay_in.id)
 
+    def test_resolves_astrum_provider_deal_uuid(self):
+        from payments.models import AstrumPayInSession
+
+        deal_id = "7ace727f-6489-4732-b2d4-ef7999dcb23f"
+        AstrumPayInSession.objects.create(
+            pay_in=self.pay_in,
+            external_id=str(self.pay_in.id),
+            provider_deal_id=deal_id,
+        )
+        # Only PSP number in ticket (no Melbet order) — must resolve via Astrum session.
+        ticket = (
+            "🎟 Тикет #51e500de\n"
+            "💰 Депозит\n"
+            f"🔗 Номер в ПС: {deal_id}\n"
+            "Статус: 🆕 Создан"
+        )
+        result = resolve_pay_in_from_message(ticket)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+        # Direct UUID path (_pay_in_for_uuid) must also find Astrum.
+        result_uuid = resolve_pay_in_from_message(deal_id)
+        self.assertTrue(result_uuid.ok)
+        self.assertEqual(result_uuid.pay_in.id, self.pay_in.id)
+
     def test_gps_label_is_parsed(self):
         from appeals.id_resolve import parse_appeal_ticket
 

@@ -318,9 +318,11 @@ def provider_reply(request):
             text=text,
         )
     except Exception:
-        logger.exception("provider_reply failed chat_id=%s", chat_id)
+        # handled=False: иначе Melbet/любой чат на каждый reply получает спам
+        # «Не удалось сохранить причину» (миграция, гонка, чужой reply_to).
+        logger.exception("provider_reply failed chat_id=%s reply_to=%s", chat_id, reply_to)
         return Response(
-            {"ok": False, "handled": True, "message": "Не удалось сохранить причину."},
+            {"ok": False, "handled": False, "message": "Не удалось сохранить причину."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
     return Response({"ok": result.ok, "handled": result.handled, "message": result.message})

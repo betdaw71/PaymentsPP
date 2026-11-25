@@ -145,9 +145,16 @@ def _forget_chat_role(chat_id: int) -> None:
 
 
 def _provider_button_or_reply(message: Message) -> bool:
-    """Ответ провайдера на апелляцию (причина отклонения). True — сообщение обработано."""
+    """Ответ провайдера на апелляцию (причина отклонения). True — сообщение обработано.
+
+    Только в provider-чатах и только как reply. Иначе Melbet Support (и любой
+    merchant-чат) на каждый reply к Mel Transaction Bot получал
+    «Не удалось сохранить причину» при 500 от provider_reply.
+    """
     reply = getattr(message, "reply_to_message", None)
     if reply is None:
+        return False
+    if backend_chat_role(message.chat.id) != "provider":
         return False
     text = (getattr(message, "text", None) or getattr(message, "caption", None) or "").strip()
     if not text or text.startswith("/"):

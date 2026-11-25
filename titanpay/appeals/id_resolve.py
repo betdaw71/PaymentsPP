@@ -201,6 +201,7 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
         return pay_in
 
     from payments.models import (
+        AstrumPayInSession,
         BotonpayPayInSession,
         GipayPayInSession,
         LayeronePayInSession,
@@ -244,6 +245,14 @@ def _pay_in_for_uuid(value: str) -> PayIn | None:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 
     session = NexusPayInSession.objects.filter(provider_order_id=str(parsed)).select_related("pay_in").first()
+    if session and session.pay_in_id:
+        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
+
+    session = AstrumPayInSession.objects.filter(provider_deal_id=str(parsed)).select_related("pay_in").first()
+    if session and session.pay_in_id:
+        return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
+
+    session = AstrumPayInSession.objects.filter(external_id=str(parsed)).select_related("pay_in").first()
     if session and session.pay_in_id:
         return PayIn.objects.filter(id=session.pay_in_id).select_related("merchant", "order").first()
 
