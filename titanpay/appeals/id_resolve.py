@@ -54,7 +54,15 @@ DEAL_LABEL_RE = re.compile(
     re.IGNORECASE,
 )
 FOLLOWUP_CHATTER_RE = re.compile(
-    r"новост|скорректир|удалось|какое решение|дайте ответ|приоритет|ознаком",
+    r"новост|скорректир|удалось|какое решение|дайте ответ|приоритет|ознаком|"
+    r"any\s*news|any\s*update|does\s+the\s+receipt|colleagues\??|"
+    r"неверный\s+реквизит|не\s+наш\s+реквизит",
+    re.IGNORECASE,
+)
+# Mostbet CX<>Avapay_Op: "uuid / 1179… / 498… / 724… VIP"
+CX_SLASH_LINE_RE = re.compile(
+    r"(?P<uuid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+    r"(?:\s*[\\/|]+\s*\d+){1,}(?:\s+VIP)?\b",
     re.IGNORECASE,
 )
 
@@ -149,6 +157,13 @@ def _dedupe(values: list[str]) -> list[str]:
     return out
 
 
+def extract_cx_slash_order_ids(text: str) -> list[str]:
+    """Mostbet CX ops line: leading UUID is merchant_order_id / PayIn id."""
+    if not text:
+        return []
+    return _dedupe([m.group("uuid") for m in CX_SLASH_LINE_RE.finditer(text)])
+
+
 def parse_appeal_ticket(text: str) -> TicketHints:
     """Extract IDs from Melbet-style tickets and other labelled merchant messages."""
     if not text:
@@ -158,6 +173,7 @@ def parse_appeal_ticket(text: str) -> TicketHints:
     order_ids.extend(m.group(1).strip() for m in GENERIC_ID_LABEL_RE.finditer(text))
     order_ids.extend(m.group(1).strip() for m in DEAL_LABEL_RE.finditer(text))
     order_ids.extend(extract_aggrepay_order_ids(text))
+    order_ids.extend(extract_cx_slash_order_ids(text))
     ticket_hexes = [m.group(1).lower() for m in TICKET_LABEL_RE.finditer(text)]
     psp_ids = [m.group(1).strip() for m in PSP_NUMBER_RE.finditer(text)]
     return TicketHints(

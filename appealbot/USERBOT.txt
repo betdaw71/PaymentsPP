@@ -39,16 +39,25 @@ API id / hash (один раз)
   TELEGRAM_API_ID=...
   TELEGRAM_API_HASH=...
   TELEGRAM_SESSION_STRING=...
-  USERBOT_WATCH_CHAT_IDS=-1003769960326,-1003933546441,-1004386075514
-                                          # Melbet Support 1, PandaPay support, Aggrepay DISPUT.
-                                          # Сообщения Mel Transaction Bot и Payment Gateway
-                                          # обычный бот не видит — их забирает только этот аккаунт.
-  USERBOT_SOURCE_USERNAMES=               # пусто = любой бот в этих чатах;
-                                          # иначе username Mel Transaction Bot без @
+  USERBOT_WATCH_CHAT_IDS=-1003769960326,-1003933546441,-1004386075514,<MOSTBET_CX_CHAT_ID>
+                                          # Melbet Support 1, PandaPay support, Aggrepay DISPUT,
+                                          # CX<>Avapay_Op (Mostbet).
+                                          # Mel Transaction Bot / Payment Gateway обычный бот
+                                          # не видит — их забирает только этот аккаунт.
+                                          # Mostbet CX: апелляции пишут люди (CSSUP*), не бот.
+  USERBOT_SOURCE_USERNAMES=               # пусто = все подходящие отправители (см. ALLOW_HUMANS)
+  USERBOT_ALLOW_HUMANS=1                  # 1 = читать людей (Mostbet CX). 0 = только боты
   USERBOT_CLICK_INLINE=0                  # 1 — жать Подтвердить/Отклонить после резолва
 
-  Узнать chat id: в группе уже есть /init; либо переслать любое сообщение
-  боту @userinfobot / смотреть логи appealbot.
+  Узнать chat id: в группе /init; либо переслать сообщение @userinfobot /
+  смотреть логи appealbot / appeal-userbot (chat=...).
+
+  Mostbet CX<>Avapay_Op:
+    1. Аккаунт-мониторинг уже в группе.
+    2. /init <uuid Mostbet counterparty> от имени appealbot (BotFather).
+    3. Добавить chat id группы в USERBOT_WATCH_CHAT_IDS.
+    4. Формат тикета: «uuid / id / id / id» + PDF/фото/видео чека.
+       «any news?» без нового чека — игнор (follow-up).
 
 Запуск
   docker compose --profile userbot up -d --build appeal-userbot

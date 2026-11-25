@@ -41,6 +41,38 @@ class TicketDetectTest(unittest.TestCase):
             should_watch_sender(is_self=True, is_bot=True, username="MelTransactionBot", allowed_usernames=set())
         )
 
+    def test_watch_sender_allows_humans_for_mostbet_cx(self):
+        self.assertTrue(
+            should_watch_sender(
+                is_self=False,
+                is_bot=False,
+                username="CSSUP13",
+                allowed_usernames=set(),
+                allow_humans=True,
+            )
+        )
+        self.assertFalse(
+            should_watch_sender(
+                is_self=False,
+                is_bot=False,
+                username="CSSUP13",
+                allowed_usernames=set(),
+                allow_humans=False,
+            )
+        )
+
+    def test_cx_mostbet_slash_line_looks_like_ticket(self):
+        self.assertTrue(
+            looks_like_ticket(
+                "9020b2c9-8486-4002-87de-877a7250abad / 1169530557 / 49817737 / 7245350"
+            )
+        )
+        self.assertTrue(
+            looks_like_ticket(
+                "697c0586-2f22-40b7-a3e8-8413b12d6024 / 1180202470 / 285708868 / 8843400 VIP"
+            )
+        )
+
     def test_watch_sender_username_allowlist(self):
         allowed = {"meltransactionbot"}
         self.assertTrue(

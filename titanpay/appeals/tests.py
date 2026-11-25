@@ -59,7 +59,37 @@ class MerchantFormatParseTest(SimpleTestCase):
         from appeals.id_resolve import is_followup_chatter
 
         self.assertTrue(is_followup_chatter("24765956945 нет новостей ?\nприоритетный пользователь"))
+        self.assertTrue(
+            is_followup_chatter(
+                "9020b2c9-8486-4002-87de-877a7250abad / 1169530557 / 49817737 / 7245350\nany news?"
+            )
+        )
+        self.assertTrue(is_followup_chatter("any update ?"))
+        self.assertTrue(is_followup_chatter("Does the receipt belong to you?"))
         self.assertFalse(is_followup_chatter("Тикет #7cef4bae\nЗаказ: 24776999853\nКомментарий: Не пришел депозит"))
+
+    def test_mostbet_cx_slash_line(self):
+        from appeals.id_resolve import extract_cx_slash_order_ids, parse_appeal_ticket
+
+        line = "49e2051f-859e-4c8d-bc90-ac92b9526dd7 / 1179797826 / 27739595 / 8790165"
+        self.assertEqual(
+            extract_cx_slash_order_ids(line),
+            ["49e2051f-859e-4c8d-bc90-ac92b9526dd7"],
+        )
+        hints = parse_appeal_ticket(line)
+        self.assertIn("49e2051f-859e-4c8d-bc90-ac92b9526dd7", hints.merchant_order_ids)
+
+        vip = "697c0586-2f22-40b7-a3e8-8413b12d6024 / 1180202470 / 285708868 / 8843400 VIP"
+        self.assertEqual(
+            extract_cx_slash_order_ids(vip),
+            ["697c0586-2f22-40b7-a3e8-8413b12d6024"],
+        )
+        # Backslash / pipe separators from CX agents
+        mixed = "235287f6-5582-48ea-83fc-21ef4b0400d5 \\ 1172258283\\ 262337108 | 7660220"
+        self.assertEqual(
+            extract_cx_slash_order_ids(mixed),
+            ["235287f6-5582-48ea-83fc-21ef4b0400d5"],
+        )
 
 
 class MelbetTicketParseTest(SimpleTestCase):

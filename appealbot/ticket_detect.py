@@ -115,13 +115,21 @@ def should_watch_sender(
     is_bot: bool,
     username: str,
     allowed_usernames: set[str],
+    allow_humans: bool = False,
 ) -> bool:
+    """Who to ingest from.
+
+    - allowlist set → only those usernames
+    - else bots always; humans only if allow_humans (Mostbet CX / CSSUP* agents)
+    """
     if is_self:
         return False
     uname = (username or "").lstrip("@").lower()
     if allowed_usernames:
         return uname in allowed_usernames
-    return is_bot
+    if is_bot:
+        return True
+    return allow_humans
 
 
 def parse_int_ids(raw: str) -> set[int]:

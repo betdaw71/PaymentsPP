@@ -41,6 +41,9 @@ TELEGRAM_API_HASH = (os.getenv("TELEGRAM_API_HASH") or "").strip()
 TELEGRAM_SESSION_STRING = (os.getenv("TELEGRAM_SESSION_STRING") or "").strip()
 WATCH_CHAT_IDS = parse_int_ids(os.getenv("USERBOT_WATCH_CHAT_IDS") or "")
 SOURCE_USERNAMES = parse_usernames(os.getenv("USERBOT_SOURCE_USERNAMES") or "")
+# Mostbet CX<>Avapay_Op: appeals come from human CSSUP* agents, not bots.
+# Default on so Melbet bots + Mostbet humans both work; content filters drop chatter.
+ALLOW_HUMANS = env_flag(os.getenv("USERBOT_ALLOW_HUMANS", "1"))
 CLICK_INLINE = env_flag(os.getenv("USERBOT_CLICK_INLINE"))
 CLICK_POLL_SEC = max(5, int((os.getenv("USERBOT_CLICK_POLL_SEC") or "8").strip() or "8"))
 PENDING_TICKET_TTL_SEC = 15 * 60
@@ -394,6 +397,7 @@ async def _on_new_message(event: events.NewMessage.Event, client: TelegramClient
         is_bot=is_bot,
         username=username,
         allowed_usernames=SOURCE_USERNAMES,
+        allow_humans=ALLOW_HUMANS,
     ):
         return
 
@@ -487,12 +491,14 @@ async def run() -> None:
     await client.start()
     me = await client.get_me()
     logger.info(
-        "Appeal userbot started as id=%s username=%s backend=%s watch_chats=%s sources=%s click_inline=%s",
+        "Appeal userbot started as id=%s username=%s backend=%s watch_chats=%s sources=%s "
+        "allow_humans=%s click_inline=%s",
         me.id,
         getattr(me, "username", None) or "",
         BACKEND_URL,
         sorted(WATCH_CHAT_IDS) or "any-non-provider",
-        sorted(SOURCE_USERNAMES) or "any-bot",
+        sorted(SOURCE_USERNAMES) or ("any-sender" if ALLOW_HUMANS else "any-bot"),
+        ALLOW_HUMANS,
         CLICK_INLINE,
     )
     click_task = asyncio.create_task(_click_loop(client))
