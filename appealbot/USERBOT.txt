@@ -59,6 +59,16 @@ API id / hash (один раз)
     4. Формат тикета: «uuid / id / id / id» + PDF/фото/видео чека.
        «any news?» без нового чека — игнор (follow-up).
 
+Скан уточнений Mostbet CX (any news? → статус апелляции)
+  docker compose --profile userbot run --rm --no-deps \\
+    -e HOURS=168 -e LIMIT_MESSAGES=3000 \\
+    appeal-userbot python scan_mostbet_followups.py
+  # опционально: MOSTBET_CX_CHAT_ID=-100…  OPEN_ONLY=1  INCLUDE_ALL_CX=1
+
+  DB overview открытых Mostbet-апелляций:
+  docker compose exec -T -e HOURS=168 -e MERCHANT=mostbet app \\
+    python manage.py shell < titanpay/basics/shell_mostbet_cx_followup_appeals.py
+
 Запуск
   docker compose --profile userbot up -d --build appeal-userbot
   docker compose logs -f appeal-userbot

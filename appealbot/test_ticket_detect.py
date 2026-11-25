@@ -2,8 +2,11 @@ import unittest
 
 from ticket_detect import (
     env_flag,
+    extract_cx_slash_uuids,
+    extract_uuids,
     generic_receipt_name,
     inline_button_action,
+    is_followup_chatter,
     looks_like_ticket,
     parse_int_ids,
     parse_usernames,
@@ -70,6 +73,30 @@ class TicketDetectTest(unittest.TestCase):
         self.assertTrue(
             looks_like_ticket(
                 "697c0586-2f22-40b7-a3e8-8413b12d6024 / 1180202470 / 285708868 / 8843400 VIP"
+            )
+        )
+        self.assertEqual(
+            extract_cx_slash_uuids(
+                "9020b2c9-8486-4002-87de-877a7250abad / 1169530557 / 49817737 / 7245350"
+            ),
+            ["9020b2c9-8486-4002-87de-877a7250abad"],
+        )
+        self.assertEqual(
+            extract_uuids(
+                "235287f6-5582-48ea-83fc-21ef4b0400d5 \\ 1172258283\\ 262337108 | 7660220\n"
+                "Any news, colleagues?"
+            ),
+            ["235287f6-5582-48ea-83fc-21ef4b0400d5"],
+        )
+
+    def test_followup_chatter_mostbet_cx(self):
+        self.assertTrue(is_followup_chatter("any news?"))
+        self.assertTrue(is_followup_chatter("any update ?"))
+        self.assertTrue(is_followup_chatter("Does the receipt belong to you?"))
+        self.assertTrue(is_followup_chatter("Any news, colleagues?"))
+        self.assertFalse(
+            is_followup_chatter(
+                "9020b2c9-8486-4002-87de-877a7250abad / 1169530557 / 49817737 / 7245350"
             )
         )
 

@@ -7,6 +7,19 @@ import re
 UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+# Mostbet CX<>Avapay_Op: "uuid / 1179… / 498… / 724… VIP"
+CX_SLASH_LINE_RE = re.compile(
+    r"(?P<uuid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+    r"(?:\s*[\\/|]+\s*\d+){1,}(?:\s+VIP)?\b",
+    re.IGNORECASE,
+)
+FOLLOWUP_CHATTER_RE = re.compile(
+    r"новост|скорректир|удалось|какое решение|дайте ответ|приоритет|ознаком|"
+    r"any\s*news|any\s*update|does\s+the\s+receipt|colleagues\??|"
+    r"неверный\s+реквизит|не\s+наш\s+реквизит|"
+    r"update\s*\?|news\s*\?|статус\s*\?|есть\s+ответ",
+    re.IGNORECASE,
+)
 TICKET_HINT_RE = re.compile(
     r"(тикет\s*[#№n]?\s*[:：]?\s*[0-9a-fA-F]{8}|заказ\s*[:：]|id\s*заказа|номер заказа|"
     r"реквизиты из заявки|маска юзера|номер в [пг]?пс|order\s*id\s*[:：]|"
@@ -26,6 +39,37 @@ def looks_like_ticket(text: str) -> bool:
     if UUID_RE.search(text):
         return True
     return bool(TICKET_HINT_RE.search(text))
+
+
+def is_followup_chatter(text: str) -> bool:
+    """Уточнение по уже открытой апелляции (any news?), не новая заявка с чеком."""
+    return bool(FOLLOWUP_CHATTER_RE.search(text or ""))
+
+
+def extract_uuids(text: str) -> list[str]:
+    if not text:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for match in UUID_RE.findall(text):
+        key = match.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
+
+
+def extract_cx_slash_uuids(text: str) -> list[str]:
+    if not text:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for match in CX_SLASH_LINE_RE.finditer(text):
+        key = match.group("uuid").lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
 
 
 def filename_looks_like_ticket(name: str | None) -> bool:
