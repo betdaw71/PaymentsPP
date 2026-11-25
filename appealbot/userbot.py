@@ -150,11 +150,23 @@ def backend_mark_inline_clicked(appeal_id: str) -> None:
 
 def _skip_chat(chat_id: int) -> bool:
     if WATCH_CHAT_IDS and chat_id not in WATCH_CHAT_IDS:
+        # Silent drops look like «мониторинг не видит» (Aggrepay DISPUT / new groups).
+        logger.warning(
+            "skip chat_id=%s — not in USERBOT_WATCH_CHAT_IDS=%s",
+            chat_id,
+            sorted(WATCH_CHAT_IDS),
+        )
         return True
     role = backend_chat_role(chat_id)
     if role == "provider":
         logger.info("ignore provider chat_id=%s", chat_id)
         return True
+    if role == "unknown":
+        logger.warning(
+            "chat_id=%s role=unknown — сделайте /init <counterparty uuid> в этом чате "
+            "(иначе process_message вернёт skip без реакции)",
+            chat_id,
+        )
     return False
 
 
@@ -272,6 +284,11 @@ async def _process_album(client: TelegramClient, messages) -> None:
 
 async def _apply_userbot_outcome(message, payload: dict) -> None:
     if payload.get("skip"):
+        logger.warning(
+            "userbot backend skip chat=%s msg=%s — чат не привязан (/init) или не merchant",
+            getattr(message, "chat_id", None),
+            getattr(message, "id", None),
+        )
         return
     outcome = payload.get("outcome") or "rejected"
     logger.info(
@@ -399,6 +416,14 @@ async def _on_new_message(event: events.NewMessage.Event, client: TelegramClient
         allowed_usernames=SOURCE_USERNAMES,
         allow_humans=ALLOW_HUMANS,
     ):
+        logger.info(
+            "skip sender chat=%s msg=%s from=%s bot=%s allow_humans=%s",
+            chat_id,
+            message.id,
+            username or "?",
+            is_bot,
+            ALLOW_HUMANS,
+        )
         return
 
     text = (message.raw_text or "").strip()
@@ -414,10 +439,11 @@ async def _on_new_message(event: events.NewMessage.Event, client: TelegramClient
         return
 
     logger.info(
-        "userbot ingest chat=%s msg=%s from=%s text=%r",
+        "userbot ingest chat=%s msg=%s from=%s bot=%s text=%r",
         chat_id,
         message.id,
-        username,
+        username or "?",
+        is_bot,
         text[:180],
     )
     file_bytes, filename, ticket_bytes = await _download_payload(client, message)

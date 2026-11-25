@@ -71,6 +71,15 @@ Reprocess Melbet тикетов с 👎 / без апелляции
   docker compose --profile userbot run --rm --no-deps \\
     -e HOURS=72 -e APPLY=1 appeal-userbot python reprocess_melbet_tickets.py
 
+Reprocess Aggrepay DISPUT (если мониторинг «не видит»)
+  1) chat id должен быть в USERBOT_WATCH_CHAT_IDS
+  2) /init <uuid Aggrepay counterparty> в группе
+  3) мониторинг-аккаунт — участник группы
+  docker compose --profile userbot run --rm --no-deps \\
+    -e HOURS=72 -e DRY_RUN=1 appeal-userbot python reprocess_aggrepay_tickets.py
+  docker compose --profile userbot run --rm --no-deps \\
+    -e HOURS=72 -e APPLY=1 appeal-userbot python reprocess_aggrepay_tickets.py
+
   DB overview открытых Mostbet-апелляций:
   docker compose exec -T -e HOURS=168 -e MERCHANT=mostbet app \\
     python manage.py shell < titanpay/basics/shell_mostbet_cx_followup_appeals.py

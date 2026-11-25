@@ -41,6 +41,27 @@ class MerchantFormatParseTest(SimpleTestCase):
         hints = parse_appeal_ticket(raw)
         self.assertEqual(hints.merchant_order_ids, ["ac19cd58f-9697-4710-9ad1-f1ced40e002cg"])
 
+    def test_aggrepay_disput_support_message_format(self):
+        from appeals.id_resolve import extract_aggrepay_order_ids, extract_uuids, is_merchant_appeal_ticket
+
+        raw = (
+            "🚨🚨🚨🚨 !!\n"
+            "a62e1d56c-b779-41ec-a44e-879475e8d732g\n"
+            "0121c502-bba7-4b10-9b0e-a747ac82a994\n"
+            "💳 Permata Bank (IDN)\n"
+            "🏦 4640051220440599\n"
+            "💰 32500.00 KZT\n"
+            "🧾 https://ary.pay-s3m.xyz/et-storage/2026/11/25/ShPpqxWiREhuhckv.pdf\n"
+            "📅 Создано: 2026.11.25 19:52:41\n"
+            "📅 Открыт спор: 2026.11.25 20:02:42"
+        )
+        self.assertTrue(is_merchant_appeal_ticket(raw))
+        self.assertEqual(
+            extract_aggrepay_order_ids(raw),
+            ["a62e1d56c-b779-41ec-a44e-879475e8d732g"],
+        )
+        self.assertIn("0121c502-bba7-4b10-9b0e-a747ac82a994", extract_uuids(raw))
+
     def test_pandapay_deal_and_provider_ids(self):
         from appeals.id_resolve import parse_appeal_ticket
 
