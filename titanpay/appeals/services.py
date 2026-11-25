@@ -314,10 +314,11 @@ def _arbitrage_limit_reached(order) -> bool:
 def _try_order_arbitrage(order) -> None:
     """Move the order to Arbitrage for an appeal.
 
-    Must never raise into process_merchant_appeal_message: a Melbet ticket after
-    patriotpay cancel previously 500'd here (Not enough funds / AttributeError /
-    broken outer atomic after a swallowed insurance error), so PayInAppeal was
-    never created and Mel Transaction Bot stayed on «Создан».
+    Must never raise into process_merchant_appeal_message and must never poison
+    the outer ``@transaction.atomic``: a DB error (Not enough funds, wrong
+    status, …) caught without a savepoint leaves the connection unusable, so
+    ``PayInAppeal.objects.create`` then 500's with «внутренняя ошибка» and Mel
+    Transaction Bot stays on «Создан» / 👎.
     """
     if order is None or order.status_id is None or order.payment_details_id is None:
         return
@@ -327,18 +328,30 @@ def _try_order_arbitrage(order) -> None:
             return
         if _arbitrage_limit_reached(order):
             logger.warning("appeal arbitrage limit reached order=%s; status only", order.id)
-            _set_arbitrage_status(order, "Arbitrage called by client")
+            try:
+                with transaction.atomic():
+                    _set_arbitrage_status(order, "Arbitrage called by client")
+            except Exception:
+                logger.exception("appeal limit status-only failed order=%s", order.id)
             return
         if status_name in _ARBITRAGE_STILL_OPEN:
             # Funds were frozen when the order was issued. Do not freeze a second time.
             try:
-                order.arbitrage_expired()
+                with transaction.atomic():
+                    order.arbitrage_expired()
             except Exception:
                 logger.exception("appeal open-order arbitrage failed order=%s", order.id)
-                _set_arbitrage_status(order, "Arbitrage due to inactivity")
+                try:
+                    with transaction.atomic():
+                        _set_arbitrage_status(order, "Arbitrage due to inactivity")
+                except Exception:
+                    logger.exception(
+                        "appeal could not force open-order Arbitrage order=%s",
+                        getattr(order, "id", None),
+                    )
             return
 
-        # Nested savepoint: a failed cover must not poison the outer appeal atomic.
+        # Nested savepoints: failed cover / freeze must not poison outer appeal atomic.
         try:
             with transaction.atomic():
                 cover_appeal_freeze_from_insurance(order)
@@ -346,11 +359,12 @@ def _try_order_arbitrage(order) -> None:
             logger.exception("appeal insurance cover failed order=%s", order.id)
 
         try:
-            if status_name in _ARBITRAGE_FROM_RELEASED:
-                order.arbitrage()
-            else:
-                order.freeze("Arbitrage")
-                _set_arbitrage_status(order, "Arbitrage called by client")
+            with transaction.atomic():
+                if status_name in _ARBITRAGE_FROM_RELEASED:
+                    order.arbitrage()
+                else:
+                    order.freeze("Arbitrage")
+                    _set_arbitrage_status(order, "Arbitrage called by client")
         except Exception:
             logger.exception(
                 "appeal arbitrage freeze failed order=%s status=%s; setting Arbitrage anyway",
@@ -358,7 +372,8 @@ def _try_order_arbitrage(order) -> None:
                 status_name,
             )
             try:
-                _set_arbitrage_status(order, "Arbitrage called by client")
+                with transaction.atomic():
+                    _set_arbitrage_status(order, "Arbitrage called by client")
             except Exception:
                 logger.exception(
                     "appeal could not force Arbitrage status order=%s",
@@ -535,7 +550,6 @@ def _combined_ticket_text(
     return combined, file_is_ticket
 
 
-@transaction.atomic
 def process_merchant_appeal_message(
     *,
     chat_id: int,
@@ -545,6 +559,11 @@ def process_merchant_appeal_message(
     filename: str,
     ticket_file_bytes: bytes | None = None,
 ) -> AppealProcessResult:
+    """Register a merchant-chat appeal and forward it to the provider.
+
+    Not wrapped in one outer ``atomic``: freeze/arbitrage DB errors must not
+    roll back PayInAppeal creation (Melbet 👎 / «внутренняя ошибка»).
+    """
     chat = get_chat_counterparty(chat_id)
     if chat is None:
         return _skip()
@@ -617,24 +636,36 @@ def process_merchant_appeal_message(
 
     order = pay_in.order
     if receipt_url:
-        _save_order_pic(order, receipt_url)
+        try:
+            _save_order_pic(order, receipt_url)
+        except Exception:
+            logger.exception("appeal order.pic save failed pay_in=%s", pay_in.id)
 
-    _try_order_arbitrage(order)
+    try:
+        psp_provider, trader_username, provider_external_id = _psp_meta_for_pay_in(pay_in)
+    except Exception:
+        logger.exception("appeal psp meta failed pay_in=%s", pay_in.id)
+        psp_provider, trader_username, provider_external_id = "", "", ""
 
-    psp_provider, trader_username, provider_external_id = _psp_meta_for_pay_in(pay_in)
+    with transaction.atomic():
+        appeal = PayInAppeal.objects.create(
+            pay_in=pay_in,
+            in_order=order,
+            source_counterparty=counterparty,
+            source=PayInAppealSource.TELEGRAM_MERCHANT,
+            receipt_url=receipt_url,
+            status=PayInAppealStatus.CREATED,
+            psp_provider=psp_provider or "",
+            provider_external_id=provider_external_id,
+            source_telegram_chat_id=chat_id,
+            source_telegram_message_id=message_id,
+        )
 
-    appeal = PayInAppeal.objects.create(
-        pay_in=pay_in,
-        in_order=order,
-        source_counterparty=counterparty,
-        source=PayInAppealSource.TELEGRAM_MERCHANT,
-        receipt_url=receipt_url,
-        status=PayInAppealStatus.CREATED,
-        psp_provider=psp_provider or "",
-        provider_external_id=provider_external_id,
-        source_telegram_chat_id=chat_id,
-        source_telegram_message_id=message_id,
-    )
+    # Best-effort: never block forwarding if freeze/insurance fails.
+    try:
+        _try_order_arbitrage(order)
+    except Exception:
+        logger.exception("appeal arbitrage after-create failed pay_in=%s", pay_in.id)
 
     return _forward_appeal_to_provider(
         appeal=appeal,

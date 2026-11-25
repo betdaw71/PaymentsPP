@@ -2143,8 +2143,11 @@ def psp_external_reference(pay_in: Any) -> dict[str, str] | None:
 
         model = getattr(importlib.import_module(module_name), class_name)
         try:
-            session = model.objects.get(pay_in_id=pay_in_id)
-        except model.DoesNotExist:
+            session = model.objects.filter(pay_in_id=pay_in_id).order_by("-id").first()
+        except Exception:
+            logger.exception("psp_external_reference lookup failed provider=%s", provider)
+            continue
+        if session is None:
             continue
 
         if provider == "botonpay":

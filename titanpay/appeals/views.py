@@ -182,12 +182,14 @@ def process_message(request):
             filename=filename,
             ticket_file_bytes=ticket_file_bytes,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("process_message failed chat_id=%s message_id=%s", chat_id, message_id)
+        # Surface exception class for ops (reprocess / Melbet 👎 debugging).
+        detail = f"{type(exc).__name__}: {exc}"
         return Response(
             {
                 "ok": False,
-                "message": "Апелляция не принята: внутренняя ошибка обработки.",
+                "message": f"Апелляция не принята: внутренняя ошибка обработки ({detail})",
                 "recognized": False,
                 "outcome": "rejected",
             },

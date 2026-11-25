@@ -175,3 +175,46 @@ class AppealArbitrageInsuranceTest(TestCase):
 
         order.refresh_from_db()
         self.assertEqual(order.status_id, self.arbitrage.id)
+
+    def test_failed_freeze_inside_outer_atomic_does_not_poison_connection(self):
+        """Caught freeze errors must use savepoints so PayInAppeal create still works."""
+        from django.core.exceptions import ValidationError
+        from django.db import transaction
+        from unittest.mock import patch
+
+        from appeals.models import PayInAppeal, PayInAppealSource, PayInAppealStatus
+        from payments.models import PayIn, PayInStatus
+
+        order = self._order(self.expired, usd="10.00", working="0")
+        status = PayInStatus.objects.create(name="Failed")
+        pay_in = PayIn.objects.create(
+            amount=Decimal("5000"),
+            currency=self.kzt,
+            payment_system=order.payment_details.group.payment_system,
+            merchant_order_id="poison-test-order",
+            callback_url="https://example.com/cb",
+            merchant=order.solution.merchant,
+            status=status,
+            order=order,
+        )
+
+        with transaction.atomic():
+            with patch.object(
+                type(order),
+                "arbitrage",
+                side_effect=ValidationError({"details": "Not enough funds to transfer money"}),
+            ):
+                with patch.object(
+                    type(order),
+                    "freeze",
+                    side_effect=ValidationError({"details": "Not enough funds to transfer money"}),
+                ):
+                    _try_order_arbitrage(order)
+            # Connection must still accept writes in the same outer atomic.
+            appeal = PayInAppeal.objects.create(
+                pay_in=pay_in,
+                in_order=order,
+                source=PayInAppealSource.TELEGRAM_MERCHANT,
+                status=PayInAppealStatus.CREATED,
+            )
+        self.assertIsNotNone(appeal.id)
