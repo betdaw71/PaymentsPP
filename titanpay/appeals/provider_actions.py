@@ -119,8 +119,9 @@ def _confirm(appeal_id: uuid.UUID) -> ActionResult:
     message_id = None
     try:
         with transaction.atomic():
+            # of=("self",): Postgres forbids FOR UPDATE on nullable OUTER JOIN sides.
             appeal = (
-                PayInAppeal.objects.select_for_update()
+                PayInAppeal.objects.select_for_update(of=("self",))
                 .select_related("in_order", "pay_in")
                 .filter(pk=appeal_id)
                 .first()
@@ -162,7 +163,7 @@ def reject_appeal(appeal_id: uuid.UUID, *, reason: str = DEFAULT_REJECT_REASON) 
     try:
         with transaction.atomic():
             appeal = (
-                PayInAppeal.objects.select_for_update()
+                PayInAppeal.objects.select_for_update(of=("self",))
                 .select_related(
                     "in_order",
                     "in_order__status",
