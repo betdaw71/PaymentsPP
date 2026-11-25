@@ -65,6 +65,12 @@ API id / hash (один раз)
     appeal-userbot python scan_mostbet_followups.py
   # опционально: MOSTBET_CX_CHAT_ID=-100…  OPEN_ONLY=1  INCLUDE_ALL_CX=1
 
+Reprocess Melbet тикетов с 👎 / без апелляции
+  docker compose --profile userbot run --rm --no-deps \\
+    -e HOURS=72 -e DRY_RUN=1 appeal-userbot python reprocess_melbet_tickets.py
+  docker compose --profile userbot run --rm --no-deps \\
+    -e HOURS=72 -e APPLY=1 appeal-userbot python reprocess_melbet_tickets.py
+
   DB overview открытых Mostbet-апелляций:
   docker compose exec -T -e HOURS=168 -e MERCHANT=mostbet app \\
     python manage.py shell < titanpay/basics/shell_mostbet_cx_followup_appeals.py
