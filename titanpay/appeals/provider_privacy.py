@@ -75,12 +75,22 @@ def _extract_pdf_zlib(data: bytes) -> str:
     return "\n".join(part for part in chunks if part).strip()
 
 
+def _pdf_octal_escape(match: re.Match[bytes]) -> bytes:
+    """Decode PDF ``\\nnn`` octal escapes; ignore invalid digits (e.g. ``\\999``)."""
+    raw = match.group(1)
+    try:
+        return bytes([int(raw, 8) & 0xFF])
+    except ValueError:
+        return match.group(0)
+
+
 def _strings_from_pdf_bytes(data: bytes) -> str:
     texts: list[str] = []
     for match in re.finditer(rb"\((?:\\.|[^\\)]){2,400}\)", data):
         raw = match.group(0)[1:-1]
         raw = raw.replace(br"\n", b"\n").replace(br"\r", b"\n").replace(br"\t", b"\t")
-        raw = re.sub(br"\\(\d{1,3})", lambda m: bytes([int(m.group(1), 8) & 0xFF]), raw)
+        # Only [0-7]: int(..., 8) raises ValueError on ``\999`` and aborted Melbet reprocess.
+        raw = re.sub(br"\\([0-7]{1,3})", _pdf_octal_escape, raw)
         raw = raw.replace(br"\(", b"(").replace(br"\)", b")").replace(br"\\", b"\\")
         for encoding in ("utf-8", "latin-1"):
             try:

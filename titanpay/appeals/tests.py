@@ -318,6 +318,15 @@ class ProviderPrivacyTest(SimpleTestCase):
         self.assertTrue(is_merchant_ticket_file(filename="receipt.pdf", file_bytes=pdf))
         self.assertTrue(is_merchant_ticket_file(filename="Melbet_6620.pdf", file_bytes=b"%PDF-1.4"))
 
+    def test_pdf_invalid_octal_escape_does_not_raise(self):
+        """Bank receipt PDFs may contain ``\\999``-like bytes; must not 500 Melbet reprocess."""
+        from appeals.provider_privacy import extract_pdf_text
+
+        blob = b"%PDF-1.4\nstream\n(Order \\999 and \\101Z\\n)\nendstream\n"
+        text = extract_pdf_text(blob)
+        self.assertIn("Order", text)
+        self.assertIn("Z", text)
+
 
 def _ticket_pdf_bytes(text: str) -> bytes:
     import re
