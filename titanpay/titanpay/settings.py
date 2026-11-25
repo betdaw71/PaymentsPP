@@ -855,6 +855,9 @@ ASTRUM_METHOD_NAME_ID = os.getenv('ASTRUM_METHOD_NAME_ID', '')
 ASTRUM_EXPRESS = os.getenv('ASTRUM_EXPRESS', '').strip().lower() in ('1', 'true', 'yes')
 ASTRUM_CALLBACK_URL = os.getenv('ASTRUM_CALLBACK_URL', '')
 ASTRUM_PAYIN_CALLBACK_URL = os.getenv('ASTRUM_PAYIN_CALLBACK_URL', '')
+# HTTP timeouts (seconds). Create must stay short: merchant H2H waits on Astrum then cascade.
+ASTRUM_HTTP_TIMEOUT = float(os.getenv('ASTRUM_HTTP_TIMEOUT', '15') or '15')
+ASTRUM_PAYIN_CREATE_TIMEOUT = float(os.getenv('ASTRUM_PAYIN_CREATE_TIMEOUT', '5') or '5')
 # JSON: merchant username → preferred pay-out trader. Mostbet C2CKZT → PayPlat.
 PAYOUT_PREFERRED_TRADER_BY_MERCHANT = os.getenv(
     'PAYOUT_PREFERRED_TRADER_BY_MERCHANT',

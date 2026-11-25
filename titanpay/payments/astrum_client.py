@@ -126,13 +126,35 @@ def _headers() -> dict[str, str]:
     }
 
 
+def _default_http_timeout() -> float:
+    """General Astrum HTTP timeout (balance/info/cancel)."""
+    raw = getattr(settings, "ASTRUM_HTTP_TIMEOUT", 15)
+    try:
+        return max(1.0, float(raw))
+    except (TypeError, ValueError):
+        return 15.0
+
+
+def _payin_create_timeout() -> float:
+    """Merchant H2H waits on this call — keep short so we can fall back to traders.
+
+    Aggrepay curl error 28 after 2001ms happens when their client timeout is ~2s and
+    Astrum (or cascade) is slower. Fail Astrum fast, then try live traders.
+    """
+    raw = getattr(settings, "ASTRUM_PAYIN_CREATE_TIMEOUT", 5)
+    try:
+        return max(1.0, float(raw))
+    except (TypeError, ValueError):
+        return 5.0
+
+
 def _request(
     method: str,
     path: str,
     *,
     json_payload: dict | None = None,
     params: dict | None = None,
-    timeout: int = 60,
+    timeout: float | None = None,
 ) -> tuple[bool, dict[str, Any] | str]:
     if not _api_key():
         return False, "ASTRUM_API_KEY is empty"
@@ -140,6 +162,8 @@ def _request(
     if not base:
         return False, "ASTRUM_API_BASE is empty"
     url = f"{base}/{path.lstrip('/')}"
+    if timeout is None:
+        timeout = _default_http_timeout()
     try:
         r = requests.request(
             method,
@@ -245,7 +269,12 @@ def astrum_create_payin(
     token = encrypt_application(payload)
     if not token:
         return False, "ASTRUM_PRIVATE_KEY is empty or invalid for Fernet"
-    return _request("POST", "/source/deal", json_payload={"encrypted_application": token})
+    return _request(
+        "POST",
+        "/source/deal",
+        json_payload={"encrypted_application": token},
+        timeout=_payin_create_timeout(),
+    )
 
 
 def astrum_cancel_payin(foreign_id: str) -> tuple[bool, dict[str, Any] | str]:
