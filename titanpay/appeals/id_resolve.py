@@ -474,11 +474,48 @@ def _pay_in_for_any_id(value: str) -> PayIn | None:
     return None
 
 
+def _resolve_labelled_pay_ins(hints: TicketHints) -> list[PayIn]:
+    """PayIns from explicit ticket labels (Заказ / Order / Номер в ПС).
+
+    Mel Transaction Bot captions already carry the order id. Receipt PDF text and
+    hash/UUID filenames often inject a second deal id → ambiguous_id → 👎. Prefer
+    unique labelled hits before mining the rest of the blob.
+    """
+    hits: list[PayIn] = []
+    for order_id in hints.merchant_order_ids:
+        pay_in = _pay_in_for_any_id(order_id)
+        if pay_in:
+            hits.append(pay_in)
+    unique = _unique_pay_ins(hits)
+    if unique:
+        return unique
+    for psp_id in hints.psp_ids:
+        pay_in = _pay_in_for_any_id(psp_id)
+        if pay_in:
+            hits.append(pay_in)
+    return _unique_pay_ins(hits)
+
+
 def resolve_pay_in_from_message(text: str) -> ResolveResult:
     raw = normalize_appeal_text(text)
     uuids = extract_uuids(raw)
     hints = parse_appeal_ticket(raw)
     recognized = bool(uuids or hints.has_ids or is_merchant_appeal_ticket(raw))
+
+    # Melbet/Panda labelled tickets: one clear «Заказ:» beats noisy PDF/filename IDs.
+    labelled = _resolve_labelled_pay_ins(hints)
+    if len(labelled) == 1:
+        return ResolveResult(ok=True, pay_in=labelled[0], recognized=True)
+    if len(labelled) > 1:
+        return ResolveResult(
+            ok=False,
+            error_code="ambiguous_id",
+            error_message=(
+                "В сообщении несколько ID, относящихся к разным заявкам. "
+                "Отправьте чек с одним ID заявки."
+            ),
+            recognized=True,
+        )
 
     pay_ins: list[PayIn] = []
     for value in uuids:

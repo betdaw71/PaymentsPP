@@ -148,6 +148,26 @@ class MelbetTicketResolveTest(TestCase):
         self.assertTrue(result.recognized)
         self.assertEqual(result.pay_in.id, self.pay_in.id)
 
+    def test_melbet_ticket_ignores_conflicting_receipt_filename_uuid(self):
+        """Hash/UUID PDF name must not flip Melbet «Заказ:» into ambiguous_id → 👎."""
+        other = PayIn.objects.create(
+            amount=Decimal("1000"),
+            currency=self.pay_in.currency,
+            payment_system=self.pay_in.payment_system,
+            merchant_order_id="other-moid",
+            callback_url="https://example.com/cb2",
+            merchant=self.merchant,
+            status=self.status,
+        )
+        noisy = (
+            f"{MELBET_TICKET}\n"
+            f"{other.id}.pdf\n"
+            f"{str(other.id).replace('-', '')}"
+        )
+        result = resolve_pay_in_from_message(noisy)
+        self.assertTrue(result.ok, result.error_message)
+        self.assertEqual(result.pay_in.id, self.pay_in.id)
+
     def test_resolves_by_short_ticket_hex(self):
         hex8 = str(self.pay_in.id).replace("-", "")[:8]
         result = resolve_pay_in_from_message(f"🎟 Тикет #{hex8}\n💰 Депозит")
