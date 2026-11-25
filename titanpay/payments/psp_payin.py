@@ -402,7 +402,7 @@ def _psp_first_merchant_usernames() -> frozenset[str]:
 
 
 def merchant_wants_psp_first(merchant) -> bool:
-    """PSP раньше живых трейдеров (mostbet: patriot → traders, aggrepay: astrum → traders)."""
+    """PSP раньше живых трейдеров (aggrepay: astrum → traders)."""
     key = _merchant_routing_username(merchant)
     if not key:
         return False
@@ -630,7 +630,7 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
 
     По умолчанию: живые трейдеры первыми (равномерно по выдачам/open за окно),
     затем PSP. HUMAN_ROUTING_FAIR=0 — снова только current_volume.
-    Если мерчант в PSP_ROUTING_PSP_FIRST_MERCHANTS (mostbet) или это aggrepay:
+    Если мерчант в PSP_ROUTING_PSP_FIRST_MERCHANTS (aggrepay):
     PSP первыми, живые после — и после отказа API уйдут через human fallback.
     aggrepay без своего ключа в map: только astrum_kzt, затем команды трейдеров.
 
@@ -639,7 +639,8 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
 
     Если у мерчанта есть PSP_ROUTING_PRIORITY_BY_MERCHANT — только его каскад
     среди PSP. При psp_first в каскад PSP попадают только username из map
-    (mostbet:{"patriot1":1} → только Patriot, потом трейдеры).
+    (aggrepay:{"astrum_kzt":1} → только Astrum, потом трейдеры).
+    mostbet/pandapay: полный PSP-список, живые первыми (не psp_first).
 
     share_volumes оставлен для совместимости (диагностика), на порядок не влияет.
     rng — random.Random для тестов.
@@ -653,7 +654,7 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     custom_map = merchant_psp_priority_map(merchant)
     psp_first = merchant_wants_psp_first(merchant)
 
-    # mostbet psp_first + map: не тащим gipay/payplat перед живыми трейдерами.
+    # psp_first + map: не тащим лишние PSP перед живыми трейдерами.
     if psp_first and custom_map:
         allowed = {str(k).strip().lower() for k in custom_map}
         psp = [g for g in psp if _group_username(g).lower() in allowed]
@@ -1323,7 +1324,7 @@ def try_psp_provider_fallback(pay_in: Any, *, failed_provider: str) -> bool:
 
 
 def try_human_trader_fallback(pay_in: Any, *, failed_provider: str, force: bool = False) -> bool:
-    """psp_first: PSP отказал → живая команда. mostbet после Patriot, aggrepay после Astrum."""
+    """psp_first: PSP отказал → живая команда (aggrepay после Astrum)."""
     from basics.models import PaymentDetails
     from payments.deal_margin import margin_ok_for_group
     from payments.payin_trace import Direction, trace_log
@@ -1537,7 +1538,7 @@ def try_attach_psp_sessions(pay_in: Any) -> None:
         failed = provider_name or "unknown"
         if try_psp_provider_fallback(pay_in, failed_provider=failed):
             return
-        # mostbet: после PSP — живые трейдеры (patriot → traders).
+        # psp_first (aggrepay): после PSP — живые трейдеры.
         # artur_kids: после отказа по грузинскому банку тоже ищем живую карту другого банка.
         if try_human_trader_fallback(pay_in, failed_provider=failed, force=rejected_georgian):
             return
