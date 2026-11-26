@@ -189,9 +189,27 @@ def update_ps():
                 elif kzt_bybit_kaspi is not None:
                     kzt_rate = kzt_bybit_kaspi
                     source = "Bybit/Kaspi (fallback)"
+                    # Deep book rows 15–16 sit ~6–12% above XE+5; merchants (Aggrepay etc.)
+                    # reconcile against XE and will flag the gap. Keep last XE rate instead.
+                    logging.error(
+                        "KZT rate FALLBACK blocked for %s: XE unavailable, Bybit would be %s. "
+                        "Keeping previous PS rate=%s",
+                        ps.name,
+                        kzt_rate,
+                        ps.get_rate(),
+                    )
+                    continue
                 elif kzt_binance_halyk is not None:
                     kzt_rate = kzt_binance_halyk
                     source = "Binance/Halyk (fallback)"
+                    logging.error(
+                        "KZT rate FALLBACK blocked for %s: XE unavailable, Binance would be %s. "
+                        "Keeping previous PS rate=%s",
+                        ps.name,
+                        kzt_rate,
+                        ps.get_rate(),
+                    )
+                    continue
                 else:
                     logging.warning("KZT rate skipped for %s (all sources returned None)", ps.name)
                     continue

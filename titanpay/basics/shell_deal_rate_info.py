@@ -45,6 +45,15 @@ def _print_order_block(*, title: str, order, pay, direction: str) -> None:
     deal_rate = _deal_rate(fiat, usdt)
     mdr = order.solution.mdr_in if direction == "in" else order.solution.mdr_out
     merchant_fee = Decimal(str(order.merchant_fee)) if order else Decimal("0")
+    merchant_rate = Decimal(str(getattr(order, "merchant_rate", 0) or 0)) if order else Decimal("0")
+    psp_rate = Decimal(str(getattr(order, "psp_rate", 0) or 0)) if order else Decimal("0")
+    psp_usd = Decimal(str(getattr(order, "psp_usd_amount", 0) or 0)) if order else Decimal("0")
+    trader = None
+    if order and getattr(order, "payment_details_id", None):
+        try:
+            trader = order.payment_details.group.trader.user.username
+        except Exception:
+            trader = None
 
     print(f"=== {title} ===")
     print(f"type:              {direction.upper()} ({type(pay).__name__})")
@@ -55,10 +64,22 @@ def _print_order_block(*, title: str, order, pay, direction: str) -> None:
         print(f"order_status:      {order.status.name}")
     print(f"payment_system:    {ps.name if ps else None}")
     print(f"currency:          {currency.symbol if currency else None}")
+    print(f"trader:            {trader}")
     print(f"fiat_amount:       {fiat}")
     print(f"usdt_amount:       {usdt}")
     if deal_rate is not None:
-        print(f"rate_deal:         {deal_rate} {currency.symbol if currency else ''}/USDT")
+        print(f"rate_deal:         {deal_rate} {currency.symbol if currency else ''}/USDT  (amount/usd)")
+    if merchant_rate:
+        print(f"merchant_rate:     {merchant_rate}  (зафиксирован на ордере, уходит мерчанту)")
+    if psp_rate:
+        print(f"psp_rate:          {psp_rate}  (курс PSP/трейдера, мерчанту не отдаём)")
+    if psp_usd:
+        print(f"psp_usd_amount:    {psp_usd}")
+    if merchant_rate and psp_rate and merchant_rate > 0:
+        gap_pct = ((psp_rate - merchant_rate) / merchant_rate * Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        print(f"rate_gap_psp_vs_m: {gap_pct}%  (psp_rate/merchant_rate − 1)")
     if ps_rate_now:
         print(f"rate_ps_now:       {ps_rate_now} {currency.symbol if currency else ''}/USDT (текущий в PS)")
     print(f"mdr:               {mdr}%")
@@ -95,6 +116,7 @@ def _lookup(deal_id: str) -> None:
         "order__status",
         "order__solution__merchant__user",
         "order__solution__payment_system__currency",
+        "order__payment_details__group__trader__user",
     ).filter(id=deal_id).first()
     if pay_in:
         _print_order_block(title=str(pay_in.id), order=pay_in.order, pay=pay_in, direction="in")
