@@ -56,7 +56,8 @@ def _deposit_address(username: str) -> str:
             return address
     except Exception as exc:
         print(f"  ! crypto service unavailable ({exc}); placeholder address")
-    return f"pandapay_kz_local_{username}_{uuid.uuid4().hex[:16]}"
+    # Address.address_public max_length=42 (ETH-style)
+    return ("0x" + uuid.uuid4().hex + uuid.uuid4().hex)[:42]
 
 
 @transaction.atomic
