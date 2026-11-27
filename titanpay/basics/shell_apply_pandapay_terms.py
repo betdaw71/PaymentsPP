@@ -1,11 +1,12 @@
-"""Pandapay: MDR 7.20% на C2CKZT/C2C + напоминание про xe+4 и каскад.
+"""Pandapay: MDR на C2CKZT/C2C (ftd true/false). Курс xe+4 — через .env.
 
-Курс xe+4 и каскад — через .env (см. вывод). Этот скрипт только mdr_in.
-
-  docker compose exec -T app python manage.py shell \\
+  # dry-run
+  docker compose exec -T -e MDR=7.00 app python manage.py shell \\
     < titanpay/basics/shell_apply_pandapay_terms.py
 
-  APPLY=1 — записать mdr_in=7.20
+  # записать
+  docker compose exec -T -e APPLY=1 -e MDR=7.00 app python manage.py shell \\
+    < titanpay/basics/shell_apply_pandapay_terms.py
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from merchant.models import Merchant, MerchantSolution
 
 APPLY = (os.environ.get("APPLY") or "").strip().lower() in {"1", "true", "yes"}
 MERCHANT = (os.environ.get("MERCHANT") or "pandapay").strip()
-TARGET_MDR = Decimal(str(os.environ.get("MDR") or "7.20"))
+TARGET_MDR = Decimal(str(os.environ.get("MDR") or "7.00"))
 PS_NAMES = tuple(
     p.strip()
     for p in (os.environ.get("PS") or "C2CKZT,C2C").split(",")
