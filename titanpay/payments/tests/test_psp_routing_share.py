@@ -270,34 +270,66 @@ class MerchantCascadeOverrideTest(SimpleTestCase):
         )
 
 
+_PANDAPAY_LIKE_CASCADE = {
+    "patriot1": 1,
+    "gipay1": 2,
+    "prochub1": 3,
+    "layerone1": 4,
+    "plutus1": 98,
+    "astrum_kzt": 97,
+    "payplat1": 99,
+}
+
+
 @override_settings(
-    PSP_ROUTING_PRIORITY_MAP={"patriot1": 1, "gipay1": 2},
+    PSP_ROUTING_PRIORITY_MAP={"patriot1": 1, "gipay1": 2, "payplat1": 99},
     PSP_ROUTING_SHARE_MAP={"patriot1": 70, "gipay1": 30},
-    PSP_ROUTING_PRIORITY_BY_MERCHANT={"mostbet": {"patriot1": 1}},
-    PSP_ROUTING_PSP_FIRST_MERCHANTS="mostbet",
+    PSP_ROUTING_PRIORITY_BY_MERCHANT={
+        "pandapay": _PANDAPAY_LIKE_CASCADE,
+        "mostbet": _PANDAPAY_LIKE_CASCADE,
+    },
+    PSP_ROUTING_PSP_FIRST_MERCHANTS="aggrepay",
 )
 @patch("payments.psp_payin._team_mdr_in_map", return_value={})
-class MostbetPatriotThenTradersTest(SimpleTestCase):
-    def test_mostbet_wants_psp_first(self, _mdr):
+class MostbetLikePandapayCascadeTest(SimpleTestCase):
+    def test_mostbet_not_psp_first(self, _mdr):
         merchant = SimpleNamespace(user=SimpleNamespace(username="mostbet"))
-        self.assertTrue(merchant_wants_psp_first(merchant))
+        self.assertFalse(merchant_wants_psp_first(merchant))
         self.assertFalse(
             merchant_wants_psp_first(SimpleNamespace(user=SimpleNamespace(username="pandapay")))
         )
 
-    def test_mostbet_patriot_then_live_only_mapped_psp(self, _mdr):
+    def test_mostbet_humans_then_full_psp_cascade(self, _mdr):
         groups = [
             _group("live_b", 20, volume="50"),
             _group("gipay1", 2, volume="0"),
             _group("patriot1", 1, volume="0"),
             _group("live_a", 21, volume="10"),
             _group("payplat1", 3, volume="0"),
+            _group("prochub1", 4, volume="0"),
+            _group("layerone1", 5, volume="0"),
         ]
         merchant = SimpleNamespace(user=SimpleNamespace(username="mostbet"))
         ordered = sort_groups_for_routing(groups, merchant=merchant)
         self.assertEqual(
             [g.trader.user.username for g in ordered],
-            ["patriot1", "live_a", "live_b"],
+            ["live_a", "live_b", "patriot1", "gipay1", "prochub1", "layerone1", "payplat1"],
+        )
+
+    def test_mostbet_matches_pandapay_psp_order(self, _mdr):
+        groups = [
+            _group("payplat1", 1),
+            _group("plutus1", 6),
+            _group("gipay1", 2),
+            _group("patriot1", 10),
+            _group("prochub1", 4),
+            _group("layerone1", 5),
+        ]
+        mostbet = SimpleNamespace(user=SimpleNamespace(username="mostbet"))
+        pandapay = SimpleNamespace(user=SimpleNamespace(username="pandapay"))
+        self.assertEqual(
+            [g.trader.user.username for g in sort_groups_for_routing(groups, merchant=mostbet)],
+            [g.trader.user.username for g in sort_groups_for_routing(groups, merchant=pandapay)],
         )
 
     def test_other_merchant_still_humans_first(self, _mdr):

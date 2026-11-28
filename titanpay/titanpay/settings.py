@@ -669,18 +669,21 @@ PSP_ROUTING_PRIORITY_MAP = os.getenv(
     '"layerone1":10,"nexus1":11,"plutus1":98,"astrum_kzt":97,"payplat1":99}',
 )
 # JSON: per-merchant каскад (перебивает глобальный priority + отключает SHARE_MAP для этого мерча).
+# mostbet = тот же каскад, что pandapay (живые первыми, потом полный PSP-список).
 # aggrepay: только astrum_kzt (Asterisk). Если ключа нет в env, код всё равно ставит его первым.
 PSP_ROUTING_PRIORITY_BY_MERCHANT = os.getenv(
     'PSP_ROUTING_PRIORITY_BY_MERCHANT',
     '{"pandapay":{"patriot1":1,"gipay1":2,"prochub1":3,"layerone1":4,'
+    '"plutus1":98,"astrum_kzt":97,"payplat1":99},'
+    '"mostbet":{"patriot1":1,"gipay1":2,"prochub1":3,"layerone1":4,'
     '"plutus1":98,"astrum_kzt":97,"payplat1":99},"aggrepay":{"astrum_kzt":1}}',
 )
 # Мерчанты, у которых PSP идут раньше живых трейдеров.
-# mostbet: patriot → traders. aggrepay: astrum → traders (AGGREPAY_ASTERISK_FIRST).
-# После отказа PSP (нет реквизита) — fallback на команды трейдеров.
+# aggrepay: astrum → traders (AGGREPAY_ASTERISK_FIRST). mostbet — стандартный каскад как pandapay.
+# После отказа PSP (нет реквизита) — fallback на команды трейдеров (только для psp_first).
 PSP_ROUTING_PSP_FIRST_MERCHANTS = os.getenv(
     'PSP_ROUTING_PSP_FIRST_MERCHANTS',
-    'mostbet,aggrepay',
+    'aggrepay',
 )
 # 0 выключает принудительный каскад aggrepay (astrum, потом трейдеры), если ключа нет в map.
 AGGREPAY_ASTERISK_FIRST = os.getenv('AGGREPAY_ASTERISK_FIRST', '1')
