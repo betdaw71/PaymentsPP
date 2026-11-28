@@ -268,9 +268,20 @@ def _xe_kzt_markup_by_merchant_map() -> dict[str, Decimal]:
 
 
 def xe_kzt_markup_for_merchant(merchant_username: str | None, ps_name: str | None = None) -> Decimal:
-    """Per-merchant XE markup (e.g. pandapay xe+4), иначе как у PS."""
+    """Per-merchant XE markup. Ключ ``merchant:ps`` (aggrepay:c2c) перекрывает общий.
+
+    aggrepay на методе C2C — xe+5, даже если общий ключ aggrepay = xe+4 (C2CKZT).
+    Явный ``aggrepay:c2c`` в XE_KZT_MARKUP_BY_MERCHANT это перекрывает.
+    """
     by_m = _xe_kzt_markup_by_merchant_map()
     key = (merchant_username or "").strip().lower()
+    ps = (ps_name or "").strip()
+    if key and ps:
+        specific = f"{key}:{ps.lower()}"
+        if specific in by_m:
+            return by_m[specific]
+    if key == "aggrepay" and ps.upper() == "C2C":
+        return Decimal("1.05")
     if key and key in by_m:
         return by_m[key]
     return xe_kzt_markup_for_ps(ps_name)

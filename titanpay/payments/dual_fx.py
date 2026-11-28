@@ -25,6 +25,7 @@ _PSP_USERNAME_SETTINGS = (
     ("PLUTUS_TRADER_USERNAME", "plutus1"),
     ("BITZONE_TRADER_USERNAME", "bitzone1"),
     ("ASTRUM_TRADER_USERNAME", "astrum_kzt"),
+    ("ASTRUM_LOCAL_TRADER_USERNAME", "astrum_local_kzt"),
 )
 
 

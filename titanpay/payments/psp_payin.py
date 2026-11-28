@@ -391,6 +391,10 @@ def merchant_psp_priority_map(merchant) -> dict[str, int] | None:
     maps = _psp_routing_priority_by_merchant_maps()
     if key == _AGGREPAY_USERNAME and key not in maps and _aggrepay_asterisk_first():
         return dict(_AGGREPAY_ASTERISK_CASCADE)
+    from payments.astrum_client import astrum_local_merchant_usernames, astrum_local_trader_username
+
+    if key in astrum_local_merchant_usernames() and key not in maps:
+        return {astrum_local_trader_username(): 1}
     return maps.get(key)
 
 
@@ -407,6 +411,10 @@ def merchant_wants_psp_first(merchant) -> bool:
     if not key:
         return False
     if key == _AGGREPAY_USERNAME and _aggrepay_asterisk_first():
+        return True
+    from payments.astrum_client import astrum_local_merchant_usernames
+
+    if key in astrum_local_merchant_usernames():
         return True
     return key in _psp_first_merchant_usernames()
 
@@ -448,6 +456,8 @@ _SHARE_USERNAME_ALIASES = {
     "plutus": "plutus1",
     "astrum": "astrum_kzt",
     "asterisk": "astrum_kzt",
+    "asterisk_local": "astrum_local_kzt",
+    "astrum_local": "astrum_local_kzt",
     "protocol": "protocol1",
     "prochub": "prochub1",
     "nexus": "nexus1",
@@ -829,6 +839,7 @@ def psp_trader_usernames() -> frozenset[str]:
         pc.protocol_trader_username(),
         plc.playments_trader_username(),
         asc.astrum_trader_username(),
+        asc.astrum_local_trader_username(),
         cc.concored_trader_username(),
         bzc.bitzone_trader_username(),
         pltc.plutus_trader_username(),
@@ -1168,6 +1179,10 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
 
     for group in sort_groups_for_routing(groups, amount, merchant=merchant):
         if exclude_trader_id is not None and group.trader_id == exclude_trader_id:
+            continue
+        from payments.astrum_client import astrum_trader_allowed_for_merchant
+
+        if not astrum_trader_allowed_for_merchant(group.trader, merchant):
             continue
         if group.trader_id in seen_trader_ids:
             continue

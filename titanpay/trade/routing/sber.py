@@ -113,8 +113,17 @@ class SberRouting:
         if fair_routing_enabled() and human_groups:
             human_load = fetch_group_load_stats([g.id for g in human_groups])
 
+        from payments.astrum_client import astrum_trader_allowed_for_merchant
+
         for idx, group in enumerate(chosen_group):
             uname = group.trader.user.username if group.trader and group.trader.user else "?"
+            if not astrum_trader_allowed_for_merchant(group.trader, merchant):
+                skipped.append({
+                    "trader": uname,
+                    "group_id": str(group.id),
+                    "skip": "astrum_local_other_merchant",
+                })
+                continue
             is_human = not is_psp_trader(group.trader) and not is_preferred_payin_psp(group.trader)
             if is_human:
                 spacing_skip = group_skip_reason_for_deal_spacing(group, amount)

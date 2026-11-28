@@ -23,14 +23,135 @@ _PAYIN_SUCCESS = frozenset({"auto_success", "hand_success", "corrected"})
 _PAYIN_FAIL = frozenset({"auto_decline", "chargeback"})
 
 
+class AstrumProfile:
+    """Один кабинет Asterisk: трансгран (любой мерчант) или локал (список мерчантов)."""
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        username: str,
+        api_base: str,
+        api_key: str,
+        private_key: str,
+        method_type_id: int | None,
+        method_name_id: int | None,
+        currency: str,
+        express: bool,
+        merchants: frozenset[str],
+    ) -> None:
+        self.name = name
+        self.username = username
+        self.api_base = api_base
+        self.api_key = api_key
+        self.private_key = private_key
+        self.method_type_id = method_type_id
+        self.method_name_id = method_name_id
+        self.currency = currency
+        self.express = express
+        self.merchants = merchants
+
+
+def _parse_int(raw) -> int | None:
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _csv_set(raw) -> frozenset[str]:
+    return frozenset(p.strip().lower() for p in str(raw or "").split(",") if p.strip())
+
+
 def astrum_trader_username() -> str:
-    return getattr(settings, "ASTRUM_TRADER_USERNAME", "astrum_kzt")
+    return getattr(settings, "ASTRUM_TRADER_USERNAME", "astrum_kzt") or "astrum_kzt"
+
+
+def astrum_local_trader_username() -> str:
+    return getattr(settings, "ASTRUM_LOCAL_TRADER_USERNAME", "astrum_local_kzt") or "astrum_local_kzt"
+
+
+def astrum_local_merchant_usernames() -> frozenset[str]:
+    return _csv_set(getattr(settings, "ASTRUM_LOCAL_MERCHANTS", "pandapay_local_kzt,pandapay_kz_local"))
+
+
+def astrum_profiles() -> list[AstrumProfile]:
+    primary = AstrumProfile(
+        name="astrum",
+        username=(astrum_trader_username() or "").strip(),
+        api_base=(getattr(settings, "ASTRUM_API_BASE", None) or "https://astrum.ac/api").strip().rstrip("/"),
+        api_key=(getattr(settings, "ASTRUM_API_KEY", None) or "").strip(),
+        private_key=(getattr(settings, "ASTRUM_PRIVATE_KEY", None) or "").strip(),
+        method_type_id=_parse_int(getattr(settings, "ASTRUM_METHOD_TYPE_ID", None)),
+        method_name_id=_parse_int(getattr(settings, "ASTRUM_METHOD_NAME_ID", None)),
+        currency=(getattr(settings, "ASTRUM_CURRENCY", None) or "KZT").strip().upper() or "KZT",
+        express=bool(getattr(settings, "ASTRUM_EXPRESS", False)),
+        merchants=frozenset(),
+    )
+    local_name = (astrum_local_trader_username() or "").strip()
+    profiles = [primary]
+    if local_name and local_name != primary.username:
+        profiles.append(
+            AstrumProfile(
+                name="astrum_local",
+                username=local_name,
+                api_base=(getattr(settings, "ASTRUM_LOCAL_API_BASE", None) or primary.api_base).strip().rstrip("/"),
+                api_key=(getattr(settings, "ASTRUM_LOCAL_API_KEY", None) or "").strip(),
+                private_key=(getattr(settings, "ASTRUM_LOCAL_PRIVATE_KEY", None) or "").strip(),
+                method_type_id=_parse_int(getattr(settings, "ASTRUM_LOCAL_METHOD_TYPE_ID", None)),
+                method_name_id=_parse_int(getattr(settings, "ASTRUM_LOCAL_METHOD_NAME_ID", None)),
+                currency=(getattr(settings, "ASTRUM_LOCAL_CURRENCY", None) or "KZT").strip().upper() or "KZT",
+                express=bool(getattr(settings, "ASTRUM_LOCAL_EXPRESS", False)),
+                merchants=astrum_local_merchant_usernames(),
+            )
+        )
+    return profiles
+
+
+def _primary_profile() -> AstrumProfile:
+    return astrum_profiles()[0]
+
+
+def profile_for_username(username: str | None) -> AstrumProfile | None:
+    uname = (username or "").strip()
+    if not uname:
+        return None
+    for profile in astrum_profiles():
+        if profile.username == uname:
+            return profile
+    return None
+
+
+def profile_for_trader(trader) -> AstrumProfile | None:
+    if trader is None or not getattr(trader, "user", None):
+        return None
+    return profile_for_username(getattr(trader.user, "username", None))
 
 
 def is_astrum_trader(trader) -> bool:
-    if trader is None or not getattr(trader, "user", None):
+    return profile_for_trader(trader) is not None
+
+
+def _merchant_username(merchant) -> str:
+    if merchant is None:
+        return ""
+    if isinstance(merchant, str):
+        return merchant.strip().lower()
+    user = getattr(merchant, "user", None)
+    return (getattr(user, "username", None) or "").strip().lower()
+
+
+def astrum_trader_allowed_for_merchant(trader, merchant) -> bool:
+    """Локальный кабинет видят только мерчанты из ASTRUM_LOCAL_MERCHANTS."""
+    profile = profile_for_trader(trader)
+    if profile is None or not profile.merchants:
+        return True
+    key = _merchant_username(merchant)
+    if not key:
         return False
-    return trader.user.username == astrum_trader_username()
+    return key in profile.merchants
 
 
 def astrum_payment_system_name() -> str:
@@ -98,31 +219,32 @@ def _express_default() -> bool:
     return bool(getattr(settings, "ASTRUM_EXPRESS", False))
 
 
-def _fernet() -> Fernet | None:
-    key = _private_key()
+def _fernet(profile: AstrumProfile | None = None) -> Fernet | None:
+    key = (profile.private_key if profile is not None else _private_key())
     if not key:
         return None
     try:
         return Fernet(key.encode("utf-8") if isinstance(key, str) else key)
     except (ValueError, TypeError, InvalidToken) as exc:
-        logger.error("Astrum Fernet key invalid: %s", exc)
+        logger.error("Astrum Fernet key invalid (%s): %s", getattr(profile, "name", "astrum"), exc)
         return None
 
 
-def encrypt_application(payload: dict[str, Any]) -> str | None:
+def encrypt_application(payload: dict[str, Any], profile: AstrumProfile | None = None) -> str | None:
     """Fernet-encrypt payout/payin create payload → token string for encrypted_application."""
-    f = _fernet()
+    f = _fernet(profile)
     if f is None:
         return None
     body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
     return f.encrypt(body.encode("utf-8")).decode("utf-8")
 
 
-def _headers() -> dict[str, str]:
+def _headers(profile: AstrumProfile | None = None) -> dict[str, str]:
+    key = profile.api_key if profile is not None else _api_key()
     return {
         "accept": "application/json",
         "content-type": "application/json;charset=utf-8",
-        "Authorization": _api_key(),
+        "Authorization": key,
     }
 
 
@@ -155,12 +277,14 @@ def _request(
     json_payload: dict | None = None,
     params: dict | None = None,
     timeout: float | None = None,
+    profile: AstrumProfile | None = None,
 ) -> tuple[bool, dict[str, Any] | str]:
-    if not _api_key():
-        return False, "ASTRUM_API_KEY is empty"
-    base = _api_base()
+    profile = profile or _primary_profile()
+    if not profile.api_key:
+        return False, f"{profile.name} API key is empty"
+    base = profile.api_base
     if not base:
-        return False, "ASTRUM_API_BASE is empty"
+        return False, f"{profile.name} API base is empty"
     url = f"{base}/{path.lstrip('/')}"
     if timeout is None:
         timeout = _default_http_timeout()
@@ -170,7 +294,7 @@ def _request(
             url,
             json=json_payload,
             params=params,
-            headers=_headers(),
+            headers=_headers(profile),
             timeout=timeout,
         )
     except requests.RequestException as exc:
@@ -251,12 +375,14 @@ def astrum_create_payin(
     client_id: str | None = None,
     initials: str | None = None,
     currency: str | None = None,
+    profile: AstrumProfile | None = None,
 ) -> tuple[bool, dict[str, Any] | str]:
     """POST /source/deal — create KZT pay-in and get card/phone requisite."""
-    mt = method_type_id if method_type_id is not None else _method_type_id()
+    profile = profile or _primary_profile()
+    mt = method_type_id if method_type_id is not None else profile.method_type_id
     if mt is None:
-        return False, "ASTRUM_METHOD_TYPE_ID is empty — run: python manage.py astrum_probe --methods"
-    mn = method_name_id if method_name_id is not None else _method_name_id()
+        return False, f"{profile.name} METHOD_TYPE_ID is empty — run: python manage.py astrum_probe --methods"
+    mn = method_name_id if method_name_id is not None else profile.method_name_id
     payload: dict[str, Any] = {
         "foreignId": str(foreign_id),
         "amount": float(amount),
@@ -264,16 +390,17 @@ def astrum_create_payin(
         "methodNameId": int(mn) if mn is not None else None,
         "clientId": (client_id or "").strip() or None,
         "initials": (initials or "").strip() or None,
-        "currency": (currency or _currency()).strip().upper() or None,
+        "currency": (currency or profile.currency).strip().upper() or None,
     }
-    token = encrypt_application(payload)
+    token = encrypt_application(payload, profile)
     if not token:
-        return False, "ASTRUM_PRIVATE_KEY is empty or invalid for Fernet"
+        return False, f"{profile.name} PRIVATE_KEY is empty or invalid for Fernet"
     return _request(
         "POST",
         "/source/deal",
         json_payload={"encrypted_application": token},
         timeout=_payin_create_timeout(),
+        profile=profile,
     )
 
 
@@ -377,7 +504,8 @@ def try_attach_astrum_session(pay_in: Any) -> bool | None:
     if pay_in.order is None or pay_in.order.payment_details is None:
         return None
     trader = pay_in.order.payment_details.group.trader
-    if not is_astrum_trader(trader):
+    profile = profile_for_trader(trader)
+    if profile is None:
         return None
     if not payin_routed_group_matches_ps(pay_in):
         return False
@@ -398,6 +526,7 @@ def try_attach_astrum_session(pay_in: Any) -> bool | None:
         client_id=_client_id_for_payin(pay_in),
         initials=_initials_for_payin(pay_in),
         currency=currency_sym,
+        profile=profile,
     )
     if not ok:
         session.create_response = data if isinstance(data, dict) else {"error": str(data)}

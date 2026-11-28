@@ -299,7 +299,7 @@ XE_KZT_MARKUP_BY_PS = os.getenv('XE_KZT_MARKUP_BY_PS', '{"Vietcombank":"1.04"}')
 # Пример: pandapay xe+4 при общем C2CKZT xe+5 → {"pandapay":"1.04"}
 XE_KZT_MARKUP_BY_MERCHANT = os.getenv(
     'XE_KZT_MARKUP_BY_MERCHANT',
-    '{"pandapay":"1.04","aggrepay":"1.04"}',
+    '{"pandapay":"1.04","aggrepay":"1.04","aggrepay:c2c":"1.05"}',
 )
 # Мерчанты, которым не выдаём грузинские банки (TBC / Bank of Georgia / BOG).
 # Повтор запроса к провайдеру — GEORGIAN_BANK_REQUISITE_RETRIES раз, затем следующий провайдер.
@@ -315,7 +315,7 @@ PSP_XE_MARKUP_BY_TRADER = os.getenv(
     'PSP_XE_MARKUP_BY_TRADER',
     '{"payplat1":"1.05","patriot1":"1.03","gipay1":"1.04","visionx1":"1.03",'
     '"layerone1":"1.02","prochub1":"1.02","nexus1":"1.04","plutus1":"1.03",'
-    '"astrum_kzt":"1.03","resdfe":"1.04","resdfe1":"1.04"}',
+    '"astrum_kzt":"1.03","astrum_local_kzt":"1.03","resdfe":"1.04","resdfe1":"1.04"}',
 )
 
 PAYMENT_PAGE_URL = os.getenv('PAYMENT_PAGE_URL')
@@ -858,6 +858,21 @@ ASTRUM_PAYIN_CALLBACK_URL = os.getenv('ASTRUM_PAYIN_CALLBACK_URL', '')
 # HTTP timeouts (seconds). Create must stay short: merchant H2H waits on Astrum then cascade.
 ASTRUM_HTTP_TIMEOUT = float(os.getenv('ASTRUM_HTTP_TIMEOUT', '15') or '15')
 ASTRUM_PAYIN_CREATE_TIMEOUT = float(os.getenv('ASTRUM_PAYIN_CREATE_TIMEOUT', '5') or '5')
+# Второй кабинет Asterisk — локальный KZT C2C (не трансгран C2CKZT). Креды отдельные.
+ASTRUM_LOCAL_API_BASE = os.getenv('ASTRUM_LOCAL_API_BASE', 'https://astrum.ac/api').rstrip('/')
+ASTRUM_LOCAL_API_KEY = os.getenv('ASTRUM_LOCAL_API_KEY', '')
+ASTRUM_LOCAL_PRIVATE_KEY = os.getenv('ASTRUM_LOCAL_PRIVATE_KEY', '')
+ASTRUM_LOCAL_TRADER_USERNAME = os.getenv('ASTRUM_LOCAL_TRADER_USERNAME', 'astrum_local_kzt')
+ASTRUM_LOCAL_PS_NAME = os.getenv('ASTRUM_LOCAL_PS_NAME', 'C2C')
+ASTRUM_LOCAL_CURRENCY = os.getenv('ASTRUM_LOCAL_CURRENCY', 'KZT')
+ASTRUM_LOCAL_METHOD_TYPE_ID = os.getenv('ASTRUM_LOCAL_METHOD_TYPE_ID', '')
+ASTRUM_LOCAL_METHOD_NAME_ID = os.getenv('ASTRUM_LOCAL_METHOD_NAME_ID', '')
+ASTRUM_LOCAL_EXPRESS = os.getenv('ASTRUM_LOCAL_EXPRESS', '').strip().lower() in ('1', 'true', 'yes')
+# Кому можно отдать эту группу. Остальные мерчанты её не видят.
+ASTRUM_LOCAL_MERCHANTS = os.getenv(
+    'ASTRUM_LOCAL_MERCHANTS',
+    'pandapay_local_kzt,pandapay_kz_local',
+)
 # JSON: merchant username → preferred pay-out trader. Mostbet C2CKZT → PayPlat.
 PAYOUT_PREFERRED_TRADER_BY_MERCHANT = os.getenv(
     'PAYOUT_PREFERRED_TRADER_BY_MERCHANT',

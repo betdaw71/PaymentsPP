@@ -58,3 +58,24 @@ class AstrumShareAliasTest(SimpleTestCase):
         parsed = parse_routing_share_map({"asterisk": 30, "gipay1": 70})
         self.assertEqual(str(parsed["astrum_kzt"]), "30")
         self.assertEqual(str(parsed["gipay1"]), "70")
+
+
+@override_settings(
+    ASTRUM_TRADER_USERNAME="astrum_kzt",
+    ASTRUM_LOCAL_TRADER_USERNAME="astrum_local_kzt",
+    ASTRUM_LOCAL_MERCHANTS="pandapay_local_kzt,pandapay_kz_local",
+)
+class AstrumLocalMerchantGateTest(SimpleTestCase):
+    def test_local_cabinet_is_not_visible_to_other_merchants(self):
+        from types import SimpleNamespace
+
+        from payments.astrum_client import astrum_trader_allowed_for_merchant
+
+        local = SimpleNamespace(user=SimpleNamespace(username="astrum_local_kzt"))
+        transgran = SimpleNamespace(user=SimpleNamespace(username="astrum_kzt"))
+        panda = SimpleNamespace(user=SimpleNamespace(username="pandapay_local_kzt"))
+        aggrepay = SimpleNamespace(user=SimpleNamespace(username="aggrepay"))
+        self.assertTrue(astrum_trader_allowed_for_merchant(local, panda))
+        self.assertFalse(astrum_trader_allowed_for_merchant(local, aggrepay))
+        self.assertFalse(astrum_trader_allowed_for_merchant(local, None))
+        self.assertTrue(astrum_trader_allowed_for_merchant(transgran, aggrepay))

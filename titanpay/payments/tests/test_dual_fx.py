@@ -52,6 +52,22 @@ class DualFxQuoteTest(SimpleTestCase):
         self.assertGreater(quote.merchant_rate, quote.psp_rate)
         self.assertGreater(quote.psp_usd, quote.merchant_usd)
 
+    @override_settings(XE_KZT_MARKUP_BY_MERCHANT={"pandapay": "1.04", "aggrepay": "1.04"})
+    def test_aggrepay_c2c_is_xe_plus_5_transgran_stays_plus_4(self):
+        from basics.utils import xe_kzt_markup_for_merchant
+
+        self.assertEqual(xe_kzt_markup_for_merchant("aggrepay", "C2C"), Decimal("1.05"))
+        self.assertEqual(xe_kzt_markup_for_merchant("aggrepay", "C2CKZT"), Decimal("1.04"))
+        c2c = _PS("525", name="C2C")
+        merchant = SimpleNamespace(user=SimpleNamespace(username="aggrepay"))
+        quote = quote_dual_fx(
+            amount=Decimal("5250"),
+            payment_system=c2c,
+            trader=_trader("astrum_local_kzt"),
+            merchant=merchant,
+        )
+        self.assertEqual(quote.merchant_markup, Decimal("1.05"))
+
     @override_settings(XE_KZT_MARKUP_BY_MERCHANT={"pandapay": "1.04"})
     def test_pandapay_merchant_xe_plus_4_rescales_from_stored_ps_rate(self):
         # PS stores xe+5 (=525); pandapay contract xe+4 → merchant_rate=520
