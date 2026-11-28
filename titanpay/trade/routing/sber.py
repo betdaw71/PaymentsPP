@@ -83,8 +83,10 @@ class SberRouting:
                 ),
                 amount,
                 merchant=merchant,
+                payment_system=payment_system,
             ),
             merchant=merchant,
+            payment_system=payment_system,
         )
 
         preferred = melbet_kzt_test_trader_username(merchant)
@@ -117,7 +119,9 @@ class SberRouting:
 
         for idx, group in enumerate(chosen_group):
             uname = group.trader.user.username if group.trader and group.trader.user else "?"
-            if not astrum_trader_allowed_for_merchant(group.trader, merchant):
+            if not astrum_trader_allowed_for_merchant(
+                group.trader, merchant, payment_system=payment_system
+            ):
                 skipped.append({
                     "trader": uname,
                     "group_id": str(group.id),
@@ -256,6 +260,12 @@ class SberRouting:
                          client_deposit_count, merchant=None):
 
         possible_options = self.get_possible_options_in(None, payment_system, amount, traffic_type, usd_amount)
+        from payments.payin_remap import local_c2c_provider_groups, local_kzt_c2c_cascade_for
+
+        if local_kzt_c2c_cascade_for(merchant, payment_system) is not None:
+            possible_options = (
+                possible_options | local_c2c_provider_groups(payment_system)
+            ).distinct()
 
         chosen_detail = self.get_details(
             possible_options,

@@ -660,6 +660,14 @@ PAYOUTKZT_PS_NAME = os.getenv('PAYOUTKZT_PS_NAME', 'PAYOUTKZT')
 RATE_API_TOKEN = os.getenv('RATE_API_TOKEN', '')
 # Mostbet sends C2C for KZT payouts — remap to C2CKZT before routing.
 PAYOUT_C2C_TO_C2CKZT_MERCHANTS = os.getenv('PAYOUT_C2C_TO_C2CKZT_MERCHANTS', 'mostbet,lunatrixpay')
+# Pay-in: these merchants send transgran KZT as C2C — read it as C2CKZT.
+# Their existing C2CKZT cascade is unchanged. Other merchants are not remapped.
+PAYIN_C2C_KZT_AS_C2CKZT_MERCHANTS = os.getenv('PAYIN_C2C_KZT_AS_C2CKZT_MERCHANTS', 'pandapay')
+# Only these merchants' C2C KZT go to the second Astrum cabinet, then Prochub.
+# Everyone else keeps the cascade they already have.
+PAYIN_LOCAL_C2C_KZT_MERCHANTS = os.getenv(
+    'PAYIN_LOCAL_C2C_KZT_MERCHANTS', 'pandapay_local_kzt,pandapay_kz_local'
+)
 
 # JSON: приоритет PSP в каскаде (меньше = раньше). Не меняет TraderTeamRates.mdr_in (комиссию трейдера).
 # payplat offline → 99; plutus off → 98. astrum_kzt не в дефолтном каскаде до явного .env.

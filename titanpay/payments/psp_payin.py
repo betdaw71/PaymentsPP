@@ -383,8 +383,17 @@ def _aggrepay_asterisk_first() -> bool:
     return str(raw).strip().lower() not in {"0", "false", "no", "off"}
 
 
-def merchant_psp_priority_map(merchant) -> dict[str, int] | None:
-    """Кастомный каскад мерчанта или None (глобальный)."""
+def merchant_psp_priority_map(merchant, payment_system=None) -> dict[str, int] | None:
+    """Кастомный каскад мерчанта или None (глобальный).
+
+    C2C + KZT только у мерчантов из PAYIN_LOCAL_C2C_KZT_MERCHANTS: второй Astrum и Prochub.
+    Остальные мерчанты и все прочие методы остаются на своём каскаде.
+    """
+    from payments.payin_remap import local_kzt_c2c_cascade_for
+
+    local_c2c = local_kzt_c2c_cascade_for(merchant, payment_system)
+    if local_c2c is not None:
+        return local_c2c
     key = _merchant_routing_username(merchant)
     if not key:
         return None
@@ -405,8 +414,12 @@ def _psp_first_merchant_usernames() -> frozenset[str]:
     return frozenset(p.strip().lower() for p in str(raw).split(",") if p.strip())
 
 
-def merchant_wants_psp_first(merchant) -> bool:
+def merchant_wants_psp_first(merchant, payment_system=None) -> bool:
     """PSP раньше живых трейдеров (mostbet: patriot → traders, aggrepay: astrum → traders)."""
+    from payments.payin_remap import local_kzt_c2c_cascade_for
+
+    if local_kzt_c2c_cascade_for(merchant, payment_system) is not None:
+        return True
     key = _merchant_routing_username(merchant)
     if not key:
         return False
@@ -419,14 +432,14 @@ def merchant_wants_psp_first(merchant) -> bool:
     return key in _psp_first_merchant_usernames()
 
 
-def psp_routing_priority_for_trader(trader, merchant=None) -> int:
+def psp_routing_priority_for_trader(trader, merchant=None, payment_system=None) -> int:
     """Приоритет в PSP-каскаде (1 = первый). По умолчанию 100."""
     if trader is None or not getattr(trader, "user", None):
         return 100
     username = (trader.user.username or "").strip()
     if not username:
         return 100
-    custom = merchant_psp_priority_map(merchant)
+    custom = merchant_psp_priority_map(merchant, payment_system=payment_system)
     mapping = custom if custom is not None else _psp_routing_priority_map()
     if username in mapping:
         return mapping[username]
@@ -634,7 +647,9 @@ def _weighted_shuffle(groups, shares: dict[str, Decimal], *, rng=None):
     return ordered
 
 
-def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None, merchant=None):
+def sort_groups_for_routing(
+    groups, amount=None, *, share_volumes=None, rng=None, merchant=None, payment_system=None
+):
     """
     Порядок выбора группы.
 
@@ -660,8 +675,12 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
     psp = [g for g in groups if is_psp_trader(g.trader) or is_preferred_payin_psp(g.trader)]
     rest = [g for g in groups if g not in psp]
     mdr_map = _team_mdr_in_map(psp) if psp else {}
-    custom_map = merchant_psp_priority_map(merchant)
-    psp_first = merchant_wants_psp_first(merchant)
+    custom_map = merchant_psp_priority_map(merchant, payment_system=payment_system)
+    psp_first = merchant_wants_psp_first(merchant, payment_system=payment_system)
+    from payments.payin_remap import local_kzt_c2c_cascade_for
+
+    if local_kzt_c2c_cascade_for(merchant, payment_system) is not None:
+        rest = []
 
     # mostbet psp_first + map: не тащим gipay/payplat перед живыми трейдерами.
     if psp_first and custom_map:
@@ -697,7 +716,9 @@ def sort_groups_for_routing(groups, amount=None, *, share_volumes=None, rng=None
         trader = group.trader
         team_id = getattr(trader, "team_id", None) if trader else None
         return (
-            psp_routing_priority_for_trader(trader, merchant=merchant),
+            psp_routing_priority_for_trader(
+                trader, merchant=merchant, payment_system=payment_system
+            ),
             mdr_map.get((team_id, group.payment_system_id), Decimal("999")),
             group.current_volume or Decimal(0),
             _group_username(group),
@@ -782,7 +803,7 @@ def is_preferred_payin_psp(trader) -> bool:
     return actual in {n.lower() for n in preferred_payin_psp_usernames()}
 
 
-def apply_preferred_psp_order(groups, merchant=None):
+def apply_preferred_psp_order(groups, merchant=None, payment_system=None):
     """
     Среди PSP: prisma → payplat → gipay раньше остальных preferred.
     Живых трейдеров не двигаем — они остаются впереди каскада.
@@ -792,7 +813,11 @@ def apply_preferred_psp_order(groups, merchant=None):
     Per-merchant каскад тоже не трогаем.
     """
     groups = list(groups)
-    if not groups or psp_routing_share_enabled() or merchant_psp_priority_map(merchant) is not None:
+    if (
+        not groups
+        or psp_routing_share_enabled()
+        or merchant_psp_priority_map(merchant, payment_system=payment_system) is not None
+    ):
         return groups
     humans = [
         g for g in groups
@@ -1175,14 +1200,27 @@ def _iter_psp_fallback_candidates(pay_in: Any, *, exclude_trader_id: int | None)
     if order is not None:
         solution = getattr(order, "solution", None)
         merchant = getattr(solution, "merchant", None) if solution is not None else None
+    from payments.payin_remap import local_c2c_provider_groups, local_kzt_c2c_cascade_for
+
+    if ps is not None and local_kzt_c2c_cascade_for(merchant, ps) is not None:
+        have = {g.id for g in groups}
+        extra = local_c2c_provider_groups(ps).select_related(
+            "trader", "trader__user", "trader__team", "trader__balance_usdt"
+        )
+        for group in extra:
+            if group.id not in have:
+                groups.append(group)
+                have.add(group.id)
     from payments.deal_margin import margin_ok_for_group
 
-    for group in sort_groups_for_routing(groups, amount, merchant=merchant):
+    for group in sort_groups_for_routing(
+        groups, amount, merchant=merchant, payment_system=ps
+    ):
         if exclude_trader_id is not None and group.trader_id == exclude_trader_id:
             continue
         from payments.astrum_client import astrum_trader_allowed_for_merchant
 
-        if not astrum_trader_allowed_for_merchant(group.trader, merchant):
+        if not astrum_trader_allowed_for_merchant(group.trader, merchant, payment_system=ps):
             continue
         if group.trader_id in seen_trader_ids:
             continue
@@ -1351,10 +1389,14 @@ def try_human_trader_fallback(pay_in: Any, *, failed_provider: str, force: bool 
     if order is None or order.solution_id is None:
         return False
     merchant = getattr(order.solution, "merchant", None)
-    if not force and not merchant_wants_psp_first(merchant):
+    ps = pay_in.payment_system
+    from payments.payin_remap import local_kzt_c2c_cascade_for
+
+    if not force and local_kzt_c2c_cascade_for(merchant, ps) is not None:
+        return False
+    if not force and not merchant_wants_psp_first(merchant, payment_system=ps):
         return False
 
-    ps = pay_in.payment_system
     amount = pay_in.amount
     traffic = order.solution.traffic
     if ps is None or traffic is None or amount is None:
@@ -1380,6 +1422,7 @@ def try_human_trader_fallback(pay_in: Any, *, failed_provider: str, force: bool 
             ),
             amount,
             merchant=merchant,
+            payment_system=ps,
         )
         if not is_psp_trader(g.trader) and not is_preferred_payin_psp(g.trader)
     ]

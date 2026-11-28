@@ -64,6 +64,8 @@ class AstrumShareAliasTest(SimpleTestCase):
     ASTRUM_TRADER_USERNAME="astrum_kzt",
     ASTRUM_LOCAL_TRADER_USERNAME="astrum_local_kzt",
     ASTRUM_LOCAL_MERCHANTS="pandapay_local_kzt,pandapay_kz_local",
+    PAYIN_C2C_KZT_AS_C2CKZT_MERCHANTS="pandapay",
+    PAYIN_LOCAL_C2C_KZT_MERCHANTS="pandapay_local_kzt,pandapay_kz_local",
 )
 class AstrumLocalMerchantGateTest(SimpleTestCase):
     def test_local_cabinet_is_not_visible_to_other_merchants(self):
@@ -79,3 +81,31 @@ class AstrumLocalMerchantGateTest(SimpleTestCase):
         self.assertFalse(astrum_trader_allowed_for_merchant(local, aggrepay))
         self.assertFalse(astrum_trader_allowed_for_merchant(local, None))
         self.assertTrue(astrum_trader_allowed_for_merchant(transgran, aggrepay))
+
+    def test_local_cabinet_opens_only_for_listed_merchants_on_c2c_kzt(self):
+        from types import SimpleNamespace
+
+        from payments.astrum_client import astrum_trader_allowed_for_merchant
+
+        local = SimpleNamespace(user=SimpleNamespace(username="astrum_local_kzt"))
+        aggrepay = SimpleNamespace(user=SimpleNamespace(username="aggrepay"))
+        pandapay = SimpleNamespace(user=SimpleNamespace(username="pandapay"))
+        local_merchant = SimpleNamespace(user=SimpleNamespace(username="pandapay_kz_local"))
+        c2c_kzt = SimpleNamespace(name="C2C", currency=SimpleNamespace(symbol="KZT"))
+        c2ckzt = SimpleNamespace(name="C2CKZT", currency=SimpleNamespace(symbol="KZT"))
+        c2c_rub = SimpleNamespace(name="C2C", currency=SimpleNamespace(symbol="RUB"))
+        self.assertTrue(
+            astrum_trader_allowed_for_merchant(local, local_merchant, payment_system=c2c_kzt)
+        )
+        self.assertFalse(
+            astrum_trader_allowed_for_merchant(local, aggrepay, payment_system=c2c_kzt)
+        )
+        self.assertFalse(
+            astrum_trader_allowed_for_merchant(local, aggrepay, payment_system=c2ckzt)
+        )
+        self.assertFalse(
+            astrum_trader_allowed_for_merchant(local, aggrepay, payment_system=c2c_rub)
+        )
+        self.assertFalse(
+            astrum_trader_allowed_for_merchant(local, pandapay, payment_system=c2c_kzt)
+        )

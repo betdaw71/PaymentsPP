@@ -143,10 +143,14 @@ def _merchant_username(merchant) -> str:
     return (getattr(user, "username", None) or "").strip().lower()
 
 
-def astrum_trader_allowed_for_merchant(trader, merchant) -> bool:
-    """Локальный кабинет видят только мерчанты из ASTRUM_LOCAL_MERCHANTS."""
+def astrum_trader_allowed_for_merchant(trader, merchant, payment_system=None) -> bool:
+    """Локальный кабинет: свои мерчанты, плюс любой локальный C2C KZT (не трансгран pandapay)."""
     profile = profile_for_trader(trader)
     if profile is None or not profile.merchants:
+        return True
+    from payments.payin_remap import local_kzt_c2c_cascade_for
+
+    if local_kzt_c2c_cascade_for(merchant, payment_system) is not None:
         return True
     key = _merchant_username(merchant)
     if not key:

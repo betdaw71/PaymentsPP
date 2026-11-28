@@ -103,6 +103,14 @@ def resolve_currency_and_payment_system_ids(data: dict) -> dict:
     return data
 
 
+def _remap_payin_data(serializer, data):
+    from payments.payin_remap import remap_payin_payment_system_id
+
+    request = serializer.context.get("request") if getattr(serializer, "context", None) else None
+    merchant = getattr(getattr(request, "user", None), "merchant", None) if request is not None else None
+    return remap_payin_payment_system_id(data, merchant)
+
+
 class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
     ftd = serializers.BooleanField(required=True, write_only=True)
     amount_in_usd = serializers.BooleanField(required=False, write_only=True, default=False)
@@ -132,6 +140,7 @@ class PayInInvoiceCreateSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         data = resolve_currency_and_payment_system_ids(data)
+        data = _remap_payin_data(self, data)
         return super().to_internal_value(data)
 
     def get_payment_details(self, obj):
@@ -400,6 +409,7 @@ class PayInPaymentCreateSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         data = resolve_currency_and_payment_system_ids(data)
+        data = _remap_payin_data(self, data)
         return super().to_internal_value(data)
 
     def get_payment_details(self, obj):
