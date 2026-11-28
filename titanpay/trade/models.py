@@ -831,6 +831,10 @@ class InOrder(models.Model):
             if needs_recalc:
                 self.apply_psp_paid_amount_recalc(paid_amount)
             self.complete_after_cancelled()
+        elif state == "Cancelled by trader":
+            if needs_recalc:
+                self.apply_psp_paid_amount_recalc(paid_amount)
+            self.complete_after_cancelled_by_trader()
         elif state == "Arbitrage":
             if needs_recalc:
                 self.recalculate(paid_amount)
@@ -857,6 +861,17 @@ class InOrder(models.Model):
 
         self.save()
         self.freeze("Complete cancelled order (PSP paid)")
+        self.complete()
+
+    def complete_after_cancelled_by_trader(self):
+        """Провайдер подтвердил оплату после отклонения трейдером."""
+        if self.status.name != "Cancelled by trader":
+            raise ValidationError({
+                'error': 'Wrong method is used. This method is for changing status from "Cancelled by trader" to "Completed"'
+            })
+
+        self.save()
+        self.freeze("Complete cancelled-by-trader order (PSP paid)")
         self.complete()
 
     def arbitrage(self):
