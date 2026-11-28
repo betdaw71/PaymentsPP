@@ -28,6 +28,7 @@ urlpatterns = [
     path(r'get-balances/', views.get_balances_stats),
     path(r'pdgroup-creation-data/', views.get_pdgroup_creation_data),
     path(r'pd-creation-data/', views.get_pd_creation_data),
+    path(r'upload-pd-qr/', views.upload_pd_qr_image),
     path(r'get-filters-pd/', views.get_filters_payment_details),
     path(r'autoclose-off/', views.autoclose_off),
     path(r'autoclose-on/', views.autoclose_on),

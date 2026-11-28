@@ -1,6 +1,9 @@
-from django.urls import include, path
+from django.urls import path
 from rest_framework import routers
 from payments import viewsets
+from payments.merchant_balance import MerchantBalanceView
+from payments.rate_views import PayoutKztRateView
+
 app_name = 'payments'
 router = routers.DefaultRouter()
 router.register(r'in/invoice', viewsets.PayInInvoiceViewset, basename="PayIn-Invoice")
@@ -11,4 +14,7 @@ router.register(r'in/h2h', viewsets.PayInPaymentViewset, basename="PayIn-H2H")
 router.register(r'out/h2h', viewsets.PayOutPaymentViewset, basename="PayOut-H2H")
 router.register(r'keys', viewsets.APIKeysViewset, basename="APIKeys")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("rate/payoutkzt/", PayoutKztRateView.as_view(), name="rate-payoutkzt"),
+    path("balance/", MerchantBalanceView.as_view(), name="merchant-balance"),
+] + router.urls

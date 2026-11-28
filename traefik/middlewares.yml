@@ -12,6 +12,10 @@ http:
         accessControlAllowOriginList:
           - "https://avapay.net"
           - "http://avapay.net"
+          - "https://avapay.cc"
+          - "http://avapay.cc"
+          - "https://www.avapay.cc"
+          - "http://www.avapay.cc"
         accessControlAllowHeaders:
           - "Authorization"
           - "Content-Type"

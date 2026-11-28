@@ -120,6 +120,10 @@ const getOrderById = async id => {
         throw response.error
       }
       order_data.value = response.data
+      const proposed = Number(response.data?.recalculated_amount)
+      if (proposed > 0) {
+        extra_fields.value.recalculate_amount = proposed
+      }
     }).catch (error => {
       console.log (error)
       snackbar.value = {
@@ -702,7 +706,7 @@ const callback = () => {
                   cols="12"
                 >
                   <VBtn
-                    v-if="authStore.is_trader()"
+                    v-if="authStore.is_trader() && order_data.arbitrage_comment !== 'Recalc after success'"
                     class="w-100 mt-1"
                     color="success"
                     append-icon="tabler-rosette-discount-check"
@@ -755,6 +759,12 @@ const callback = () => {
                       {{ $t ('recalculation') }}
                     </VCardTitle>
                     <VCardText>
+                      <div
+                        v-if="order_data.arbitrage_comment === 'Recalc after success'"
+                        class="text-body-2 mb-3"
+                      >
+                        {{ $t('post_success_recalc_trader_hint') }}
+                      </div>
                       <VRow>
                         <VCol
                           cols="12"
@@ -786,6 +796,12 @@ const callback = () => {
                   v-if="order_data.status === 'Recalculation'"
                   cols="12"
                 >
+                  <div
+                    v-if="authStore.is_support() && order_data.arbitrage_comment === 'Recalc after success'"
+                    class="text-body-2 mb-3"
+                  >
+                    {{ $t('post_success_recalc_support_hint') }}
+                  </div>
                   <VBtn
                     v-if="authStore.is_support()"
                     class="w-100 mt-1"
@@ -841,9 +857,57 @@ const callback = () => {
                   </VCard>
                 </VCol>
                 <VCol
+                  v-if="authStore.is_support() && order_data.status === 'Completed'"
+                  cols="12"
+                >
+                  <VCard
+                    class="mt-3"
+                    border
+                  >
+                    <VCardTitle>
+                      {{ $t ('recalculation') }}
+                    </VCardTitle>
+                    <VCardText>
+                      <div class="text-body-2 mb-3">
+                        {{ $t('post_success_recalc_hint') }}
+                      </div>
+                      <VRow>
+                        <VCol cols="12">
+                          <VTextField
+                            v-model="extra_fields.recalculate_amount"
+                            :label="$t ('recalculate_amount')"
+                            :suffix="order_data.currency"
+                            type="number"
+                          />
+                        </VCol>
+                        <VCol cols="12">
+                          <VBtn
+                            class="w-100 mt-1"
+                            color="warning"
+                            append-icon="tabler-abacus"
+                            @click="isRecalculateAgain ? recalculate() : (() => {isRecalculateAgain = true})()"
+                          >
+                            {{ $t ('send_recalc_to_trader') }} {{ isRecalculateAgain ? $t('click_again') : $t('double_click') }}
+                          </VBtn>
+                        </VCol>
+                      </VRow>
+                    </VCardText>
+                  </VCard>
+                </VCol>
+                <VCol
                   v-if="['Cancelled', 'Expired','Cancelled by trader','Cancelled by support'].indexOf(order_data.status) !== -1"
                   cols="12"
                 >
+                  <!-- Backend: POST .../complete/ → complete_after_expired() (re-freeze + Completed) -->
+                  <VBtn
+                    v-if="authStore.is_trader() && order_data.status === 'Expired'"
+                    class="w-100 mt-1"
+                    color="success"
+                    append-icon="tabler-rosette-discount-check"
+                    @click="isCompleteAgain ? complete() : (() => {isCompleteAgain = true})()"
+                  >
+                    {{ $t ('complete') }} {{ isCompleteAgain ? $t('click_again') : $t('double_click') }}
+                  </VBtn>
                   <VCard
                     v-if="authStore.is_support()"
                     class="mt-3"

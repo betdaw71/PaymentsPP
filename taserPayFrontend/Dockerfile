@@ -10,6 +10,8 @@ ARG VITE_ASSETS_URL
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_AUTHORIZATION_HEADER=${VITE_AUTHORIZATION_HEADER}
 ENV VITE_ASSETS_URL=${VITE_ASSETS_URL}
+# vite build needs more than ~768MB; OOM was hitting the old heap cap
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 # Копируем package.json
 COPY package*.json ./

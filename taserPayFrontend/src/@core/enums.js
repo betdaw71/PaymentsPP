@@ -47,6 +47,10 @@ export const ROLE_MAPPING = {
     status: t ('roles.team_lead'),
     chip: { color: 'success' },
   },
+  "8": {
+    status: t ('roles.agent'),
+    chip: { color: 'primary' },
+  },
 }
 
 export const TRANSACTION_TYPE_MAPPING = {

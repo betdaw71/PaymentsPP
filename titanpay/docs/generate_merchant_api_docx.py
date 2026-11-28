@@ -119,6 +119,7 @@ def build() -> None:
         "Получать callback при смене статуса операции",
         "Управлять API-ключами и IP whitelist",
         "Подавать апелляции по спорным pay-in транзакциям",
+        "Запрашивать текущий баланс мерчанта",
     ]:
         add_bullet(doc, item)
     add_para(doc, "Два режима pay-in:", bold=True)
@@ -434,15 +435,40 @@ headers = {
     )
     add_para(doc, "Поле details обязательно. Набор полей — см. required_fields в справочнике payment-systems.")
 
-    # 12. Справочники
-    add_heading(doc, "12. Справочники")
-    add_heading(doc, "12.1. Валюты", level=2)
+    # 12. Баланс
+    add_heading(doc, "12. Баланс мерчанта")
+    add_para(doc, "GET /api/v1/payments/balance/")
+    add_para(
+        doc,
+        "Текущий баланс мерчанта, которому принадлежит API-токен. "
+        "Тело запроса пустое, заголовок Signature на запрос не нужен. "
+        "Авторизация: Authorization: Token <api_token>.",
+    )
+    add_code(
+        doc,
+        """{
+  "amount": "1520.50",
+  "frozen_amount": "100.00",
+  "currency": "USDT",
+  "deposit_address": "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+}""",
+    )
+    add_para(
+        doc,
+        "amount — доступный баланс USDT, frozen_amount — холд, "
+        "deposit_address — адрес пополнения (пустая строка, если адрес ещё не выпущен). "
+        "Суммы совпадают с личным кабинетом. В ответе может быть заголовок Signature.",
+    )
+
+    # 13. Справочники
+    add_heading(doc, "13. Справочники")
+    add_heading(doc, "13.1. Валюты", level=2)
     add_para(doc, "GET /api/v1/payments/currencies/")
-    add_heading(doc, "12.2. Платёжные системы", level=2)
+    add_heading(doc, "13.2. Платёжные системы", level=2)
     add_para(doc, "GET /api/v1/payments/payment-systems/")
 
-    # 13. Ошибки
-    add_heading(doc, "13. Типичные ошибки")
+    # 14. Ошибки
+    add_heading(doc, "14. Типичные ошибки")
     add_table(
         doc,
         ["HTTP", "Сообщение", "Причина"],
@@ -458,7 +484,7 @@ headers = {
     )
 
     # 14. Безопасность
-    add_heading(doc, "14. Безопасность")
+    add_heading(doc, "15. Безопасность")
     for item in [
         "Храните private_key только на backend",
         "Используйте HTTPS для callback URL",
@@ -470,7 +496,7 @@ headers = {
         add_bullet(doc, item)
 
     # 15. Чеклист
-    add_heading(doc, "15. Чеклист запуска")
+    add_heading(doc, "16. Чеклист запуска")
     for i, item in enumerate(
         [
             "Получите доступ в личный кабинет AvaPay",

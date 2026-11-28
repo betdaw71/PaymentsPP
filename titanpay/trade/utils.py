@@ -41,23 +41,30 @@ def calculate_fees(amount, solution: MerchantSolution, trader: Trader, direction
     return for_merchant, for_trader, for_platform
 
 
-def choose_trader_in(amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders, client_deposit_count):
+def choose_trader_in(amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, active_orders, client_deposit_count, merchant=None):
     router = route(payment_system)
 
     usd_amount = amount / payment_system.get_rate()
 
-    chosen_detail = router.choose_detail_in(amount, usd_amount, payment_system, traffic_type, active_orders, client_deposit_count)
+    chosen_detail = router.choose_detail_in(
+        amount, usd_amount, payment_system, traffic_type, active_orders, client_deposit_count, merchant=merchant,
+    )
 
     if chosen_detail is None:
         return None, usd_amount, payment_system, False
 
+    group_ps = getattr(getattr(chosen_detail, "group", None), "payment_system", None)
+    group_rate = group_ps.get_rate() if group_ps else None
+    if group_rate:
+        usd_amount = amount / group_rate
+
     return chosen_detail, usd_amount, payment_system, True
 
 
-def choose_trader_out(amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None):
+def choose_trader_out(amount: Decimal, payment_system: PaymentSystem, traffic_type: TrafficType, excluded=None, merchant=None):
     router = route(payment_system)
 
-    chosen_detail = router.choose_detail_out(amount, payment_system, traffic_type, excluded)
+    chosen_detail = router.choose_detail_out(amount, payment_system, traffic_type, excluded, merchant=merchant)
 
     usd_amount = amount / payment_system.get_rate()
 
@@ -69,21 +76,12 @@ def choose_trader_out(amount: Decimal, payment_system: PaymentSystem, traffic_ty
 
 def check_details(payment_system: PaymentSystem, details):
     required_fields = payment_system.required_fields
-
-    required_keys = set(payment_system.required_fields.keys())
-    detail_keys = set(details.keys())
-
-    missing_keys = required_keys - detail_keys
-    extra_keys = detail_keys - required_keys
+    required_keys = set(required_fields.keys())
+    missing_keys = required_keys - set(details.keys())
 
     if missing_keys:
         raise ValidationError({
             'details': f"Missing required fields for {payment_system.name}: {', '.join(missing_keys)}."
-        })
-
-    if extra_keys:
-        raise ValidationError({
-            'details': f"Extra fields present: {', '.join(extra_keys)}."
         })
 
     for key in required_keys:
